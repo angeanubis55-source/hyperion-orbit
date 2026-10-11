@@ -95,8 +95,8 @@ export function abilityHitBypass(state, abilityId, now) {
 // Montants = ticks officiels par seconde (voir ORBIT_ENGINE).
 // ---------------------------------------------------------------------------
 export const HEAL_ABILITIES = Object.freeze({
-  "ability_aegis_hp-repair": { radius: 1000, cap: 40000, shield: false, mode: "hot" },
-  "ability_aegis_shield-repair": { radius: 1000, cap: 25000, shield: true, mode: "hot" },
+  "ability_aegis_hp-repair": { radius: 700, cap: 40000, shield: false, mode: "hot" },
+  "ability_aegis_shield-repair": { radius: 700, cap: 25000, shield: true, mode: "hot" },
   "ability_aegis_repair-pod": { radius: 400, cap: 18000, shield: false, mode: "pod" },
   "ability_hammerclaw_hp-repair": { radius: 1000, cap: 50000, shield: false, mode: "hot" },
   "ability_hammerclaw_shield-repair": { radius: 1000, cap: 60000, shield: true, mode: "hot" },
@@ -247,8 +247,6 @@ export function abilityIdForFxCode(code) {
 //   voient les barres HP/SH, pas l'aura) ;
 // - vrai pour tout le reste (halos, contours, pods, zones, rayons, boosts).
 const INSTANT_HEAL_NO_AURA = new Set([
-  "ability_aegis_hp-repair",
-  "ability_aegis_shield-repair",
   "ability_hammerclaw_hp-repair",
   "ability_hammerclaw-plus_hp-repair",
   "ability_hammerclaw_shield-repair",

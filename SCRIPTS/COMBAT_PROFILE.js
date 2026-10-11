@@ -86,18 +86,21 @@ export function validateCombatHit(profile, message, state = null, now = Date.now
   const hit = { uid: message.uid, target: message.target, dmg,
     kind: message.kind === "sab" ? "sab" : "direct",
     pen: profile.penetration, critChance: profile.critChance, critMult: profile.critMult,
-    weaken: 0, slowPct: 0, slowSec: 0, freezeSec: 0 };
+    weaken: 0, slowPct: 0, slowSec: 0, freezeSec: 0, accuracyPenaltyPct: 0, accuracySec: 0, rocket: "" };
   const rocketKey = String(message.rocket || "");
   if (rocketKey) {
     if (!profile.rocketIds.includes(rocketKey) && !(now < Number(state?._launchedRocketIds?.[rocketKey] || 0))) return null;
     const effect = ROCKET_TYPES[rocketKey]?.effect || {};
+    hit.rocket = rocketKey;
+    hit.accuracyPenaltyPct = effect.accuracyPenaltyPct || 0;
+    hit.accuracySec = effect.duration || 0;
     hit.pen = effect.pierceShield ? 1 : effect.piercePct ?? profile.penetration;
     hit.slowPct = effect.slowPct || 0;
     hit.slowSec = effect.duration || 0;
     hit.freezeSec = effect.freezeSec || 0;
-    if (state && (hit.slowPct > 0 || hit.freezeSec > 0)
+    if (state && (hit.slowPct > 0 || hit.freezeSec > 0 || hit.accuracyPenaltyPct > 0)
       && !acBucket(state, `Control:${rocketKey}`, now, 1, 1 / Math.max(1, ROCKET_TYPES[rocketKey].cooldown), 1)) return null;
   }
-  if (dmg === 0 && !(hit.slowPct > 0 && hit.slowSec > 0) && !(hit.freezeSec > 0)) return null;
+  if (dmg === 0 && !(hit.slowPct > 0 && hit.slowSec > 0) && !(hit.freezeSec > 0) && !(hit.accuracyPenaltyPct > 0)) return null;
   return hit;
 }

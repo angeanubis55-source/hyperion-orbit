@@ -394,6 +394,17 @@ test("pod Aegis : le protocole livre le gain confirmé avec son bénéficiaire",
   assert.equal(c.api.drainNetSkillInbox().length, 0, "événement consommé une seule fois");
 });
 
+test("réparations Aegis : montants coque complets, +0 et indicateur bouclier conservés", () => {
+  const c = client(), socket = c.sockets[0];
+  socket.receive({ t: "skillFx", by: "friend", target: "recipient", skill: "ability_aegis_hp-repair",
+    phase: "heal", amount: 40000, shield: false });
+  socket.receive({ t: "skillFx", by: "friend", skill: "ability_aegis_shield-repair", phase: "heal", amount: 0, shield: true });
+  const [hp, shield] = c.api.drainNetSkillInbox();
+  assert.equal(hp.amount, 40000); assert.equal(hp.shield, false);
+  assert.equal(hp.target, "recipient");
+  assert.equal(shield.amount, 0); assert.equal(shield.shield, true);
+});
+
 test("une session remplacee affiche son motif meme si la simulation est gelee", () => {
   const c = client();
   Object.assign(c.api, { started: true, starting: false, linkDead: true, kickedReason: null,

@@ -41,6 +41,16 @@ function setSimulationBlocked(blocked) {
     try { window.dispatchEvent(new CustomEvent("orbit:speed-guard", { detail: { blocked: simulationBlocked, recovered: previous && !simulationBlocked } })); } catch {}
   }
 }
+function sanitizeVoltChain(value) {
+  if (!Array.isArray(value)) return [];
+  return value.slice(0, 10).filter(p => p && p.id && Number.isFinite(Number(p.x)) && Number.isFinite(Number(p.y)))
+    .map(p => ({ id: String(p.id).slice(0, 64), x: Number(p.x), y: Number(p.y) }));
+}
+function readVoltLinkFx(value, now, serverNow, previous) {
+  if (!value?.chain?.length) return null;
+  if (Number(previous?.at) === Number(value.at)) return previous;
+  return { at: Number(value.at), startedAt: now - Math.max(0, serverNow - Number(value.at)), chain: sanitizeVoltChain(value.chain) };
+}
 function observeSimulationClock(at) {
   if (!Number.isFinite(at) || at <= 0) return;
   if (simulationServerAt === null) {
@@ -360,7 +370,11 @@ export function getNetSelf() {
   const elapsed = Math.max(0, (performance.now() - selfServ.at) / 1000);
   return { ...selfServ, slowT: Math.max(0, selfServ.slowT - elapsed),
     freezeT: Math.max(0, selfServ.freezeT - elapsed), iemT: Math.max(0, selfServ.iemT - elapsed),
-    ishT: Math.max(0, selfServ.ishT - elapsed), jamT: Math.max(0, (selfServ.jamT || 0) - elapsed) };
+    ishT: Math.max(0, selfServ.ishT - elapsed), jamT: Math.max(0, (selfServ.jamT || 0) - elapsed),
+    redirectSilenceT: Math.max(0, (selfServ.redirectSilenceT || 0) - elapsed),
+    disarrayT: Math.max(0, (selfServ.disarrayT || 0) - elapsed),
+    voltBackupT: Math.max(0, (selfServ.voltBackupT || 0) - elapsed),
+    voltBackupCd: Math.max(0, (selfServ.voltBackupCd || 0) - Math.max(0, elapsed - (selfServ.voltBackupT || 0))) };
 }
 // Feed degats allies : { uid, by, total } (chiffres sur la cible, sans effet).
 const netDmgInbox = [];
@@ -1211,14 +1225,16 @@ export function ensureNetplayConnection() {
         netSkillInbox.push({
           skill: key,
           enabled: msg.enabled !== false,
-          phase: msg.phase === "heal" ? "heal" : "",
-          amount: Math.max(0, Math.min(35000, Math.round(Number(msg.amount) || 0))),
+          phase: msg.phase === "heal" || msg.phase === "unlink" ? msg.phase : "",
+          amount: Math.max(0, Math.min(40000, Math.round(Number(msg.amount) || 0))),
+          shield: msg.shield === true,
           by: String(msg.by || "").slice(0, 64),
           until: Math.max(0, Number(msg.until) || 0),
           at: Math.max(0, Number(msg.at) || Date.now()),
           x: Number.isFinite(Number(msg.x)) ? Math.round(Number(msg.x)) : 0,
           y: Number.isFinite(Number(msg.y)) ? Math.round(Number(msg.y)) : 0,
           target: String(msg.target || "").slice(0, 64),
+          chain: sanitizeVoltChain(msg.chain),
         });
         dbgRecordSkillFx({ skill: key, by: String(msg.by || "") });
         return;
@@ -1310,6 +1326,13 @@ export function ensureNetplayConnection() {
           selfServ = {
             dead: p.dead === true,
             hp: Number(p.pvpHp), sh: Number(p.pvpSh), pvpAt: Number(p.pvpAt) || 0,
+            shMax: Math.max(0, Number(p.shMax) || 0),
+            disarrayT: Math.max(0, Number(p.disarrayT) || 0),
+            disarraySeq: Number(p.disarraySeq) || 0,
+            redirectSilenceT: Math.max(0, Number(p.redirectSilenceT) || 0),
+            voltBackupAt: Number(p.vbAt) || 0,
+            voltBackupT: Math.max(0, Number(p.vbT) || 0),
+            voltBackupCd: Math.max(0, Number(p.vbCd) || 0),
             pvpFrom: p.pvpFrom != null ? String(p.pvpFrom) : null,
             npcAt: Number(p.npcAt) || 0,
             npcSeq: Math.max(0, Math.floor(Number(p.npcSeq) || 0)),
@@ -1515,6 +1538,8 @@ export function ensureNetplayConnection() {
           // PvP : max pour la cible + portee + dernier coup recu (anneau Ship_damage).
           hpMax: Math.max(1, Math.round(Number(p.hpMax) || 1)),
           shMax: Math.max(0, Math.round(Number(p.shMax) || 0)),
+          voltBackupReady: p.vbReady === true,
+          voltLinkFx: readVoltLinkFx(p.voltLink, now, sourceAt, prev?.voltLinkFx),
           range: Math.max(200, Math.min(5000, Number(p.range) || 800)),
           pvpAt: Number(p.pvpAt) || 0,
           pvpFrom: p.pvpFrom != null ? String(p.pvpFrom) : null,
@@ -1746,6 +1771,7 @@ function sendNow(local, force = false) {
       rspd: Number(local.rspd) > 0 ? Number(local.rspd) : 1500,
       hpMax: Math.max(1, Math.round(Number(local.hpMax) || 1)),
       shMax: Math.max(0, Math.round(Number(local.shMax) || 0)),
+      disarraySeq: Number(local.disarraySeq) || 0,
       range: Math.max(200, Math.min(5000, Number(local.range) || 800)),
       peta: local.peta === 1 ? 1 : 0,
       petl: Math.max(1, Math.min(32, Math.round(Number(local.petl) || 1))),
@@ -2006,7 +2032,7 @@ export function sendPvpPetHit(hit) {
       if (Number(hit.slowSec) > 0) h.slowSec = Math.min(30, Number(hit.slowSec));
       if (Number(hit.freezeSec) > 0) h.freezeSec = Math.min(5, Number(hit.freezeSec));
     }
-    const hasStatus = (h.slowPct > 0 && h.slowSec > 0) || h.freezeSec > 0;
+    const hasStatus = (h.slowPct > 0 && h.slowSec > 0) || h.freezeSec > 0 || (h.rocket && hit.accuracyPenaltyPct > 0);
     if ((!(h.dmg > 0) && !hasStatus) || h.dmg > 1e7) return;
     ws.send(JSON.stringify(h));
   } catch {}
@@ -2035,7 +2061,7 @@ export function sendPvpHit(hit) {
       if (Number(hit.slowSec) > 0) h.slowSec = Math.min(30, Number(hit.slowSec));
       if (Number(hit.freezeSec) > 0) h.freezeSec = Math.min(5, Number(hit.freezeSec));
     }
-    const hasStatus = (h.slowPct > 0 && h.slowSec > 0) || h.freezeSec > 0;
+    const hasStatus = (h.slowPct > 0 && h.slowSec > 0) || h.freezeSec > 0 || (h.rocket && hit.accuracyPenaltyPct > 0);
     if ((!(h.dmg > 0) && !hasStatus) || h.dmg > dmgCap) return;
     ws.send(JSON.stringify(h));
   } catch {}
@@ -2292,9 +2318,11 @@ export function sendSkillUse(skill, details = {}) {
   if (key !== "iem" && key !== "ish" && key !== "smb" && !/^ability_[a-z0-9_-]{1,56}$/.test(key)) return false;
   try {
     ws.send(JSON.stringify({ t: "skillUse", skill: key, enabled: details.enabled !== false,
-      phase: details.phase === "heal" ? "heal" : undefined,
+      phase: details.phase === "heal" || details.phase === "unlink" ? details.phase : undefined,
       amount: details.phase === "heal" ? Math.max(0, Math.min(35000, Math.round(Number(details.amount) || 0))) : undefined,
-      target: String(details.target || "").slice(0, 64) }));
+      target: String(details.target || "").slice(0, 64),
+      chain: key === "ability_tempest_voltage-link" && Array.isArray(details.chain)
+        ? details.chain.slice(0, 10).map(id => String(id).slice(0, 64)) : undefined }));
     try {
       if (key.startsWith("ability_")) {
         dbgAbilitySent.unshift({ skill: key, at: Date.now() });

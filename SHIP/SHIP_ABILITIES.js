@@ -84,12 +84,12 @@ export const ABILITIES = Object.freeze({
   // ---- Aegis ----
   "ability_aegis_hp-repair": A(
     "ability_aegis_hp-repair", "aegis", "Aegis",     "Réparation coque", "self",
-    "+280k PV allié (140k soi) sur 7 s.",
+    "+140k PV sur soi et +280k sur le joueur verrouillé à 700 maximum, sur 7 s. Déverrouiller coupe le lien jusqu'à la prochaine activation.",
     "", "", 90, 7, "done" // ✅
   ),
   "ability_aegis_shield-repair": A(
     "ability_aegis_shield-repair", "aegis", "Aegis",     "Réparation bouclier", "self",
-    "+125k bouclier allié (75k soi) sur 5 s.",
+    "+75k bouclier sur soi et +125k sur le joueur verrouillé à 700 maximum, sur 5 s. Déverrouiller coupe le lien jusqu'à la prochaine activation.",
     "", "", 30, 5, "done" // ✅
   ),
   "ability_aegis_repair-pod": A(
@@ -195,12 +195,12 @@ export const ABILITIES = Object.freeze({
   // ---- Disruptor ----
   "ability_disruptor_ddol": A(
     "ability_disruptor_ddol", "disruptor", "Disruptor", "DDoL", "enemy",
-    "Dérègle les lasers ennemis (3 à 5 s) pendant 10 s.",
-    "", "", 60, 10, "done"
+    "Réduit la précision des lasers de la cible de 40 % pendant 5 s (effet PLD-8).",
+    "", "", 60, 5, "done"
   ), // ✅
   "ability_disruptor_redirect": A(
-    "ability_disruptor_redirect", "disruptor", "Disruptor", "Redirection", "self",
-    "5 s : dégâts subis renvoyés, lasers ennemis coupés 4 s.",
+    "ability_disruptor_redirect", "disruptor", "Disruptor", "Redirection", "enemy",
+    "5 s : dégâts subis transférés à la cible verrouillée, ses lasers coupés 4 s.",
     "", "", 40, 5, "done"
   ), // ✅
   "ability_disruptor_shield-disarray": A(
@@ -546,7 +546,7 @@ export const ABILITIES = Object.freeze({
   ),
   "ability_tempest_volt-discharge": A(
     "ability_tempest_volt-discharge", "tempest", "Tempest", "Décharge", "self",
-    "+1 % dégâts par canon équipé pendant 20 s.",
+    "+1 % dégâts laser par canon équipé sur le vaisseau (hors drones) pendant 20 s.",
     "Recharge 60 s.", "", 60, 20, "done" // ✅
   ),
   "ability_tempest_voltage-link": A(

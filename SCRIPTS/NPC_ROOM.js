@@ -10,6 +10,7 @@ import { createUniverse, deserializeUniverse, ensureMapSlots, markDead, markAliv
 import { NPC_TYPES } from "../NPC/NPC_TYPES.js";
 import { damageEnemyLayers } from "../COMBAT/COMBAT_RULES.js";
 import { createSpatialPairIndex } from "../SRC/CORE/SPATIAL_INDEX.js";
+import { DDOL_ACCURACY_PENALTY } from "./DISRUPTOR_RULES.js";
 
 const clamp = (v, a, b) => Math.max(a, Math.min(b, Number(v)));
 const TAU = Math.PI * 2;
@@ -897,6 +898,10 @@ drainPlayerHits() {
       entry.slowUntil = Math.max(Number(entry.slowUntil) || 0, nowMs + slowSec * 1000);
     }
     if (freezeSec > 0) entry.freezeUntil = Math.max(Number(entry.freezeUntil) || 0, nowMs + freezeSec * 1000);
+    if (Number(hit?.accuracyPenaltyPct) > 0) {
+      entry.accuracyPenaltyPct = Math.max(nowMs < Number(entry.accuracyUntil) ? Number(entry.accuracyPenaltyPct) || 0 : 0, Number(hit.accuracyPenaltyPct));
+      entry.accuracyUntil = Math.max(Number(entry.accuracyUntil) || 0, nowMs + Number(hit.accuracySec) * 1000);
+    }
     let applied = 0;
     if (hit?.kind === "sab") {
       // Drain bouclier seul (miroir drainShield) : jamais de coque.
@@ -1381,12 +1386,14 @@ drainPlayerHits() {
       e.shootCd = Math.max(0, Number(e.shootCd || 0) - dt);
       const chasePlayer = chase ? this.players.get(String(chase.id)) : null;
       const chaseTargetOk = this.validTarget(chasePlayer) || this.retaliationOpen(e, chase ? chase.id : null, nowMs);
-      if (!frozen && e.canShoot !== false && e.shootRate > 0 && chase && chaseTargetOk) {
+      if (!frozen && !(nowMs < Number(e._redirectSilenceUntil || 0)) && e.canShoot !== false && e.shootRate > 0 && chase && chaseTargetOk) {
         const distance = Math.hypot(chase.x - e.x, chase.y - e.y);
         if (distance <= e.shootRange && e.shootCd <= 0) {
           e.shootCd = (1 / Math.max(0.001, e.shootRate)) * (0.85 + Math.random() * 0.3);
           for (let shot = 0; shot < e.burst; shot++) {
-            if (Math.random() < 0.15) continue;
+            const accuracyPenalty = Math.max(nowMs < Number(e._ddolUntil || 0) ? DDOL_ACCURACY_PENALTY : 0,
+              nowMs < Number(e.accuracyUntil || 0) ? Number(e.accuracyPenaltyPct) || 0 : 0);
+            if (Math.random() < Math.min(1, 0.15 + accuracyPenalty / 100)) continue;
             const damage = Math.max(1, Math.round(e.bulletDmg * (0.95 + Math.random() * 0.1)));
             this.playerHits.push({ playerId: String(chase.id), npcUid: e.uid, damage, kind: "laser" });
           }

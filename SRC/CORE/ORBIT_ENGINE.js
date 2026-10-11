@@ -1340,7 +1340,7 @@ const TARTPLUS_EXTRA_ROCKET = 0.2;
 //   prêt. À 0 HP : 1 HP + invincible 10 s (soin entre-temps = survie, sinon
 //   explosion), recharge 360 s. Actif : pas de sprite passif, contour
 //   arc-en-ciel + tremblement.
-// - Volt Discharge : +1 % dégâts laser par laser équipé (vaisseau + drones)
+// - Volt Discharge : +1 % dégâts laser par canon équipé sur le vaisseau
 //   pendant 20 s, recharge 60 s. Sprite VOLT_DISCHARGE en boucle.
 // - Voltage Link : chaîne jusqu'à 10 cibles, 50k −5 % par saut, stop 1 s
 //   (freezeT = image ICE comme R-IC3), lien bleu nuit entre maillons,
@@ -2198,14 +2198,15 @@ function qaChargeDuration() {
   } catch {}
   return QA_CHARGE_FALLBACK;
 }
-// DDoL — Distributed Denial of Lasers (Disruptor, officiel) : 10 s,
-// recharge 60 s. Le cooldown des lasers de la cible verrouillée est
-// dérèglé entre 3 et 5 s (aléatoire). Visuel : sprite DISRUPTOR_DDOL joué
-// par-dessus le vaisseau de la cible.
-const DDOL_DURATION = 10;
+// DDoL : effet PLD-8 pendant exactement 5 s, visuel DISRUPTOR_DDOL.
+const DDOL_DURATION = 5;
 const DDOL_COOLDOWN = 60;
 const DDOL_FRAMES = 40;
 const DDOL_FPS = 30;
+function npcLaserAccuracyPenalty(target) {
+  return Math.max((target.rocketAccuracyT || 0) > 0 ? Number(target.rocketAccuracyPenaltyPct || 0) / 100 : 0,
+    player.ddolT > 0 && player.ddolTarget === target ? ROCKET_TYPES.pld8.effect.accuracyPenaltyPct / 100 : 0);
+}
 // Redirect (Disruptor, officiel) : 5 s, recharge 40 s. Tous les dégâts
 // qu'on nous inflige partent sur la cible verrouillée (on ne prend rien),
 // lasers de la cible désactivés 4 s. Visuel : notre vaisseau clignote +
@@ -3295,7 +3296,7 @@ function tryTempestBackup() {
   player.invincibleT = Math.max(Number(player.invincibleT || 0), TEMPEST_BACKUP_INVULN);
   player.tempestBackupCd = TEMPEST_BACKUP_CD;
   persistCdUntil("tempestBackupFx", TEMPEST_BACKUP_INVULN);
-  persistCdUntil("tempestBackup", TEMPEST_BACKUP_CD);
+  persistCdUntil("tempestBackup", TEMPEST_BACKUP_INVULN + TEMPEST_BACKUP_CD);
   try {
     for (let i = 1; i <= TEMPEST_BACKUP_FRAMES; i++) {
       loadImage(`ASSETS/APTITUDES/TEMPEST_VOLT_BACKUP/${i}.png`, { priority: true });
@@ -3305,10 +3306,13 @@ function tryTempestBackup() {
   reportAbilityCast("ability_tempest_volt-backup");
   return true;
 }
-// --- Volt Discharge : +1 % laser par laser équipé (vaisseau + drones).
+// --- Volt Discharge : seuls les canons du vaisseau déterminent le bonus.
+function countTempestDischargeLasers() {
+  return (player.laserMods || []).filter(m => Number(m?.damage || 0) > 0).length;
+}
 function tempestDischargeMult() {
   if (player.dead) return 1;
-  if ((player.tempestDischT || 0) > 0) return 1 + Number(player.tempestDischPct || 0);
+  if ((player.tempestDischT || 0) > 0) return 1 + countTempestDischargeLasers() * 0.01;
   return 1;
 }
 function startTempestDischCooldown() {
@@ -3318,6 +3322,7 @@ function startTempestDischCooldown() {
 }
 function cancelTempestDisch() {
   if ((player.tempestDischT || 0) <= 0) return;
+  reportAbilityCast("ability_tempest_volt-discharge", false);
   player.tempestDischT = 0;
   startTempestDischCooldown();
 }
@@ -3329,9 +3334,10 @@ function activateTempestDisch() {
     return;
   }
   if ((player.tempestDischT || 0) > 0) return;
-  const n = countPlayerLasers();
+  const n = countTempestDischargeLasers();
   player.tempestDischPct = n * 0.01;
   player.tempestDischT = TEMPEST_DISCH_DURATION;
+  reportAbilityCast("ability_tempest_volt-discharge");
   persistCdUntil("tempestDischFx", TEMPEST_DISCH_DURATION);
   try {
     for (let i = 1; i <= TEMPEST_DISCH_FRAMES; i++) {
@@ -3371,10 +3377,22 @@ function activateTempestLink() {
   if (!Array.isArray(player.tempestLinkFx)) player.tempestLinkFx = [];
   if (!Array.isArray(player.tempestLinkBeams)) player.tempestLinkBeams = [];
   const hit = new Set();
+  const chain = [];
+  let candidate = t;
+  while (candidate && candidate.hp > 0 && !hit.has(candidate) && chain.length < TEMPEST_LINK_JUMPS) {
+    hit.add(candidate);
+    chain.push(candidate);
+    candidate = nearestTempestLinkNext(candidate, hit, TEMPEST_LINK_RADIUS);
+  }
+  // Envoyer la chaîne avant ses impacts : les cibles peuvent mourir ensemble.
+  sendSkillUse("ability_tempest_voltage-link", {
+    target: t._netPlayer || t._netUid || "",
+    chain: chain.map(e => e._netPlayer || e._netUid || "").filter(Boolean),
+  });
+  hit.clear();
   let current = t;
   let prev = player;
   let dmg = TEMPEST_LINK_DMG;
-  let radius = TEMPEST_LINK_RADIUS;
   let n = 0;
   while (current && !(hit.has(current)) && n < TEMPEST_LINK_JUMPS) {
     if (!(current.hp > 0)) break;
@@ -3389,16 +3407,11 @@ function activateTempestLink() {
     // Stop 1 s : image ICE officielle comme les R-IC3 (via drawRocketDebuffEffect).
     // Joueur : relais serveur (statut gelé autoritaire + sprite ICE victime).
     try { current.freezeT = Math.max(Number(current.freezeT || 0), TEMPEST_LINK_STUN); } catch {}
-    try {
-      if (current && current._netPlayer != null && netplayNpcActive()) {
-        sendPvpHit({ target: current._netPlayer, dmg: 0, freezeSec: TEMPEST_LINK_STUN });
-      }
-    } catch {}
     player.tempestLinkFx.push({ target: current, start: now });
     player.tempestLinkBeams.push({ a: prev, b: current, until: now + TEMPEST_LINK_BEAM_LIFE });
     dmg *= TEMPEST_LINK_DECAY;
     prev = current;
-    current = nearestTempestLinkNext(prev, hit, radius);
+    current = chain[n] || null;
   }
   startTempestLinkCooldown();
   showNotification(n > 1 ? `Lien volt : ${n} cibles enchaînées !` : "Lien volt : cible frappée", 2.5, "info");
@@ -3531,9 +3544,9 @@ function nearestTempestLinkNext(from, hit, radius) {
   let best = null;
   let bestD2 = radius * radius;
   try {
-    for (const e of enemies) {
+    for (const e of [...enemies, ...netPlayerProxies.values()]) {
       if (!e || !(e.hp > 0) || hit.has(e)) continue;
-      if (e.isPetTarget) continue;
+      if (e.isPetTarget || e._netPet || e._netCloaked) continue;
       const d2 = dist2(from.x, from.y, e.x, e.y);
       if (d2 <= bestD2) {
         // Premier candidat dans le rayon, sinon le plus proche.
@@ -4560,8 +4573,7 @@ function activateDiminish() {
   } catch {}
   showNotification(`Affaiblissement actif (${duration} s) : +50 % de dégâts au bouclier de la cible`, 2.5, "info");
 }
-// --- DDoL (Disruptor, officiel) : dérègle le cooldown des lasers de la
-// cible verrouillée (3 à 5 s aléatoires) pendant 10 s.
+// --- DDoL (Disruptor) : précision laser réduite comme avec la PLD-8.
 function startDdolCooldown() {
   player.ddolCd = DDOL_COOLDOWN;
   player.ddolTarget = null;
@@ -4570,6 +4582,7 @@ function startDdolCooldown() {
 }
 function cancelDdol() {
   if ((player.ddolT || 0) <= 0) return;
+  reportAbilityCast("ability_disruptor_ddol", false);
   player.ddolT = 0;
   player.ddolTarget = null;
   startDdolCooldown();
@@ -4589,13 +4602,14 @@ function activateDdol() {
   }
   player.ddolTarget = t;
   player.ddolT = DDOL_DURATION;
+  reportAbilityCast("ability_disruptor_ddol");
   persistCdUntil("ddolFx", DDOL_DURATION);
   try {
     for (let i = 1; i <= DDOL_FRAMES; i++) {
       loadImage(`ASSETS/APTITUDES/DISRUPTOR_DDOL/${i}.png`, { priority: true });
     }
   } catch {}
-  showNotification("DDoL actif (10 s) : lasers ennemis dérèglés (3-5 s)", 2.5, "info");
+  showNotification("DDoL actif (5 s) : précision laser ennemie -40 %", 2.5, "info");
 }
 // --- Redirect (Disruptor, officiel) : pendant 5 s, tous les dégâts qu'on
 // nous inflige partent sur la cible verrouillée (on ne prend rien), et ses
@@ -4608,6 +4622,7 @@ function startRedirectCooldown() {
 }
 function cancelRedirect() {
   if ((player.redirectT || 0) <= 0) return;
+  reportAbilityCast("ability_disruptor_redirect", false);
   player.redirectT = 0;
   player.redirectTarget = null;
   startRedirectCooldown();
@@ -4627,6 +4642,7 @@ function activateRedirect() {
   }
   player.redirectTarget = t;
   player.redirectT = REDIRECT_DURATION;
+  reportAbilityCast("ability_disruptor_redirect");
   try { t.redirectSilenceT = Math.max(Number(t.redirectSilenceT || 0), REDIRECT_SILENCE); } catch {}
   persistCdUntil("redirectFx", REDIRECT_DURATION);
   showNotification("Redirection active (5 s) : dégâts renvoyés sur la cible, ses lasers coupés 4 s", 2.5, "info");
@@ -4635,6 +4651,7 @@ function activateRedirect() {
 // pendant 5 s (actuel écrêté), le retiré revient par-dessus à la fin.
 function disarrayRestore(target) {
   try {
+    if (target?._netPlayer || target?._netUid) return;
     if (!target || !target.disarrayRemoved) return;
     const back = Number(target.disarrayRemoved || 0);
     delete target.disarrayRemoved;
@@ -4651,6 +4668,7 @@ function startDisarrayCooldown() {
 }
 function cancelDisarray() {
   if ((player.disarrayT || 0) <= 0) return;
+  reportAbilityCast("ability_disruptor_shield-disarray", false);
   player.disarrayT = 0;
   try { disarrayRestore(player.disarrayTarget); } catch {}
   player.disarrayTarget = null;
@@ -4907,12 +4925,15 @@ function activateDisarray() {
     showNotification("Désordre : la cible doit avoir un bouclier", 2, "info");
     return;
   }
-  const cut = Math.floor(Number(t.shMax || 0) / 2);
-  t.shMax = Number(t.shMax || 0) - cut;
-  t.sh = Math.min(Number(t.sh || 0), Number(t.shMax || 0));
-  t.disarrayRemoved = cut;
+  if (!t._netPlayer && !t._netUid) {
+    const cut = Math.floor(Number(t.shMax || 0) / 2);
+    t.shMax = Number(t.shMax || 0) - cut;
+    t.sh = Math.min(Number(t.sh || 0), Number(t.shMax || 0));
+    t.disarrayRemoved = cut;
+  }
   player.disarrayTarget = t;
   player.disarrayT = DISARRAY_DURATION;
+  reportAbilityCast("ability_disruptor_shield-disarray");
   persistCdUntil("disarrayFx", DISARRAY_DURATION);
   showNotification("Désordre actif (5 s) : bouclier max ennemi -50 %", 2.5, "info");
 }
@@ -5704,23 +5725,99 @@ function drawNebulaAt(x, y, remaining) {
   }
   ctx.restore();
 }
+const AEGIS_REPAIR_LINK_RADIUS = 700;
+function aegisRepairTargetField(skill) {
+  return skill === "ability_aegis_shield-repair" ? "healShTarget" : "healHpTarget";
+}
+function captureAegisRepairTarget() {
+  const target = Target.get();
+  if (!target?._netPlayer || !(Number(target.hp) > 0) || target._netCloaked) return null;
+  return dist2(player.x, player.y, target.x, target.y) <= AEGIS_REPAIR_LINK_RADIUS ** 2 ? target : null;
+}
+function breakLocalAegisRepairLink(skill, announce = true) {
+  if (skill !== "ability_aegis_hp-repair" && skill !== "ability_aegis_shield-repair") return;
+  const field = aegisRepairTargetField(skill);
+  if (!player[field]) return;
+  player[field] = null;
+  if (announce) {
+    try { sendSkillUse(skill, { phase: "unlink" }); } catch {}
+  }
+}
+function breakLocalAegisRepairLinks() {
+  breakLocalAegisRepairLink("ability_aegis_hp-repair");
+  breakLocalAegisRepairLink("ability_aegis_shield-repair");
+}
+function validateAegisRepairLinks() {
+  for (const skill of ["ability_aegis_hp-repair", "ability_aegis_shield-repair"]) {
+    const target = player[aegisRepairTargetField(skill)];
+    if (target && (player.dead || Target.get() !== target || !(Number(target.hp) > 0) || target._netCloaked
+      || !(dist2(player.x, player.y, target.x, target.y) <= AEGIS_REPAIR_LINK_RADIUS ** 2))) {
+      breakLocalAegisRepairLink(skill);
+    }
+  }
+}
+function aegisRepairTick(shield) {
+  const skill = shield ? "ability_aegis_shield-repair" : "ability_aegis_hp-repair";
+  const key = shield ? "sh" : "hp", maxKey = shield ? "shMax" : "hpMax";
+  if (!player.dead && (shield || (player.tempestBackupT || 0) <= 0)) {
+    const before = Number(player[key]) || 0;
+    player[key] = Math.min(Number(player[maxKey]) || 0, before + (shield ? SH_REPAIR_SELF : HP_REPAIR_SELF));
+    const gain = Math.max(0, Math.round(player[key] - before));
+    try { sendSkillUse(skill, { phase: "heal", amount: gain }); } catch {}
+    addFloatText(player.x + (Math.random() - 0.5) * 60, player.y - (shield ? 110 : 90) - Math.random() * 20,
+      gain, shield ? "rgba(70,180,255,0.98)" : "rgba(80,255,125,0.98)",
+      { text: `+${DMG_FMT.format(gain)}`, size: 21, pop: 0.3, shake: 0.6, life: 1, glow: 1, weight: 900, impact: true });
+  }
+  validateAegisRepairLinks();
+  const target = player[aegisRepairTargetField(skill)];
+  if (target) sendHealAlly({ target: target._netPlayer, amt: shield ? SH_REPAIR_AMOUNT : HP_REPAIR_AMOUNT,
+    ability: skill, shield });
+}
+function drawAegisRepairBeam(ax, ay, bx, by, shield) {
+  if (!(Math.hypot(bx - ax, by - ay) <= AEGIS_REPAIR_LINK_RADIUS)) return;
+  ctx.save();
+  ctx.lineCap = "round";
+  ctx.strokeStyle = shield ? "rgba(70,180,255,0.85)" : "rgba(80,255,125,0.85)";
+  ctx.shadowColor = ctx.strokeStyle;
+  ctx.shadowBlur = 10;
+  ctx.lineWidth = 4;
+  ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke();
+  ctx.shadowBlur = 0;
+  ctx.strokeStyle = shield ? "rgba(200,235,255,0.95)" : "rgba(215,255,225,0.95)";
+  ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke();
+  ctx.restore();
+}
+function drawAegisRepairLinks(ox, oy) {
+  for (const shield of [false, true]) {
+    const target = player[shield ? "healShTarget" : "healHpTarget"];
+    if (target && (player[shield ? "healShT" : "healHpT"] || 0) > 0 && !player.dead) {
+      drawAegisRepairBeam(player.x + ox, player.y + oy, target.x + ox, target.y + oy, shield);
+    }
+  }
+}
+
 // Recharges des réparations : idem (fin ou coupure).
 function startHpRepairCooldown() {
+  player.healHpTarget = null;
   player.healHpCd = HP_REPAIR_COOLDOWN;
   persistCdUntil("hpRepFx", 0);
   persistCdUntil("hpRep", HP_REPAIR_COOLDOWN);
 }
 function startShRepairCooldown() {
+  player.healShTarget = null;
   player.healShCd = SH_REPAIR_COOLDOWN;
   persistCdUntil("shRepFx", 0);
   persistCdUntil("shRep", SH_REPAIR_COOLDOWN);
 }
 function cancelRepairs() {
   if ((player.healHpT || 0) > 0) {
+    reportAbilityCast("ability_aegis_hp-repair", false);
     player.healHpT = 0;
     startHpRepairCooldown();
   }
   if ((player.healShT || 0) > 0) {
+    reportAbilityCast("ability_aegis_shield-repair", false);
     player.healShT = 0;
     startShRepairCooldown();
   }
@@ -5736,6 +5833,8 @@ function activateHpRepair() {
   if ((player.healHpT || 0) > 0) return;
   player.healHpT = HP_REPAIR_DURATION;
   player.healHpAcc = 0;
+  player.healHpTarget = captureAegisRepairTarget();
+  sendSkillUse("ability_aegis_hp-repair", { target: player.healHpTarget?._netPlayer || "" });
   // Pas de recharge à l'activation : elle démarre à la fin ou à la coupure.
   persistCdUntil("hpRepFx", HP_REPAIR_DURATION);
   showNotification("Réparation coque active (7 s)", 2, "info");
@@ -5750,6 +5849,8 @@ function activateShieldRepair() {
   if ((player.healShT || 0) > 0) return;
   player.healShT = SH_REPAIR_DURATION;
   player.healShAcc = 0;
+  player.healShTarget = captureAegisRepairTarget();
+  sendSkillUse("ability_aegis_shield-repair", { target: player.healShTarget?._netPlayer || "" });
   persistCdUntil("shRepFx", SH_REPAIR_DURATION);
   showNotification("Réparation bouclier active (5 s)", 2, "info");
 }
@@ -5802,6 +5903,7 @@ function healRepairPodTick() {
     const old = Number(player.hp || 0);
     player.hp = Math.min(Number(player.hpMax || 0), old + REPAIR_POD_HEAL);
     const gain = Math.round(player.hp - old);
+    try { sendSkillUse("ability_aegis_repair-pod", { phase: "heal", amount: gain }); } catch {}
     // +X vert sur le vaisseau, même à +0.
     addFloatText(
       player.x + (Math.random() - 0.5) * 60,
@@ -7140,7 +7242,7 @@ function initializeCustomActionBar() {
         // Phase 2 (visibilité réseau) : annonce optimiste du cast aux autres
         // joueurs. Le serveur valide (vaisseau + vivant + cooldown) et diffuse
         // l'aura/le flash. Exclus : camouflages (invisibles par design) et
-        // pod Aegis et auto-réparation (annoncés après activation réussie), et
+        // réparations Aegis et auto-réparation (après activation réussie), et
         // aptitudes mouvement (déjà annoncées via reportMovementAbility dans
         // leurs activate, avec l'état enabled correct pour les toggles).
         // La cible lockée est jointe (marqueurs, venom, ancre...), sinon les
@@ -7149,6 +7251,9 @@ function initializeCustomActionBar() {
         // refuserait ("verrouille d'abord") mais le serveur aurait déjà
         // consommé cooldown/aura -> désync au cast réel suivant.
         if (!isCloakAbility(name) && name !== "ability_liberator-plus_self-repair" && name !== "ability_aegis_repair-pod"
+          && name !== "ability_aegis_hp-repair" && name !== "ability_aegis_shield-repair"
+          && !name.startsWith("ability_disruptor_")
+          && !name.startsWith("ability_tempest_")
           && !MOVEMENT_ANNOUNCED_ABILITIES.has(String(name).toLowerCase())) {
           try {
             const needTarget = String(getAbilityInfo(name)?.target || "") === "enemy";
@@ -22561,10 +22666,10 @@ function drawJamxHalos(ox, oy) {
 
 // Voltage Link (Tempest) : éclairs bleu nuit entre les maillons de la chaîne
 // (même tracé brisé que le lien PET), flash 0.8 s par maillon.
-function drawTempestLinks(ox, oy) {
+function drawTempestLinks(ox, oy, remoteBeams = null) {
 
-  const beams = player?.tempestLinkBeams;
-  if (!Array.isArray(beams) || !beams.length || player.dead || !started) return;
+  const beams = remoteBeams || player?.tempestLinkBeams;
+  if (!Array.isArray(beams) || !beams.length || (!remoteBeams && player.dead) || !started) return;
   const now = performance.now() / 1000;
   for (const bm of beams) {
     if (!bm) continue;
@@ -22572,8 +22677,6 @@ function drawTempestLinks(ox, oy) {
     if (left <= 0) continue;
     const a = bm.a, b = bm.b;
     if (!a || !b) continue;
-    if (a !== player && !(a.hp > 0)) continue;
-    if (b !== player && !(b.hp > 0)) continue;
     const fade = Math.max(0, Math.min(1, left / TEMPEST_LINK_BEAM_LIFE));
     const x1 = a.x + ox, y1 = a.y + oy;
     const x2 = b.x + ox, y2 = b.y + oy;
@@ -22617,6 +22720,37 @@ function drawTempestLinks(ox, oy) {
       ctx.restore();
     }
   }
+}
+
+function drawRemoteTempestChain(remote, ox, oy) {
+  const fx = remote.voltLinkFx;
+  if (!fx?.chain?.length) return;
+  const now = performance.now();
+  const age = Math.max(0, (now - fx.startedAt) / 1000);
+  if (age >= TEMPEST_LINK_FRAMES / TEMPEST_LINK_FPS) return;
+  const resolve = point => {
+    if (String(point.id) === String(netMyId())) return player;
+    const peer = getNetplayRemotes()?.get(String(point.id));
+    if (peer && !peer.dead) return { x: Number(peer.rx ?? peer.x), y: Number(peer.ry ?? peer.y) };
+    const npc = enemies.find(e => e._netUid === point.id && e.hp > 0);
+    return npc || point; // Conserver le point d'impact après une mort.
+  };
+  let previous = { x: Number(remote.rx ?? remote.x), y: Number(remote.ry ?? remote.y) };
+  const beams = [];
+  const frame = Math.floor(age * TEMPEST_LINK_FPS) + 1;
+  const src = `ASSETS/APTITUDES/TEMPEST_VOLTAGE_LINK_STUN/${frame}.png`;
+  const img = getCachedImage(src);
+  if (!isImgReady(img)) loadImage(src, { priority: true });
+  for (const point of fx.chain) {
+    const current = resolve(point);
+    beams.push({ a: previous, b: current, until: fx.startedAt / 1000 + TEMPEST_LINK_BEAM_LIFE });
+    ctx.save();
+    ctx.translate(current.x + ox, current.y + oy);
+    if (isImgReady(img)) drawCenteredImage(ctx, img, 220, 220);
+    ctx.restore();
+    previous = current;
+  }
+  drawTempestLinks(ox, oy, beams);
 }
 
 // Halo "soigneur" (Streuner soigneur, pod Aegis, bouées pet) : glow radial
@@ -25474,6 +25608,7 @@ const Target = (() => {
 
   function set(e) {
     let next = e && e.hp > 0 ? e : null;
+    if (next !== cur) breakLocalAegisRepairLinks();
     // IEM distant : apres la rupture du lock, le joueur reste impossible a
     // reverrouiller pendant les 3 secondes de l'effet visuel.
     const wasAttacking = (typeof attackActive !== "undefined") && attackActive === true;
@@ -25502,6 +25637,7 @@ const Target = (() => {
   }
 
   function clear() {
+    breakLocalAegisRepairLinks();
     cur = null;
   }
 
@@ -25510,7 +25646,7 @@ const Target = (() => {
     // Notre REX : lock valide tant qu'il est en jeu et en vie.
     if (cur.isPetTarget) {
       if (!petLockValid()) {
-        cur = null;
+        clear();
         return null;
       }
       return cur;
@@ -25519,7 +25655,7 @@ const Target = (() => {
     // (dans enemiesById) : lock valide tant qu'ils sont en vie.
     if (cur._netPlayer) {
       if (!(cur.hp > 0)) {
-        cur = null;
+        clear();
         return null;
       }
       return cur;
@@ -25527,7 +25663,7 @@ const Target = (() => {
     // Comme les joueurs distants, les PET distants vivent hors de `enemies`.
     if (cur._netPet) {
       if (!(cur.hp > 0) || getEnemyById(cur.id) !== cur) {
-        cur = null;
+        clear();
         return null;
       }
       return cur;
@@ -26156,6 +26292,7 @@ function applyRocketHit(e, b, recipient = player) {
   const effect = b.rocketEffect || null;
   const direct = b.dmg > 0 ? damageEnemy(e, b.dmg, effect?.pierceShield ? 1 : effect?.piercePct, undefined, {
     noWeaken: true, slowPct: effect?.slowPct, slowSec: effect?.duration, freezeSec: effect?.freezeSec, rocket: b.key,
+    accuracyPenaltyPct: effect?.accuracyPenaltyPct,
   }) : emptyEnemyDamageResult();
   const drained = effect?.shieldDrain > 0 && e.hp > 0
     ? drainShieldFromEnemy(e, effect.shieldDrain, recipient, effect?.leechPct)
@@ -26174,8 +26311,9 @@ function applyRocketHit(e, b, recipient = player) {
   }
   // Les roquettes de controle ont 0 degat : leur impact d'etat doit tout de
   // meme atteindre le serveur (joueur distant ou NPC partage).
-  if (!(b.dmg > 0) && (effect?.slowPct > 0 || effect?.freezeSec > 0)) {
-    const status = { dmg: 0, slowPct: effect?.slowPct, slowSec: effect?.duration, freezeSec: effect?.freezeSec, rocket: b.key };
+  if (!(b.dmg > 0) && (effect?.slowPct > 0 || effect?.freezeSec > 0 || effect?.accuracyPenaltyPct > 0)) {
+    const status = { dmg: 0, slowPct: effect?.slowPct, slowSec: effect?.duration, freezeSec: effect?.freezeSec,
+      accuracyPenaltyPct: effect?.accuracyPenaltyPct, rocket: b.key };
     try {
       if (e._netPlayer) sendPvpHit({ target: e._netPlayer, ...status });
       else if (e._netUid) sendNetHit({ uid: e._netUid, ...status });
@@ -28748,6 +28886,7 @@ function tickVolleyFloats(dt) {
 
 function tryFireOnce(ammoOverride = null, silent = false) {
   if (player.dead) return false;
+  if (Number(getNetSelf()?.redirectSilenceT) > 0) return false;
 
   if (ammoOverride) setAmmo(ammoOverride);
 
@@ -28826,7 +28965,7 @@ const shotBoosterMults = playerBoosterMults();
 const shotHitBonusPct = Number(player.laserHitBonusPct || 0) + Number(shotBoosterMults.hit || 0);
   const dmgShot = isSab
     ? player.baseDamage * SAB50.drainMult * shotBoosterMults.dmg
-    : (laserBase + overdrive) * mult * formationNpcDamageMult(t) * formationPlayerLaserDamageMult(t) * shotBoosterMults.dmg * playerPilotMults().alienDmg * playerUpgradeMults().laser * buoyDamageMult() * valourDamageMult() * berserkDamageMult() * holoDamageMult() * scrambleDamageMult() * specDamageMult() * shipPassiveDamageMult();
+    : (laserBase + overdrive) * mult * formationNpcDamageMult(t) * formationPlayerLaserDamageMult(t) * shotBoosterMults.dmg * playerPilotMults().alienDmg * playerUpgradeMults().laser * buoyDamageMult() * valourDamageMult() * berserkDamageMult() * holoDamageMult() * scrambleDamageMult() * specDamageMult() * tempestDischargeMult() * shipPassiveDamageMult();
 
   const shotMiss = Math.random() < Math.max(0, PLAYER_SHOTS.missChance - ((shotHitBonusPct + playerPilotMults().laserHit) / 100));
   // Multi : evenement de tir exact pour les allies (vrais tirs, MISS inclus).
@@ -29355,6 +29494,30 @@ let lastOrcusHealAt = 0;
 let lastNpcDamageAdoptAt = 0;
 let lastNpcDamageAdoptSeq = 0;
 let lastPetPvpAdoptAt = 0;
+function syncLocalDisarrayShield(self) {
+  const previous = Number(player._netDisarrayRemoved) || 0;
+  const base = Math.max(0, Number(player.shMax) || 0)
+    + (player.shMax === player._netDisarrayMax ? previous : 0);
+  const removed = self?.disarrayT > 0 && !player.dead ? Math.floor(base / 2) : 0;
+  player.shMax = base - removed;
+  if (removed > previous) player.sh = Math.min(player.sh, player.shMax);
+  else if (removed < previous && !player.dead) player.sh = Math.min(player.shMax, player.sh + previous - removed);
+  player._netDisarrayRemoved = removed;
+  player._netDisarrayMax = player.shMax;
+}
+function syncLocalTempestBackup(self) {
+  if (!isTempestHull() || !self) return;
+  if (self.voltBackupT > 0 && self.voltBackupAt !== player._netTempestBackupAt) {
+    player._netTempestBackupAt = self.voltBackupAt;
+    player.hp = 1;
+    player.tempestBackupT = self.voltBackupT;
+    player.tempestBackupCd = self.voltBackupCd;
+    player.invincibleT = Math.max(Number(player.invincibleT) || 0, self.voltBackupT);
+    persistCdUntil("tempestBackupFx", self.voltBackupT);
+    persistCdUntil("tempestBackup", self.voltBackupT + self.voltBackupCd);
+    showNotification("Volt Back-up : invincible 10 s", 3, "info");
+  }
+}
 function syncNetPlayers(dt = 0.016) {
   let remotes = null;
   try { remotes = getNetplayRemotes(); } catch { remotes = null; }
@@ -29726,6 +29889,8 @@ function syncNetNpcs(dt) {
     e._previousX = e.x;
     e._previousY = e.y;
     if (Number.isFinite(Number(s.angle))) e.angle = Number(s.angle);
+    e.hpMax = Math.max(1, Number(s.hpMax) || e.hpMax);
+    e.shMax = Math.max(0, Number(s.shMax) || 0);
     if (Number.isFinite(Number(s.hp))) {
       e.hp = e.hpMax > 0 ? Math.max(1, Math.min(e.hpMax, Math.round(Number(s.hp)))) : Math.max(1, Math.round(Number(s.hp)));
     }
@@ -31595,20 +31760,25 @@ function showRemoteAbilityHeal(ev, remote) {
   if (!selected || String(selected._netPlayer || "") !== String(ev.by)) return;
   const amount = Number(ev.amount);
   if (!Number.isFinite(amount) || amount < 0) return;
+  const shield = ev.shield === true;
   addFloatText(Number(remote.rx ?? remote.x) + (Math.random() - 0.5) * 60,
-    Number(remote.ry ?? remote.y) - 90 - Math.random() * 20,
-    amount, "rgba(80,255,125,0.98)",
+    Number(remote.ry ?? remote.y) - (shield ? 110 : 90) - Math.random() * 20,
+    amount, shield ? "rgba(70,180,255,0.98)" : "rgba(80,255,125,0.98)",
     { text: `+${DMG_FMT.format(amount)}`, size: 21, pop: 0.3, shake: 0.6, life: 1, glow: 1, weight: 900, impact: true });
 }
 
-function applyRepairPodHeal(ev) {
-  if (player.dead || (player.tempestBackupT || 0) > 0) return;
-  const amount = Math.max(0, Math.min(18000, Math.round(Number(ev.amount) || 0)));
-  const before = Number(player.hp) || 0;
-  player.hp = Math.min(Number(player.hpMax) || 0, before + amount);
-  const gain = Math.max(0, Math.round(player.hp - before));
+function applyAegisHeal(ev) {
+  const shield = ev.shield === true;
+  if (player.dead || (!shield && (player.tempestBackupT || 0) > 0)) return;
+  const key = shield ? "sh" : "hp", maxKey = shield ? "shMax" : "hpMax";
+  const cap = ev.skill === "ability_aegis_repair-pod" ? 18000 : shield ? 25000 : 40000;
+  const amount = Math.max(0, Math.min(cap, Math.round(Number(ev.amount) || 0)));
+  const before = Number(player[key]) || 0;
+  player[key] = Math.min(Number(player[maxKey]) || 0, before + amount);
+  const gain = Math.max(0, Math.round(player[key] - before));
   addFloatText(Number(player.x) + (Math.random() - 0.5) * 60,
-    Number(player.y) - 90 - Math.random() * 20, gain, "rgba(80,255,125,0.98)",
+    Number(player.y) - (shield ? 110 : 90) - Math.random() * 20,
+    gain, shield ? "rgba(70,180,255,0.98)" : "rgba(80,255,125,0.98)",
     { text: `+${DMG_FMT.format(gain)}`, size: 21, pop: 0.3, shake: 0.6, life: 1, glow: 1, weight: 900, impact: true });
 }
 
@@ -31624,13 +31794,33 @@ function tickNetplayVisuals(dt) {
   try {
     for (const ev of drainNetSkillInbox()) {
       if (!ev?.by) continue;
-      if (ev.phase === "heal" && ev.skill === "ability_aegis_repair-pod" && ev.target) {
-        if (String(ev.target) === String(netMyId())) applyRepairPodHeal(ev);
+      if (ev.phase === "unlink") {
+        if (String(ev.by) === String(netMyId())) breakLocalAegisRepairLink(ev.skill, false);
+        const caster = getNetplayRemotes()?.get(String(ev.by));
+        const code = abilityFxCodeFor(ev.skill);
+        if (caster) {
+          for (const entry of caster.afx || []) if (Number(entry[0]) === code) entry[4] = "";
+          if (Number(caster.fxFlash?.code) === code) caster.fxFlash.target = "";
+        }
+        continue;
+      }
+      if (ev.phase === "heal" && ev.skill.startsWith("ability_aegis_") && ev.target) {
+        if (String(ev.target) === String(netMyId())) applyAegisHeal(ev);
         else showRemoteAbilityHeal({ ...ev, by: ev.target }, getNetplayRemotes()?.get(String(ev.target)));
         continue;
       }
-      if (String(ev.by) === String(netMyId())) continue;
+      if (String(ev.by) === String(netMyId())) {
+        if (ev.phase !== "heal" && ev.enabled !== false
+          && (ev.skill === "ability_aegis_hp-repair" || ev.skill === "ability_aegis_shield-repair")
+          && String(player[aegisRepairTargetField(ev.skill)]?._netPlayer || "") !== String(ev.target || "")) {
+          breakLocalAegisRepairLink(ev.skill, false);
+        }
+        continue;
+      }
       const remote = getNetplayRemotes()?.get(String(ev.by));
+      if (remote && ev.skill === "ability_tempest_voltage-link" && ev.chain?.length) {
+        remote.voltLinkFx = { at: ev.at, startedAt: performance.now(), chain: ev.chain };
+      }
       if (ev.phase === "heal") {
         showRemoteAbilityHeal(ev, remote);
         continue;
@@ -31783,7 +31973,7 @@ const REMOTE_FX_STYLE = {
   28: { kind: "tsprite", folder: "VENOM_SINGULARITY", fps: 30, frames: 35, w: 300, h: 300, dx: 56, dy: 51 },
   29: { kind: "tsprite", folder: "DIMINISHER_WEAKEN_SHIELDS", fps: 30, frames: 27, w: 200, h: 200 },
   30: { kind: "tsprite", folder: "DISRUPTOR_DDOL", fps: 30, frames: 40, w: 250, h: 250 },
-  31: { kind: "blinkredraw", alphaFn: "redirect" }, // redirect : clignotement
+  31: { kind: "redirect" }, // clignotement et contour jaune de la coque
   32: { kind: "disarray" }, // cible bleue animée sur l'ennemi
   33: { kind: "sprite", folder: "HOLO_SELF_REVERSAL", fps: 30, frames: 53, w: 220, h: 220 },
   34: { kind: "tsprite", folder: "HOLO_SELF_REVERSAL", fps: 30, frames: 53, w: 220, h: 220 },
@@ -31820,7 +32010,7 @@ const REMOTE_FX_STYLE = {
   82: { kind: "sprite", folder: "ORCUS_ASSIMILATE", fps: 30, frames: 42, w: 226, h: 226 },
   1: { kind: "none" }, // admin cloak : invisible par design
   65: { kind: "none" }, 66: { kind: "none" }, // cloaks : invisibles par design
-  67: { kind: "none" }, 68: { kind: "none" }, // soins : +X personnels
+  67: { kind: "repairlink", shield: false }, 68: { kind: "repairlink", shield: true },
   69: { kind: "none" }, 70: { kind: "none" }, 71: { kind: "none" }, 72: { kind: "none" },
   73: { kind: "sprite", folder: "HEAL_EFFECT", fps: 30, frames: 18, w: 100, h: 100, dy: -35 },
   74: { kind: "sprite", folder: "HEAL_EFFECT", fps: 30, frames: 18, w: 100, h: 100, dy: -35 },
@@ -31920,6 +32110,7 @@ function drawRemoteAbilityFx(r, shipFx) {
       else drawCenteredImage(ctx, img, w, h);
     } else { try { loadImage(src, { priority: true }); } catch {} }
   };
+  if (r.voltBackupReady) fxLoop("TEMPEST_VOLT_BACKUP", TEMPEST_BACKUP_FPS, TEMPEST_BACKUP_FRAMES, 200, 200);
   // Contour évidé sur la coque distante (même recette que le local).
   const fxOutline = (color, alpha) => {
     if (!isImgReady(shipImg)) return;
@@ -32391,6 +32582,13 @@ function drawRemoteAbilityFx(r, shipFx) {
       if (kind === "ghosts") { drawHoloGhosts(secLeft); return; }
       if (kind === "pets") { drawTbrEchoes(); return; }
       if (kind === "blinkredraw") { drawBlinkRedraw(st.alphaFn); return; }
+      if (kind === "redirect") {
+        if (isImgReady(shipImg)) {
+          const sil = outlineSilhouette(`netfxship:${r.id}:${packId}:${shipFrame}`, shipImg, sw, sh, "#ffedb0");
+          strokeOutlineCentered(sil, sw, sh, "#ffedb0", 0.3 + petLocatorPulse() * 0.15);
+        }
+        return;
+      }
       if (kind === "zigzag" && fxTarget) {
         const tp = rfxTargetWorld(fxTarget);
         if (tp) drawShlLink(tp.x, tp.y);
@@ -32401,7 +32599,13 @@ function drawRemoteAbilityFx(r, shipFx) {
         if (tp) drawHecateBeam(tp.x, tp.y);
         return;
       }
+      if (kind === "repairlink" && fxTarget) {
+        const tp = rfxTargetWorld(fxTarget);
+        if (tp) drawAegisRepairBeam(0, 0, tp.x - rx, tp.y - ry, st.shield);
+        return;
+      }
       if (kind === "tlink" && fxTarget) {
+        if (r.voltLinkFx?.chain?.length) return; // Toute la chaîne a son rendu monde.
         const tp = rfxTargetWorld(fxTarget);
         if (tp) drawTempestLink(tp.x, tp.y, flashLeft);
         return;
@@ -32538,13 +32742,29 @@ function drawNetplayAbilityEffects(ox, oy) {
   const now = performance.now();
   for (const r of remotes.values()) {
     if (!r || r.dead || r.cloaked || r.cloakCpu) continue;
-    if (!(r.afx?.length > 0) && !(Number(r.fxFlash?.until) > now)) continue;
+    if (!(r.afx?.length > 0) && !(Number(r.fxFlash?.until) > now) && !r.voltBackupReady && !r.voltLinkFx) continue;
+    drawRemoteTempestChain(r, ox, oy);
     // Une aura sur une cible reste visible même si son lanceur est hors écran.
     ctx.save();
     try {
       ctx.translate(Number(r.rx ?? r.x) + ox, Number(r.ry ?? r.y) + oy);
       drawRemoteAbilityFx(r);
     } finally { ctx.restore(); }
+  }
+  // Le lanceur n'est pas dans la liste des distants : dessiner aussi ses
+  // effets ciblés sur un joueur, avec la même recette que les observateurs.
+  if (!player.dead) {
+    const afx = [];
+    for (const [code, remaining, target] of [[30, player.ddolT, player.ddolTarget], [32, player.disarrayT, player.disarrayTarget]]) {
+      if (remaining > 0 && target?._netPlayer && target.hp > 0) afx.push([code, remaining, 0, 0, String(target._netPlayer)]);
+    }
+    if (afx.length) {
+      ctx.save();
+      try {
+        ctx.translate(player.x + ox, player.y + oy);
+        drawRemoteAbilityFx({ id: netMyId(), rx: player.x, ry: player.y, afx });
+      } finally { ctx.restore(); }
+    }
   }
 }
 
@@ -32630,6 +32850,10 @@ function drawNetplayRemotes(ox, oy) {
     // pas de faisceau.
     ctx.save();
     // Tremblement d'aptitude distante (voir remoteAbilityShake).
+    if (r.afx?.some(fx => Number(fx[0]) === 31 && Number(fx[1]) > 0)
+      || (Number(r.fxFlash?.code) === 31 && Number(r.fxFlash.until) > performance.now())) {
+      ctx.globalAlpha *= Math.sin(performance.now() / 1000 * 14) > 0 ? 1 : 0.45;
+    }
     try {
       const rfxShake = remoteAbilityShake(r);
       ctx.translate(x + rfxShake.x, y + rfxShake.y);
@@ -33121,10 +33345,10 @@ function pvpFoesInRadius(cx, cy, radius) {
 // Pod Aegis : membres du groupe autour du pod. Les autres réparations
 // conservent leur sélection de joueurs de même firme.
 // Le serveur tranche et crédite (rayon, montant, cadence, aura active) ;
-// Le pod Aegis transmet le gain confirmé par skillFx à chaque bénéficiaire.
+// Les réparations Aegis transmettent le gain confirmé par skillFx au bénéficiaire.
 // Les autres soins utilisent le flux ohAt/ohAmt et leur prédiction locale.
 // - single=true (HoTs) : le plus blessé seulement ;
-// - single=false (pods) : tous les blessés dans le rayon.
+// - single=false (pod Aegis) : tous les membres dans le rayon, même à PV pleins (+0).
 function healPlayerAllies(abilityId, allyAmt, isShield, cx, cy, radius, single) {
   try {
     if (player.dead || !started) return;
@@ -33154,7 +33378,7 @@ function healPlayerAllies(abilityId, allyAmt, isShield, cx, cy, radius, single) 
       const pct = isShield
         ? (Number(r.shMax) > 0 ? Number(r.shPct ?? 1) : 1)
         : Number(r.hpPct ?? 1);
-      if (!(pct < 1)) continue;
+      if (!groupPod && !(pct < 1)) continue;
       cands.push({ rid: String(rid), rx, ry, pct });
     }
     if (!cands.length) return;
@@ -33164,7 +33388,7 @@ function healPlayerAllies(abilityId, allyAmt, isShield, cx, cy, radius, single) 
     const yOff = isShield ? -110 : -90;
     for (const c of list) {
       try { sendHealAlly({ target: c.rid, amt, ability: key, shield: isShield }); } catch {}
-      if (groupPod) continue; // Le +X est affiché à réception du gain confirmé.
+      if (key.startsWith("ability_aegis_")) continue; // Gain confirmé par le serveur.
       try {
         addFloatText(
           c.rx + (Math.random() - 0.5) * 60,
@@ -33193,7 +33417,7 @@ function pickHealAlly(isShield) {  try {
     return best;
   } catch { return null; }
 }
-function healAllyOrSelf(allyAmount, selfAmount, isShield) {
+function healAllyOrSelf(allyAmount, selfAmount, isShield, abilityId = "") {
   if (player.dead) return 0;  const color = isShield ? "rgba(70,180,255,0.98)" : "rgba(80,255,125,0.98)";
   const yOff = isShield ? -110 : -90;
   const key = isShield ? "sh" : "hp";
@@ -33207,6 +33431,9 @@ function healAllyOrSelf(allyAmount, selfAmount, isShield) {
   const old = Number(dst[key] || 0);
   dst[key] = Math.min(Number(dst[maxKey] || 0), old + (ally ? allyAmount : selfAmount));
   const gain = Math.round(dst[key] - old);
+  if (dst === player && abilityId) {
+    try { sendSkillUse(abilityId, { phase: "heal", amount: gain }); } catch {}
+  }
   addFloatText(
     dx, dy, gain, color,
     { text: `+${DMG_FMT.format(gain)}`, size: 21, pop: 0.3, shake: 0.6, life: 1, glow: 1, weight: 900, impact: true },
@@ -34635,7 +34862,7 @@ function enemyShoot(e, dt, combatTarget = player) {
           homing: true,
           ownerId: e.id,
           miss: Math.random() < Math.min(1, NPC_SHOT_RULES.missChance
-            + ((e.rocketAccuracyT || 0) > 0 ? Number(e.rocketAccuracyPenaltyPct || 0) / 100 : 0)),
+            + npcLaserAccuracyPenalty(e)),
           hitRadiusBonus: NPC_SHOT_RULES.hitRadiusBonus,
           longRange: true,
         }, ENTITY_LIMITS.enemyBullets);
@@ -34662,18 +34889,13 @@ function enemyShoot(e, dt, combatTarget = player) {
   }
 
   const baseCd = 1 / Math.max(0.001, e.shootRate || 1);
-  // DDoL (Disruptor, officiel) : cooldown lasers dérèglé entre 3 et 5 s.
-  if ((player.ddolT || 0) > 0 && player.ddolTarget === e && e.hp > 0) {
-    e.shootCd = 3 + Math.random() * 2;
-  } else {
-    e.shootCd = baseCd * (0.85 + Math.random() * 0.3);
-  }
+  e.shootCd = baseCd * (0.85 + Math.random() * 0.3);
 
   const ang0 = Math.atan2(combatTarget.y - e.y, combatTarget.x - e.x);
   const burst = Math.max(1, e.burst || 1);
 
   for (let k = 0; k < burst; k++) {
-    const accuracyPenalty = (e.rocketAccuracyT || 0) > 0 ? Number(e.rocketAccuracyPenaltyPct || 0) / 100 : 0;
+    const accuracyPenalty = npcLaserAccuracyPenalty(e);
     const willMiss = Math.random() < Math.min(1, NPC_SHOT_RULES.missChance + accuracyPenalty);
 
     // Plus de spread ici : le tir part directement vers le joueur.
@@ -35119,6 +35341,7 @@ function update(dt) {
     player.tempestDischCd = Math.max(0, (player.tempestDischCd || 0) - dt);
   }
   // Tempest Lien volt : purge les one-shots (2 s) et les faisceaux (0.8 s).
+  player.tempestLinkCd = Math.max(0, Number(player.tempestLinkCd || 0) - dt);
   if (Array.isArray(player.tempestLinkFx) && player.tempestLinkFx.length) {
     const now = performance.now() / 1000;
     player.tempestLinkFx = player.tempestLinkFx.filter(f => f && f.target && (f.target.hp > 0)
@@ -35126,8 +35349,7 @@ function update(dt) {
   }
   if (Array.isArray(player.tempestLinkBeams) && player.tempestLinkBeams.length) {
     const now = performance.now() / 1000;
-    player.tempestLinkBeams = player.tempestLinkBeams.filter(bm => bm && now < Number(bm.until || 0)
-      && bm.a && bm.b && (bm.a === player || bm.a.hp > 0) && (bm.b === player || bm.b.hp > 0));
+    player.tempestLinkBeams = player.tempestLinkBeams.filter(bm => bm && now < Number(bm.until || 0) && bm.a && bm.b);
   }
   // Zephyr MMT : 10 s de portée x2, recharge 360 s. Retour portée normale
   // via stockUpdateRange (gère aussi le bonus Stockpile).
@@ -35429,7 +35651,7 @@ function update(dt) {
   } else {
     player.sleightCd = Math.max(0, (player.sleightCd || 0) - dt);
   }
-  // DDoL (Disruptor) : 10 s sur la cible verrouillée (jam géré dans
+  // DDoL (Disruptor) : 5 s sur la cible verrouillée (précision gérée dans
   // enemyShoot), recharge 60 s.
   if ((player.ddolT || 0) > 0) {
     player.ddolT = Math.max(0, player.ddolT - dt);
@@ -35602,15 +35824,14 @@ function update(dt) {
   } else {
     player.nebCd = Math.max(0, (player.nebCd || 0) - dt);
   }
-  // Réparation coque (Aegis, officiel) : allié 40k/s, soi 20k/s (140k/7 s).
+  validateAegisRepairLinks();
+  // Réparation coque : soi 20k/s et cible verrouillée à 700, 40k/s.
   if ((player.healHpT || 0) > 0) {
     player.healHpT = Math.max(0, player.healHpT - dt);
     player.healHpAcc = Number(player.healHpAcc || 0) + dt;
-    if (player.healHpAcc >= 1) {
-      player.healHpAcc -= 1;
-      try { healAllyOrSelf(HP_REPAIR_AMOUNT, HP_REPAIR_SELF, false); } catch {}
-      // Joueurs de même firme : le plus blessé dans 1000 (serveur tranche).
-      try { healPlayerAllies("ability_aegis_hp-repair", HP_REPAIR_AMOUNT, false, player.x, player.y, 1000, true); } catch {}
+    while (player.healHpAcc >= 1 - 1e-6) {
+      player.healHpAcc = Math.max(0, player.healHpAcc - 1);
+      try { aegisRepairTick(false); } catch {}
     }
     if (player.healHpT <= 0) {
       startHpRepairCooldown();
@@ -35619,14 +35840,13 @@ function update(dt) {
   } else {
     player.healHpCd = Math.max(0, (player.healHpCd || 0) - dt);
   }
-  // Réparation bouclier (Aegis, officiel) : allié 25k/s, soi 15k/s (75k/5 s).
+  // Réparation bouclier : soi 15k/s et cible verrouillée à 700, 25k/s.
   if ((player.healShT || 0) > 0) {
     player.healShT = Math.max(0, player.healShT - dt);
     player.healShAcc = Number(player.healShAcc || 0) + dt;
-    if (player.healShAcc >= 1) {
-      player.healShAcc -= 1;
-      try { healAllyOrSelf(SH_REPAIR_AMOUNT, SH_REPAIR_SELF, true); } catch {}
-      try { healPlayerAllies("ability_aegis_shield-repair", SH_REPAIR_AMOUNT, true, player.x, player.y, 1000, true); } catch {}
+    while (player.healShAcc >= 1 - 1e-6) {
+      player.healShAcc = Math.max(0, player.healShAcc - 1);
+      try { aegisRepairTick(true); } catch {}
     }
     if (player.healShT <= 0) {
       startShRepairCooldown();
@@ -36124,7 +36344,10 @@ if (movementLocked) {
   // (les soins locaux remontent au serveur via les pos, qui les suit).
   try {
     const self = getNetSelf();
+    syncLocalDisarrayShield(self);
+    syncLocalTempestBackup(self);
     if (self) {
+      player.redirectSilenceT = Math.max(0, Number(self.redirectSilenceT) || 0);
       player.rocketSlowPct = Number(self.slowPct) || 0;
       player.rocketSlowT = Math.max(Number(player.rocketSlowT) || 0, Number(self.slowT) || 0);
       player.freezeT = Math.max(Number(player.freezeT) || 0, Number(self.freezeT) || 0);
@@ -36233,6 +36456,7 @@ if (movementLocked) {
       // Un trou reseau peut faire manquer plusieurs revisions de degats.
       // La mort serveur reste definitive meme si seul le dernier coup arrive.
       if (self.dead === true) player.hp = 0;
+      else if (self.voltBackupT > 0) player.hp = 1;
       onPlayerPreparationDamage(Math.max(npcHpDamage, beforeHp - player.hp), Math.max(npcShDamage, beforeSh - player.sh));
       player.attackedT = REPAIR.cooldown;
       try { resetRepairCooldown(); } catch {}
@@ -38014,6 +38238,7 @@ function draw() {
   drawTbrClones(ox, oy);
   if (displayHalosOn()) drawPetLink(ox, oy);
   if (displayHalosOn()) drawTempestLinks(ox, oy);
+  drawAegisRepairLinks(ox, oy);
   if (displayHalosOn()) drawJamxHalos(ox, oy);
   drawPetBuoy(ox, oy);
 
@@ -39718,6 +39943,7 @@ function frame(t) {
         mind: mindNow.slice(0, 128),
         hpMax: Math.max(1, Math.round(Number(player.hpMax) || 1)),
         shMax: Math.max(0, Math.round(Number(player.shMax) || 0)),
+        disarraySeq: Number(getNetSelf()?.disarraySeq) || 0,
         absorb: Math.max(0, Math.min(1, Number(player.shAbsorb) || 0.8)),
         evade: Math.max(0, Math.min(0.9, Number(activeFormationEffects().evasionPct || 0) / 100)),
         range: Math.max(200, Math.min(5000, Math.round(Number(playerRange) || 800))),

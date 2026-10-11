@@ -175,9 +175,12 @@ test("pod Aegis : le bénéficiaire adopte le soin et voit son +X sans lock ni d
   assert.equal(v.floats[0][4].text, "+5000");
   assert.equal(v.floats[0][3], "rgba(80,255,125,0.98)");
   assert.equal(v.sounds.length, 0);
+  v.api.drainNetSkillInbox = () => [{ by: "caster", target: "me", skill: "ability_aegis_repair-pod", phase: "heal", amount: 0 }];
+  v.api.tickNetplayVisuals(0.016);
+  assert.equal(v.floats[1][4].text, "+0");
   v.api.player.dead = true;
   v.api.tickNetplayVisuals(0.016);
-  assert.equal(v.floats.length, 1);
+  assert.equal(v.floats.length, 2);
 });
 
 test("pod Aegis : le lanceur voit le gain confirmé sur le bénéficiaire sélectionné", () => {
@@ -187,25 +190,58 @@ test("pod Aegis : le lanceur voit le gain confirmé sur le bénéficiaire sélec
   v.api.drainNetSkillInbox = () => [{ by: "me", target: recipient.id, skill: "ability_aegis_repair-pod", phase: "heal", amount: 1000 }];
   v.api.tickNetplayVisuals(0.016);
   assert.equal(v.floats[0][4].text, "+1000");
+  v.api.drainNetSkillInbox = () => [{ by: "me", target: recipient.id, skill: "ability_aegis_repair-pod", phase: "heal", amount: 0 }];
+  v.api.tickNetplayVisuals(0.016);
+  assert.equal(v.floats[1][4].text, "+0");
   assert.equal(recipient.fxFlash, undefined);
+});
+
+test("pod Aegis : le lanceur transmet ses +X et +0 uniquement dans le rayon du pod", () => {
+  const sent = [], player = { hp: 90000, hpMax: 100000, x: 700, y: 700, podX: 700, podY: 700 };
+  const context = vm.createContext({ player, REPAIR_POD_RADIUS: 400, REPAIR_POD_HEAL: 18000,
+    dist2: (x, y, ox, oy) => (x - ox) ** 2 + (y - oy) ** 2, escortShips: [],
+    sendSkillUse: (...args) => sent.push(args), healPlayerAllies: () => {}, addFloatText: () => {}, DMG_FMT: { format: String } });
+  vm.runInContext(section(engine, "function healRepairPodTick(", "function drawDeployedPod("), context);
+  context.healRepairPodTick(); context.healRepairPodTick();
+  assert.equal(sent[0][0], "ability_aegis_repair-pod");
+  assert.equal(sent[0][1].amount, 10000);
+  assert.equal(sent[1][1].amount, 0);
+  player.x = 1101; context.healRepairPodTick();
+  assert.equal(sent.length, 2, "aucun tick sur le lanceur hors du pod");
+  player.x = 700; player.tempestBackupT = 1; context.healRepairPodTick();
+  assert.equal(sent.length, 2);
+});
+
+test("pod Aegis sélectionné : les ticks du lanceur sont visibles avec +X et +0 sans flash doublé", () => {
+  const v = visuals(), caster = { id: "caster", x: 700, y: 700 };
+  v.remotes.set(caster.id, caster);
+  v.api.Target.get = () => ({ _netPlayer: caster.id });
+  for (const amount of [18000, 0]) {
+    v.api.drainNetSkillInbox = () => [{ by: caster.id, skill: "ability_aegis_repair-pod", phase: "heal", amount, shield: false }];
+    v.api.tickNetplayVisuals(0.016);
+    assert.equal(v.floats.at(-1)[4].text, `+${amount}`);
+    assert.equal(v.floats.at(-1)[3], "rgba(80,255,125,0.98)");
+  }
+  assert.equal(caster.fxFlash, undefined);
 });
 
 test("pod Aegis : tous les membres proches sont demandés, même d'une autre firme, sans soin hors groupe", () => {
   const sent = [], floats = [], remotes = new Map([
     ["ally1", { x: 700, y: 700, firm: "mmo", hpPct: 0.5 }],
     ["ally2", { x: 1099, y: 700, firm: "eic", hpPct: 0.9 }],
+    ["full", { x: 700, y: 700, firm: "mmo", hpPct: 1 }],
     ["far", { x: 1101, y: 700, firm: "mmo", hpPct: 0.5 }],
     ["stranger", { x: 700, y: 700, firm: "mmo", hpPct: 0.5 }],
     ["dead", { x: 700, y: 700, firm: "mmo", hpPct: 0.5, dead: true }],
   ]);
-  let group = { members: ["me", "ally1", "ally2", "far", "dead"].map(id => ({ id })) };
+  let group = { members: ["me", "ally1", "ally2", "full", "far", "dead"].map(id => ({ id })) };
   const context = vm.createContext({ player: {}, started: true, account: { user: { faction: "mmo" } },
     getNetGroup: () => group, getNetplayRemotes: () => remotes, netMyId: () => "me",
     sendHealAlly: heal => sent.push(heal), addFloatText: (...args) => floats.push(args), DMG_FMT: { format: String } });
   vm.runInContext(section(engine, "function healPlayerAllies(", "function pickHealAlly("), context);
   const tick = () => context.healPlayerAllies("ability_aegis_repair-pod", 18000, false, 700, 700, 400, false);
   tick();
-  assert.deepEqual(sent.map(heal => heal.target).sort(), ["ally1", "ally2"]);
+  assert.deepEqual(sent.map(heal => heal.target).sort(), ["ally1", "ally2", "full"]);
   assert.equal(floats.length, 0, "pas de montant prédit avant confirmation serveur");
   group = null; sent.length = 0; tick();
   assert.equal(sent.length, 0, "aucun autre joueur soigné sans groupe");
@@ -222,6 +258,96 @@ test("Liberator Plus : le tick local transmet le gain réel, plafonné aux PV ma
   assert.equal(sent[1][1].amount, 0);
   context.player.tempestBackupT = 1; context.libRepHealTick();
   assert.equal(sent.length, 2);
+});
+
+test("Aegis sélectionné : +X et +0 coque verts, bouclier bleus, sans soin ajouté chez l'observateur", () => {
+  const v = visuals(), r = { id: "friend", x: 300, y: 300 };
+  v.remotes.set(r.id, r);
+  Object.assign(v.api.player, { hp: 100, sh: 50 });
+  for (const shield of [false, true]) {
+    const skill = shield ? "ability_aegis_shield-repair" : "ability_aegis_hp-repair";
+    const event = { by: r.id, skill, phase: "heal", amount: shield ? 15000 : 20000, shield };
+    v.api.Target.get = () => null;
+    v.api.drainNetSkillInbox = () => [event];
+    const before = v.floats.length;
+    v.api.tickNetplayVisuals(0.016);
+    assert.equal(v.floats.length, before, "affichage seulement si l'ami est sélectionné");
+    v.api.Target.get = () => ({ _netPlayer: r.id });
+    v.api.tickNetplayVisuals(0.016);
+    assert.equal(v.floats.at(-1)[4].text, `+${event.amount}`);
+    assert.equal(v.floats.at(-1)[3], shield ? "rgba(70,180,255,0.98)" : "rgba(80,255,125,0.98)");
+    event.amount = 0; v.api.tickNetplayVisuals(0.016);
+    assert.equal(v.floats.at(-1)[4].text, "+0");
+  }
+  assert.equal(v.api.player.hp, 100);
+  assert.equal(v.api.player.sh, 50);
+  assert.equal(v.sounds.length, 0);
+  assert.equal(r.fxFlash, undefined);
+});
+
+test("Aegis : les ticks locaux transmettent les gains réels et +0, sans annoncer un soin d'escorte sur soi", () => {
+  const sent = [], player = { hp: 99000, hpMax: 100000, sh: 49000, shMax: 50000 };
+  let ally = null;
+  const context = vm.createContext({ player, pickHealAlly: () => ally, addFloatText: () => {},
+    sendSkillUse: (...args) => sent.push(args), DMG_FMT: { format: String } });
+  vm.runInContext(section(engine, "function healAllyOrSelf(", "function drawAegisRepairPod("), context);
+  for (const shield of [false, true]) {
+    const skill = shield ? "ability_aegis_shield-repair" : "ability_aegis_hp-repair";
+    assert.equal(context.healAllyOrSelf(40000, shield ? 15000 : 20000, shield, skill), 1000);
+    assert.equal(sent.at(-1)[0], skill);
+    assert.equal(sent.at(-1)[1].amount, 1000);
+    context.healAllyOrSelf(40000, 20000, shield, skill);
+    assert.equal(sent.at(-1)[1].amount, 0);
+  }
+  player.tempestBackupT = 1;
+  context.healAllyOrSelf(40000, 20000, false, "ability_aegis_hp-repair");
+  assert.equal(sent.length, 4);
+  ally = { hp: 5000, hpMax: 100000 };
+  context.healAllyOrSelf(40000, 20000, false, "ability_aegis_hp-repair");
+  assert.equal(ally.hp, 45000);
+  assert.equal(sent.length, 4);
+});
+
+test("Aegis : les gains alliés sont adoptés une seule fois sur la bonne barre, sans dégâts PvP", () => {
+  for (const shield of [false, true]) {
+    const v = visuals();
+    Object.assign(v.api.player, { hp: 50000, hpMax: 100000, sh: 50000, shMax: 100000 });
+    v.api.drainNetSkillInbox = () => {
+      v.api.drainNetSkillInbox = () => [];
+      return [{ by: "caster", target: "me", skill: shield ? "ability_aegis_shield-repair" : "ability_aegis_hp-repair",
+        phase: "heal", amount: shield ? 25000 : 40000, shield }];
+    };
+    v.api.tickNetplayVisuals(0.016); v.api.tickNetplayVisuals(0.016);
+    assert.equal(v.api.player.hp, shield ? 50000 : 90000);
+    assert.equal(v.api.player.sh, shield ? 75000 : 50000);
+    assert.equal(v.floats.length, 1);
+  }
+});
+
+test("Aegis : relais visuels bornés au cast, cadence, durée et montant, sans modifier les pools", () => {
+  const events = [], from = 10000;
+  const context = vm.createContext({ HEAL_MIN_INTERVAL_MS: 800, broadcastRoom: (room, raw) => events.push(JSON.parse(raw)) });
+  vm.runInContext(section(server, "function relayAbilityHealFx(", "function trackAbilityFx("), context);
+  for (const [skill, cap, ticks, shield] of [["ability_aegis_hp-repair", 20000, 7, false], ["ability_aegis_shield-repair", 15000, 5, true], ["ability_aegis_repair-pod", 18000, 10, false]]) {
+    const state = { hp: 50000, sh: 10000, x: 700, y: 700, _abilityFx: { [skill]: { from, until: from + ticks * 1000, x: 700, y: 700 } } };
+    const relay = (amount, now) => context.relayAbilityHealFx(state, skill, { amount }, new Map(), "caster", now);
+    if (skill === "ability_aegis_repair-pod") {
+      state.x = 1101;
+      assert.equal(relay(cap, from + 1000), false, "pas de tick visuel sur le lanceur hors du pod");
+      state.x = 700;
+    }
+    assert.equal(relay(cap, from + 10), false);
+    assert.equal(relay(cap + 1, from + 1000), false);
+    assert.equal(relay(cap, from + 1000), true);
+    assert.equal(events.at(-1).shield, shield);
+    assert.equal(relay(cap, from + 1100), false);
+    for (let i = 2; i <= ticks; i++) assert.equal(relay(0, from + i * 1000), true);
+    assert.equal(events.at(-1).amount, 0);
+    assert.equal(relay(cap, from + (ticks + 1) * 1000), false);
+    assert.equal(state.hp, 50000); assert.equal(state.sh, 10000);
+    delete state._abilityFx[skill];
+    assert.equal(relay(cap, from + (ticks + 1) * 1000), false);
+  }
 });
 
 test("Liberator Plus : le serveur borne les ticks visuels sans modifier les PV ni la recharge", () => {
@@ -324,6 +450,63 @@ ZoneNpcSim.prototype.drainPlayerHits = function() { this.playerHits.length = 0; 
   };
   return { connect, pause };
 }
+
+test("Aegis WebSocket : soins sur soi +X/+0 coque et bouclier, et gains alliés confirmés", { timeout: 15000 }, async t => {
+  const { connect, pause } = await visualServer(t);
+  const caster = await connect("aegis-repairs", "aegis"), observer = await connect("aegis-friend", "aegis");
+  const hpSkill = "ability_aegis_hp-repair", shSkill = "ability_aegis_shield-repair";
+  const baseline = await observer.wait(message => message.t === "snapshot" && message.players.some(entry => entry.id === caster.id));
+  const initialHp = baseline.players.find(entry => entry.id === caster.id).pvpHp;
+  const observerProfile = await observer.wait(message => message.t === "snapshot" && message.players.some(entry => entry.id === observer.id));
+  const observerMax = observerProfile.players.find(entry => entry.id === observer.id).hpMax;
+  assert.ok(observerMax > 45000);
+  const damagedAt = observer.messages.length;
+  observer.send({ ...observer.pos, hpPct: (observerMax - 45000) / observerMax });
+  await observer.wait(message => message.t === "snapshot" && message.players.some(entry => entry.id === observer.id && entry.pvpHp === observerMax - 45000), damagedAt);
+  for (const skill of [hpSkill, shSkill]) {
+    const start = observer.messages.length;
+    caster.send({ t: "skillUse", skill });
+    await observer.wait(message => message.t === "skillFx" && message.skill === skill && message.phase !== "heal", start);
+  }
+  await pause(1050);
+  for (const [skill, amount, shield] of [[hpSkill, 20000, false], [shSkill, 15000, true]]) {
+    const start = observer.messages.length;
+    caster.send({ t: "skillUse", skill, phase: "heal", amount });
+    const event = await observer.wait(message => message.t === "skillFx" && message.skill === skill && message.phase === "heal", start);
+    assert.equal(event.amount, amount); assert.equal(event.shield, shield);
+    assert.equal(event.target, undefined, "le tick local est uniquement visuel pour les autres");
+  }
+  await pause(850);
+  for (const skill of [hpSkill, shSkill]) {
+    const start = observer.messages.length;
+    caster.send({ t: "skillUse", skill, phase: "heal", amount: 0 });
+    const event = await observer.wait(message => message.t === "skillFx" && message.skill === skill && message.phase === "heal", start);
+    assert.equal(event.amount, 0);
+  }
+  const start = observer.messages.length;
+  caster.send({ t: "heal", ability: hpSkill, target: observer.id, amt: 40000 });
+  const confirmed = await observer.wait(message => message.t === "skillFx" && message.target === observer.id && message.phase === "heal", start);
+  assert.equal(confirmed.amount, 40000); assert.equal(confirmed.shield, false);
+  const healed = await observer.wait(message => message.t === "snapshot" && message.players.some(entry => entry.id === observer.id && entry.pvpHp === observerMax - 5000), start);
+  assert.equal(healed.players.find(entry => entry.id === caster.id).pvpHp, initialHp, "aucun second soin serveur pour les ticks locaux");
+  await pause(850);
+  const cappedAt = observer.messages.length;
+  caster.send({ t: "heal", ability: hpSkill, target: observer.id, amt: 40000 });
+  const capped = await observer.wait(message => message.t === "skillFx" && message.target === observer.id && message.phase === "heal", cappedAt);
+  assert.equal(capped.amount, 5000, "montant borné aux PV manquants");
+  await pause(850);
+  const fullAt = observer.messages.length;
+  caster.send({ t: "heal", ability: hpSkill, target: observer.id, amt: 40000 });
+  const full = await observer.wait(message => message.t === "skillFx" && message.target === observer.id && message.phase === "heal", fullAt);
+  assert.equal(full.amount, 0);
+  const cancelledAt = observer.messages.length;
+  caster.send({ t: "skillUse", skill: hpSkill, enabled: false });
+  await observer.wait(message => message.t === "skillFx" && message.skill === hpSkill && message.enabled === false, cancelledAt);
+  const invalid = observer.messages.length;
+  caster.send({ t: "skillUse", skill: hpSkill, phase: "heal", amount: 20000 });
+  await pause(150);
+  assert.equal(observer.messages.slice(invalid).some(message => message.t === "skillFx" && message.skill === hpSkill && message.phase === "heal"), false);
+});
 
 test("deux clients WebSocket : pose du pod, position fixe et annulation partagées", { timeout: 15000 }, async t => {
   const { connect, pause } = await visualServer(t);
@@ -509,6 +692,20 @@ test("pod Aegis WebSocket : groupe seul, rayon fixe, gains réels et sortie du g
   caster.send({ t: "heal", target: ally1.id, ability: skill, amt: 18000 });
   await pause(150);
   assert.equal(ally1.messages.slice(duplicate).some(message => message.t === "skillFx" && message.phase === "heal" && message.target === ally1.id), false);
+  // Le lanceur diffuse ses propres soins ; les membres à PV pleins diffusent +0.
+  await pause(850);
+  const ownTick = ally2.messages.length;
+  caster.send({ t: "skillUse", skill, phase: "heal", amount: 18000 });
+  caster.send({ t: "heal", target: ally2.id, ability: skill, amt: 18000 });
+  const own = await ally2.wait(message => message.t === "skillFx" && message.phase === "heal" && message.by === caster.id && !message.target, ownTick);
+  assert.equal(own.amount, 18000);
+  const full = await ally2.wait(message => message.t === "skillFx" && message.phase === "heal" && message.target === ally2.id, ownTick);
+  assert.equal(full.amount, 0);
+  await pause(850);
+  const zeroTick = ally2.messages.length;
+  caster.send({ t: "skillUse", skill, phase: "heal", amount: 0 });
+  const ownZero = await ally2.wait(message => message.t === "skillFx" && message.phase === "heal" && message.by === caster.id && !message.target, zeroTick);
+  assert.equal(ownZero.amount, 0);
   // Un joueur quittant le groupe devient immédiatement inéligible.
   const leftAt = caster.messages.length;
   ally1.send({ t: "groupLeave" });
