@@ -357,7 +357,7 @@ export const ABILITIES = Object.freeze({
   ),
   "ability_orcus-plus_target-marker": A(
     "ability_orcus-plus_target-marker", "orcus_plus", "Orcus Plus", "Marqueur", "enemy",
-    "Marque 15 s : ralenti 10 %, +10 % pénétration subie.",
+    "Marque 15 s : ralenti 10 % pendant 10 s, +10 % pénétration subie.",
     "Même effet que le Marqueur Spearhead.", "ABILITY_SPEARHEAD_TARGET-MARKER.PNG", 360, 15, "done" // ✅
   ),
 
@@ -457,13 +457,13 @@ export const ABILITIES = Object.freeze({
     "", "", 90, 30, "done" // ✅
   ),
   "ability_spearhead_jam-x": A(
-    "ability_spearhead_jam-x", "spearhead", "Spearhead", "JAMX", "enemy",
+    "ability_spearhead_jam-x", "spearhead", "Spearhead", "JAMX", "self",
     "Brouille tout à 500px pendant 3 s.",
     "Recharge 180 s.", "", 180, 0, "done" // ✅
   ),
   "ability_spearhead_target-marker": A(
     "ability_spearhead_target-marker", "spearhead", "Spearhead", "Marqueur", "enemy",
-    "Marque 15 s : ralenti 10 %, +10 % pénétration subie.",
+    "Marque 15 s : ralenti 10 % pendant 10 s, +10 % pénétration subie.",
     "Recharge 360 s.", "", 360, 15, "done" // ✅
   ),
   "ability_spearhead_ultimate-cloak": A(
@@ -475,7 +475,7 @@ export const ABILITIES = Object.freeze({
   // ---- Spearhead Plus ----
   // Recon + cloak branchés. JAMX Creed / Neutralizing / Marqueur : noms + icônes visibles, à rebrancher plus tard.
   "ability_spearhead-plus_jamx-creed": A(
-    "ability_spearhead-plus_jamx-creed", "spearhead_plus", "Spearhead Plus", "JAMX Creed", "enemy",
+    "ability_spearhead-plus_jamx-creed", "spearhead_plus", "Spearhead Plus", "JAMX Creed", "self",
     "Brouille tout à 1000px pendant 6 s.",
     "Recharge 200 s.", "", 200, 0, "done" // ✅
   ),
@@ -486,7 +486,7 @@ export const ABILITIES = Object.freeze({
   ),
   "ability_spearhead-plus_target-marker": A(
     "ability_spearhead-plus_target-marker", "spearhead_plus", "Spearhead Plus", "Marqueur", "enemy",
-    "Marque 15 s : ralenti 10 %, +10 % pénétration subie.",
+    "Marque 15 s : ralenti 10 % pendant 10 s, +10 % pénétration subie.",
     "Identique au Spearhead de base.", "ABILITY_SPEARHEAD_TARGET-MARKER.PNG", 360, 15, "done" // ✅
   ),
   "ability_spearhead-plus_recon": A(

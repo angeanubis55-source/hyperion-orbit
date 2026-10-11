@@ -264,7 +264,7 @@ function bearerToken(req) {
 // Kill NPC de zone : transaction persistante et idempotente. Le serveur lit
 // lui-meme l'equipement, les boosters et l'arbre pilote du compte ; aucun
 // montant annonce par le navigateur n'est accepte.
-export function awardNpcKill(accountId, npcType, mapId, rewardPercent, ownsKill, txKey) {
+export function awardNpcKill(accountId, npcType, mapId, rewardPercent, ownsKill, txKey, shipPassivesEnabled = true) {
   initAccountDb();
   const uid = String(accountId || "");
   const type = String(npcType || "");
@@ -300,7 +300,7 @@ export function awardNpcKill(accountId, npcType, mapId, rewardPercent, ownsKill,
     const baseExp = Math.max(0, Math.floor(Number(reward.exp) * pct / 100));
     const baseHonor = Math.max(0, Math.floor(Number(reward.honor) * pct / 100));
     const rawShipId = String(hangar?.shipId || data.ship || "");
-    const shipXp = String(getShipDesignBaseId(rawShipId) || rawShipId).toLowerCase() === "goliath_x" ? 1.02 : 1;
+    const shipXp = shipPassivesEnabled && String(getShipDesignBaseId(rawShipId) || rawShipId).toLowerCase() === "goliath_x" ? 1.02 : 1;
     const credits = Math.max(0, Math.floor(baseCredits * factor(pilot.creditPct)));
     const exp = Math.max(0, Math.ceil(baseExp * factor(equipment.bonusExpPct) * Math.max(0, Number(boosters.exp) || 1) * factor(pilot.expPct) * shipXp - Number.EPSILON));
     const zeroHonorFormation = String(data?.drones?.activeFormation || "").toLowerCase() === "x";

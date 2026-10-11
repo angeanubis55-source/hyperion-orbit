@@ -27,7 +27,7 @@ import { handleAccountApi, getAccountGameplayData, verifyWsToken, recordPvpKill,
 import { combatProfile, validateCombatHit } from "./COMBAT_PROFILE.js";
 import { selectNpcSnapshot } from "./NPC_SNAPSHOT.js";
 import { updateClockGuard, stopRejectedMotion } from "./CLOCK_GUARD.js";
-import { takeMovement, useMovementAbility, syncMovementAbility, movementSpeed, usePhaseOut, shipOwnsAbility, dashTargetKey, isMovementAbilityKey } from "./MOVEMENT_RULES.js";
+import { takeMovement, useMovementAbility, stopMovementAbility, syncMovementAbility, movementSpeed, usePhaseOut, shipOwnsAbility, dashTargetKey, isMovementAbilityKey } from "./MOVEMENT_RULES.js";
 import { isAbilityFxBroadcastable, pruneAbilityFxMap, abilityHitBypass, isExecutionAbility, EXEC_WINDOW_MS, EXEC_AURA_GRACE_MS, EXEC_HIT_CAP_PVP, EXEC_HIT_CAP_NPC, healSpecFor, HEAL_MIN_INTERVAL_MS, fxDebuffsOn } from "../SRC/CORE/ABILITY_FX.js";
 import { getAbilityInfo } from "../SHIP/SHIP_ABILITIES.js";
 import { syncDisarrayShield, syncDisruptorEffects, laserDisrupted, redirectedPlayer } from "./DISRUPTOR_RULES.js";
@@ -56,6 +56,42 @@ function clearAbilityFx(state) {
   try { state._abilityCds = {}; } catch {}
   try { state._orcusUntil = 0; } catch {}
   try { state._execWindow = null; } catch {}
+}
+function jamPlayerAbilities(state, room, now, durationMs) {
+  const active = new Set([
+    ...Object.keys(state._abilityFx || {}).filter(key => state._abilityFx[key]?.until > now),
+    ...Object.keys(state._moveEffects || {}).filter(key => state._moveEffects[key]?.until > now),
+  ]);
+  if (state.cloaked && state._combat?.cloakSkill) {
+    active.add(state._combat.cloakSkill.id);
+    state._cloakCdUntil = now + Number(state._combat.cloakSkill.cooldownSec || 240) * 1000;
+  }
+  stopMovementAbility(state, state._combat, now);
+  state._abilityCds ||= {};
+  for (const skill of active) {
+    const cooldown = Number(getAbilityInfo(skill)?.cooldownSec) || 0;
+    if (cooldown > 0) state._abilityCds[skill] = now + cooldown * 1000;
+    if (isMovementAbilityKey(skill) && cooldown > 0) {
+      state._moveCooldowns ||= {};
+      state._moveCooldowns[skill] = now + cooldown * 1000;
+    }
+    broadcastRoom(room, JSON.stringify({ t: "skillFx", skill, by: state.id,
+      at: now, until: now, enabled: false }));
+  }
+  state._abilityFx = {};
+  state._orcusUntil = 0;
+  state._execWindow = null;
+  if (state._tempestBackupUntil > now) state._tempestBackupCdUntil = now + 360000;
+  state._tempestBackupUntil = 0;
+  state._tempestBackupRequestedUntil = 0;
+  state._voltLinkFx = null;
+  state.tbrClones = [];
+  state.cloaked = false;
+  state._cloakUntil = 0;
+  state._jamAt = now;
+  state._jamUntil = Math.max(Number(state._jamUntil) || 0, now + durationMs);
+  state.moveSpeed = movementSpeed(state, state._combat, now);
+  state.vmax = state.moveSpeed;
 }
 function awardPlayerKill(room, id, victim, now) {
   if (!id || String(id) === String(victim.id)) return;
@@ -170,6 +206,13 @@ function trackAbilityFx(state, profile, skill, msg, room, id, now, sim = null) {
   if (!movementAbility && now < Number(cds[key] || 0)) return false;
   if (key === "ability_zephyr_tbr" && !profile.petOwned) return false;
   const target = String(msg.target || "").slice(0, 64);
+  const targetMarker = key === "ability_spearhead_target-marker" || key === "ability_spearhead-plus_target-marker"
+    || key === "ability_orcus-plus_target-marker";
+  if (targetMarker) {
+    const victim = room.get(target)?.state || sim?.entries?.get(target);
+    if (!victim || victim === state || victim.dead || victim.pvpDead || !(victim.hp > 0)
+      || Math.hypot(Number(victim.x) - Number(state.x), Number(victim.y) - Number(state.y)) > (Number(state.range) || 800)) return false;
+  }
   const voltChain = key === "ability_tempest_voltage-link" ? validateVoltChain(state, room, sim, msg) : null;
   if (voltChain && !voltChain.length) return false;
   if (key.startsWith("ability_disruptor_")) {
@@ -187,7 +230,7 @@ function trackAbilityFx(state, profile, skill, msg, room, id, now, sim = null) {
   // charge sans cancel possible) — la fenêtre single-shot reste la vraie
   // limite (un beam par cast).
   if (isWindowExec) cds[key] = now + Math.min(Number(cdSec) || 0, 120) * 1000;
-  else if (hasDuration) cds[key] = now + (durSec + (Number.isFinite(cdSec) && cdSec > 0 ? cdSec : 0)) * 1000;
+  else if (hasDuration) cds[key] = now + ((targetMarker ? 0 : durSec) + (Number.isFinite(cdSec) && cdSec > 0 ? cdSec : 0)) * 1000;
   else if (!isToggle && Number.isFinite(cdSec) && cdSec > 0) cds[key] = now + cdSec * 1000;
   else if (isToggle) cds[key] = now + 1500;
   // Position : zones posées (pods, nébuleuse) = point de cast ; le reste
@@ -217,6 +260,12 @@ function trackAbilityFx(state, profile, skill, msg, room, id, now, sim = null) {
       if (room.has(point.id)) takeMovement(victim, victim._combat, victim.x, victim.y, now);
       victim.freezeUntil = Math.max(Number(victim.freezeUntil) || 0, now + 1000);
     }
+  }
+  if (targetMarker) {
+    const victim = room.get(target)?.state || sim?.entries?.get(target);
+    if (room.has(target)) takeMovement(victim, victim._combat, victim.x, victim.y, now);
+    victim.slowPct = Math.max(now < Number(victim.slowUntil) ? Number(victim.slowPct) || 0 : 0, 10);
+    victim.slowUntil = Math.max(Number(victim.slowUntil) || 0, now + 10000);
   }
   try {
     if (!state._abilityFx || typeof state._abilityFx !== "object") state._abilityFx = {};
@@ -252,7 +301,12 @@ function trackAbilityFx(state, profile, skill, msg, room, id, now, sim = null) {
         if (!ps || ps === state || ps.pvpDead === true || !(Number(ps.hp) > 0)) continue;
         const dx = Number(ps.x) - Number(state.x), dy = Number(ps.y) - Number(state.y);
         if (dx * dx + dy * dy > radius * radius) continue;
-        ps._jamUntil = Math.max(Number(ps._jamUntil) || 0, now + dur);
+        jamPlayerAbilities(ps, room, now, dur);
+      }
+      for (const npc of sim?.entries?.values() || []) {
+        if (!(npc.hp > 0) || Math.hypot(Number(npc.x) - Number(state.x), Number(npc.y) - Number(state.y)) > radius) continue;
+        npc.jamUntil = Math.max(Number(npc.jamUntil) || 0, now + dur);
+        npc.cube = null;
       }
     } else if (key === "ability_spearhead-plus_neutralizing-marker") {
       const foe = room.get(String(msg.target));
@@ -1712,7 +1766,10 @@ function pumpNpcRewards(budgetMs = 12) {
     for (const share of npcRewardShares(killerId, mapId, death)) {
       const accountId = share.pid.slice(2);
       const txKey = `npc:${serverRunId}:${deathKey}:${accountId}`;
-      const reward = awardNpcKill(accountId, death.type, mapId, share.percent, share.pid === killerId, txKey);
+      const rewardState = findPeerState(share.pid);
+      const passivesEnabled = !(Number(death.at) >= Number(rewardState?._jamAt || Infinity)
+        && Number(death.at) < Number(rewardState?._jamUntil || 0));
+      const reward = awardNpcKill(accountId, death.type, mapId, share.percent, share.pid === killerId, txKey, passivesEnabled);
       if (!reward) { complete = false; continue; }
       if (reward.duplicate) continue;
       // Audit anticheat : kill crédité au tueur (strictement serveur).
@@ -2117,7 +2174,11 @@ wss.on("connection", (ws) => {
         try {
           const dd = casterDebuffOn(shooter, msg.uid, now);
           if (dd.weaken > 0) msg.weaken = Math.max(Number(msg.weaken) || 0, dd.weaken);
-          if (dd.penBonus > 0) msg.pen = Math.max(0, Math.min(1, (Number(msg.pen) || 0) + dd.penBonus));
+          let penBonus = dd.penBonus;
+          for (const { state: caster } of rooms.get(mapId)?.values() || []) {
+            penBonus = Math.max(penBonus, casterDebuffOn(caster, msg.uid, now).penBonus);
+          }
+          if (penBonus > 0) msg.pen = Math.max(0, Math.min(1, (Number(msg.pen) || 0) + penBonus));
           if (dd.dmgMult > 1 && Number(msg.dmg) > 0) msg.dmg = Number(msg.dmg) * dd.dmgMult;
         } catch {}
         // Anti-rafale : seaux par attaquant (horloge serveur). Rafales AoE
@@ -2167,6 +2228,8 @@ wss.on("connection", (ws) => {
         const room = rooms.get(mapId);
         if (!room || !room.has(id)) return;
         const skill = String(msg.skill || "").toLowerCase();
+        // Les annulations restent permises ; toutes les activations sont bloquées.
+        if (Date.now() < Number(state._jamUntil || 0) && msg.enabled !== false && msg.phase !== "unlink") return;
         if (skill === "ability_tempest_volt-backup") {
           const now = Date.now();
           refreshCombatProfile(state, accountId, mapId);
@@ -2180,12 +2243,6 @@ wss.on("connection", (ws) => {
         if (msg.phase === "heal") {
           relayAbilityHealFx(state, skill, msg, room, id, Date.now());
           return;
-        }
-        // Brouillé (JAMX/Creed/Neutralizing subi) : modules verrouillés
-        // (aptitudes + consommables). La propulsion reste libre (esquive).
-        if (Date.now() < Number(state._jamUntil || 0)) {
-          if (skill === "iem" || skill === "ish" || skill === "smb"
-            || (skill.startsWith("ability_") && !isMovementAbilityKey(skill))) return;
         }
         if (skill.startsWith("ability_")) {
           const profile = refreshCombatProfile(state, accountId, mapId);
@@ -3010,11 +3067,11 @@ wss.on("connection", (ws) => {
       // Le CPU reste distinct ; les NPC reçoivent l'union des deux états.
       if (typeof msg.cloaked === "boolean") {
         const nowCloak = Date.now();
-        if (msg.cloaked && !state.cloaked && profile.cloakSkill && nowCloak >= Number(state._cloakCdUntil || 0)) {
+        if (msg.cloaked && !state.cloaked && profile.cloakSkill && nowCloak >= Number(state._jamUntil || 0) && nowCloak >= Number(state._cloakCdUntil || 0)) {
           state._cloakUntil = nowCloak + (Number(profile.cloakSkill.durationSec) || 30) * 1000;
           state._cloakCdUntil = nowCloak + (Number(profile.cloakSkill.cooldownSec) || 240) * 1000;
         }
-        state.cloaked = msg.cloaked && nowCloak < Number(state._cloakUntil || 0);
+        state.cloaked = msg.cloaked && nowCloak >= Number(state._jamUntil || 0) && nowCloak < Number(state._cloakUntil || 0);
       }
       if (typeof msg.safe === "boolean") state.safe = msg.safe;
       if (Number.isFinite(Number(msg.hpPct))) state.hpPct = Math.max(0, Math.min(1, Number(msg.hpPct)));
@@ -3521,6 +3578,7 @@ setInterval(() => {
         ishT: Math.max(0, (Number(s.ishUntil) || 0) - now) / 1000,
         // Brouillage subi (JAMX/Creed/Neutralizing) : locks coupés + verrou.
         jamT: Math.max(0, (Number(s._jamUntil) || 0) - now) / 1000,
+        jamAt: Number(s._jamAt) || 0,
         // Conversion Orcus subie (+X verts victime, voir adoption pvpAt).
         ohAt: Number(s.orcusHealAt) || 0,
         ohAmt: Math.max(0, Math.round(Number(s.orcusHealAmt) || 0)),

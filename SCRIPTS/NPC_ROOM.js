@@ -587,6 +587,7 @@ drainPlayerHits() {
   }
 
   refillCubikonMinions(cub, nowMs) {
+    if (nowMs < Number(cub?.jamUntil || 0)) return;
     if (cub?.type !== "npc_Cubikon" || !(cub.hp > 0) || !cub.cubeArmed || cub.cube) return;
     if (nowMs - Number(cub.lastCubeHitAt || 0) > 15000) return;
     if (this.countCubikonMinions(cub.uid) < 5) {
@@ -595,6 +596,7 @@ drainPlayerHits() {
   }
 
   spawnCubikonWave(cub, nowMs) {
+    if (nowMs < Number(cub?.jamUntil || 0)) return;
     if (!cub || !(cub.hp > 0)) return;
     const stats = statsFor("npc_Protegit");
     if (!stats) return;
@@ -656,6 +658,7 @@ drainPlayerHits() {
   }
 
   spawnOnKillWave(dead, nowMs) {
+    if (nowMs < Number(dead?.jamUntil || 0)) return;
     if (!dead || !(dead.hp <= 0)) return;
     const cfg = NPC_TYPES[dead.type];
     const spawns = cfg?.onKill?.spawn;
@@ -703,6 +706,7 @@ drainPlayerHits() {
   // Mindfire Behemoth : 2 Attend IX à 75 % / 50 % / 25 % de durabilité.
   // Non bloquant : le Mindfire reste vulnérable, les Attend sont indépendants.
   checkMindfireWaves(entry, nowMs) {
+    if (nowMs < Number(entry?.jamUntil || 0)) return;
     if (!entry || String(entry.type || "") !== "npc_Mindfire_Behemoth" || !(entry.hp > 0)) return;
     const max = Math.max(0, Number(entry.hpMax) || 0) + Math.max(0, Number(entry.shMax) || 0);
     if (!(max > 0)) return;
@@ -749,6 +753,7 @@ drainPlayerHits() {
   // Invoke XVI : 7 Impulse II au premier dégât, une seule fois par incarnation.
   // Non bloquant : l'Invoke reste vulnérable, les Impulse sont indépendants.
   spawnInvokeImpulse(entry, nowMs) {
+    if (nowMs < Number(entry?.jamUntil || 0)) return;
     if (!entry) return;
     const stats = statsFor("npc_Impulse_II");
     if (!stats) return;
@@ -963,7 +968,7 @@ drainPlayerHits() {
       // Premier impact de l'engagement : animation + vague partagees.
       // (Si le coup est fatal, la mort ci-dessous libere les minions.)
       entry.lastCubeHitAt = nowMs;
-      if (entry.hp > 0 && !entry.cubeArmed && !entry.cube) {
+      if (entry.hp > 0 && nowMs >= Number(entry.jamUntil || 0) && !entry.cubeArmed && !entry.cube) {
         if (this.countCubikonMinions(uid) < ZoneNpcSim.CUBIKON_WAVE_MAX) {
           entry.cubeArmed = true;
           entry.cube = { phase: "delay", until: nowMs + 2000, spawnAt: nowMs + 4600 };
@@ -978,7 +983,7 @@ drainPlayerHits() {
     // Invoke XVI : 7 Impulse II dès le premier dégât, une seule fois
     // par incarnation (l'entrée serveur persiste aux départs/retours).
     // Non bloquant : l'Invoke reste vulnérable.
-    if (applied > 0 && entry.type === "npc_Invoke_XVI" && !entry.invokeReleased) {
+    if (applied > 0 && nowMs >= Number(entry.jamUntil || 0) && entry.type === "npc_Invoke_XVI" && !entry.invokeReleased) {
       entry.invokeReleased = true;
       try { this.spawnInvokeImpulse(entry, nowMs); } catch {}
     }
@@ -1196,7 +1201,7 @@ drainPlayerHits() {
         e.speed = strokFrac < 0.25 ? 350 : 0;
       }
       // Kamikaze au contact : explose, la victime touche la recompense.
-      if (e.kamikaze && e.explodeOnTouch) {
+      if (e.kamikaze && e.explodeOnTouch && nowMs >= Number(e.jamUntil || 0)) {
         let victim = null, victimD2 = e.explodeRadius * e.explodeRadius;
         for (const [pid, p] of this.players) {
           if (!this.validTarget(p)) continue;
@@ -1473,6 +1478,7 @@ drainPlayerHits() {
           hpMax: e.hpMax, shMax: e.shMax, alive: true, seq: e.seq || 0,
           slowPct: nowMs < Number(e.slowUntil || 0) ? Number(e.slowPct) || 0 : 0,
           slowT: Math.max(0, (Number(e.slowUntil) || 0) - nowMs) / 1000,
+          jamT: Math.max(0, (Number(e.jamUntil) || 0) - nowMs) / 1000,
           freezeT: Math.max(0, (Number(e.freezeUntil) || 0) - nowMs) / 1000,
           aggro: aggroId,
           // Lock premier attaquant (visuel rouge / gris) : id du détenteur.

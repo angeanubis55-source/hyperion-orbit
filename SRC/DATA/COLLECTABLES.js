@@ -10,7 +10,7 @@ export const COLLECTABLE_TYPES = Object.freeze({
     spawnBatch: 50,
     minSpacing: 100,
     avoidPlayer: 0,
-    npcDespawnAfter: 30,
+    npcDespawnAfter: 60,
     r: 30,
     pickupRadius: 50,
     bob: 5,

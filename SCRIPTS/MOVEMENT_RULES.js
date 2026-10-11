@@ -86,7 +86,7 @@ export function dashTargetKey(state, profile, now) {
 
 export function usePhaseOut(state, profile, map, world, now, random = Math.random) {
   const key = "ability_mimesis_phase-out";
-  if (!profile || state.pvpDead || !(state.hp > 0)
+  if (!profile || state.pvpDead || !(state.hp > 0) || now < Number(state._jamUntil || 0)
     || !shipOwnsAbility(profile.shipId, key)
     || /low|uba/.test(map) || /^5(?:-|$|\.)/.test(map) || ["alpha", "beta", "gamma", "delta", "epsilon", "zeta", "kappa", "lambda", "kronos", "qz"].includes(map)
     || !(world?.w > 160) || !(world?.h > 160)) return null;
@@ -247,7 +247,7 @@ export function useMovementAbility(state, profile, key, enabled, now, target = n
     if (rule.toggle) cooldowns[key] = now + rule.cooldown * 1000;
     return true;
   }
-  if (state.pvpDead || !(state.hp > 0) || now < Number(cooldowns[key] || 0)
+  if (state.pvpDead || !(state.hp > 0) || now < Number(state._jamUntil || 0) || now < Number(cooldowns[key] || 0)
     || (rule.channel && !(state.sh > 0))) return false;
   // Re-clic de la même aptitude temporisée : no-op (comme le client).
   // Une AUTRE aptitude reste acceptée : les boosts se cumulent (produit).

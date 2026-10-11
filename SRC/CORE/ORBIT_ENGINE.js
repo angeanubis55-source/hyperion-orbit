@@ -1375,12 +1375,12 @@ const CREED_DURATION = 6;
 const JAMX_SPR_FRAMES = 49;
 const JAMX_SPR_FPS = 30;
 // Target Marker (normal + Plus, identiques) : contour doré + pénétration
-// +10 % subie pendant 15 s, ralenti 10 % pendant 3 s. Recharge 360 s.
+// +10 % subie pendant 15 s, ralenti 10 % pendant 10 s. Recharge 360 s.
 // Neutralizing Marker (Plus) : contour blanc + modules neutralisés (mêmes
 // blocages que JAMX) pendant 3 s, ralenti 10 % pendant 3 s. Recharge 360 s.
 const MARK_CD = 360;
 const MARK_DURATION = 15;
-const MARK_SLOW = 3;
+const MARK_SLOW = 10;
 const MARK_SLOW_PCT = 10;
 const MARK_PEN = 0.10;
 const NEUTR_CD = 360;
@@ -2129,7 +2129,7 @@ function ripperTick() {
 // Dernier rempart : intercepte TOUTES les morts (lasers, kamikaze, radiation...).
 // À 1 PV : full heal +x max, anim LAST_STAND une fois, effect repris après.
 function tryLastStand() {
-  if (player.dead) return false;
+  if (player.dead || Number(player.jamT) > 0) return false;
   if (!isPaladinHull()) return false;
   if (Number(player.lastStandCd || 0) > 0) return false;
   player.hp = Number(player.hpMax || 0);
@@ -3287,7 +3287,7 @@ function cancelTempestBackup() {
   startTempestBackupCooldown();
 }
 function tryTempestBackup() {
-  if (player.dead) return false;
+  if (player.dead || Number(player.jamT) > 0) return false;
   if (!isTempestHull()) return false;
   if (Number(player.tempestBackupCd || 0) > 0) return false;
   if ((player.tempestBackupT || 0) > 0) return false;
@@ -3581,8 +3581,43 @@ function nearestTempestLinkNext(from, hit, radius) {
 // déplacement ni tirs laser/roquettes. Champs génériques sur entité
 // (NPC + futurs joueurs).
 function isEntityJammed(e) {
-  try { return ((e.jamxT || 0) > 0) || ((e.creedT || 0) > 0) || ((e.neutrT || 0) > 0); }
+  try { return ((e.jamT || 0) > 0) || ((e.jamxT || 0) > 0) || ((e.creedT || 0) > 0) || ((e.neutrT || 0) > 0); }
   catch { return false; }
+}
+function cancelPlayerAbilitiesForJam() {
+  const backupActive = Number(player.tempestBackupT) > 0;
+  for (const cancel of [
+    cancelRepairPod, cancelRepairs, cancelHammerPod, cancelHammerRepairs,
+    cancelNebula, cancelValour, cancelShl, cancelBsk, cancelRvg,
+    cancelDrawFire, cancelProtection, cancelTravel, cancelYamatoTravel,
+    cancelFortify, cancelPrism, cancelSpec, cancelSpecPlus, cancelTartRapidPlus,
+    cancelTempestBackup, cancelTempestDisch, cancelDiminish, cancelDdol,
+    cancelHoloSelf, cancelHoloEnemy, cancelGa, cancelQaCharge, cancelQaBurst,
+    cancelSpr, cancelSleight, cancelLibRep, cancelLight, cancelScramble,
+    cancelHologram, cancelOrcus, cancelCyborg, cancelVenom, cancelMmt,
+    cancelTbr, cancelRipper, cancelSap, cancelSpc, cancelSpcPlus,
+    cancelChsCharge, cancelSent, cancelInc, cancelRecon, cancelRedirect,
+    cancelDisarray, cancelRealloc, cancelHecate, cancelStockpile,
+  ]) { try { cancel(); } catch {} }
+  if (backupActive) player.invincibleT = 0;
+  if (player.cloakT > 0) { player.cloakT = 0; startPoliceCloakCooldown(); }
+  if (player.tartBoostOn) reportMovementAbility("ability_tartarus_speed-boost", false);
+  if (player.tartPlusBoostOn) {
+    reportMovementAbility("ability_tartarus-plus_speed-boost-plus", false);
+    player.tartPlusBoostCd = TARTPLUS_BOOST_SWITCH_CD;
+    persistCdUntil("tartPlusBoost", TARTPLUS_BOOST_SWITCH_CD);
+  }
+  player.tartBoostOn = false;
+  player.tartPlusBoostOn = false;
+  player.solBoostT = 0;
+  player.lastStandAnimT = 0;
+  player.tempestLinkFx = [];
+  player.tempestLinkBeams = [];
+  player.kamiRex = [];
+  player.kamiQueue = [];
+  if (player.markTgtObj) player.markTgtObj.markT = 0;
+  cancelMark();
+  try { stockUpdateRange(); } catch {}
 }
 // Applique le brouillage aux ennemis dans le rayon + purge leurs capacités
 // en cours (spawn cubikon, renforts onKill). Retourne le nombre touché.
@@ -3597,6 +3632,9 @@ function applyJamxToEnemies(radius, dur, isCreed) {
     try { e._pendingSpawn = 0; e._animPhase = null; } catch {}
     try { e._onKill = null; } catch {}
     n++;
+  }
+  for (const remote of getNetplayRemotes()?.values() || []) {
+    if (remote && !remote.dead && dist2(player.x, player.y, remote.rx ?? remote.x, remote.ry ?? remote.y) <= r2) n++;
   }
   return n;
 }
@@ -3622,6 +3660,7 @@ function activateJamx() {
     return;
   }
   const n = applyJamxToEnemies(JAMX_RADIUS, JAMX_DURATION, false);
+  try { sendSkillUse("ability_spearhead_jam-x"); } catch {}
   jamxHalo(JAMX_RADIUS);
   startJamxCooldown();
   showNotification(n > 0 ? `JAMX : ${n} vaisseau${n > 1 ? "x" : ""} brouillé${n > 1 ? "s" : ""} (3 s)` : "JAMX : personne à portée (500)", 2.5, "info");
@@ -3638,6 +3677,7 @@ function activateCreed() {
     return;
   }
   const n = applyJamxToEnemies(CREED_RADIUS, CREED_DURATION, true);
+  try { sendSkillUse("ability_spearhead-plus_jamx-creed"); } catch {}
   jamxHalo(CREED_RADIUS);
   startCreedCooldown();
   showNotification(n > 0 ? `JAMX Creed : ${n} vaisseau${n > 1 ? "x" : ""} brouillé${n > 1 ? "s" : ""} (6 s)` : "JAMX Creed : personne à portée (1000)", 2.5, "info");
@@ -3657,8 +3697,8 @@ function cancelMark() {
   player.markTgtObj = null;
 }
 // Target Marker (normal + Plus) : lock requis, contour doré + pénétration
-// +10 % pendant 15 s, ralenti 10 % pendant 3 s.
-function activateMark() {
+// +10 % pendant 15 s, ralenti 10 % pendant 10 s.
+function activateMark(abilityId = "ability_spearhead_target-marker") {
   if (player.dead || !started) return;
   const cd = Number(player.markCd || 0);
   if (cd > 0) {
@@ -3676,7 +3716,7 @@ function activateMark() {
   }
   t.markT = MARK_DURATION;
   try { applyMarkSlow(t, MARK_SLOW); } catch {}
-  try { relaySlowToPlayer(t, MARK_SLOW_PCT, MARK_SLOW); } catch {}
+  try { sendSkillUse(abilityId, { target: t._netPlayer || t._netUid || "" }); } catch {}
   player.markTgtObj = t;
   persistCdUntil("markFx", MARK_DURATION);
   try {
@@ -3685,7 +3725,7 @@ function activateMark() {
     }
   } catch {}
   startMarkCooldown();
-  showNotification("Cible marquée (15 s) : +10 % pénétration, ralenti 3 s", 2.5, "info");
+  showNotification("Cible marquée (15 s) : +10 % pénétration, ralenti 10 s", 2.5, "info");
 }
 function startNeutrCooldown() {
   player.neutrCd = NEUTR_CD;
@@ -4747,6 +4787,7 @@ function isSolarisPlusBase() {
   } catch { return false; }
 }
 function shipPassiveDamageMult() {
+  if (Number(player.jamT) > 0) return 1;
   let mult = isGoliathXBase() ? 1.02 : 1;
   // Solaris Plus Locked and Loaded : +3 % dégâts par module équipé (max +12 %).
   if (isSolarisPlusBase()) {
@@ -4761,6 +4802,7 @@ function shipPassiveDamageMult() {
   return mult;
 }
 function shipPassiveXpMult() {
+  if (Number(player.jamT) > 0) return 1;
   return isGoliathXBase() ? 1.02 : 1;
 }
 // --- Rayon à particules (Hecate / Hecate Plus, officiel) : canal 1 hit/s
@@ -4880,13 +4922,14 @@ function stockUpdateRange() {
     // Zephyr MMT : portée x2 pendant l'effet (prioritaire sur tout).
     if ((player.mmtT || 0) > 0) { playerRange = BASE_RUN.range * 2; return; }
     if ((player.stockT || 0) > 0) { playerRange = BASE_RUN.range; return; }
-    const bonus = isHecatePlusBase() ? stockCharges() * STOCKPILE_RANGE_PER : 0;
+    const bonus = isHecatePlusBase() && !(Number(player.jamT) > 0) ? stockCharges() * STOCKPILE_RANGE_PER : 0;
     playerRange = BASE_RUN.range + bonus;
   } catch {}
 }
 function onStockpileNpcKill() {
   try {
     if (!isHecatePlusBase()) return;
+    if (Number(player.jamT) > 0) return;
     if (player.dead || !started) return;
     // Pas de cumul pendant l'effet : les charges repartent après.
     if ((player.stockT || 0) > 0) return;
@@ -7255,7 +7298,7 @@ function initializeCustomActionBar() {
           return;
         }
         // Brouillé (JAMX/Creed/Neutralizing subi) : modules verrouillés.
-        if ((player.jamT || 0) > 0 && !isCloakAbility(name) && !MOVEMENT_ANNOUNCED_ABILITIES.has(String(name).toLowerCase())) {
+        if ((player.jamT || 0) > 0) {
           showNotification("Modules brouillés : impossible d'activer", 1.5, "info");
           return;
         }
@@ -7275,6 +7318,8 @@ function initializeCustomActionBar() {
           && !name.startsWith("ability_disruptor_")
           && !name.startsWith("ability_tempest_")
           && name !== "ability_zephyr_tbr"
+          && name !== "ability_spearhead_jam-x" && name !== "ability_spearhead-plus_jamx-creed"
+          && name !== "ability_spearhead_target-marker" && name !== "ability_spearhead-plus_target-marker" && name !== "ability_orcus-plus_target-marker"
           && !MOVEMENT_ANNOUNCED_ABILITIES.has(String(name).toLowerCase())) {
           try {
             const needTarget = String(getAbilityInfo(name)?.target || "") === "enemy";
@@ -7396,7 +7441,7 @@ function initializeCustomActionBar() {
           return;
         }
         if (name === "ability_spearhead_target-marker" || name === "ability_spearhead-plus_target-marker" || name === "ability_orcus-plus_target-marker") {
-          activateMark();
+          activateMark(name);
           return;
         }
         if (name === "ability_spearhead-plus_neutralizing-marker") {
@@ -29540,6 +29585,7 @@ function syncLocalDisarrayShield(self) {
 }
 function syncLocalTempestBackup(self) {
   if (!isTempestHull() || !self) return;
+  if (Number(self.jamT) > 0) return;
   if (self.voltBackupT > 0 && self.voltBackupAt !== player._netTempestBackupAt) {
     player._netTempestBackupAt = self.voltBackupAt;
     player.hp = 1;
@@ -29949,6 +29995,12 @@ function syncNetNpcs(dt) {
     e._netLockBy = s.lock != null ? String(s.lock) : null;
     e.rocketSlowPct = Number(s.rocketSlowPct) || 0;
     e.rocketSlowT = Number(s.rocketSlowT) || 0;
+    e.jamxT = Number(s.jamT) || 0;
+    if (e.jamxT > 0) {
+      e._pendingSpawn = 0;
+      e._animPhase = null;
+      e.spritePlay = false;
+    }
     e.freezeT = Number(s.freezeT) || 0;
     // Parite solo : le flag "m'a attaque recemment" (qui force l'affichage
     // radar/minimap) suit l'aggro partagee, sinon les NPC tires restent
@@ -30056,7 +30108,7 @@ function syncNetNpcs(dt) {
       spawnCollectableAt("Cargo_Box", Number(L.x) || 0, Number(L.y) || 0, {
         armed: false,
         fromNpc: null,
-        despawnAfter: 30,
+        despawnAfter: 60,
         rewardOverride: { resources: {} },
         oreRemainder: { prometium: 1, endurium: 1, terbium: 1, prometid: 1, duranium: 1, promerium: 1, seprom: 1 },
         onlyBy: String(L.onlyBy),
@@ -30726,7 +30778,7 @@ function die() {
     spawnCollectableAt("Cargo_Box", player.x, player.y, {
       armed: false,
       fromNpc: null,
-      despawnAfter: 30,
+      despawnAfter: 60,
       rewardOverride: { resources: {} },
       oreRemainder: wreckOres,
       onlyBy: wreckOnlyBy,
@@ -36349,6 +36401,15 @@ if (movementLocked) {
       player.freezeT = Math.max(Number(player.freezeT) || 0, Number(self.freezeT) || 0);
       // Brouillage subi : modules verrouillés + lock coupé (comme une IEM).
       player.jamT = Math.max(0, Number(self.jamT) || 0);
+      if (Number(self.jamAt) > Number(player._netJamAt || 0)) {
+        player._netJamAt = Number(self.jamAt);
+        cancelPlayerAbilitiesForJam();
+      }
+      const passiveJammed = player.jamT > 0;
+      if (passiveJammed !== player._passiveJammed) {
+        player._passiveJammed = passiveJammed;
+        try { stockUpdateRange(); } catch {}
+      }
       if ((player.jamT || 0) > 0) {
         try {
           const locked = Target.get();
@@ -38842,7 +38903,7 @@ function draw() {
 
     // Volt Back-up passif (Tempest) : VOLT_BACKUP en boucle quand prêt
     // (pas pendant les 10 s actives, pas pendant la recharge).
-    if (isTempestHull() && (player.tempestBackupT || 0) <= 0 && Number(player.tempestBackupCd || 0) <= 0) {
+    if (isTempestHull() && !(Number(player.jamT) > 0) && (player.tempestBackupT || 0) <= 0 && Number(player.tempestBackupCd || 0) <= 0) {
       const vFrame = (Math.floor(performance.now() / 1000 * TEMPEST_BACKUP_FPS) % TEMPEST_BACKUP_FRAMES) + 1;
       const vSrc = `ASSETS/APTITUDES/TEMPEST_VOLT_BACKUP/${vFrame}.png`;
       const vImg = getCachedImage(vSrc);
@@ -39002,7 +39063,7 @@ function draw() {
       } else {
         try { loadImage(aSrc, { priority: true }); } catch {}
       }
-    } else if (isPaladinHull() && !player.dead && !player.lastStandFxOff) {
+    } else if (isPaladinHull() && !player.dead && !(Number(player.jamT) > 0) && !player.lastStandFxOff) {
       const fFrame = (Math.floor(performance.now() / 1000 * LASTSTAND_FX_FPS) % LASTSTAND_FX_FRAMES) + 1;
       const fSrc = `ASSETS/APTITUDES/PALADIN_LAST_STAND_EFFECT/${fFrame}.png`;
       const fImg = getCachedImage(fSrc);

@@ -1365,6 +1365,7 @@ export function ensureNetplayConnection() {
             ohAmt: Math.max(0, Math.round(Number(p.ohAmt) || 0)),
             // Brouillage subi (JAMX/Creed/Neutralizing) : verrou modules.
             jamT: Math.max(0, Number(p.jamT) || 0),
+            jamAt: Number(p.jamAt) || 0,
             at: now,
           };
           continue;
@@ -1672,6 +1673,7 @@ export function ensureNetplayConnection() {
             cubeT: Math.max(0, Number(n.cubeT) || 0),
             rocketSlowPct: Math.max(0, Math.min(95, Number(n.slowPct) || 0)),
             rocketSlowT: Math.max(0, Number(n.slowT) || 0),
+            jamT: Math.max(0, Number(n.jamT) || 0),
             freezeT: Math.max(0, Number(n.freezeT) || 0),
             lastSeen: now,
             sampleAt: positionChanged ? now : Number(prev?.sampleAt || now),

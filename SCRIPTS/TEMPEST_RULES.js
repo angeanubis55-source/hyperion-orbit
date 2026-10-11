@@ -8,12 +8,14 @@ export function tempestBackupActive(state, now) {
 export function tempestBackupReady(state, now) {
   return shipOwnsAbility(state._combat?.shipId || state.shipId, BACKUP)
     && !state.dead && !state.pvpDead && state.hp > 0
+    && now >= Number(state._jamUntil || 0)
     && now >= Number(state._tempestBackupCdUntil || 0)
     && !tempestBackupActive(state, now);
 }
 
 export function triggerTempestBackup(state, room, now, allowOneHp = false) {
   if (state.pvpDead || state.dead || state.hp > (allowOneHp ? 1 : 0)
+    || now < Number(state._jamUntil || 0)
     || !shipOwnsAbility(state._combat?.shipId || state.shipId, BACKUP)
     || tempestBackupActive(state, now) || now < Number(state._tempestBackupCdUntil || 0)) return false;
   state.hp = 1;
