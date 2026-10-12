@@ -16218,6 +16218,60 @@ window.giveMaxStock = function giveMaxStock() {
   return { ammo: AMOUNT, rockets: AMOUNT, credits: player.credits };
 };
 
+// Commandes locales de développement (F12, sans refresh) : anneaux dorés GG
+// pour tests visuels. Exemples console :
+//   giveAlphaCircle() / resetAlphaCircle()
+//   giveAllCircles() / resetAllCircles()
+//   giveBetaCircle() ... giveZetaCircle() + reset* pareils.
+const GG_CIRCLE_IDS = Object.freeze(["alpha", "beta", "gamma", "delta", "epsilon", "zeta"]);
+function setGgCircleCompleted(gateId, completed) {
+  if (!account.user) loadAccountUser();
+  if (!account.user) throw new Error("Aucun pilote connecté.");
+  const id = String(gateId || "").toLowerCase();
+  if (!GG_CIRCLE_IDS.includes(id)) throw new Error(`GG inconnue : ${gateId} (alpha/beta/gamma/delta/epsilon/zeta).`);
+  account.user.galaxyGates ||= {};
+  account.user.galaxyGates.completed ||= {};
+  account.user.galaxyGates.completed[id] = completed ? Math.max(1, Math.floor(Number(account.user.galaxyGates.completed[id]) || 1)) : 0;
+  markProgressDirty();
+  saveProgressNow();
+  try { renderGalaxyGateWindow(); } catch {}
+  try { window.dispatchEvent(new CustomEvent("orbit:galaxy-gates")); } catch {}
+  showNotification(completed ? `Anneau ${id} ajouté (test)` : `Anneau ${id} retiré (test)`, 3, "reward");
+  return account.user.galaxyGates.completed[id];
+}
+function setAllGgCirclesCompleted(completed) {
+  if (!account.user) loadAccountUser();
+  if (!account.user) throw new Error("Aucun pilote connecté.");
+  account.user.galaxyGates ||= {};
+  account.user.galaxyGates.completed ||= {};
+  for (const id of GG_CIRCLE_IDS) account.user.galaxyGates.completed[id] = completed ? Math.max(1, Math.floor(Number(account.user.galaxyGates.completed[id]) || 1)) : 0;
+  markProgressDirty();
+  saveProgressNow();
+  try { renderGalaxyGateWindow(); } catch {}
+  try { window.dispatchEvent(new CustomEvent("orbit:galaxy-gates")); } catch {}
+  showNotification(completed ? "Tous les anneaux GG ajoutés (test)" : "Tous les anneaux GG retirés (test)", 3, "reward");
+  return { ...account.user.galaxyGates.completed };
+}
+window.giveAlphaCircle = function giveAlphaCircle() { return setGgCircleCompleted("alpha", true); };
+window.giveBetaCircle = function giveBetaCircle() { return setGgCircleCompleted("beta", true); };
+window.giveGammaCircle = function giveGammaCircle() { return setGgCircleCompleted("gamma", true); };
+window.giveDeltaCircle = function giveDeltaCircle() { return setGgCircleCompleted("delta", true); };
+window.giveEpsilonCircle = function giveEpsilonCircle() { return setGgCircleCompleted("epsilon", true); };
+window.giveZetaCircle = function giveZetaCircle() { return setGgCircleCompleted("zeta", true); };
+window.giveAllCircles = function giveAllCircles() { return setAllGgCirclesCompleted(true); };
+window.resetAlphaCircle = function resetAlphaCircle() { return setGgCircleCompleted("alpha", false); };
+window.resetBetaCircle = function resetBetaCircle() { return setGgCircleCompleted("beta", false); };
+window.resetGammaCircle = function resetGammaCircle() { return setGgCircleCompleted("gamma", false); };
+window.resetDeltaCircle = function resetDeltaCircle() { return setGgCircleCompleted("delta", false); };
+window.resetEpsilonCircle = function resetEpsilonCircle() { return setGgCircleCompleted("epsilon", false); };
+window.resetZetaCircle = function resetZetaCircle() { return setGgCircleCompleted("zeta", false); };
+window.resetAllCircles = function resetAllCircles() { return setAllGgCirclesCompleted(false); };
+// Alias minuscules (console insensible à la casse pour tes tests).
+window.givealphacircle = window.giveAlphaCircle;
+window.resetalphacircle = window.resetAlphaCircle;
+window.giveallcircles = window.giveAllCircles;
+window.resetallcircles = window.resetAllCircles;
+
 // Commande locale de développement (F12, sans refresh) : recharge complète
 // de toutes les compétences (IEM/ISH + aptitudes vaisseau + robot réparateur),
 // sans refresh et sans toucher aux effets en cours. À taper dans la console :
@@ -21410,9 +21464,9 @@ function drawHoloClones(ox, oy) {
         });
       }
     } catch {}
-    // Barres + plaque identiques (pseudo, grade, firme).
+    // Barres + plaque identiques (pseudo, grade, firme + anneaux GG au-dessus du grade).
     try {
-      drawPlayerStatus(ctx, { hp: c.hp, hpMax: c.hpMax, sh: c.sh, shMax: c.shMax, r: Number(c.r || 18) }, pseudo, x, y, rankImage, factionImage, droneIndicators, formationImage, []);
+      drawPlayerStatus(ctx, { hp: c.hp, hpMax: c.hpMax, sh: c.sh, shMax: c.shMax, r: Number(c.r || 18) }, pseudo, x, y, rankImage, factionImage, droneIndicators, formationImage, [], false, true, undefined, undefined, galaxyGateRingMaskOfUser(account.user));
     } catch {}
   }
 }
@@ -32792,7 +32846,7 @@ function drawRemoteAbilityFx(r, shipFx) {
       drawPlayerStatus(ctx, { hp: 1, hpMax: 1, sh: 1, shMax: 1, r: 18 },
         (r.clan ? `[${r.clan}] ` : "") + String(r.pseudo || "Pilote"), 0, 0,
         getCachedImage(r.rank || ""), getCachedImage(getFaction(r.firm)?.imagePath || ""),
-        r.droneIndicators || [], getCachedImage(r.ficon || ""), r.moduleIndicators || []);
+        r.droneIndicators || [], getCachedImage(r.ficon || ""), r.moduleIndicators || [], false, true, undefined, undefined, Math.max(0, Math.floor(Number(r.gg) || 0)));
       ctx.restore();
     }
   };
@@ -33857,6 +33911,7 @@ function drawNetplayRemotes(ox, oy) {
         showRemoteDetails,
         remoteColors.name,
         remoteColors.tag,
+        Math.max(0, Math.floor(Number(r.gg) || 0)),
       );
     } catch {}
     ctx.restore();
@@ -34405,6 +34460,24 @@ function startGatePortalJump(ptl, action) {
 
 function getDroneFormationOffsets(count, formationId) {
   return getOfficialDroneFormationPositions(count, formationId);
+}
+// Masque d'anneaux GG pour le HUD (le dessin est dans UI_CANVAS_HUD :
+// drawPlayerStatus affiche les anneaux AU-DESSUS du grade).
+// Bits : alpha=1, beta=2, gamma=4, delta=8, epsilon=16, zeta=32.
+const GG_RING_BITS = Object.freeze({ alpha: 1, beta: 2, gamma: 4, delta: 8, epsilon: 16, zeta: 32 });
+function galaxyGateRingMaskFromCompleted(completed) {
+  let mask = 0;
+  try {
+    for (const [id, bit] of Object.entries(GG_RING_BITS)) {
+      if (Number(completed?.[id]) > 0) mask |= bit;
+    }
+  } catch {}
+  return mask;
+}
+function galaxyGateRingMaskOfUser(user) {
+  try {
+    return galaxyGateRingMaskFromCompleted(user?.galaxyGates?.completed);
+  } catch { return 0; }
 }
 const droneVisualStates = new Map();
 const playerDroneFormationMotion = {
@@ -35315,6 +35388,10 @@ function drawPlayerBars(px, py) {
     droneFormationImage,
     moduleIndicators,
     String(ACTIVE_SHIP?.id || "").toLowerCase() === "police",
+    true,
+    undefined,
+    undefined,
+    galaxyGateRingMaskOfUser(account.user),
   );
 }
 
@@ -40492,6 +40569,7 @@ function frame(t) {
         drones: account?.user?.drones?.items?.length || 0,
         dform: dformId,
         dslots: dslotsNow,
+        gg: galaxyGateRingMaskOfUser(account.user),
         safe: netSafe,
         rank: rankPathNow.slice(0, 64),
         firm: firmNow.slice(0, 16),

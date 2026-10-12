@@ -58,7 +58,43 @@ export function drawTargetLock(context, entity, image, sprite, offsetX, offsetY,
   context.restore();
 }
 
-export function drawPlayerStatus(context, player, playerName, x, y, rankImage = null, factionImage = null, droneIndicators = [], droneFormationImage = null, moduleIndicators = [], adminTag = false, showDetails = true, nameColor = "rgba(255,255,255,0.95)", tagColor = null) {
+// Anneaux dorés GG façon DarkOrbit : 1 anneau par gate terminée, en 2 rangées
+// de 3 AU-DESSUS du grade (visible par tous).
+//   haut : epsilon (gauche), delta (milieu), zeta (droite)
+//   bas  : alpha (gauche), beta (milieu), gamma (droite)
+// Bits : alpha=1, beta=2, gamma=4, delta=8, epsilon=16, zeta=32.
+const GG_RING_BITS_HUD = Object.freeze({ alpha: 1, beta: 2, gamma: 4, delta: 8, epsilon: 16, zeta: 32 });
+const GG_RING_GRID_HUD = Object.freeze([
+  Object.freeze({ id: "epsilon", col: 0, row: 0 }),
+  Object.freeze({ id: "delta", col: 1, row: 0 }),
+  Object.freeze({ id: "zeta", col: 2, row: 0 }),
+  Object.freeze({ id: "alpha", col: 0, row: 1 }),
+  Object.freeze({ id: "beta", col: 1, row: 1 }),
+  Object.freeze({ id: "gamma", col: 2, row: 1 }),
+]);
+function drawGgRingsAboveRank(context, mask, rankCenterX, rankTopY) {
+  const bits = Math.max(0, Math.floor(Number(mask) || 0));
+  if (!(bits > 0)) return;
+  const gap = 5.5;
+  const rowGap = 5.5;
+  for (const spot of GG_RING_GRID_HUD) {
+    if (!(bits & GG_RING_BITS_HUD[spot.id])) continue;
+    const cx = rankCenterX + (spot.col - 1) * gap;
+    const cy = rankTopY - 3 - (1 - spot.row) * rowGap;
+    context.save();
+    context.globalAlpha = 0.95;
+    // Simple cercle doré, glow quasi nul.
+    context.strokeStyle = "#FFD700";
+    context.lineWidth = 1.1;
+    context.shadowColor = "rgba(255,184,0,0.35)";
+    context.shadowBlur = 1.5;
+    context.beginPath();
+    context.arc(cx, cy, 2.1, 0, Math.PI * 2);
+    context.stroke();
+    context.restore();
+  }
+}
+export function drawPlayerStatus(context, player, playerName, x, y, rankImage = null, factionImage = null, droneIndicators = [], droneFormationImage = null, moduleIndicators = [], adminTag = false, showDetails = true, nameColor = "rgba(255,255,255,0.95)", tagColor = null, ggMask = 0) {
   if (!context || !player || player.dead) return;
   const width = 120;
   const height = 4;
@@ -154,6 +190,9 @@ export function drawPlayerStatus(context, player, playerName, x, y, rankImage = 
         rankImage.naturalWidth,
         rankImage.naturalHeight,
       );
+      drawGgRingsAboveRank(context, ggMask, startX - rankImage.naturalWidth / 2 - 5, nameY);
+    } else {
+      drawGgRingsAboveRank(context, ggMask, startX - 16, nameY);
     }
     context.restore();
     return;
@@ -187,6 +226,9 @@ export function drawPlayerStatus(context, player, playerName, x, y, rankImage = 
       rankImage.naturalWidth,
       rankImage.naturalHeight,
     );
+    drawGgRingsAboveRank(context, ggMask, x - textWidth / 2 - rankImage.naturalWidth / 2 - 5, nameY);
+  } else {
+    drawGgRingsAboveRank(context, ggMask, x - textWidth / 2 - 11, nameY);
   }
   if (factionImage?.complete && factionImage.naturalWidth > 0) {
     context.drawImage(
