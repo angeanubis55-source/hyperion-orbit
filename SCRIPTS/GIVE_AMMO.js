@@ -1,7 +1,7 @@
 // SCRIPTS/GIVE_AMMO.js — Donne des munitions laser à un compte (base serveur SQLite).
 // Usage : node SCRIPTS/GIVE_AMMO.js <pseudo> <type> [quantite]
 //   - pseudo   : pseudo du compte (insensible à la casse) ou id interne.
-//   - type     : x2, x3, x4, x6, sab, rcb, cbo, job, rb, pib, idb, vb, emaa, sbl, abl.
+//   - type     : x2, x3, x4, x6, sab, rcb, cbo, job, rb, pib, idb, vb, emaa, sbl, abl, tent, ice.
 //   - quantite : munitions à AJOUTER (défaut 10000). Négatif = retirer.
 // Exemples :
 //   node SCRIPTS/GIVE_AMMO.js MonPseudo x4 50000
@@ -14,7 +14,7 @@ import { DatabaseSync } from "node:sqlite";
 import { join, resolve } from "node:path";
 
 const DB_PATH = join(resolve(process.cwd(), "SERVER_DATA"), "orbit.db");
-const VALID_AMMO = new Set(["x2", "x3", "x4", "x6", "sab", "rcb", "cbo", "job", "rb", "pib", "idb", "vb", "emaa", "sbl", "abl", "tent"]);
+const VALID_AMMO = new Set(["x2", "x3", "x4", "x6", "sab", "rcb", "cbo", "job", "rb", "pib", "idb", "vb", "emaa", "sbl", "abl", "tent", "ice"]);
 
 const target = String(process.argv[2] || "").trim();
 const type = String(process.argv[3] || "").trim().toLowerCase();

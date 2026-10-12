@@ -274,6 +274,7 @@ function defaultAmmo() {
     sbl: 0,
     abl: 0,
     tent: 0,
+    ice: 0,
 
     // nouveaux types
     ABL: 0,
@@ -820,14 +821,14 @@ function ensureUserShape(u) {
   u.ammo.x1 = Infinity;
 
   // normalise les munitions connues
-  const AMMO_KEYS = ["x2", "x3", "x4", "x6", "sab", "rcb", "cbo", "job", "rb", "pib", "idb", "vb", "emaa", "sbl", "abl", "ABL", "RADION", "tent"];
+  const AMMO_KEYS = ["x2", "x3", "x4", "x6", "sab", "rcb", "cbo", "job", "rb", "pib", "idb", "vb", "emaa", "sbl", "abl", "ABL", "RADION", "tent", "ice"];
   for (const k of AMMO_KEYS) {
     u.ammo[k] = Math.max(0, Number(u.ammo[k] || 0));
   }
 
   // Sélection munition du dock rapide (persistée comme rocketActive).
   // Fallback compat : ancienne sauvegarde avec ammo.active embarqué.
-  const VALID_ACTIVE_AMMO = ["x1", "x2", "x3", "x4", "x6", "sab", "rcb", "cbo", "job", "rb", "pib", "idb", "vb", "emaa", "sbl", "abl", "tent"];
+  const VALID_ACTIVE_AMMO = ["x1", "x2", "x3", "x4", "x6", "sab", "rcb", "cbo", "job", "rb", "pib", "idb", "vb", "emaa", "sbl", "abl", "tent", "ice"];
   const rawAmmoActive = String(u.ammoActive ?? u.ammo?.active ?? "x1").toLowerCase();
   u.ammoActive = VALID_ACTIVE_AMMO.includes(rawAmmoActive) ? rawAmmoActive : "x1";
   u.ammo.active = u.ammoActive;
@@ -1582,14 +1583,14 @@ export function updateCurrentUserProgress(patch = {}) {
     if (patch.ammo.x4 != null) u.ammo.x4 = Math.max(0, Number(patch.ammo.x4 || 0));
     if (patch.ammo.x6 != null) u.ammo.x6 = Math.max(0, Number(patch.ammo.x6 || 0));
     if (patch.ammo.sab != null) u.ammo.sab = Math.max(0, Number(patch.ammo.sab || 0));
-    for (const k of ["rcb", "cbo", "job", "rb", "pib", "idb", "vb", "emaa", "sbl", "abl", "tent"]) {
+    for (const k of ["rcb", "cbo", "job", "rb", "pib", "idb", "vb", "emaa", "sbl", "abl", "tent", "ice"]) {
       if (patch.ammo[k] != null) u.ammo[k] = Math.max(0, Number(patch.ammo[k] || 0));
     }
   }
   // Sélection munition du dock rapide (miroir de rocketActive).
   // Acceptée via patch.ammoActive ou patch.ammo.active (compat).
   {
-    const VALID_ACTIVE_AMMO = ["x1", "x2", "x3", "x4", "x6", "sab", "rcb", "cbo", "job", "rb", "pib", "idb", "vb", "emaa", "sbl", "abl", "tent"];
+    const VALID_ACTIVE_AMMO = ["x1", "x2", "x3", "x4", "x6", "sab", "rcb", "cbo", "job", "rb", "pib", "idb", "vb", "emaa", "sbl", "abl", "tent", "ice"];
     const rawAmmoActive = patch.ammoActive ?? patch.ammo?.active;
     if (rawAmmoActive != null) {
       const key = String(rawAmmoActive).toLowerCase();
@@ -2916,6 +2917,9 @@ export function sellItem(itemId, qty = 1, options = {}) {
 
   // pas de vente de P.E.T ici (unique)
   if (it.pet) return { ok: false, error: "Impossible de vendre un P.E.T." };
+
+  // pas de revente des tickets (ex : relance module : consommable de roulette gratuite).
+  if (it.ticket) return { ok: false, error: "Les tickets ne peuvent pas être vendus." };
 
   const price = Number(it.price || 0);
   if (!Number.isFinite(price) || price <= 0) return { ok: false, error: "Prix invalide." };

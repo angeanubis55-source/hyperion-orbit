@@ -594,6 +594,7 @@ const ITEM_ICONS = {
   ammo_sbl: ITEM_ICON_BASE + "AMMO_SBL.png",
   ammo_abl: ITEM_ICON_BASE + "AMMO_ABL.png",
   ammo_tent: ITEM_ICON_BASE + "AMMO_TENT.png",
+  ammo_ice: ITEM_ICON_BASE + "AMMO_ICE.png",
   // Roquettes : icônes de /COMBAT/ROCKET_SPRITES/ (ton dossier). Fallbacks automatiques si absent.
   rocket_r310: "/COMBAT/ROCKET_SPRITES/R-310_100X100.png",
   ammo_r310: "/COMBAT/ROCKET_SPRITES/R-310_100X100.png",
@@ -1030,7 +1031,7 @@ const INVENTORY_AMMO_NAMES = Object.freeze({
   job: "Munitions JOB-100", rb: "Munitions RB-214",
   pib: "Munitions PIB-100", idb: "Munitions IDB-125",
   vb: "Munitions VB-142", emaa: "Munitions EMAA-20",
-  sbl: "Munitions SBL-100", abl: "Munitions A-BL", tent: "Munitions TENT-100",
+  sbl: "Munitions SBL-100", abl: "Munitions A-BL", tent: "Munitions TENT-100", ice: "Munitions ICE-100",
   r310: "Roquette R-310",
 });
 

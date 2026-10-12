@@ -116,6 +116,9 @@ export const CATALOG = {
   { id: "ammo_tent", name: "TENT-100", price: 50000000, give: { ammo: { tent: 1000 } },
     code: "TENT-100", mult: 4, laser: "violet-bleu",
     desc: "Dégâts quadruplés (×4), ×8 contre les Lordakiums.", effect: "Tirs violet-bleu." },
+  { id: "ammo_ice", name: "ICE-100", price: 55000000, give: { ammo: { ice: 1000 } },
+    code: "ICE-100", mult: 4, laser: "glace",
+    desc: "Dégâts quadruplés (×4), ×8 contre l'Emperor Kristallon uniquement.", effect: "Tirs glacés." },
   ].map((item) => {
     const ammoId = Object.keys(item.give.ammo)[0];
     return { ...item, desc: ammoDescription(ammoId) };

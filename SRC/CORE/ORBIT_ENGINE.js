@@ -1030,12 +1030,6 @@ const ui = {
   otPalladiumGain: document.getElementById("otPalladiumGain"),
   otExchangeBtn: document.getElementById("otExchangeBtn"),
   otRows: document.getElementById("otRows"),
-  gygerimStatus: document.getElementById("gygerimStatus"),
-  bossStatusTitle: document.getElementById("bossStatusTitle"),
-  gygerimHpBar: document.getElementById("gygerimHpBar"),
-  gygerimShBar: document.getElementById("gygerimShBar"),
-  gygerimHpTxt: document.getElementById("gygerimHpTxt"),
-  gygerimShTxt: document.getElementById("gygerimShTxt"),
 
   respawnOverlay: document.getElementById("respawnOverlay"),
   respawnBaseBtn: document.getElementById("respawnBaseBtn"),
@@ -9354,8 +9348,7 @@ function registerHudWindows() {
   reg("botWindow", "BOT", menuIcon("payload_escort"), false);
   reg("wikiWindow", "Wiki / Aide", menuIcon("help"), false);
   reg("tdmWindow", "Inventaire", menuIcon("monthly_deluxe"), false);
-  reg("gygerimStatus", "État du boss", menuIcon("worldBoss"), true, { minimizable: false });
-wireSettingsWindow();
+  wireSettingsWindow();
 wireWikiWindow();
 initChatUI();
 initGroupUI();
@@ -9628,11 +9621,11 @@ const BOT_MAPS = [
   "4-4", "4-5", "5-2", "MAUDITE", "1-BL", "2-BL", "3-BL",
 ];
 // Munitions laser sélectionnables par NPC (vide = auto / ne pas changer).
-const BOT_AMMO_IDS = ["x1", "x2", "x3", "x4", "x6", "sab", "rcb", "cbo", "job", "rb", "pib", "idb", "vb", "emaa", "sbl", "abl", "tent"];
+const BOT_AMMO_IDS = ["x1", "x2", "x3", "x4", "x6", "sab", "rcb", "cbo", "job", "rb", "pib", "idb", "vb", "emaa", "sbl", "abl", "tent", "ice"];
 const BOT_AMMO_NAMES = Object.freeze({
   x1: "LCB-10", x2: "MCB-25", x3: "MCB-50", x4: "UCB-100", x6: "RSB-75",
   sab: "SAB-50", rcb: "RCB-140", cbo: "CBO-100", job: "JOB-100", rb: "RB-214",
-  pib: "PIB-100", idb: "IDB-125", vb: "VB-142", emaa: "EMAA-20", sbl: "SBL-100", abl: "A-BL", tent: "TENT-100",
+  pib: "PIB-100", idb: "IDB-125", vb: "VB-142", emaa: "EMAA-20", sbl: "SBL-100", abl: "A-BL", tent: "TENT-100", ice: "ICE-100",
 });
 // Modules du bot (façon fenêtre Général) : chaque module dérive un mode
 // de farm (kill/collect/both) + un comportement (quêtes, galaxy gates).
@@ -13647,7 +13640,7 @@ function craftingAmmoAmount(user, ammoId) {
   return Math.max(0, Math.floor(Number(user?.ammo?.[id] || 0)));
 }
 
-const CRAFTING_AMMO_NAMES = { x1: "LCB-10", x2: "MCB-25", x3: "MCB-50", x4: "UCB-100", x6: "RSB-75", sab: "SAB-50", rcb: "RCB-140", cbo: "CBO-100", job: "JOB-100", rb: "RB-214", pib: "PIB-100", idb: "IDB-125", vb: "VB-142", emaa: "EMAA-20", sbl: "SBL-100", abl: "A-BL", tent: "TENT-100" };
+const CRAFTING_AMMO_NAMES = { x1: "LCB-10", x2: "MCB-25", x3: "MCB-50", x4: "UCB-100", x6: "RSB-75", sab: "SAB-50", rcb: "RCB-140", cbo: "CBO-100", job: "JOB-100", rb: "RB-214", pib: "PIB-100", idb: "IDB-125", vb: "VB-142", emaa: "EMAA-20", sbl: "SBL-100", abl: "A-BL", tent: "TENT-100", ice: "ICE-100" };
 function craftingAmmoName(ammoId) {
   const id = String(ammoId || "");
   return CRAFTING_AMMO_NAMES[id] || `Munitions ${id.toUpperCase()}`;
@@ -16077,7 +16070,7 @@ function claimQuestReward(questId) {
       renderGalaxyGateWindow();
     }
   }
-  const AMMO_REWARD_NAMES = { x6: "RSB-75", rcb: "RCB-140", cbo: "CBO-100", job: "JOB-100", rb: "RB-214", pib: "PIB-100", idb: "IDB-125", vb: "VB-142", emaa: "EMAA-20", sbl: "SBL-100", abl: "A-BL", tent: "TENT-100", sab: "SAB-50", x2: "MCB-25", x3: "MCB-50", x4: "UCB-100", x1: "LCB-10" };
+  const AMMO_REWARD_NAMES = { x6: "RSB-75", rcb: "RCB-140", cbo: "CBO-100", job: "JOB-100", rb: "RB-214", pib: "PIB-100", idb: "IDB-125", vb: "VB-142", emaa: "EMAA-20", sbl: "SBL-100", abl: "A-BL", tent: "TENT-100", ice: "ICE-100", sab: "SAB-50", x2: "MCB-25", x3: "MCB-50", x4: "UCB-100", x1: "LCB-10" };
   const ammoMessages = ammoGained.map(([type, gained]) => `Vous avez reçu ${formatInteger(gained)} munitions ${AMMO_REWARD_NAMES[type] || String(type).toUpperCase()}`);
   const energyMessage = galaxyEnergy > 0 ? `Vous avez reçu ${formatInteger(galaxyEnergy)} énergies pour les portails intergalactiques (GG)` : "";
   addGameLog(`Mission ${quest?.title || questId} · +${formatInteger(creditsGained)} crédits · +${formatInteger(gainedXp)} XP · +${formatInteger(gainedHonor)} honneur${ammoMessages.length ? ` · ${ammoMessages.join(" · ")}` : ""}${laserMessages.length ? ` · ${laserMessages.join(" · ")}` : ""}${resourceMessages.length ? ` · ${resourceMessages.join(" · ")}` : ""}${energyMessage ? ` · ${energyMessage}` : ""}`, "reward");
@@ -16186,6 +16179,7 @@ hangarState: !player.dead && started && !hangarLocationTransferPending() ? {
     sbl: player.ammo.sbl || 0,
     abl: player.ammo.abl || 0,
     tent: player.ammo.tent || 0,
+    ice: player.ammo.ice || 0,
   },
   // Sélections (munition/roquette/lanceur actifs, modes AUTO) : JAMAIS ici.
   // Elles persistent en écriture immédiate au moment du choix (setAmmo,
@@ -16590,6 +16584,7 @@ function syncPlayerStocksFromAccount(fresh) {
     sbl: Math.max(0, Number(a.sbl || 0)),
     abl: Math.max(0, Number(a.abl || 0)),
     tent: Math.max(0, Number(a.tent || 0)),
+    ice: Math.max(0, Number(a.ice || 0)),
   };
 
   // Roquettes : appliquer aussi les diminutions confirmées.
@@ -19201,7 +19196,7 @@ const player = {
 
   altShot: false,
 
-  ammo: { active: "x1", x1: Infinity, x2: 0, x3: 0, x4: 0, x6: 0, sab: 0, rcb: 0, cbo: 0, job: 0, rb: 0, pib: 0, idb: 0, vb: 0, emaa: 0, sbl: 0, abl: 0, tent: 0 },
+  ammo: { active: "x1", x1: Infinity, x2: 0, x3: 0, x4: 0, x6: 0, sab: 0, rcb: 0, cbo: 0, job: 0, rb: 0, pib: 0, idb: 0, vb: 0, emaa: 0, sbl: 0, abl: 0, tent: 0, ice: 0 },
 
   // Roquettes : stock consommable (lance-roquettes natif au vaisseau).
   // Seule player.rocketActive est tirée ; sélection dans l'onglet Roquettes.
@@ -19367,6 +19362,7 @@ function restorePlayerStockFromUser(u) {
     sbl: Math.max(0, Number(a.sbl || 0)),
     abl: Math.max(0, Number(a.abl || 0)),
     tent: Math.max(0, Number(a.tent || 0)),
+    ice: Math.max(0, Number(a.ice || 0)),
   };
   const rk0 = (u.rockets && typeof u.rockets === "object") ? u.rockets : {};
   player.rockets = Object.fromEntries(ROCKET_IDS.map((id) => [id, Math.max(0, Math.floor(Number(rk0[id] || 0)))]));
@@ -20590,6 +20586,16 @@ if (phoneControlsRoot) {
     onAimRelease: releasePhoneAim,
   });
 }
+// Mode téléphone : bloque le menu d'appui long ("Ouvrir dans un nouvel
+// onglet", aperçu de lien...) quand on garde le doigt appuyé en jeu.
+// Champs texte exclus pour garder copier/coller. Bureau inchangé.
+document.addEventListener("contextmenu", (event) => {
+  try {
+    if (!document.querySelector("#phoneControls:not([hidden])")) return;
+    if (event.target?.closest?.("input, select, textarea, [contenteditable='true']")) return;
+    event.preventDefault();
+  } catch {}
+});
 
 // ✅ Position souris écran mémorisée
 function rememberPointer(e) {
@@ -39838,21 +39844,6 @@ function drawUI() {
     setHudText(ui.kills, formatInteger(player.kills));
   }
 
-  if (ui.gygerimStatus) {
-    const bossType = rules?.bossEncounter?.bossType;
-    const boss = bossType ? enemies.find(enemy => enemy?.hp > 0 && enemy.type === bossType) : null;
-    setHudDisplay(ui.gygerimStatus, boss ? "block" : "none");
-    if (boss) {
-      const hpMax = Math.max(1, Number(boss.hpMax) || 1);
-      const shMax = Math.max(0, Number(boss.shMax) || 0);
-      setHudText(ui.bossStatusTitle, String(NPC_TYPES[boss.type]?.name || rules?.bossEncounter?.name || "BOSS").toLocaleUpperCase("fr-FR"));
-      setHudWidth(ui.gygerimHpBar, `${clamp(boss.hp / hpMax, 0, 1) * 100}%`);
-      setHudWidth(ui.gygerimShBar, `${(shMax > 0 ? clamp(boss.sh / shMax, 0, 1) : 0) * 100}%`);
-      setHudText(ui.gygerimHpTxt, `${formatInteger(boss.hp)} / ${formatInteger(hpMax)}`);
-      setHudText(ui.gygerimShTxt, `${formatInteger(boss.sh)} / ${formatInteger(shMax)}`);
-    }
-  }
-
 const u = account.user || null;
 const st = u?.stats || {};
 
@@ -40537,6 +40528,7 @@ updateCurrentUserProgress({
     sbl: player.ammo.sbl || 0,
     abl: player.ammo.abl || 0,
     tent: player.ammo.tent || 0,
+    ice: player.ammo.ice || 0,
   },
   // Sélections : voir ci-dessus (écriture immédiate, jamais l'autosave).
   rockets: sanitizeRocketsForSave(),

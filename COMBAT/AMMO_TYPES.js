@@ -23,6 +23,9 @@ export const AMMO = {
   sbl: { mult: 4.0, vsMatch: [/^npc_(?!.*Sibelonit).*Sibelon/], vsMult: 8.0, color: "rgba(80,220,255,0.95)" },
   abl: { mult: 4.0, vsMatch: [/Invoke/, /Mindfire/], vsMult: 8.0, color: "rgba(255,110,180,0.95)" },
   tent: { mult: 4.0, vsMatch: [/Lordakium/], vsMult: 8.0, color: "rgba(122,111,255,0.95)" },
+  // ICE : comme SBL (Sibelons) / TENT (Lordakiums), mais bonus réservé
+  // au seul Emperor Kristallon (pas les Kristallon/Kristallin normaux, Boss, Uber).
+  ice: { mult: 4.0, vsMatch: [/Emperor_Kristallon/], vsMult: 8.0, color: "rgba(150,225,255,0.95)" },
 };
 
 const AMMO_DESCRIPTIONS = Object.freeze({
@@ -43,6 +46,7 @@ const AMMO_DESCRIPTIONS = Object.freeze({
   sbl: "Dégâts ×4 contre les NPC et les JOUEURS.\nou ×8 contre les Sibelons (Boss, Uber, Emperor).",
   abl: "Dégâts ×4, ou ×8 contre Invoke et Mindfire Behemoth.",
   tent: "Dégâts ×4 contre les NPC et les JOUEURS.\nou ×8 contre les Lordakiums (Boss, Uber, Emperor).",
+  ice: "Dégâts ×4 contre les NPC et les JOUEURS.\nou ×8 contre l'Emperor Kristallon uniquement.",
 });
 
 export function ammoDescription(id) {
@@ -80,6 +84,7 @@ export const PLAYER_BULLET_SPRITES = {
   sbl: { src: "COMBAT/MUNITIONS/SBL.png", w: 114, h: 18, glow: true, rotateOffset: Math.PI },
   abl: { src: "COMBAT/MUNITIONS/ABL.png", w: 43, h: 12, glow: true, rotateOffset: Math.PI },
   tent: { src: "COMBAT/MUNITIONS/TENTACUL.png", w: 78, h: 18, glow: true, rotateOffset: 0 },
+  ice: { src: "COMBAT/MUNITIONS/ICE_AMMO.png", w: 78, h: 18, glow: true, rotateOffset: Math.PI },
   // Roquettes : sprites officiels extraits des rocketN.swf (voir COMBAT/ROCKET_TYPES.js
 //   pour le mapping). w/h = tailles natives : pas de déformation au rendu.
   r310: { src: "COMBAT/MUNITIONS/R310.png", w: 26, h: 5, glow: true, rotateOffset: Math.PI },

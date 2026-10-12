@@ -200,6 +200,11 @@ function openSellDialog() {
     engineNotify(`${entry.name || "Objet"} : non vendable (vaisseaux, designs, P.E.T, drones et ressources exclus).`, 3, "error");
     return;
   }
+  // Tickets (ex : relance module) : utilisables mais jamais vendables.
+  if (entry.item?.ticket) {
+    engineNotify(`${entry.name || "Objet"} : les tickets ne peuvent pas être vendus.`, 3, "error");
+    return;
+  }
   const unitGain = sellUnitPrice(entry.kind, entry.id, entry.module);
   if (!(unitGain > 0)) {
     engineNotify(`${entry.name || "Objet"} : sans prix de vente.`, 3, "error");

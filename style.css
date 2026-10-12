@@ -74,6 +74,28 @@ html.orbitSessionReady #loadingOverlay {
   -webkit-user-select:none;
   user-select:none;
 }
+/* Mode téléphone : aucun menu d'appui long (aperçu de lien, "Ouvrir dans...",
+   loupe, sélection) sur le jeu et le HUD quand on garde le doigt appuyé.
+   Champs texte exclus pour garder copier/coller. */
+body:has(> #phoneControls:not([hidden])) {
+  -webkit-touch-callout:none;
+}
+body:has(> #phoneControls:not([hidden])) a,
+body:has(> #phoneControls:not([hidden])) img,
+body:has(> #phoneControls:not([hidden])) canvas,
+body:has(> #phoneControls:not([hidden])) .panel,
+body:has(> #phoneControls:not([hidden])) .ammoBtn,
+body:has(> #phoneControls:not([hidden])) button {
+  -webkit-touch-callout:none;
+  -webkit-user-select:none;
+  user-select:none;
+}
+body:has(> #phoneControls:not([hidden])) input,
+body:has(> #phoneControls:not([hidden])) select,
+body:has(> #phoneControls:not([hidden])) textarea,
+body:has(> #phoneControls:not([hidden])) [contenteditable="true"] {
+  -webkit-touch-callout:default;
+}
 #phoneControls {
   position:fixed;
   inset:0;
@@ -2824,6 +2846,10 @@ html body #profileOverlay .profileHeaderTop .profileTitle, html body #profileOve
     linear-gradient(90deg, rgba(0,217,255,.18), rgba(124,240,255,.05), rgba(255,255,255,.035)) !important;
   cursor:grab !important;
   user-select:none !important;
+  /* La poignée ne doit jamais déclencher scroll/zoom tactile : sinon le
+     navigateur annule le déplacement en cours de geste (fenêtre qui
+     avance pixel par pixel sur téléphone). */
+  touch-action:none !important;
 }
 .gameWindow > .gameWinBar:active {
   cursor:grabbing !important;
@@ -7396,6 +7422,9 @@ html body #profileOverlay .profileHeaderTop .profileTitle, html body #profileOve
 .ammoBtn[data-ammo="tent"] {
   --c:#8a7bff;
 }
+.ammoBtn[data-ammo="ice"] {
+  --c:#96e1ff;
+}
 .ammoBtn[data-skill="pulse"] {
   --c:#b342ff;
 }
@@ -10062,6 +10091,9 @@ body #profileOverlay #panel_shop .shopLayout {
 }
 #ammoBar .compactAmmoBtn[data-ammo="tent"]::before {
   background-image:url("ASSETS/ITEMS/AMMO_TENT.png");
+}
+#ammoBar .compactAmmoBtn[data-ammo="ice"]::before {
+  background-image:url("ASSETS/ITEMS/AMMO_ICE.png");
 }
 #ammoBar .compactAmmoBtn[data-ammo] > strong {
   display:none !important;
