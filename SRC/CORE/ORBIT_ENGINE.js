@@ -21422,6 +21422,23 @@ function petMissChance(pet, user) {
   const aim = getPetProtocolPct(pet, user, "aim");
   return Math.max(0, Math.min(1, PLAYER_SHOTS.missChance - aim / 100));
 }
+// Le REX ne peut se battre que s'il a au moins un laser équipé sur son
+// fit actif (même condition que firePetVolley, en version légère pour le
+// choix de cible : évite qu'un REX sans lasers colle les NPC pour rien).
+function petHasGuns() {
+  try {
+    const user = account.user;
+    const hangar = (user?.hangars || []).find((h) => h?.active) || null;
+    const hid = hangar ? String(hangar.id) : null;
+    const cfg = String(Number(hangar?.activeConfig) === 2 ? 2 : 1);
+    const fit = hid ? getPetFit(user?.pet, hid, cfg) : null;
+    for (const itemId of fit?.lasers || []) {
+      const item = itemId ? findCatalogItem(itemId) : null;
+      if (item?.module?.type === "laser") return true;
+    }
+  } catch {}
+  return false;
+}
 
 function firePetVolley(target) {
   const { total, count } = petVolleyDamage(account.user?.pet, account.user, target);
@@ -22689,6 +22706,15 @@ function updatePet(dt) {
     }
   }
   if (!petCombatMode) petState.assistTarget = null;
+  // Localisateur d'ennemis (G-EL) : le REX engage aussi la cible localisée
+  // au lieu de rester passif. Rejoint le circuit normal ci-dessous (laisse,
+  // cessez-le-feu en zone sûre, stabilité de cible) comme une cible combat :
+  // il vole jusqu'à elle et tire une fois à portée (300).
+  if (!target && petGears.el > 0 && petLocator.enemyId != null && petHasGuns()) {
+    let foe = null;
+    try { foe = getEnemyById(petLocator.enemyId); } catch {}
+    if (foe && foe.hp > 0 && petTargetStillValid(foe)) target = foe;
+  }
   // Multi PvP : pas de tir REX en zone de non-agression (parité avec le joueur).
   if (target && target._netPlayer != null) {
     try { if (netPvpBlocked(target)) target = null; } catch {}
