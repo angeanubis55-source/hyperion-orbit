@@ -212,12 +212,14 @@ import { SFX_SOUND_NAMES } from "./SFX.js";
 import { createWorldClock } from "../SIM/WORLD_CLOCK.js";
 import {
   UNIVERSE_KEY,
+  applyNpcDensityToCamps,
   createUniverse,
   deserializeUniverse,
   ensureMapSlots,
   getSlot,
   markAlive,
   markDead,
+  pruneStoredSlotsToDensity,
   serializeUniverse,
   snapshotEnemy as snapshotUniverseEnemy,
   slotUid,
@@ -30576,7 +30578,8 @@ collectableFarTickT = 0;
   Target.clear();
 
   if (isZoneMap && typeof rules.getZoneSpawns === "function") {
-    const freshCamps = (preparedZoneCamps || rules.getZoneSpawns(WORLD)).map((c, idx) => ({
+    const rawCamps = preparedZoneCamps || rules.getZoneSpawns(WORLD);
+    const freshCamps = applyNpcDensityToCamps(rawCamps).map((c, idx) => ({
       id: idx + 1,
       ...c,
       t: 0,
@@ -30593,7 +30596,7 @@ collectableFarTickT = 0;
         for (const c of freshCamps) {
           if (!tuningByType.has(String(c.type))) tuningByType.set(String(c.type), c);
         }
-        zoneCamps = stored.slice(0, Math.max(1, freshCamps.length)).map((s, idx) => {
+        zoneCamps = pruneStoredSlotsToDensity(stored, Math.max(1, freshCamps.length)).map((s, idx) => {
           const tuning = tuningByType.get(String(s.type)) || freshCamps[idx] || freshCamps[0] || {};
           return {
             id: idx + 1,

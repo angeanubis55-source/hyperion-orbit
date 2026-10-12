@@ -16,6 +16,91 @@ export const BOSS_RESPAWN_DELAY_MS = 0;
 export const MAX_MAPS_STORED = 64;
 export const MAX_SLOTS_PER_MAP = 220;
 
+// Densité globale des NPC en zone (1 = 100 % des camps définis dans MAPS/*/SPAWNS.js).
+// 0.7 = -30 % de NPC par map. Les camps de raid (LOW, raidWave), les camps
+// fixes (boss BL : Strokelight/Mindfire...) et les types rares (Emperor,
+// Invoke, Century Falcon, types présents ≤ 2 fois) sont toujours conservés :
+// seuls les communs surnuméraires sont tirés au sort.
+export const NPC_DENSITY = 0.7;
+
+const NPC_DENSITY_KEEP_RE = /emperor|invoke|strokelight|mindfire|century|falcon|cubikon_maudite/i;
+
+function npcDensityKeepType(type, count) {
+  if (NPC_DENSITY_KEEP_RE.test(String(type || ""))) return true;
+  return Number(count) <= 2;
+}
+
+// Réduit une liste de camps de zone selon NPC_DENSITY en préservant les rares.
+// - raidWave (LOW) : retourné tel quel (la progression du raid est exacte).
+// - fixed : toujours conservés.
+// - rares (voir ci-dessus) : toujours conservés.
+// - communs : tirage aléatoire (Fisher-Yates) jusqu'à la cible.
+export function applyNpcDensityToCamps(camps = []) {
+  const list = Array.isArray(camps) ? camps.slice() : [];
+  if (list.length === 0) return list;
+  if (list.some((c) => c && c.raidWave != null)) return list;
+  const density = Number(NPC_DENSITY);
+  if (!(density < 1) || !(density > 0)) return list;
+  const target = Math.max(1, Math.ceil(list.length * density));
+  if (list.length <= target) return list;
+  const counts = new Map();
+  for (const c of list) {
+    const t = String(c?.type || "unknown");
+    counts.set(t, (counts.get(t) || 0) + 1);
+  }
+  const keep = [];
+  const commonIdx = [];
+  for (let i = 0; i < list.length; i++) {
+    const c = list[i];
+    if (c && c.fixed === true) { keep.push(c); continue; }
+    if (npcDensityKeepType(c?.type, counts.get(String(c?.type || "unknown")))) { keep.push(c); continue; }
+    commonIdx.push(i);
+  }
+  // Les rares seuls dépassent déjà la cible : on garde tout (pas de coupe aveugle).
+  if (keep.length >= target) return list.slice(0, Math.max(target, keep.length));
+  // Mélange des communs puis complément jusqu'à la cible.
+  for (let i = commonIdx.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    const tmp = commonIdx[i];
+    commonIdx[i] = commonIdx[j];
+    commonIdx[j] = tmp;
+  }
+  const need = target - keep.length;
+  for (let k = 0; k < need && k < commonIdx.length; k++) keep.push(list[commonIdx[k]]);
+  return keep;
+}
+
+// Réduit des slots d'univers persistés à la nouvelle taille en préservant les rares
+// (même règle que applyNpcDensityToCamps). Utilisé quand la densité fait
+// rétrécir une map déjà stockée : on ne tronque pas aveuglément la fin.
+export function pruneStoredSlotsToDensity(stored = [], targetLen = 0) {
+  const list = Array.isArray(stored) ? stored.slice() : [];
+  const target = Math.max(0, Math.floor(Number(targetLen) || 0));
+  if (list.length <= target) return list;
+  if (target <= 0) return [];
+  if (list.some((s) => s && s.raidWave != null)) return list.slice(0, target);
+  const counts = new Map();
+  for (const s of list) {
+    const t = String(s?.type || "unknown");
+    counts.set(t, (counts.get(t) || 0) + 1);
+  }
+  const keep = [];
+  const common = [];
+  for (const s of list) {
+    const t = String(s?.type || "unknown");
+    if (NPC_DENSITY_KEEP_RE.test(t) || Number(counts.get(t)) <= 2) keep.push(s);
+    else common.push(s);
+  }
+  if (keep.length >= target) return keep.slice(0, target);
+  for (let i = common.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    const tmp = common[i];
+    common[i] = common[j];
+    common[j] = tmp;
+  }
+  return keep.concat(common.slice(0, target - keep.length));
+}
+
 const CUBIKON_RE = /cubikon/i;
 const EMPEROR_RE = /emperor/i;
 
