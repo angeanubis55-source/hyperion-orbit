@@ -2,6 +2,7 @@ import { abilityShipKeyFor, getAbilitiesForShip, policeAbilityIds, abilityIconFi
 import { getShipDesignBaseId } from "../SHIP/SHIP_PACKS.js";
 import { ANTICHEAT, acMoveTake, acRecordViolation } from "./ANTICHEAT.js";
 import { abilitySpeedMult, fortifyActive } from "../SRC/CORE/ABILITY_COMBAT_RULES.js";
+import { profileAbilityCooldown } from "../DRONE/DRONE_DESIGNS.js";
 
 // Valeurs des aptitudes effectivement branchees dans FRAME_SYSTEMS.
 const rules = {
@@ -93,7 +94,7 @@ export function usePhaseOut(state, profile, map, world, now, random = Math.rando
     || !(world?.w > 160) || !(world?.h > 160)) return null;
   const cooldowns = state._moveCooldowns || (state._moveCooldowns = {});
   if (now < Number(cooldowns[key] || 0)) return null;
-  cooldowns[key] = now + 300000;
+  cooldowns[key] = now + profileAbilityCooldown(300, profile) * 1000;
   const angle = random() * Math.PI * 2;
   return { x: Math.max(80, Math.min(world.w - 80, state.x + Math.cos(angle) * 500)),
     y: Math.max(80, Math.min(world.h - 80, state.y + Math.sin(angle) * 500)) };
@@ -210,7 +211,7 @@ export function stopMovementAbility(state, profile, now, key = null) {
     takeMovement(state, profile, state.x, state.y, now);
     const rule = rules[effect.key || k];
     const cooldowns = state._moveCooldowns || (state._moveCooldowns = {});
-    if (rule && now < effect.until && !rule.toggle && !rule.cooldownFromStart) cooldowns[effect.key || k] = now + rule.cooldown * 1000;
+    if (rule && now < effect.until && !rule.toggle && !rule.cooldownFromStart) cooldowns[effect.key || k] = now + profileAbilityCooldown(rule.cooldown, profile) * 1000;
     delete map[k];
   }
 }
@@ -250,7 +251,7 @@ export function useMovementAbility(state, profile, key, enabled, now, target = n
   if (enabled === false) {
     if (!active.some((e) => e.key === key)) return false;
     stopMovementAbility(state, profile, now, key);
-    if (rule.toggle) cooldowns[key] = now + rule.cooldown * 1000;
+    if (rule.toggle) cooldowns[key] = now + profileAbilityCooldown(rule.cooldown, profile) * 1000;
     return true;
   }
   if (state.pvpDead || !(state.hp > 0) || now < Number(state._jamUntil || 0) || now < Number(cooldowns[key] || 0)
@@ -269,6 +270,7 @@ export function useMovementAbility(state, profile, key, enabled, now, target = n
   const map = state._moveEffects && typeof state._moveEffects === "object" ? state._moveEffects : (state._moveEffects = {});
   map[key] = { from: now, until, mult: rule.mult, shipId: profile.shipId,
     hangarId: profile.hangarId, config: profile.config, channel: rule.channel, dash: rule.dash, targetKey };
-  cooldowns[key] = rule.toggle || rule.cooldownFromStart ? now + rule.cooldown * 1000 : until + rule.cooldown * 1000;
+  const cooldownMs = profileAbilityCooldown(rule.cooldown, profile) * 1000;
+  cooldowns[key] = rule.toggle || rule.cooldownFromStart ? now + cooldownMs : until + cooldownMs;
   return true;
 }

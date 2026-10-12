@@ -10,6 +10,7 @@ import { createServer } from "node:net";
 import { once } from "node:events";
 import WebSocket from "ws";
 import vm from "node:vm";
+import { droneDesignCooldown } from "../DRONE/DRONE_DESIGNS.js";
 import { abilityFxCodeFor, abilityIdForFxCode, healSpecFor, ABILITY_FX_CODES } from "../SRC/CORE/ABILITY_FX.js";
 import { getAbilityInfo, ABILITY_IDS, abilityShipKeyFor } from "../SHIP/SHIP_ABILITIES.js";
 import { SHIP_PACKS } from "../SHIP/SHIP_PACKS.js";
@@ -40,6 +41,7 @@ function visuals() {
   shipEngine.draw = (...args) => normalDraws.push(args);
   const remotes = new Map();
   const context = vm.createContext({
+    droneAbilityCooldown: seconds => droneDesignCooldown(seconds, context.player?.droneCooldownReductionPct),
     ...numericConstants,
     performance: { now: () => now }, Date, Math, ctx, window: {},
     innerWidth: 1000, innerHeight: 800, abilityFxCodeFor, abilityIdForFxCode, getAbilityInfo, healSpecFor,
@@ -818,6 +820,7 @@ test("Yamato : démarrage dès le cast confirmé, extinction à la fin et respec
 
 test("Yamato : son activation et son annulation annoncent toujours son propre identifiant", () => {
   const casts = [], context = vm.createContext({ player: {}, started: true,
+    droneAbilityCooldown: seconds => droneDesignCooldown(seconds, context.player.droneCooldownReductionPct),
     YAMATO_TRAVEL_DURATION: 5, YAMATO_TRAVEL_COOLDOWN: 60,
     reportMovementAbility: (...args) => casts.push(args), persistCdUntil: () => {}, showNotification: () => {}, loadImage: () => {} });
   vm.runInContext(section(engine, "function startYamatoTravelCooldown(", "function startFortifyCooldown("), context);

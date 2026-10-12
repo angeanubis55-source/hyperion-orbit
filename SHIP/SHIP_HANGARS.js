@@ -1,6 +1,7 @@
 "use strict";
 import { findCatalogItem } from "../SRC/CORE/CATALOG.js";
 import { getActiveDroneFormation } from "../DRONE/DRONE_TYPES.js";
+import { getDroneDesignBonuses, getDroneFitForHangar } from "../DRONE/DRONE_DESIGNS.js";
 import { getShipDesignBaseId, getShipPackById } from "./SHIP_PACKS.js";
 import { getShipEffectStats } from "./SHIP_BONUSES.js";
 import { FACTIONS, normalizeFactionId } from "../SRC/CORE/FACTIONS.js";
@@ -75,36 +76,16 @@ const fit =
   // ✅ Exclusif par hangar : on lit le fit du drone pour CE hangar + CETTE config.
   const drones = user?.drones?.items || [];
   const hangarId = hangar?.id != null ? String(hangar.id) : null;
-  const droneFitForHangar = (drone) => {
-    if (hangarId && drone?.fitsByHangar?.[hangarId]?.[activeConfig]) return drone.fitsByHangar[hangarId][activeConfig];
-    if (drone?.fits?.[activeConfig]) {
-      // Legacy : si fitsByHangar absent, fits = global. Mais si fitsByHangar existe
-      // pour d'autres hangars, ne pas retomber sur le global (exclusivité).
-      const hasPerHangar = drone?.fitsByHangar && typeof drone.fitsByHangar === "object" && Object.keys(drone.fitsByHangar).length > 0;
-      if (!hasPerHangar) return drone.fits[activeConfig];
-      // Si le hangar courant n'a pas d'entrée, c'est vide (pas le fit d'un autre vaisseau).
-      if (hangarId) return { equipment: [], ability: null };
-      return drone.fits[activeConfig];
-    }
-    return drone?.fit || { equipment: [], ability: null };
-  };
-  const designId = (drone) => {
-    const fitForHangar = droneFitForHangar(drone);
-    return String(typeof fitForHangar?.ability === "string"
-      ? fitForHangar.ability
-      : fitForHangar?.ability?.id || fitForHangar?.ability?.name || "").toLowerCase();
-  };
+  const droneFitForHangar = drone => getDroneFitForHangar(drone, hangarId, activeConfig);
+  const droneDesignEffects = getDroneDesignBonuses(user, hangarId, activeConfig).effects;
   for (const drone of drones) {
     const fitForHangar = droneFitForHangar(drone);
     const levelMultiplier = 1 + Math.max(0, Math.min(5, Number(drone?.level || 1) - 1)) * 0.05;
-    const design = designId(drone);
-    const laserDesignMultiplier = design.includes("havoc") || design.includes("havok") ? 1.1 : design.includes("spartan") ? 1.01 : 1;
-    const shieldDesignMultiplier = design.includes("hercules") ? 1.15 : design.includes("spartan") ? 1.01 : 1;
     for (const itemId of fitForHangar?.equipment || []) {
       const item = itemId ? findCatalogItem(itemId) : null;
       if (item?.petOnly) continue;
       if (item?.module?.type === "laser") {
-        const mult = levelMultiplier * laserDesignMultiplier;
+        const mult = levelMultiplier;
         baseDamage += Number(item.module.damage || 0) * mult;
         // Bonus par canon des drones (overdrive / vsMatch / instable) :
         // 1 laser = +bonus, 2 lasers = +2x bonus, 35 lasers = 35x bonus.
@@ -120,7 +101,7 @@ const fit =
           unstable: item.module.unstable,
         });
       }
-      if (item?.module?.type === "shield") baseShield += Number(item.module.bonusShield || 0) * levelMultiplier * shieldDesignMultiplier;
+      if (item?.module?.type === "shield") baseShield += Number(item.module.bonusShield || 0) * levelMultiplier;
     }
   }
 
@@ -224,13 +205,12 @@ const fit =
     }
   }
 
-  // Bonus d'ensemble des designs : actifs uniquement si tous les drones portent le même design.
-  if (drones.length && drones.every(drone => /havoc|havok/.test(designId(drone)))) bonusDamagePct += 10;
-  if (drones.length && drones.every(drone => designId(drone).includes("hercules"))) bonusHPPct += 20;
-  if (drones.length && drones.every(drone => designId(drone).includes("spartan"))) {
-    bonusDamagePct += 10;
-    bonusHPPct += 10;
-  }
+  bonusDamagePct += droneDesignEffects.damagePct;
+  bonusShieldPct += droneDesignEffects.shieldPct;
+  bonusHPPct += droneDesignEffects.hpPct;
+  bonusLaserHitPct += droneDesignEffects.laserHitPct;
+  bonusRocketHitPct += droneDesignEffects.rocketHitPct;
+  bonusEvasionPct += droneDesignEffects.evasionPct;
 
   // ✅ ÉTAPE 3 : calculer les valeurs finales
   const totalLaserDamage = baseDamage * (1 + bonusDamagePct / 100);
@@ -259,6 +239,8 @@ const fit =
     bonusLaserHitPct,     // % de réduction du taux de MISS du joueur
     bonusRocketHitPct,    // % de réduction du taux de MISS des roquettes
     bonusEvasionPct,      // % de chance d'esquiver totalement un coup reçu
+    bonusAbilityCooldownPct: droneDesignEffects.cooldownPct,
+    droneDesignEffects,
     bonusExpPct,          // % d'XP gagné en plus
     bonusHonorPct,        // % d'honneur gagné en plus
     extras,

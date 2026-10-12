@@ -1,4 +1,5 @@
 // Règles des impacts d'aptitude partagées, indépendantes du rendu.
+import { profileAbilityCooldown } from "../../DRONE/DRONE_DESIGNS.js";
 export const ABILITY_DAMAGE_RULES = Object.freeze({
   ability_cyborg_singularity: { start: 6900, step: 300, cap: 13600, duration: 30, directHp: true, execute: 150000, range: Infinity },
   ability_venom: { start: 1500, step: 200, cap: 8500, duration: 35, directHp: true, execute: 100000, range: Infinity },
@@ -29,7 +30,7 @@ export function validateAbilityDamage(profile, message, state, target, now) {
     if (!win || win.key !== key || win.target !== targetId || win.used || now + 100 < win.readyAt || now >= win.until) return null;
     const cap = Math.ceil((Number(target.hp) + Math.max(0, Number(target.sh) || 0)) * 1.1);
     win.used = true;
-    state._abilityCds[key] = now + (key === "ability_retiarus_chs" ? 1200 : 1080) * 1000;
+    state._abilityCds[key] = now + profileAbilityCooldown(key === "ability_retiarus_chs" ? 1200 : 1080, profile) * 1000;
     return { uid: message.uid, target: message.target, ability: key, dmg: Math.min(raw, cap), kind: "direct", pen: 1, critChance: 0, critMult: 1, variance: 0, execOk: true };
   }
   const rule = ABILITY_DAMAGE_RULES[key], fx = state?._abilityFx?.[key];

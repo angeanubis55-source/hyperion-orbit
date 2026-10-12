@@ -53,6 +53,7 @@ import { getRocketType, rocketDescription } from "../COMBAT/ROCKET_TYPES.js";
 import { getResourceName, getResourceIcon } from "../SRC/DATA/RESOURCES.js";
 import { getItemRarity, ITEM_RARITIES } from "../SRC/DATA/ITEM_RARITIES.js";
 import { DRONE_FORMATIONS, DRONE_LEVEL_XP, DRONE_MAX_LEVEL, DRONE_TYPES, getDroneSpritePath, getDroneShopStillPath, getIrisPrice } from "../DRONE/DRONE_TYPES.js";
+import { getDroneDesign, getDroneDesignBonuses, droneDesignBonusLabel } from "../DRONE/DRONE_DESIGNS.js";
 import { emptyPetFit, getPetHullPrice, getPetLevel, getPetLevelBonus, getPetLevelXp, getPetNextLevelXp, getPetSlots, getPetSpritePath, PET_FUEL_MAX, PET_HULL_MAX_BUYS } from "../PET/PET_TYPES.js";
 import { MODULE_ALL_STATS, MODULE_DAILY_ROLL_LIMIT, MODULE_PCT_BAN, MODULE_ROLL_COST, MODULE_SPC_STATS, MODULE_STAT_COUNT_WEIGHTS, MODULE_TIER_MALUS, MODULE_TIER_WEIGHTS, MODULE_TYPE_WEIGHTS, getModuleRarity, getModuleStatCountWeights, getStatMaxPct } from "../SRC/DATA/MODULE_DROPS.js";
 import { appendToFitSlots, compactDroneEquipment, compactFitArray, compactFitDraft, compactPetFit, moveEquipmentSlots } from "../SRC/CORE/FIT_LAYOUT.js";
@@ -1086,7 +1087,7 @@ function buildInventorySections(u) {
     // are already stacked above from u.ammo and u.rockets, including launcher ammo.
     if (found?.item.give?.ammo || found?.item.give?.rockets) continue;
     // Le P.E.T a sa propre section (niveau/XP) : pas de doublon dans Équipements.
-    if (found?.category === "pets") continue;
+    if (found?.category === "pets" || found?.item.droneDesign) continue;
     if (found && found.category !== "ammo" && found.category !== "ships") {
       let detail = ({ lasers: "Laser", speedGen: "Générateur de vitesse", shieldGen: "Générateur de bouclier", generators: "Générateur", extras: "Extra", rockets: "Roquettes", launchers: "Lance-roquettes", petGears: "Gear P.E.T", petProtocols: "Protocole P.E.T" })[found.category] || "Équipement";
       if (found.item.petProtocol) detail = `Protocole P.E.T · +${Number(found.item.petProtocol.pct) || 0} % ${petProtocolStatLabel(found.item.petProtocol.key)}`;
@@ -1184,14 +1185,18 @@ function buildInventorySections(u) {
     }
     return [drone?.fits?.["1"]?.ability, drone?.fits?.["2"]?.ability, drone?.fit?.ability];
   }).filter(Boolean);
-  const designs = [...storedDesigns, ...equippedDesigns].map((design, index) => {
+  const ownedDesigns = Object.entries(u?.inventory?.counts || {}).flatMap(([id, quantity]) => {
+    const selected = getDroneDesign(id);
+    return selected && Number(quantity) > 0 ? [{ ...selected, id: selected.itemId, quantity: Number(quantity) }] : [];
+  });
+  const designs = [...ownedDesigns, ...storedDesigns.filter(value => !getDroneDesign(value)), ...equippedDesigns.filter(value => !getDroneDesign(value))].map((design, index) => {
     const value = typeof design === "string" ? { id: design, name: design } : (design || {});
     return {
       id: value.id || `drone-design-${index}`,
       kind: "droneDesign",
       design: value,
       name: value.name || humanizeInventoryId(value.id || "Design de drone"),
-      quantity: 1,
+      quantity: value.quantity || 1,
       detail: "Design de drone",
     };
   });
@@ -1233,7 +1238,7 @@ function buildInventorySections(u) {
 function inventoryItemIcon(entry) {
   if (entry.kind === "ship") return shipPreviewSrc(entry.id);
   if (entry.kind === "shipDesign") return shipPreviewSrc(entry.id);
-  if (entry.kind === "drone") return getDroneSpritePath(entry.drone, 29);
+  if (entry.kind === "drone") return getDroneShopStillPath(entry.drone?.type, entry.drone?.fit?.ability);
   if (entry.kind === "pet") return getPetSpritePath(entry.pet, 21);
   if (entry.kind === "droneDesign") return entry.design?.icon || FALLBACK_ICON;
   if (entry.kind === "droneFormation") return entry.formation?.icon || FALLBACK_ICON;
@@ -3843,7 +3848,7 @@ function buildFitWindow() {
   const loadoutZone = card.querySelector(".fitLoadoutPane");
   card.querySelectorAll("[data-fit-section]").forEach(button => button.addEventListener("click", () => setFitSection(button.dataset.fitSection)));
   loadoutZone?.addEventListener("dragover", (event) => {
-    if (event.dataTransfer.types.includes("application/x-orbit-slot")) return;
+    if (event.dataTransfer.types.includes("application/x-orbit-slot") || event.dataTransfer.types.includes("application/x-orbit-drone-design")) return;
     event.preventDefault();
     event.dataTransfer.dropEffect = "copy";
     updateFitDropHighlights();
@@ -3853,7 +3858,7 @@ function buildFitWindow() {
   });
   loadoutZone?.addEventListener("drop", (event) => {
     clearFitDropHighlights();
-    if (event.defaultPrevented || event.dataTransfer.types.includes("application/x-orbit-slot")) return;
+    if (event.defaultPrevented || event.dataTransfer.types.includes("application/x-orbit-slot") || event.dataTransfer.types.includes("application/x-orbit-drone-design")) return;
     event.preventDefault();
     let itemIds = [];
     try { itemIds = JSON.parse(event.dataTransfer.getData("application/x-orbit-items") || "[]"); } catch {}
@@ -3867,6 +3872,7 @@ function buildFitWindow() {
   });
   returnZone?.addEventListener("dragover", (event) => {
     const equippedDrag = event.dataTransfer.types.includes("application/x-orbit-slot")
+      || event.dataTransfer.types.includes("application/x-orbit-drone-design")
       || event.dataTransfer.types.includes("application/x-orbit-pet-slot");
     if (!equippedDrag) return;
     event.preventDefault();
@@ -3877,6 +3883,12 @@ function buildFitWindow() {
   });
   returnZone?.addEventListener("drop", (event) => {
     returnZone.classList.remove("dragReturnActive");
+    const rawDesign = event.dataTransfer.getData('application/x-orbit-drone-design');
+    if (rawDesign) {
+      event.preventDefault();
+      try { setDroneDesignDraft(JSON.parse(rawDesign).droneId, null); } catch {}
+      return;
+    }
     const raw = event.dataTransfer.getData("application/x-orbit-slot");
     const rawGroup = event.dataTransfer.getData("application/x-orbit-slots");
     const rawPetSlot = event.dataTransfer.getData("application/x-orbit-pet-slot");
@@ -4183,6 +4195,26 @@ function setFitSection(section = "ship") {
 }
 
 
+function setDroneDesignDraft(droneId, value, sourceDroneId = null) {
+  const draft = fitState.droneDrafts?.[droneId];
+  if (!draft) return false;
+  const design = getDroneDesign(value);
+  if (value && !design) return showFitError("Cet emplacement accepte uniquement un design de drone."), false;
+  if (sourceDroneId === droneId) return false;
+  const source = sourceDroneId ? fitState.droneDrafts?.[sourceDroneId] : null;
+  if (sourceDroneId && (!source || getDroneDesign(source.ability)?.itemId !== design?.itemId)) return false;
+  const itemId = design?.itemId || null;
+  const currentId = getDroneDesign(draft.ability)?.itemId;
+  if (!source && itemId && itemId !== currentId && (computeUsage(fitState.draft)[itemId] || 0) >= ownedCount(user, itemId)) {
+    return showFitError("Tous les exemplaires de ce design sont déjà équipés."), false;
+  }
+  if (source) source.ability = draft.ability || null;
+  draft.ability = itemId;
+  clearFitSelection(); showFitError("");
+  renderDroneEquipment(user); renderInventoryPalette();
+  return true;
+}
+
 function renderDroneEquipment(userOverride) {
   const root = document.getElementById("fitDroneWorkspace");
   if (!root) return;
@@ -4191,18 +4223,51 @@ function renderDroneEquipment(userOverride) {
   compactAllDroneDrafts();
   const drones = user?.drones?.items || [];
   if (!drones.length) { root.innerHTML = `<div class="fitDroneEmpty">Aucun drone. Achète ton premier Iris dans la boutique.</div>`; return; }
+  const designBonuses = getDroneDesignBonuses(user, fitState.hangarId, fitState.configNo, droneFitForState);
   root.innerHTML = `<div class="droneCards">${drones.map((drone,index)=>{
     const type=DRONE_TYPES[drone.type]; const next=DRONE_LEVEL_XP[drone.level]??DRONE_LEVEL_XP.at(-1);
     const pct=drone.level>=DRONE_MAX_LEVEL?100:Math.min(100,Math.floor(drone.exp/next*100));
     const fitForHangar=droneFitForState(drone);
+    const selectedDesign = getDroneDesign(fitForHangar?.ability);
     const slots=(fitForHangar?.equipment || []).map((id,slotIndex)=>{
       const item=id?findCatalogItem(id):null;
       const selKey=`${drone.id}#${slotIndex}`;
       return `<button class="slotCell droneFitSlot${item ? ` filled rarity-${fitItemRarity(id, item).id}` : ""}${fitState.selectedDroneSlots.has(selKey)?" selected":""}" data-drone-id="${drone.id}" data-drone-slot="${slotIndex}" data-item-id="${item?.id ?? ""}" title="${escapeHtml(item?.name||"Dépose un laser ou un bouclier")}">${item?`<img src="${iconForItem(item)}" alt="">`:""}</button>`;
     }).join("");
     const xpText=drone.level>=DRONE_MAX_LEVEL?"Niveau maximal":`${formatNumber(Math.floor(drone.exp))} XP / ${formatNumber(next)} XP`;
-    return `<article class="droneEquipmentCard"><img class="droneCardSprite" src="${getDroneSpritePath(drone,29)}" alt=""><div class="droneCardIdentity"><strong>${type.name} ${index+1}</strong><span>Niveau ${drone.level} · ${xpText}</span></div><div class="droneCardAbility"><label>DESIGN</label><button class="droneDesignSlot" title="${fitForHangar?.ability?escapeHtml(fitForHangar.ability):"Design vide"}">${fitForHangar?.ability?escapeHtml(fitForHangar.ability):""}</button></div><div class="droneCardSlots"><label>ÉQUIPEMENT</label><div>${slots}</div></div>${drone.level>=DRONE_MAX_LEVEL?"":`<div class="droneXp"><i style="width:${pct}%"></i></div>`}</article>`;
+    return `<article class="droneEquipmentCard"><img class="droneCardSprite" src="${getDroneShopStillPath(drone.type, selectedDesign)}" alt="${escapeHtml(selectedDesign?.name || type.name)}"><div class="droneCardIdentity"><strong>${type.name} ${index+1}</strong><span>Niveau ${drone.level} · ${xpText}</span></div><div class="droneCardDesignBonus">${escapeHtml(droneDesignBonusLabel(selectedDesign, designBonuses))}</div><div class="droneCardAbility"><label>DESIGN</label><button class="droneDesignSlot${selectedDesign ? ' filled' : ''}" data-drone-design="${drone.id}" title="${selectedDesign ? escapeHtml(selectedDesign.name + ' · Double-clic pour retirer') : 'Dépose un design de drone'}">${selectedDesign ? `<img src="${selectedDesign.icon}" alt="${escapeHtml(selectedDesign.name)}">` : ''}</button></div><div class="droneCardSlots"><label>ÉQUIPEMENT</label><div>${slots}</div></div>${drone.level>=DRONE_MAX_LEVEL?"":`<div class="droneXp"><i style="width:${pct}%"></i></div>`}</article>`;
   }).join("")}</div>`;
+  root.querySelectorAll('[data-drone-design]').forEach(slot => {
+    const droneId = slot.dataset.droneDesign;
+    slot.addEventListener('click', () => {
+      const selected = selectedInventoryItemIds().find(id => getDroneDesign(id));
+      if (selected) setDroneDesignDraft(droneId, selected);
+    });
+    slot.addEventListener('dblclick', event => { event.preventDefault(); setDroneDesignDraft(droneId, null); });
+    slot.addEventListener('contextmenu', event => { event.preventDefault(); setDroneDesignDraft(droneId, null); });
+    slot.addEventListener('dragover', event => {
+      event.preventDefault(); event.stopPropagation();
+      event.dataTransfer.dropEffect = event.dataTransfer.types.includes('application/x-orbit-drone-design') ? 'move' : 'copy';
+      slot.classList.add('dragTarget');
+    });
+    slot.addEventListener('dragleave', () => slot.classList.remove('dragTarget'));
+    slot.addEventListener('drop', event => {
+      event.preventDefault(); event.stopPropagation();
+      slot.classList.remove('dragTarget');
+      let source = null;
+      try { source = JSON.parse(event.dataTransfer.getData('application/x-orbit-drone-design') || 'null'); } catch {}
+      const itemId = source?.itemId || event.dataTransfer.getData('text/plain');
+      setDroneDesignDraft(droneId, itemId, source?.droneId);
+    });
+    const equipped = getDroneDesign(fitState.droneDrafts?.[droneId]?.ability);
+    slot.draggable = !!equipped;
+    slot.addEventListener('dragstart', event => {
+      if (!equipped) return event.preventDefault();
+      event.dataTransfer.setData('application/x-orbit-drone-design', JSON.stringify({ droneId, itemId: equipped.itemId }));
+      event.dataTransfer.setData('text/plain', equipped.itemId);
+      event.dataTransfer.effectAllowed = 'move';
+    });
+  });
   root.querySelectorAll("[data-drone-slot]").forEach(slot=>{
     const itemId=slot.dataset.itemId;
     slot.addEventListener("click",event=>{
@@ -4674,6 +4739,15 @@ function equipSelectedInventoryItems(preferredSlotType = null) {
   if (fitState.section === "drones") {
     const fresh = getCurrentUserFull();
     if (!fresh) return 0;
+    const designItems = selected.filter(id => getDroneDesign(id));
+    let designsAdded = 0;
+    for (const itemId of designItems) {
+      if ((computeUsage(fitState.draft)[itemId] || 0) >= ownedCount(fresh, itemId)) continue;
+      const drone = fresh.drones?.items?.find(entry => !droneFitForState(entry)?.ability);
+      if (!drone) break;
+      fitState.droneDrafts[drone.id].ability = getDroneDesign(itemId).itemId;
+      designsAdded++;
+    }
     // Comme le vaisseau : on tasse d'abord pour que le 1er libre soit bien en haut à gauche.
     compactAllDroneDrafts();
     const fits = [];
@@ -4709,7 +4783,7 @@ function equipSelectedInventoryItems(preferredSlotType = null) {
       const size = droneEntry ? Math.max(0, Number(DRONE_TYPES[droneEntry.type]?.slots) || fit.equipment.length) : fit.equipment.length;
       fitState.droneDrafts[droneId] = { equipment: compactDroneEquipment(fit.equipment, size), ability: fit.ability || null };
     }
-    const added = fits.length;
+    const added = fits.length + designsAdded;
     clearFitSelection();
     showFitError(added ? "" : "Aucun emplacement de drone disponible");
     renderDroneEquipment(user);
@@ -4841,7 +4915,10 @@ function computeUsage(draft) {
   const map = Object.create(null);
   const all = [...(draft?.lasers || []), ...(draft?.gens || []), ...(draft?.extras || []), ...(draft?.shipMods || [])];
   // ✅ Comptage exclusif au hangar en cours d'édition (chaque vaisseau a ses propres drones + P.E.T).
-  for (const drone of user?.drones?.items || []) all.push(...(droneFitForState(drone)?.equipment || []));
+  for (const drone of user?.drones?.items || []) {
+    const fit = droneFitForState(drone);
+    all.push(...(fit?.equipment || []), getDroneDesign(fit?.ability)?.itemId);
+  }
   if (user?.pet?.owned === true) {
     const petFit = petFitForState(user.pet);
     all.push(...(petFit?.lasers || []), ...(petFit?.generators || []), ...(petFit?.gears || []), ...(petFit?.protocols || []));
@@ -5039,12 +5116,13 @@ function renderInventoryPalette() {
   const isDroneSection = fitState.section === "drones";
   const entries = Object.entries(counts)
     .map(([itemId, cnt]) => ({ itemId, cnt: Number(cnt || 0), it: findCatalogItem(itemId) }))
-    .filter((x) => x.cnt > 0 && (x.it?.module || x.it?.petGear || x.it?.petProtocol))
+    .filter((x) => x.cnt > 0 && (x.it?.module || x.it?.petGear || x.it?.petProtocol || x.it?.droneDesign))
     .filter((x) => x.it?.module?.type !== "ammo")
     .filter((x) => {
       // P.E.T uniquement : affiché seulement quand on équipe le P.E.T.
       if (isPetOnlyItem(x.it)) return isPetSection;
-      if (isDroneSection) return ["laser", "shield"].includes(x.it?.module?.type);
+      if (isDroneSection) return ["laser", "shield"].includes(x.it?.module?.type) || !!x.it?.droneDesign;
+      if (x.it?.droneDesign) return false;
       if (isPetSection) {
         return ["laser", "shield"].includes(x.it?.module?.type) || x.it?.petGear || x.it?.petProtocol;
       }

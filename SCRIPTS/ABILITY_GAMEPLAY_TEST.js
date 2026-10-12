@@ -14,6 +14,7 @@ import { validateCombatHit } from "./COMBAT_PROFILE.js";
 import { syncDisarrayShield, syncDisruptorEffects, laserDisrupted, redirectedPlayer, DDOL_ACCURACY_PENALTY } from "./DISRUPTOR_RULES.js";
 import { validateVoltChain, triggerTempestBackup, tempestBackupActive, expireTempestBackup } from "./TEMPEST_RULES.js";
 import { ROCKET_TYPES } from "../COMBAT/ROCKET_TYPES.js";
+import { profileAbilityCooldown } from "../DRONE/DRONE_DESIGNS.js";
 import { ZoneNpcSim } from "./NPC_ROOM.js";
 
 const source = readFileSync(new URL("./MULTI_SERVER.js", import.meta.url), "utf8");
@@ -31,7 +32,7 @@ function fixture(ship = "police", npc = false) {
   const events = [], room = new Map([[caster.id, { state: caster }]]);
   const sim = { mapId: "1-1", entries: new Map(), inSafe: () => false, applyHit: () => {} };
   (npc ? sim.entries : room).set(target.id, npc ? target : { state: target });
-  const api = vm.createContext({ getAbilityInfo, shipOwnsAbility, isMovementAbilityKey,
+  const api = vm.createContext({ getAbilityInfo, shipOwnsAbility, isMovementAbilityKey, profileAbilityCooldown,
     stopMovementAbility, movementSpeed, takeMovement, isAbilityFxBroadcastable, healSpecFor,
     hostileAbility, unlimitedAbilityRange, validateVoltChain, ROCKET_TYPES, HYPERION_QA_DAMAGE,
     EXEC_WINDOW_MS, HEAL_MIN_INTERVAL_MS, abilityDamage, activeAbility, triggerTempestBackup,
@@ -83,6 +84,15 @@ for (const skill of ABILITY_IDS) {
     }
   });
 }
+
+test('Hermes : le serveur accepte la prochaine aptitude apres sa recharge reduite', () => {
+  const f = fixture('solace');
+  f.profile.abilityCooldownMult = 0.9;
+  assert.equal(cast(f, 'ability_solace', NOW), true);
+  assert.equal(f.caster._abilityCds.ability_solace, NOW + 81000);
+  assert.equal(cast(f, 'ability_solace', NOW + 80999), false);
+  assert.equal(cast(f, 'ability_solace', NOW + 81000), true);
+});
 
 for (const skill of ABILITY_IDS.filter(id => hostileAbility(id, ABILITIES[id]))) {
   for (const npc of [false, true]) test(`ZNA ${npc ? "NPC" : "joueur"} : ${skill}`, () => {

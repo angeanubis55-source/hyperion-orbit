@@ -1,4 +1,5 @@
 import { shipOwnsAbility } from "./MOVEMENT_RULES.js";
+import { profileAbilityCooldown } from "../DRONE/DRONE_DESIGNS.js";
 
 const BACKUP = "ability_tempest_volt-backup";
 export function tempestBackupActive(state, now) {
@@ -21,7 +22,7 @@ export function triggerTempestBackup(state, room, now, allowOneHp = false) {
   state.hp = 1;
   state._tempestBackupAt = now;
   state._tempestBackupUntil = now + 10000;
-  state._tempestBackupCdUntil = now + 370000;
+  state._tempestBackupCdUntil = now + 10000 + profileAbilityCooldown(360, state._combat) * 1000;
   state._tempestBackupRequestedUntil = 0;
   state._tempestBackupKiller = "";
   state._abilityCds ||= {};

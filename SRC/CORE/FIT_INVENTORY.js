@@ -16,7 +16,12 @@ export function pruneUnavailableLoadout({ ship, drones, pet } = {}, user) {
     }
   };
   for (const key of ["lasers", "gens", "extras", "shipMods"]) prune(ship?.[key]);
-  for (const fit of Object.values(drones || {})) prune(fit?.equipment);
+  for (const fit of Object.values(drones || {})) {
+    prune(fit?.equipment);
+    if (fit?.ability && String(fit.ability).startsWith('drone_design_')) {
+      const design = [fit.ability]; prune(design); fit.ability = design[0];
+    }
+  }
   for (const key of ["lasers", "generators", "gears", "protocols"]) prune(pet?.[key]);
   return removed;
 }

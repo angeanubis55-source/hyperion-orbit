@@ -1,5 +1,6 @@
 import { damagePlayerLayers } from "../COMBAT/COMBAT_RULES.js";
 import { shipOwnsAbility } from "./MOVEMENT_RULES.js";
+import { profileAbilityCooldown } from "../DRONE/DRONE_DESIGNS.js";
 
 import { activeAbility, fortifyActive } from "../SRC/CORE/ABILITY_COMBAT_RULES.js";
 export { activeAbility, fortifyActive } from "../SRC/CORE/ABILITY_COMBAT_RULES.js";
@@ -9,7 +10,7 @@ export function triggerPaladin(state, now, emit) {
   state.hp = state.hpMax;
   state.dead = false;
   state.pvpDead = false;
-  state._lastStandCdUntil = now + 600000;
+  state._lastStandCdUntil = now + profileAbilityCooldown(600, state._combat) * 1000;
   state._lastStandAt = now;
   emit?.({ t: "skillFx", skill: "ability_paladin_last-stand", phase: "proc", by: state.id,
     target: state.id, amount: Math.round(state.hpMax), at: now, until: now + 1667 });
@@ -111,7 +112,7 @@ export function tickAbilityStates(room, sim, now, emit, groupOf) {
         const linked = room.get(String(fx.target))?.state || sim?.entries?.get(String(fx.target));
         if (!alive(linked) || Math.hypot(linked.x - state.x, linked.y - state.y) > (Number(state.range) || 800)) {
           fx.until = now;
-          state._abilityCds[key] = now + 10000;
+          state._abilityCds[key] = now + profileAbilityCooldown(10, state._combat) * 1000;
           emit({ t: "skillFx", skill: key, by: state.id, at: now, until: now, enabled: false, forced: true });
         }
       }
@@ -124,7 +125,7 @@ export function tickAbilityStates(room, sim, now, emit, groupOf) {
       if (key === "ability_sentinel") {
         if (active && fx.config !== state._combat?.config) {
           fx.until = now;
-          state._abilityCds[key] = now + 180000;
+          state._abilityCds[key] = now + profileAbilityCooldown(180, state._combat) * 1000;
           fx.finished = true;
           emit({ t: "skillFx", skill: key, by: state.id, at: now, until: now, enabled: false, forced: true });
         } else if (active) {
@@ -165,7 +166,7 @@ export function tickAbilityStates(room, sim, now, emit, groupOf) {
         const latest = Math.max(0, ...Object.values(infected));
         for (const [id, target] of allTargets) target._sprUntil = Math.max(Number(target._sprUntil) || 0, Number(infected[id]) || 0);
         if (latest > fx.until) fx.until = latest;
-        state._abilityCds[key] = fx.until + 300000;
+        state._abilityCds[key] = fx.until + profileAbilityCooldown(300, state._combat) * 1000;
       }
       if (active && (key === "ability_citadel_draw-fire" || key === "ability_citadel-plus_draw-fire") && !state.safe) {
         const group = groupOf(String(state.id));

@@ -60,6 +60,7 @@ import { createPet, emptyPetFit, getPetHullPrice, getPetLevel, getPetSlots, norm
 import { activeBoosterMults, getBooster, normalizeBoostersState } from "../DATA/BOOSTERS.js";
 import { getPetVitalLimits } from "../../PET/PET_VITALS.js";
 import { computeHangarStats } from "../../SHIP/SHIP_HANGARS.js";
+import { getDroneDesign, getDroneFitForHangar } from "../../DRONE/DRONE_DESIGNS.js";
 
 // localStorage keys
 const USERS_KEY = "orbit_users";
@@ -363,7 +364,7 @@ function normalizeDroneFitValue(value, slots) {
   const equipment = compactFitArray(normalizeArraySize(value?.equipment, size, null), size);
   return {
     equipment,
-    ability: value?.ability || null,
+    ability: getDroneDesign(value?.ability)?.itemId || value?.ability || null,
   };
 }
 
@@ -372,16 +373,7 @@ function normalizeDroneFitValue(value, slots) {
  * Fallback legacy (drone.fits / drone.fit) pour les vieilles sauvegardes.
  */
 export function getDroneFit(drone, hangarId, configNo) {
-  const cfg = String(Number(configNo) === 2 ? 2 : 1);
-  const hid = hangarId != null ? String(hangarId) : null;
-  if (hid && drone?.fitsByHangar?.[hid]?.[cfg]) return drone.fitsByHangar[hid][cfg];
-  if (hid && drone?.fitsByHangar?.[hid]?.[cfg] === undefined && drone?.fitsByHangar?.[hid]) {
-    return drone.fitsByHangar[hid][cfg] || { equipment: [], ability: null };
-  }
-  // legacy global par config
-  if (drone?.fits?.[cfg]) return drone.fits[cfg];
-  if (drone?.fit) return drone.fit;
-  return { equipment: [], ability: null };
+  return getDroneFitForHangar(drone, hangarId, configNo);
 }
 
 function ensureDroneFitsByHangar(u) {
@@ -879,7 +871,7 @@ function ensureUserShape(u) {
     const fits = drone.fits && typeof drone.fits === "object" ? drone.fits : {};
     const normalizedFit = (value) => ({
       equipment: normalizeArraySize(value?.equipment, definition.slots),
-      ability: value?.ability || null,
+      ability: getDroneDesign(value?.ability)?.itemId || value?.ability || null,
     });
     const prevFitsByHangar = drone.fitsByHangar && typeof drone.fitsByHangar === "object" && !Array.isArray(drone.fitsByHangar)
       ? drone.fitsByHangar
@@ -898,6 +890,14 @@ function ensureUserShape(u) {
   u.drones.designs = u.drones.designs
     .filter(design => typeof design === "string" || (design && typeof design === "object"))
     .map(design => typeof design === "string" ? design : structuredClone(design));
+  // Les anciens designs stockes deviennent des CPU d'inventaire, une seule fois.
+  u.drones.designs = u.drones.designs.filter(value => {
+    const design = getDroneDesign(value);
+    if (!design) return true;
+    const amount = Math.max(1, Math.floor(Number(value?.quantity) || 1));
+    u.inventory.counts[design.itemId] = Math.max(0, Number(u.inventory.counts[design.itemId]) || 0) + amount;
+    return false;
+  });
   if (!u.drones.formations.includes("standard")) u.drones.formations.unshift("standard");
   if (!u.drones.activeFormation || !u.drones.formations.includes(u.drones.activeFormation)) u.drones.activeFormation = "standard";
   u.drones.lastFormationChangeAt = Math.max(0, Number(u.drones.lastFormationChangeAt) || 0);
@@ -1995,18 +1995,48 @@ export function setCurrentUserDroneFormation(formationId) {
   return { ok: true, user: u, formation };
 }
 
+function validateDroneDesignFits(user, entries) {
+  const active = getActiveHangar(user);
+  const updates = new Map();
+  for (const entry of entries) {
+    const hid = String(entry.hangarId ?? active?.id ?? "");
+    const hangar = user.hangars?.find(h => String(h.id) === hid);
+    if (!hangar) return "Hangar introuvable.";
+    const cfg = Number(entry.configNo ?? hangar.activeConfig) === 2 ? 2 : 1;
+    const value = entry.fit?.ability;
+    const selected = getDroneDesign(value);
+    if (value && !selected) return "Design de drone inconnu.";
+    const key = `${hid}#${cfg}`;
+    if (!updates.has(key)) updates.set(key, { hid, cfg, values: new Map() });
+    updates.get(key).values.set(entry.droneId, selected?.itemId || null);
+  }
+  for (const { hid, cfg, values } of updates.values()) {
+    const used = {};
+    for (const drone of user.drones?.items || []) {
+      const itemId = values.has(drone.id) ? values.get(drone.id) : getDroneDesign(getDroneFit(drone, hid, cfg).ability)?.itemId;
+      if (itemId) used[itemId] = (used[itemId] || 0) + 1;
+    }
+    for (const [id, count] of Object.entries(used)) {
+      if (count > Number(user.inventory?.counts?.[id] || 0)) return "Pas assez d'exemplaires de ce design de drone.";
+    }
+  }
+  return null;
+}
+
 export function saveCurrentUserDroneFit(droneId, fit, configNo = null, hangarId = null) {
   const u = getCurrentUserForMutation();
   const drone = u?.drones?.items?.find(entry => entry.id === droneId);
   const definition = drone ? DRONE_TYPES[drone.type] : null;
   if (!u || !drone || !definition) return { ok: false, error: "Drone introuvable." };
+  const designError = validateDroneDesignFits(u, [{ droneId, fit, configNo, hangarId }]);
+  if (designError) return { ok: false, error: designError };
   const equipment = compactFitArray(Array.from({ length: definition.slots }, (_, index) => fit?.equipment?.[index] || null), definition.slots);
   const activeHangar = getActiveHangar(u);
   const targetHangarId = hangarId != null ? String(hangarId) : String(activeHangar?.id || "");
   if (!targetHangarId) return { ok: false, error: "Hangar introuvable." };
   const hangarForCfg = (u.hangars || []).find((h) => String(h?.id) === targetHangarId) || activeHangar;
   const cfg = String(Number(configNo ?? hangarForCfg?.activeConfig) === 2 ? 2 : 1);
-  const value = { equipment, ability: fit?.ability || null };
+  const value = { equipment, ability: getDroneDesign(fit?.ability)?.itemId || null };
   drone.fitsByHangar ||= {};
   drone.fitsByHangar[targetHangarId] ||= {};
   drone.fitsByHangar[targetHangarId][cfg] = value;
@@ -2024,6 +2054,8 @@ export function saveCurrentUserDroneFit(droneId, fit, configNo = null, hangarId 
 export function saveCurrentUserDroneFits(fits) {
   const u = getCurrentUserForMutation();
   if (!u) return { ok: false, error: "Non connecté." };
+  const designError = validateDroneDesignFits(u, fits ?? []);
+  if (designError) return { ok: false, error: designError };
   const activeHangar = getActiveHangar(u);
   let applied = 0;
   for (const entry of fits ?? []) {
@@ -2035,7 +2067,7 @@ export function saveCurrentUserDroneFits(fits) {
     if (!targetHangarId) continue;
     const hangarForCfg = (u.hangars || []).find((h) => String(h?.id) === targetHangarId) || activeHangar;
     const cfg = String(Number(entry.configNo ?? hangarForCfg?.activeConfig) === 2 ? 2 : 1);
-    const value = { equipment, ability: entry.fit?.ability || null };
+    const value = { equipment, ability: getDroneDesign(entry.fit?.ability)?.itemId || null };
     drone.fitsByHangar ||= {};
     drone.fitsByHangar[targetHangarId] ||= {};
     drone.fitsByHangar[targetHangarId][cfg] = value;
@@ -2614,6 +2646,8 @@ export function saveHangarLoadout(hangarId, { ship, drones = {}, pet = null }, c
   if (!h) return { ok: false, error: "Hangar introuvable." };
   const previousPetShieldMax = petShieldCapacity(u);
   const cfg = String(Number(configNo ?? h.activeConfig) === 2 ? 2 : 1);
+  const designError = validateDroneDesignFits(u, Object.entries(drones).map(([droneId, fit]) => ({ droneId, fit, configNo: cfg, hangarId })));
+  if (designError) return { ok: false, error: designError };
   const usage = new Map();
   const count = id => { if (id) usage.set(id, (usage.get(id) || 0) + 1); };
   const shipFit = normalizeFitForShip(h.shipId, ship);
@@ -2639,6 +2673,7 @@ export function saveHangarLoadout(hangarId, { ship, drones = {}, pet = null }, c
   }
   for (const drone of u.drones.items) {
     const value = normalizeDroneFitValue(drones[drone.id] ?? getDroneFit(drone, h.id, cfg), DRONE_TYPES[drone.type].slots);
+    count(getDroneDesign(value.ability)?.itemId);
     for (const id of value.equipment.filter(Boolean)) {
       const item = findCatalogItem(id);
       if (!item || item.petOnly || !["laser", "shield"].includes(item.module?.type)) {

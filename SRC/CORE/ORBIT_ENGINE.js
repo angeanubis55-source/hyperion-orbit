@@ -106,6 +106,7 @@ import { getShipPackById as getShipPackByIdData, getShipDesignBaseId } from "../
 import { getAbilityInfo, formatAbilityTiming, policeAbilityIds, abilityIconFile, HYPERION_QA_DAMAGE, HYPERION_QA_BURST_SEC, HYPERION_QA_SALVOS } from "../../SHIP/SHIP_ABILITIES.js";
 import { abilityFxCodeFor, abilityIdForFxCode, healSpecFor } from "./ABILITY_FX.js";
 import { DRONE_FORMATIONS, DRONE_MAX_LEVEL, DRONE_TYPES, DRONE_XP_SHARE, formationDockIcon, getActiveDroneFormation, getDroneLevel, getDroneShopSpritePath, getDroneSpritePath, isClassicFormation } from "../../DRONE/DRONE_TYPES.js";
+import { getDroneDesign, getDroneFitForHangar, droneDesignCooldown, droneIndicatorColor } from "../../DRONE/DRONE_DESIGNS.js";
 import { getOfficialDroneFormationPositions } from "../../DRONE/DRONE_FORMATIONS.js";
 import { PET_XP_SHARE, PET_FUEL_MAX, PET_FUEL_TICK_SEC, PET_FUEL_BASE_TICK, PET_FUEL_GEAR_TICK, PET_FUEL_ONESHOT, getPetDamageBonus, getPetLevel, getPetLevelXp, getPetNextLevelXp, getPetStage, getPetStageBase, normalizePetMode, PET_STAGE_DIRS, PET_SPRITE_FRAMES } from "../../PET/PET_TYPES.js";
 import { clamp, circleRectResolve, clampSegmentToWalls, dist2, movingCircleHit, segCircleHit } from "./COLLISION.js";
@@ -1478,13 +1479,16 @@ function solHeal(pct) {
     );
   } catch {}
 }
+function droneAbilityCooldown(seconds) {
+  return droneDesignCooldown(seconds, player.droneCooldownReductionPct);
+}
 function startSolCooldown() {
-  player.solCd = SOLACE_COOLDOWN;
-  persistCdUntil("sol", SOLACE_COOLDOWN);
+  player.solCd = droneAbilityCooldown(SOLACE_COOLDOWN);
+  persistCdUntil("sol", droneAbilityCooldown(SOLACE_COOLDOWN));
 }
 function startSolPlusCooldown() {
-  player.solPlusCd = SOLACE_PLUS_COOLDOWN;
-  persistCdUntil("solPlus", SOLACE_PLUS_COOLDOWN);
+  player.solPlusCd = droneAbilityCooldown(SOLACE_PLUS_COOLDOWN);
+  persistCdUntil("solPlus", droneAbilityCooldown(SOLACE_PLUS_COOLDOWN));
 }
 function solFx() {
   player.solFxT = SOLACE_FX_TIME;
@@ -1683,15 +1687,15 @@ function startIncCooldown(plus) {
   if (p) {
     player.incPlusT = 0;
     player.incPlusAcc = 0;
-    player.incPlusCd = INC_PLUS_COOLDOWN;
+    player.incPlusCd = droneAbilityCooldown(INC_PLUS_COOLDOWN);
     persistCdUntil("incPlusFx", 0);
-    persistCdUntil("incPlus", INC_PLUS_COOLDOWN);
+    persistCdUntil("incPlus", droneAbilityCooldown(INC_PLUS_COOLDOWN));
   } else {
     player.incT = 0;
     player.incAcc = 0;
-    player.incCd = INC_COOLDOWN;
+    player.incCd = droneAbilityCooldown(INC_COOLDOWN);
     persistCdUntil("incFx", 0);
-    persistCdUntil("inc", INC_COOLDOWN);
+    persistCdUntil("inc", droneAbilityCooldown(INC_COOLDOWN));
   }
 }
 function cancelInc() {
@@ -1799,9 +1803,9 @@ function activeCenturionAbilityDuration(variant, normalDuration) {
   return shipId === `centurion_ability_${variant}` ? normalDuration / 2 : normalDuration;
 }
 function startSentCooldown() {
-  player.sentCd = SENT_COOLDOWN;
+  player.sentCd = droneAbilityCooldown(SENT_COOLDOWN);
   persistCdUntil("sentFx", 0);
-  persistCdUntil("sent", SENT_COOLDOWN);
+  persistCdUntil("sent", droneAbilityCooldown(SENT_COOLDOWN));
 }
 function sentRevert() {
   // Retire le bonus max ajouté (le courant est écrêté).
@@ -1874,9 +1878,9 @@ function activateSent() {
 const RECON_DURATION = 30;
 const RECON_COOLDOWN = 90;
 function startReconCooldown() {
-  player.reconCd = RECON_COOLDOWN;
+  player.reconCd = droneAbilityCooldown(RECON_COOLDOWN);
   persistCdUntil("reconFx", 0);
-  persistCdUntil("recon", RECON_COOLDOWN);
+  persistCdUntil("recon", droneAbilityCooldown(RECON_COOLDOWN));
 }
 function cancelRecon() {
   if ((player.reconT || 0) <= 0) return;
@@ -1916,9 +1920,9 @@ const SPC_COOLDOWN = 240;
 const SPCP_DURATION = 10;
 const SPCP_COOLDOWN = 240;
 function startSpcCooldown() {
-  player.spcCd = SPC_COOLDOWN;
+  player.spcCd = droneAbilityCooldown(SPC_COOLDOWN);
   persistCdUntil("spcFx", 0);
-  persistCdUntil("spc", SPC_COOLDOWN);
+  persistCdUntil("spc", droneAbilityCooldown(SPC_COOLDOWN));
 }
 function cancelSpc() {
   if ((player.spcT || 0) <= 0) return;
@@ -1949,11 +1953,11 @@ function chsChargeDuration() {
 function startChsCooldown() {
   // Recharge sur le slot utilisé : 20 min base, 18 min Plus.
   if (player.chsPlus) {
-    player.chsPlusCd = CHS_PLUS_COOLDOWN;
-    persistCdUntil("chsPlus", CHS_PLUS_COOLDOWN);
+    player.chsPlusCd = droneAbilityCooldown(CHS_PLUS_COOLDOWN);
+    persistCdUntil("chsPlus", droneAbilityCooldown(CHS_PLUS_COOLDOWN));
   } else {
-    player.chsCd = CHS_COOLDOWN;
-    persistCdUntil("chs", CHS_COOLDOWN);
+    player.chsCd = droneAbilityCooldown(CHS_COOLDOWN);
+    persistCdUntil("chs", droneAbilityCooldown(CHS_COOLDOWN));
   }
   player.chsPlus = false;
   persistCdUntil("chsFx", 0);
@@ -2015,9 +2019,9 @@ function activateChs(isPlus = false) {
 }
 function activateChsPlus() { activateChs(true); }
 function startSpcPlusCooldown() {
-  player.spcPlusCd = SPCP_COOLDOWN;
+  player.spcPlusCd = droneAbilityCooldown(SPCP_COOLDOWN);
   persistCdUntil("spcPlusFx", 0);
-  persistCdUntil("spcPlus", SPCP_COOLDOWN);
+  persistCdUntil("spcPlus", droneAbilityCooldown(SPCP_COOLDOWN));
 }
 function cancelSpcPlus() {
   if ((player.spcPlusT || 0) <= 0) return;
@@ -2080,10 +2084,10 @@ const SAP_COOLDOWN = 60;
 const SAP_SLOW_PCT = 10;
 const SAP_SPEED_PCT = 0.10;
 function startSapCooldown() {
-  player.sapCd = SAP_COOLDOWN;
+  player.sapCd = droneAbilityCooldown(SAP_COOLDOWN);
   player.sapTarget = null;
   persistCdUntil("sapFx", 0);
-  persistCdUntil("sap", SAP_COOLDOWN);
+  persistCdUntil("sap", droneAbilityCooldown(SAP_COOLDOWN));
 }
 function cancelSap() {
   if ((player.sapT || 0) <= 0) return;
@@ -2145,9 +2149,9 @@ function isPaladinHull() {
   catch { return false; }
 }
 function startRipperCooldown() {
-  player.ripperCd = RIPPER_COOLDOWN;
+  player.ripperCd = droneAbilityCooldown(RIPPER_COOLDOWN);
   persistCdUntil("ripperFx", 0);
-  persistCdUntil("ripper", RIPPER_COOLDOWN);
+  persistCdUntil("ripper", droneAbilityCooldown(RIPPER_COOLDOWN));
 }
 function cancelRipper() {
   if ((player.ripperT || 0) <= 0) return;
@@ -2206,10 +2210,10 @@ function tryLastStand() {
   if (Number(player.lastStandCd || 0) > 0) return false;
   player.hp = Number(player.hpMax || 0);
   player.lastStandAnimT = LASTSTAND_FRAMES / LASTSTAND_FPS;
-  player.lastStandCd = LASTSTAND_COOLDOWN;
+  player.lastStandCd = droneAbilityCooldown(LASTSTAND_COOLDOWN);
   // Effect coupé jusqu'à la fin de la recharge (revient tout seul à 600 s).
   player.lastStandFxOff = true;
-  persistCdUntil("lastStand", LASTSTAND_COOLDOWN);
+  persistCdUntil("lastStand", droneAbilityCooldown(LASTSTAND_COOLDOWN));
   try {
     for (let i = 1; i <= LASTSTAND_FRAMES; i++) {
       loadImage(`ASSETS/APTITUDES/PALADIN_LAST_STAND/${i}.png`, { priority: true });
@@ -2749,9 +2753,9 @@ function handleShipAbilitySwitch(prevScope, nextScope) {
 // La recharge ne démarre qu'une fois l'aptitude finie ou coupée.
 // Visuellement, le voile reste plein pendant l'effet puis descend.
 function startPoliceCloakCooldown() {
-  player.cloakCd = POLICE_CLOAK_COOLDOWN;
+  player.cloakCd = droneAbilityCooldown(POLICE_CLOAK_COOLDOWN);
   persistCdUntil("cloakFx", 0);
-  persistCdUntil("cloak", POLICE_CLOAK_COOLDOWN);
+  persistCdUntil("cloak", droneAbilityCooldown(POLICE_CLOAK_COOLDOWN));
 }
 function valourDamageMult() {
   return 1 + Math.max(0, Math.min(VALOUR_MAX, Number(player.valMult || 0)));
@@ -2765,10 +2769,10 @@ function berserkDamageMult() {
 }
 // --- SHL : lien de bouclier avec la cible verrouillée (officiel).
 function startShlCooldown() {
-  player.shlCd = SHL_COOLDOWN;
+  player.shlCd = droneAbilityCooldown(SHL_COOLDOWN);
   player.linkTarget = null;
   persistCdUntil("shlFx", 0);
-  persistCdUntil("shl", SHL_COOLDOWN);
+  persistCdUntil("shl", droneAbilityCooldown(SHL_COOLDOWN));
 }
 function cancelShl() {
   if ((player.shlT || 0) <= 0) return;
@@ -2819,9 +2823,9 @@ function shlOutOfRange(tgt) {
 }
 // --- BSK : tremblement + anneau orange + sprite, dégâts selon PV manquants.
 function startBskCooldown() {
-  player.bskCd = BSK_COOLDOWN;
+  player.bskCd = droneAbilityCooldown(BSK_COOLDOWN);
   persistCdUntil("bskFx", 0);
-  persistCdUntil("bsk", BSK_COOLDOWN);
+  persistCdUntil("bsk", droneAbilityCooldown(BSK_COOLDOWN));
 }
 function cancelBsk() {
   if ((player.bskT || 0) <= 0) return;
@@ -2850,9 +2854,9 @@ function activateBsk() {
 // --- RVG : renvoie 100 % des dégâts reçus à la cible verrouillée du moment.
 // Activable sans lock (sans cible verrouillée au moment des dégâts : rien renvoyé).
 function startRvgCooldown() {
-  player.rvgCd = RVG_COOLDOWN;
+  player.rvgCd = droneAbilityCooldown(RVG_COOLDOWN);
   persistCdUntil("rvgFx", 0);
-  persistCdUntil("rvg", RVG_COOLDOWN);
+  persistCdUntil("rvg", droneAbilityCooldown(RVG_COOLDOWN));
 }
 function cancelRvg() {
   if ((player.rvgT || 0) <= 0) return;
@@ -2877,9 +2881,9 @@ function activateRvg() {
 // Ne déclenche aucune attaque : seuls la cible et l'aggro sont forcés sur
 // le joueur. Les tirs déjà en vol continuent sur leur cible d'origine.
 function startDrawFireCooldown() {
-  player.drawFireCd = DRAW_FIRE_COOLDOWN;
+  player.drawFireCd = droneAbilityCooldown(DRAW_FIRE_COOLDOWN);
   persistCdUntil("drawFireFx", 0);
-  persistCdUntil("drawFire", DRAW_FIRE_COOLDOWN);
+  persistCdUntil("drawFire", droneAbilityCooldown(DRAW_FIRE_COOLDOWN));
 }
 function clearDrawFireLocks() {
   // Fin du taunt : la vie reprend. On retire juste le verrou, sans purger
@@ -2942,9 +2946,9 @@ function activateDrawFire() {
 // sur nous (via le circuit classique hurtPlayer). Seuls les dégâts de source
 // ennemie sont redirigés (pas nos propres effets de zone comme la nébuleuse).
 function startProtectionCooldown() {
-  player.protectionCd = PROTECTION_COOLDOWN;
+  player.protectionCd = droneAbilityCooldown(PROTECTION_COOLDOWN);
   persistCdUntil("protectionFx", 0);
-  persistCdUntil("protection", PROTECTION_COOLDOWN);
+  persistCdUntil("protection", droneAbilityCooldown(PROTECTION_COOLDOWN));
 }
 function cancelProtection() {
   if ((player.protectionT || 0) <= 0) return;
@@ -2983,9 +2987,9 @@ function activateProtection() {
 }
 // --- Voyage : vitesse x2 (via playerSlowMult), aucun autre effet.
 function startTravelCooldown() {
-  player.travelCd = TRAVEL_COOLDOWN;
+  player.travelCd = droneAbilityCooldown(TRAVEL_COOLDOWN);
   persistCdUntil("travelFx", 0);
-  persistCdUntil("travel", TRAVEL_COOLDOWN);
+  persistCdUntil("travel", droneAbilityCooldown(TRAVEL_COOLDOWN));
 }
 function cancelTravel() {
   if ((player.travelT || 0) <= 0) return;
@@ -3015,9 +3019,9 @@ function activateTravel() {
 // Identifiant explicite : reste distinct du Voyage Citadel, même sur Police.
 // La règle serveur et le rendu partagé utilisent le même boost de 5 secondes.
 function startYamatoTravelCooldown() {
-  player.yamatoCd = YAMATO_TRAVEL_COOLDOWN;
+  player.yamatoCd = droneAbilityCooldown(YAMATO_TRAVEL_COOLDOWN);
   persistCdUntil("yamatoFx", 0);
-  persistCdUntil("yamato", YAMATO_TRAVEL_COOLDOWN);
+  persistCdUntil("yamato", droneAbilityCooldown(YAMATO_TRAVEL_COOLDOWN));
 }
 function cancelYamatoTravel() {
   if ((player.yamatoT || 0) <= 0) return;
@@ -3046,9 +3050,9 @@ function activateYamatoTravel() {
 // --- Fortification (officiel) : -80 % de dégâts, vitesse plafonnée à 200,
 // pas de saut (portails). Les attaques et autres contrôles restent possibles.
 function startFortifyCooldown() {
-  player.fortifyCd = FORTIFY_COOLDOWN;
+  player.fortifyCd = droneAbilityCooldown(FORTIFY_COOLDOWN);
   persistCdUntil("fortifyFx", 0);
-  persistCdUntil("fortify", FORTIFY_COOLDOWN);
+  persistCdUntil("fortify", droneAbilityCooldown(FORTIFY_COOLDOWN));
 }
 function cancelFortify() {
   if ((player.fortifyT || 0) <= 0) return;
@@ -3092,9 +3096,9 @@ function attackerPenetration(source) {
   } catch { return 0; }
 }
 function startPrismCooldown() {
-  player.prismCd = PRISM_COOLDOWN;
+  player.prismCd = droneAbilityCooldown(PRISM_COOLDOWN);
   persistCdUntil("prismFx", 0);
-  persistCdUntil("prism", PRISM_COOLDOWN);
+  persistCdUntil("prism", droneAbilityCooldown(PRISM_COOLDOWN));
 }
 function cancelPrism() {
   if ((player.prismT || 0) <= 0) return;
@@ -3123,9 +3127,9 @@ function activatePrism() {
 // --- Spectrum : Blindage prismatique (officiel) : 10 s, recharge 180 s.
 // -90 % dégâts subis, -25 % dégâts laser infligés. Même visuel prismatique.
 function startSpecCooldown() {
-  player.specCd = SPEC_COOLDOWN;
+  player.specCd = droneAbilityCooldown(SPEC_COOLDOWN);
   persistCdUntil("specFx", 0);
-  persistCdUntil("spec", SPEC_COOLDOWN);
+  persistCdUntil("spec", droneAbilityCooldown(SPEC_COOLDOWN));
 }
 function cancelSpec() {
   if ((player.specT || 0) <= 0) return;
@@ -3156,9 +3160,9 @@ function activateSpec() {
 // --- Spectrum Plus : Réflexion prismatique : 8 s, recharge 180 s.
 // -70 % dégâts subis, 70 % réfléchis à chaque attaquant, -50 % infligés.
 function startSpecPlusCooldown() {
-  player.specPlusCd = SPECPLUS_COOLDOWN;
+  player.specPlusCd = droneAbilityCooldown(SPECPLUS_COOLDOWN);
   persistCdUntil("specPlusFx", 0);
-  persistCdUntil("specPlus", SPECPLUS_COOLDOWN);
+  persistCdUntil("specPlus", droneAbilityCooldown(SPECPLUS_COOLDOWN));
 }
 function cancelSpecPlus() {
   if ((player.specPlusT || 0) <= 0) return;
@@ -3261,8 +3265,8 @@ function tickTartBurstQueue(dt) {
   }
 }
 function startTartRapidCooldown() {
-  player.tartRapidCd = TART_RAPID_CD;
-  persistCdUntil("tartRapid", TART_RAPID_CD);
+  player.tartRapidCd = droneAbilityCooldown(TART_RAPID_CD);
+  persistCdUntil("tartRapid", droneAbilityCooldown(TART_RAPID_CD));
 }
 function activateTartRapid() {
   if (player.dead || !started) return;
@@ -3276,9 +3280,9 @@ function activateTartRapid() {
   showNotification("Tir rapide : 15 roquettes !", 2.5, "info");
 }
 function startTartRapidPlusCooldown() {
-  player.tartRapidPlusCd = TART_RAPIDPLUS_CD;
+  player.tartRapidPlusCd = droneAbilityCooldown(TART_RAPIDPLUS_CD);
   persistCdUntil("tartRapidPlusFx", 0);
-  persistCdUntil("tartRapidPlus", TART_RAPIDPLUS_CD);
+  persistCdUntil("tartRapidPlus", droneAbilityCooldown(TART_RAPIDPLUS_CD));
 }
 function cancelTartRapidPlus() {
   if ((player.tartRapidPlusT || 0) <= 0) return;
@@ -3343,8 +3347,8 @@ function activateTartPlusBoost() {
   }
   player.tartPlusBoostOn = player.tartPlusBoostOn !== true;
   reportMovementAbility("ability_tartarus-plus_speed-boost-plus", player.tartPlusBoostOn);
-  player.tartPlusBoostCd = TARTPLUS_BOOST_SWITCH_CD;
-  persistCdUntil("tartPlusBoost", TARTPLUS_BOOST_SWITCH_CD);
+  player.tartPlusBoostCd = droneAbilityCooldown(TARTPLUS_BOOST_SWITCH_CD);
+  persistCdUntil("tartPlusBoost", droneAbilityCooldown(TARTPLUS_BOOST_SWITCH_CD));
   if (player.tartPlusBoostOn === true) {
     player.tartPlusBoostElapsed = 0;
     try {
@@ -3370,9 +3374,9 @@ function tempestBackupHealBlocked() {
 // À 0 HP : 1 HP + invincible 10 s. Soigné entre-temps (HP > 1) = survie,
 // sinon explosion à la fin. Recharge 360 s, sprite passif éteint pendant.
 function startTempestBackupCooldown() {
-  player.tempestBackupCd = TEMPEST_BACKUP_CD;
+  player.tempestBackupCd = droneAbilityCooldown(TEMPEST_BACKUP_CD);
   persistCdUntil("tempestBackupFx", 0);
-  persistCdUntil("tempestBackup", TEMPEST_BACKUP_CD);
+  persistCdUntil("tempestBackup", droneAbilityCooldown(TEMPEST_BACKUP_CD));
 }
 function cancelTempestBackup() {
   if ((player.tempestBackupT || 0) <= 0) return;
@@ -3387,9 +3391,9 @@ function tryTempestBackup() {
   player.hp = 1;
   player.tempestBackupT = TEMPEST_BACKUP_INVULN;
   player.invincibleT = Math.max(Number(player.invincibleT || 0), TEMPEST_BACKUP_INVULN);
-  player.tempestBackupCd = TEMPEST_BACKUP_CD;
+  player.tempestBackupCd = droneAbilityCooldown(TEMPEST_BACKUP_CD);
   persistCdUntil("tempestBackupFx", TEMPEST_BACKUP_INVULN);
-  persistCdUntil("tempestBackup", TEMPEST_BACKUP_INVULN + TEMPEST_BACKUP_CD);
+  persistCdUntil("tempestBackup", TEMPEST_BACKUP_INVULN + droneAbilityCooldown(TEMPEST_BACKUP_CD));
   try {
     for (let i = 1; i <= TEMPEST_BACKUP_FRAMES; i++) {
       loadImage(`ASSETS/APTITUDES/TEMPEST_VOLT_BACKUP/${i}.png`, { priority: true });
@@ -3409,9 +3413,9 @@ function tempestDischargeMult() {
   return 1;
 }
 function startTempestDischCooldown() {
-  player.tempestDischCd = TEMPEST_DISCH_CD;
+  player.tempestDischCd = droneAbilityCooldown(TEMPEST_DISCH_CD);
   persistCdUntil("tempestDischFx", 0);
-  persistCdUntil("tempestDisch", TEMPEST_DISCH_CD);
+  persistCdUntil("tempestDisch", droneAbilityCooldown(TEMPEST_DISCH_CD));
 }
 function cancelTempestDisch() {
   if ((player.tempestDischT || 0) <= 0) return;
@@ -3442,8 +3446,8 @@ function activateTempestDisch() {
 // --- Voltage Link : chaîne jusqu'à 10 cibles, 50k −5 % par saut, stop 1 s.
 // Lien bleu nuit entre maillons, LINK_STUN une fois par cible.
 function startTempestLinkCooldown() {
-  player.tempestLinkCd = TEMPEST_LINK_CD;
-  persistCdUntil("tempestLink", TEMPEST_LINK_CD);
+  player.tempestLinkCd = droneAbilityCooldown(TEMPEST_LINK_CD);
+  persistCdUntil("tempestLink", droneAbilityCooldown(TEMPEST_LINK_CD));
 }
 function activateTempestLink() {
   if (player.dead || !started) return;
@@ -3512,9 +3516,9 @@ function activateTempestLink() {
 // --- Zephyr MMT : distance d'attaque x2 pendant 10 s (portée 700 -> 1400).
 // Via stockUpdateRange : lasers, roquettes, salves, aptitudes et HUD suivent.
 function startMmtCooldown() {
-  player.mmtCd = MMT_COOLDOWN;
+  player.mmtCd = droneAbilityCooldown(MMT_COOLDOWN);
   persistCdUntil("mmtFx", 0);
-  persistCdUntil("mmt", MMT_COOLDOWN);
+  persistCdUntil("mmt", droneAbilityCooldown(MMT_COOLDOWN));
 }
 function cancelMmt() {
   if ((player.mmtT || 0) <= 0) return;
@@ -3543,11 +3547,11 @@ function tbrPetOk() {
 }
 function startTbrCooldown() {
   try { sendSkillUse("ability_zephyr_tbr", { enabled: false }); } catch {}
-  player.tbrCd = TBR_COOLDOWN;
+  player.tbrCd = droneAbilityCooldown(TBR_COOLDOWN);
   player.tbrT = 0;
   player.tbrClones = [];
   persistCdUntil("tbrFx", 0);
-  persistCdUntil("tbr", TBR_COOLDOWN);
+  persistCdUntil("tbr", droneAbilityCooldown(TBR_COOLDOWN));
 }
 function cancelTbr() {
   if ((player.tbrT || 0) <= 0 && !(Array.isArray(player.tbrClones) && player.tbrClones.length)) return;
@@ -3699,8 +3703,8 @@ function cancelPlayerAbilitiesForJam() {
   if (player.tartBoostOn) reportMovementAbility("ability_tartarus_speed-boost", false);
   if (player.tartPlusBoostOn) {
     reportMovementAbility("ability_tartarus-plus_speed-boost-plus", false);
-    player.tartPlusBoostCd = TARTPLUS_BOOST_SWITCH_CD;
-    persistCdUntil("tartPlusBoost", TARTPLUS_BOOST_SWITCH_CD);
+    player.tartPlusBoostCd = droneAbilityCooldown(TARTPLUS_BOOST_SWITCH_CD);
+    persistCdUntil("tartPlusBoost", droneAbilityCooldown(TARTPLUS_BOOST_SWITCH_CD));
   }
   player.tartBoostOn = false;
   player.tartPlusBoostOn = false;
@@ -3744,8 +3748,8 @@ function jamxHalo(radius) {
   } catch {}
 }
 function startJamxCooldown() {
-  player.jamxCd = JAMX_CD;
-  persistCdUntil("jamx", JAMX_CD);
+  player.jamxCd = droneAbilityCooldown(JAMX_CD);
+  persistCdUntil("jamx", droneAbilityCooldown(JAMX_CD));
 }
 function activateJamx() {
   if (player.dead || !started) return;
@@ -3761,8 +3765,8 @@ function activateJamx() {
   showNotification(n > 0 ? `JAMX : ${n} vaisseau${n > 1 ? "x" : ""} brouillé${n > 1 ? "s" : ""} (3 s)` : "JAMX : personne à portée (500)", 2.5, "info");
 }
 function startCreedCooldown() {
-  player.creedCd = CREED_CD;
-  persistCdUntil("creed", CREED_CD);
+  player.creedCd = droneAbilityCooldown(CREED_CD);
+  persistCdUntil("creed", droneAbilityCooldown(CREED_CD));
 }
 function activateCreed() {
   if (player.dead || !started) return;
@@ -3783,9 +3787,9 @@ function applyMarkSlow(e, dur) {
   e.rocketSlowPct = Math.max(Number(e.rocketSlowPct || 0), MARK_SLOW_PCT);
 }
 function startMarkCooldown() {
-  player.markCd = MARK_CD;
+  player.markCd = droneAbilityCooldown(MARK_CD);
   persistCdUntil("markFx", 0);
-  persistCdUntil("mark", MARK_CD);
+  persistCdUntil("mark", droneAbilityCooldown(MARK_CD));
 }
 function cancelMark() {
   // Effet porté par l'ennemi (e.markT) : rien à couper côté joueur.
@@ -3823,9 +3827,9 @@ function activateMark(abilityId = "ability_spearhead_target-marker") {
   showNotification("Cible marquée (15 s) : +10 % pénétration, ralenti 10 s", 2.5, "info");
 }
 function startNeutrCooldown() {
-  player.neutrCd = NEUTR_CD;
+  player.neutrCd = droneAbilityCooldown(NEUTR_CD);
   persistCdUntil("neutrFx", 0);
-  persistCdUntil("neutr", NEUTR_CD);
+  persistCdUntil("neutr", droneAbilityCooldown(NEUTR_CD));
 }
 // Neutralizing Marker (Plus) : lock requis, modules neutralisés (mêmes
 // blocages que JAMX) + contour blanc pendant 3 s, ralenti 10 % pendant 3 s.
@@ -3889,11 +3893,11 @@ const MMT_COOLDOWN = 360;
 const TBR_DURATION = 60;
 const TBR_COOLDOWN = 600;
 function startCyborgCooldown() {
-  player.cyborgCd = CYBORG_COOLDOWN;
+  player.cyborgCd = droneAbilityCooldown(CYBORG_COOLDOWN);
   player.cyborgTarget = null;
   player.cyborgHit = 0;
   persistCdUntil("cyborgFx", 0);
-  persistCdUntil("cyborg", CYBORG_COOLDOWN);
+  persistCdUntil("cyborg", droneAbilityCooldown(CYBORG_COOLDOWN));
 }
 function cancelCyborg() {
   if ((player.cyborgT || 0) <= 0) return;
@@ -3964,11 +3968,11 @@ function activateCyborg() {
 // --- Venom Singularité (officiel) : même canal que le Cyborg en plus faible
 // (1500 +200/hit, cap 8500, ~180k/35 s). Exécution < 100k HP à la fin.
 function startVenomCooldown() {
-  player.venomCd = VENOM_COOLDOWN;
+  player.venomCd = droneAbilityCooldown(VENOM_COOLDOWN);
   player.venomTarget = null;
   player.venomHit = 0;
   persistCdUntil("venomFx", 0);
-  persistCdUntil("venom", VENOM_COOLDOWN);
+  persistCdUntil("venom", droneAbilityCooldown(VENOM_COOLDOWN));
 }
 function cancelVenom() {
   if ((player.venomT || 0) <= 0) return;
@@ -4028,10 +4032,10 @@ function activateVenom() {
 // verrouillée prend +50 % de dégâts pendant 15 s. Contrecoup : -30 % de
 // notre bouclier actuel à l'expiration naturelle (pas en cas d'annulation).
 function startDiminishCooldown() {
-  player.diminishCd = DIMINISH_COOLDOWN;
+  player.diminishCd = droneAbilityCooldown(DIMINISH_COOLDOWN);
   player.diminishTarget = null;
   persistCdUntil("diminishFx", 0);
-  persistCdUntil("diminish", DIMINISH_COOLDOWN);
+  persistCdUntil("diminish", droneAbilityCooldown(DIMINISH_COOLDOWN));
 }
 function cancelDiminish() {
   if ((player.diminishT || 0) <= 0) return;
@@ -4063,15 +4067,15 @@ function holoEnemyWeakened(e) {
   } catch { return false; }
 }
 function startHoloSelfCooldown() {
-  player.holoSelfCd = HOLO_COOLDOWN;
+  player.holoSelfCd = droneAbilityCooldown(HOLO_COOLDOWN);
   persistCdUntil("holoSelfFx", 0);
-  persistCdUntil("holoSelf", HOLO_COOLDOWN);
+  persistCdUntil("holoSelf", droneAbilityCooldown(HOLO_COOLDOWN));
 }
 function startHoloEnemyCooldown() {
-  player.holoEnemyCd = HOLO_COOLDOWN;
+  player.holoEnemyCd = droneAbilityCooldown(HOLO_COOLDOWN);
   player.holoEnemyTarget = null;
   persistCdUntil("holoEnemyFx", 0);
-  persistCdUntil("holoEnemy", HOLO_COOLDOWN);
+  persistCdUntil("holoEnemy", droneAbilityCooldown(HOLO_COOLDOWN));
 }
 function cancelHoloSelf() {
   if ((player.holoSelfT || 0) <= 0) return;
@@ -4208,10 +4212,10 @@ function drawQaChargeFx(angle, remaining, duration, radius = 18) {
   ctx.restore();
 }
 function startGaCooldown() {
-  player.gaCd = GA_COOLDOWN;
+  player.gaCd = droneAbilityCooldown(GA_COOLDOWN);
   player.gaTarget = null;
   persistCdUntil("gaFx", 0);
-  persistCdUntil("ga", GA_COOLDOWN);
+  persistCdUntil("ga", droneAbilityCooldown(GA_COOLDOWN));
 }
 function cancelGa() {
   if ((player.gaT || 0) <= 0) return;
@@ -4258,9 +4262,9 @@ function activateGa() {
 }
 // --- Hyperion QA : rafale gratuite X0, 125 000 dégâts de base au total.
 function startQaCooldown() {
-  player.qaCd = QA_COOLDOWN;
+  player.qaCd = droneAbilityCooldown(QA_COOLDOWN);
   persistCdUntil("qaFx", 0);
-  persistCdUntil("qa", QA_COOLDOWN);
+  persistCdUntil("qa", droneAbilityCooldown(QA_COOLDOWN));
 }
 function activateQa() {
   if (player.dead || !started) return;
@@ -4403,9 +4407,9 @@ function keresSprInfect(e) {
   return true;
 }
 function startSprCooldown() {
-  player.keresSprCd = SPR_COOLDOWN;
+  player.keresSprCd = droneAbilityCooldown(SPR_COOLDOWN);
   persistCdUntil("keresSprFx", 0);
-  persistCdUntil("keresSpr", SPR_COOLDOWN);
+  persistCdUntil("keresSpr", droneAbilityCooldown(SPR_COOLDOWN));
 }
 function cancelSpr() {
   if (!player.keresSprActive) return;
@@ -4450,10 +4454,10 @@ function activateSpr() {
 // --- Keres SLE/Sleight : lock suffit, aucune limite de distance. Dash x5
 // jusqu'à 200 de la cible, réacteurs remplacés par le speed buff Citadel.
 function startSleightCooldown() {
-  player.sleightCd = SLEIGHT_COOLDOWN;
+  player.sleightCd = droneAbilityCooldown(SLEIGHT_COOLDOWN);
   player.sleightTarget = null;
   persistCdUntil("sleightFx", 0);
-  persistCdUntil("sleight", SLEIGHT_COOLDOWN);
+  persistCdUntil("sleight", droneAbilityCooldown(SLEIGHT_COOLDOWN));
 }
 function cancelSleight() {
   if ((player.sleightT || 0) <= 0 && !player.sleightTarget) return;
@@ -4498,9 +4502,9 @@ function scrambleDamageMult() {
 function startScrambleCooldown() {
   reportMovementAbility("ability_mimesis_scramble", false);
   player.scrambleT = 0;
-  player.scrambleCd = SCRAMBLE_COOLDOWN;
+  player.scrambleCd = droneAbilityCooldown(SCRAMBLE_COOLDOWN);
   persistCdUntil("scrambleFx", 0);
-  persistCdUntil("scramble", SCRAMBLE_COOLDOWN);
+  persistCdUntil("scramble", droneAbilityCooldown(SCRAMBLE_COOLDOWN));
 }
 function cancelScramble() {
   if ((player.scrambleT || 0) <= 0) return;
@@ -4533,8 +4537,8 @@ function isPhaseOutBlocked() {
   return false;
 }
 function startPhaseOutCooldown() {
-  player.phaseOutCd = PHASEOUT_COOLDOWN;
-  persistCdUntil("phaseOut", PHASEOUT_COOLDOWN);
+  player.phaseOutCd = droneAbilityCooldown(PHASEOUT_COOLDOWN);
+  persistCdUntil("phaseOut", droneAbilityCooldown(PHASEOUT_COOLDOWN));
 }
 function activatePhaseOut() {
   if (player.dead || !started) return;
@@ -4575,9 +4579,9 @@ function hologramSoundDuration() {
 function startHologramCooldown() {
   player.holoGramPhase = null;
   player.holoGramT = 0;
-  player.holoGramCd = HOLOGRAM_COOLDOWN;
+  player.holoGramCd = droneAbilityCooldown(HOLOGRAM_COOLDOWN);
   persistCdUntil("holoGramFx", 0);
-  persistCdUntil("holoGram", HOLOGRAM_COOLDOWN);
+  persistCdUntil("holoGram", droneAbilityCooldown(HOLOGRAM_COOLDOWN));
 }
 function cancelHologram() {
   // Mort / changement vaisseau / refresh : son coupé, clones effacés, recharge.
@@ -4673,9 +4677,9 @@ function killHoloClone(clone, silent = false) {
 }
 // --- Liberator Plus Self Repair : 35k HP/s pendant 10 s (350k max), soi uniquement.
 function startLibRepCooldown() {
-  player.libRepCd = LIBREP_COOLDOWN;
+  player.libRepCd = droneAbilityCooldown(LIBREP_COOLDOWN);
   persistCdUntil("libRepFx", 0);
-  persistCdUntil("libRep", LIBREP_COOLDOWN);
+  persistCdUntil("libRep", droneAbilityCooldown(LIBREP_COOLDOWN));
 }
 function cancelLibRep() {
   if ((player.libRepT || 0) <= 0) return;
@@ -4723,9 +4727,9 @@ function activateLibRep() {
 }
 // --- Orcus Assimilate : 80 % des dégâts reçus convertis en PV.
 function startOrcusCooldown() {
-  player.orcusCd = ORCUS_COOLDOWN;
+  player.orcusCd = droneAbilityCooldown(ORCUS_COOLDOWN);
   persistCdUntil("orcusFx", 0);
-  persistCdUntil("orcus", ORCUS_COOLDOWN);
+  persistCdUntil("orcus", droneAbilityCooldown(ORCUS_COOLDOWN));
 }
 function cancelOrcus() {
   if ((player.orcusT || 0) <= 0) return;
@@ -4762,9 +4766,9 @@ function activateOrcus() {
 }
 // --- Lightning Postcombustion : comme le Voyage Citadel (vitesse x2, 5 s).
 function startLightCooldown() {
-  player.lightCd = LIGHT_COOLDOWN;
+  player.lightCd = droneAbilityCooldown(LIGHT_COOLDOWN);
   persistCdUntil("lightFx", 0);
-  persistCdUntil("light", LIGHT_COOLDOWN);
+  persistCdUntil("light", droneAbilityCooldown(LIGHT_COOLDOWN));
 }
 function cancelLight() {
   if ((player.lightT || 0) <= 0) return;
@@ -4817,10 +4821,10 @@ function activateDiminish() {
 }
 // --- DDoL (Disruptor) : précision laser réduite comme avec la PLD-8.
 function startDdolCooldown() {
-  player.ddolCd = DDOL_COOLDOWN;
+  player.ddolCd = droneAbilityCooldown(DDOL_COOLDOWN);
   player.ddolTarget = null;
   persistCdUntil("ddolFx", 0);
-  persistCdUntil("ddol", DDOL_COOLDOWN);
+  persistCdUntil("ddol", droneAbilityCooldown(DDOL_COOLDOWN));
 }
 function cancelDdol() {
   if ((player.ddolT || 0) <= 0) return;
@@ -4857,10 +4861,10 @@ function activateDdol() {
 // nous inflige partent sur la cible verrouillée (on ne prend rien), et ses
 // lasers sont désactivés 4 s.
 function startRedirectCooldown() {
-  player.redirectCd = REDIRECT_COOLDOWN;
+  player.redirectCd = droneAbilityCooldown(REDIRECT_COOLDOWN);
   player.redirectTarget = null;
   persistCdUntil("redirectFx", 0);
-  persistCdUntil("redirect", REDIRECT_COOLDOWN);
+  persistCdUntil("redirect", droneAbilityCooldown(REDIRECT_COOLDOWN));
 }
 function cancelRedirect() {
   if ((player.redirectT || 0) <= 0) return;
@@ -4903,10 +4907,10 @@ function disarrayRestore(target) {
   } catch {}
 }
 function startDisarrayCooldown() {
-  player.disarrayCd = DISARRAY_COOLDOWN;
+  player.disarrayCd = droneAbilityCooldown(DISARRAY_COOLDOWN);
   player.disarrayTarget = null;
   persistCdUntil("disarrayFx", 0);
-  persistCdUntil("disarray", DISARRAY_COOLDOWN);
+  persistCdUntil("disarray", droneAbilityCooldown(DISARRAY_COOLDOWN));
 }
 function cancelDisarray() {
   if ((player.disarrayT || 0) <= 0) return;
@@ -4920,9 +4924,9 @@ function cancelDisarray() {
 // dégâts 0) sur la cible verrouillée. Ni stock consommé, ni cooldown
 // roquette : seule la recharge 90 s de l'aptitude compte.
 function startFrozenClawCooldown() {
-  player.frozenClawCd = FROZEN_CLAW_COOLDOWN;
+  player.frozenClawCd = droneAbilityCooldown(FROZEN_CLAW_COOLDOWN);
   persistCdUntil("frozenClawFx", 0);
-  persistCdUntil("frozenClaw", FROZEN_CLAW_COOLDOWN);
+  persistCdUntil("frozenClaw", droneAbilityCooldown(FROZEN_CLAW_COOLDOWN));
 }
 function activateFrozenClaw() {
   if (player.dead || !started) return;
@@ -4998,7 +5002,7 @@ function shipPassiveXpMult() {
 function startHecateCooldown(plus) {
   // Variante explicite (true = Plus, false = base) ; sans param = le vaisseau.
   const p = plus === true ? true : plus === false ? false : hecatePlusShip();
-  const cd = hecateCdVal(p);
+  const cd = droneAbilityCooldown(hecateCdVal(p));
   reportAbilityCast(p ? "ability_hecate-plus_particle-beam-plus" : "ability_hecate_particle-beam", false);
   if (p) {
     player.hecatePlusT = 0;
@@ -5191,9 +5195,9 @@ function activateDisarray() {
 }
 function startValourCooldown() {
   player.valMult = 0;
-  player.valCd = VALOUR_COOLDOWN;
+  player.valCd = droneAbilityCooldown(VALOUR_COOLDOWN);
   persistCdUntil("valFx", 0);
-  persistCdUntil("val", VALOUR_COOLDOWN);
+  persistCdUntil("val", droneAbilityCooldown(VALOUR_COOLDOWN));
 }
 function cancelValour() {
   if ((player.valT || 0) <= 0) return;
@@ -5799,9 +5803,9 @@ function restorePersistedCds() {
 }
 // Recharge de la nébuleuse : ne démarre qu'une fois l'effet fini ou coupé.
 function startNebulaCooldown() {
-  player.nebCd = NEBULA_COOLDOWN;
+  player.nebCd = droneAbilityCooldown(NEBULA_COOLDOWN);
   persistCdUntil("nebFx", 0);
-  persistCdUntil("neb", NEBULA_COOLDOWN);
+  persistCdUntil("neb", droneAbilityCooldown(NEBULA_COOLDOWN));
 }
 // Nébuleuse annulée (mort, changement de vaisseau) : la recharge démarre.
 function cancelNebula() {
@@ -6064,15 +6068,15 @@ function drawRepairLinks(ox, oy) {
 // Recharges des réparations : idem (fin ou coupure).
 function startHpRepairCooldown() {
   player.healHpTarget = null;
-  player.healHpCd = HP_REPAIR_COOLDOWN;
+  player.healHpCd = droneAbilityCooldown(HP_REPAIR_COOLDOWN);
   persistCdUntil("hpRepFx", 0);
-  persistCdUntil("hpRep", HP_REPAIR_COOLDOWN);
+  persistCdUntil("hpRep", droneAbilityCooldown(HP_REPAIR_COOLDOWN));
 }
 function startShRepairCooldown() {
   player.healShTarget = null;
-  player.healShCd = SH_REPAIR_COOLDOWN;
+  player.healShCd = droneAbilityCooldown(SH_REPAIR_COOLDOWN);
   persistCdUntil("shRepFx", 0);
-  persistCdUntil("shRep", SH_REPAIR_COOLDOWN);
+  persistCdUntil("shRep", droneAbilityCooldown(SH_REPAIR_COOLDOWN));
 }
 function cancelRepairs() {
   if ((player.healHpT || 0) > 0) {
@@ -6120,9 +6124,9 @@ function activateShieldRepair() {
 }
 // Recharge du pod : ne démarre qu'une fois l'effet fini ou coupé.
 function startRepairPodCooldown() {
-  player.podCd = REPAIR_POD_COOLDOWN;
+  player.podCd = droneAbilityCooldown(REPAIR_POD_COOLDOWN);
   persistCdUntil("podFx", 0);
-  persistCdUntil("pod", REPAIR_POD_COOLDOWN);
+  persistCdUntil("pod", droneAbilityCooldown(REPAIR_POD_COOLDOWN));
 }
 // Le pod posé est annulé (mort, changement de vaisseau) : la recharge démarre.
 function cancelRepairPod() {
@@ -6268,7 +6272,7 @@ function startHammerHpCooldown(plus) {
   // Variante explicite (true = Plus, false = base) ; sans param = le vaisseau.
   // Chaque bouton gère SA compétence : finir/couper l'une ne touche pas l'autre.
   const p = plus === true ? true : plus === false ? false : hammerPlusShip();
-  const cd = hammerHpCdVal(p);
+  const cd = droneAbilityCooldown(hammerHpCdVal(p));
   player[p ? "hammerHpPlusTarget" : "hammerHpTarget"] = null;
   if (p) {
     player.hammerHpPlusT = 0;
@@ -6286,7 +6290,7 @@ function startHammerHpCooldown(plus) {
 }
 function startHammerShCooldown(plus) {
   const p = plus === true ? true : plus === false ? false : hammerPlusShip();
-  const cd = hammerShCdVal(p);
+  const cd = droneAbilityCooldown(hammerShCdVal(p));
   player[p ? "hammerShPlusTarget" : "hammerShTarget"] = null;
   if (p) {
     player.hammerShPlusT = 0;
@@ -6362,7 +6366,7 @@ function activateHammerShRepair(forcePlus) {
 function startHammerPodCooldown(plus) {
   // Variante explicite (true = Plus, false = base) ; sans param = le vaisseau.
   const p = plus === true ? true : plus === false ? false : hammerPlusShip();
-  const cd = hammerPodCdVal(p);
+  const cd = droneAbilityCooldown(hammerPodCdVal(p));
   if (p) {
     player.hammerPodPlusT = 0;
     player.hammerPodPlusX = null;
@@ -6391,10 +6395,10 @@ function cancelHammerPod() {
 // dégâts pendant 10 s, distribué en PV à la fin (nous + escortes à 700,
 // en solo tout pour nous). Sans lock requis, effet de zone centré sur nous.
 function startReallocCooldown() {
-  player.reallocCd = REALLOC_COOLDOWN;
+  player.reallocCd = droneAbilityCooldown(REALLOC_COOLDOWN);
   player.reallocPool = 0;
   persistCdUntil("reallocFx", 0);
-  persistCdUntil("realloc", REALLOC_COOLDOWN);
+  persistCdUntil("realloc", droneAbilityCooldown(REALLOC_COOLDOWN));
 }
 function cancelRealloc() {
   if ((player.reallocT || 0) <= 0) return;
@@ -6550,167 +6554,167 @@ function getAbilityCooldown(abilityId) {
   if (isCloakAbility(abilityId)) {
     // Pendant l'effet : voile plein (figé). Après : la recharge descend.
     if (isPlayerCloaked()) {
-      const total = POLICE_CLOAK_DURATION + POLICE_CLOAK_COOLDOWN;
+      const total = POLICE_CLOAK_DURATION + droneAbilityCooldown(POLICE_CLOAK_COOLDOWN);
       return { left: total, max: total };
     }
-    return { left: Number(player.cloakCd || 0), max: POLICE_CLOAK_COOLDOWN };
+    return { left: Number(player.cloakCd || 0), max: droneAbilityCooldown(POLICE_CLOAK_COOLDOWN) };
   }
   if (String(abilityId || "").toLowerCase() === "ability_aegis_repair-pod") {
     // Pendant les 10 s : voile plein (figé). Après : la recharge descend.
     if ((player.podT || 0) > 0) {
-      const total = REPAIR_POD_DURATION + REPAIR_POD_COOLDOWN;
+      const total = REPAIR_POD_DURATION + droneAbilityCooldown(REPAIR_POD_COOLDOWN);
       return { left: total, max: total };
     }
-    return { left: Number(player.podCd || 0), max: REPAIR_POD_COOLDOWN };
+    return { left: Number(player.podCd || 0), max: droneAbilityCooldown(REPAIR_POD_COOLDOWN) };
   }
   if (String(abilityId || "").toLowerCase() === "ability_hammerclaw_hp-repair") {
     if ((player.hammerHpT || 0) > 0) {
-      const total = HAMMER_HP_DURATION + HAMMER_HP_COOLDOWN;
+      const total = HAMMER_HP_DURATION + droneAbilityCooldown(HAMMER_HP_COOLDOWN);
       return { left: total, max: total };
     }
-    return { left: Number(player.hammerHpCd || 0), max: HAMMER_HP_COOLDOWN };
+    return { left: Number(player.hammerHpCd || 0), max: droneAbilityCooldown(HAMMER_HP_COOLDOWN) };
   }
   if (String(abilityId || "").toLowerCase() === "ability_hammerclaw-plus_hp-repair") {
     if ((player.hammerHpPlusT || 0) > 0) {
-      const total = HAMMER_PLUS_HP_DURATION + HAMMER_PLUS_HP_COOLDOWN;
+      const total = HAMMER_PLUS_HP_DURATION + droneAbilityCooldown(HAMMER_PLUS_HP_COOLDOWN);
       return { left: total, max: total };
     }
-    return { left: Number(player.hammerHpPlusCd || 0), max: HAMMER_PLUS_HP_COOLDOWN };
+    return { left: Number(player.hammerHpPlusCd || 0), max: droneAbilityCooldown(HAMMER_PLUS_HP_COOLDOWN) };
   }
   if (String(abilityId || "").toLowerCase() === "ability_hammerclaw_shield-repair") {
     if ((player.hammerShT || 0) > 0) {
-      const total = HAMMER_SH_DURATION + HAMMER_SH_COOLDOWN;
+      const total = HAMMER_SH_DURATION + droneAbilityCooldown(HAMMER_SH_COOLDOWN);
       return { left: total, max: total };
     }
-    return { left: Number(player.hammerShCd || 0), max: HAMMER_SH_COOLDOWN };
+    return { left: Number(player.hammerShCd || 0), max: droneAbilityCooldown(HAMMER_SH_COOLDOWN) };
   }
   if (String(abilityId || "").toLowerCase() === "ability_hammerclaw-plus_shield-repair") {
     if ((player.hammerShPlusT || 0) > 0) {
-      const total = HAMMER_SH_DURATION + HAMMER_PLUS_SH_COOLDOWN;
+      const total = HAMMER_SH_DURATION + droneAbilityCooldown(HAMMER_PLUS_SH_COOLDOWN);
       return { left: total, max: total };
     }
-    return { left: Number(player.hammerShPlusCd || 0), max: HAMMER_PLUS_SH_COOLDOWN };
+    return { left: Number(player.hammerShPlusCd || 0), max: droneAbilityCooldown(HAMMER_PLUS_SH_COOLDOWN) };
   }
   if (String(abilityId || "").toLowerCase() === "ability_hammerclaw_repair-pod") {
     if ((player.hammerPodT || 0) > 0) {
-      const total = HAMMER_POD_DURATION + HAMMER_POD_COOLDOWN;
+      const total = HAMMER_POD_DURATION + droneAbilityCooldown(HAMMER_POD_COOLDOWN);
       return { left: total, max: total };
     }
-    return { left: Number(player.hammerPodCd || 0), max: HAMMER_POD_COOLDOWN };
+    return { left: Number(player.hammerPodCd || 0), max: droneAbilityCooldown(HAMMER_POD_COOLDOWN) };
   }
   if (String(abilityId || "").toLowerCase() === "ability_hammerclaw-plus_repair-pod") {
     if ((player.hammerPodPlusT || 0) > 0) {
-      const total = HAMMER_PLUS_POD_DURATION + HAMMER_PLUS_POD_COOLDOWN;
+      const total = HAMMER_PLUS_POD_DURATION + droneAbilityCooldown(HAMMER_PLUS_POD_COOLDOWN);
       return { left: total, max: total };
     }
-    return { left: Number(player.hammerPodPlusCd || 0), max: HAMMER_PLUS_POD_COOLDOWN };
+    return { left: Number(player.hammerPodPlusCd || 0), max: droneAbilityCooldown(HAMMER_PLUS_POD_COOLDOWN) };
   }
   if (String(abilityId || "").toLowerCase() === "ability_basilisk_noxious-nebula") {
     if ((player.nebT || 0) > 0) {
-      const total = NEBULA_DURATION + NEBULA_COOLDOWN;
+      const total = NEBULA_DURATION + droneAbilityCooldown(NEBULA_COOLDOWN);
       return { left: total, max: total };
     }
-    return { left: Number(player.nebCd || 0), max: NEBULA_COOLDOWN };
+    return { left: Number(player.nebCd || 0), max: droneAbilityCooldown(NEBULA_COOLDOWN) };
   }
   if (String(abilityId || "").toLowerCase() === "ability_basilisk_heightened-valour") {
     if ((player.valT || 0) > 0) {
-      const total = VALOUR_DURATION + VALOUR_COOLDOWN;
+      const total = VALOUR_DURATION + droneAbilityCooldown(VALOUR_COOLDOWN);
       return { left: total, max: total };
     }
-    return { left: Number(player.valCd || 0), max: VALOUR_COOLDOWN };
+    return { left: Number(player.valCd || 0), max: droneAbilityCooldown(VALOUR_COOLDOWN) };
   }
   if (String(abilityId || "").toLowerCase() === "ability_berserker_shl") {
     if ((player.shlT || 0) > 0) {
-      const total = SHL_DURATION + SHL_COOLDOWN;
+      const total = SHL_DURATION + droneAbilityCooldown(SHL_COOLDOWN);
       return { left: total, max: total };
     }
-    return { left: Number(player.shlCd || 0), max: SHL_COOLDOWN };
+    return { left: Number(player.shlCd || 0), max: droneAbilityCooldown(SHL_COOLDOWN) };
   }
   if (String(abilityId || "").toLowerCase() === "ability_berserker_bsk") {
     if ((player.bskT || 0) > 0) {
-      const total = BSK_DURATION + BSK_COOLDOWN;
+      const total = BSK_DURATION + droneAbilityCooldown(BSK_COOLDOWN);
       return { left: total, max: total };
     }
-    return { left: Number(player.bskCd || 0), max: BSK_COOLDOWN };
+    return { left: Number(player.bskCd || 0), max: droneAbilityCooldown(BSK_COOLDOWN) };
   }
   if (String(abilityId || "").toLowerCase() === "ability_berserker_rvg") {
     if ((player.rvgT || 0) > 0) {
-      const total = RVG_DURATION + RVG_COOLDOWN;
+      const total = RVG_DURATION + droneAbilityCooldown(RVG_COOLDOWN);
       return { left: total, max: total };
     }
-    return { left: Number(player.rvgCd || 0), max: RVG_COOLDOWN };
+    return { left: Number(player.rvgCd || 0), max: droneAbilityCooldown(RVG_COOLDOWN) };
   }
   const drawFireId = String(abilityId || "").toLowerCase();
   if (drawFireId === "ability_citadel_draw-fire" || drawFireId === "ability_citadel-plus_draw-fire") {
     if ((player.drawFireT || 0) > 0) {
-      const total = DRAW_FIRE_DURATION + DRAW_FIRE_COOLDOWN;
+      const total = DRAW_FIRE_DURATION + droneAbilityCooldown(DRAW_FIRE_COOLDOWN);
       return { left: total, max: total };
     }
-    return { left: Number(player.drawFireCd || 0), max: DRAW_FIRE_COOLDOWN };
+    return { left: Number(player.drawFireCd || 0), max: droneAbilityCooldown(DRAW_FIRE_COOLDOWN) };
   }
   const protectionId = String(abilityId || "").toLowerCase();
   if (protectionId === "ability_citadel_protection" || protectionId === "ability_citadel-plus_protection") {
     if ((player.protectionT || 0) > 0) {
-      const total = PROTECTION_DURATION + PROTECTION_COOLDOWN;
+      const total = PROTECTION_DURATION + droneAbilityCooldown(PROTECTION_COOLDOWN);
       return { left: total, max: total };
     }
-    return { left: Number(player.protectionCd || 0), max: PROTECTION_COOLDOWN };
+    return { left: Number(player.protectionCd || 0), max: droneAbilityCooldown(PROTECTION_COOLDOWN) };
   }
   const travelId = String(abilityId || "").toLowerCase();
   if (travelId === "ability_citadel_travel" || travelId === "ability_citadel-plus_travel") {
     if ((player.travelT || 0) > 0) {
-      const total = TRAVEL_DURATION + TRAVEL_COOLDOWN;
+      const total = TRAVEL_DURATION + droneAbilityCooldown(TRAVEL_COOLDOWN);
       return { left: total, max: total };
     }
-    return { left: Number(player.travelCd || 0), max: TRAVEL_COOLDOWN };
+    return { left: Number(player.travelCd || 0), max: droneAbilityCooldown(TRAVEL_COOLDOWN) };
   }
   if (travelId === "ability_yamato_travel") {
     if ((player.yamatoT || 0) > 0) {
-      const total = YAMATO_TRAVEL_DURATION + YAMATO_TRAVEL_COOLDOWN;
+      const total = YAMATO_TRAVEL_DURATION + droneAbilityCooldown(YAMATO_TRAVEL_COOLDOWN);
       return { left: total, max: total };
     }
-    return { left: Number(player.yamatoCd || 0), max: YAMATO_TRAVEL_COOLDOWN };
+    return { left: Number(player.yamatoCd || 0), max: droneAbilityCooldown(YAMATO_TRAVEL_COOLDOWN) };
   }
   const fortifyId = String(abilityId || "").toLowerCase();
   if (fortifyId === "ability_citadel_fortify" || fortifyId === "ability_citadel-plus_fortify") {
     if ((player.fortifyT || 0) > 0) {
-      const total = FORTIFY_DURATION + FORTIFY_COOLDOWN;
+      const total = FORTIFY_DURATION + droneAbilityCooldown(FORTIFY_COOLDOWN);
       return { left: total, max: total };
     }
-    return { left: Number(player.fortifyCd || 0), max: FORTIFY_COOLDOWN };
+    return { left: Number(player.fortifyCd || 0), max: droneAbilityCooldown(FORTIFY_COOLDOWN) };
   }
   if (String(abilityId || "").toLowerCase() === "ability_citadel-plus_prismatic-endurance") {
     if ((player.prismT || 0) > 0) {
-      const total = PRISM_DURATION + PRISM_COOLDOWN;
+      const total = PRISM_DURATION + droneAbilityCooldown(PRISM_COOLDOWN);
       return { left: total, max: total };
     }
-    return { left: Number(player.prismCd || 0), max: PRISM_COOLDOWN };
+    return { left: Number(player.prismCd || 0), max: droneAbilityCooldown(PRISM_COOLDOWN) };
   }
   if (String(abilityId || "").toLowerCase() === "ability_spectrum") {
     if ((player.specT || 0) > 0) {
-      const total = Number(player.specDuration || activeCenturionAbilityDuration("spectrum", SPEC_DURATION)) + SPEC_COOLDOWN;
+      const total = Number(player.specDuration || activeCenturionAbilityDuration("spectrum", SPEC_DURATION)) + droneAbilityCooldown(SPEC_COOLDOWN);
       return { left: total, max: total };
     }
-    return { left: Number(player.specCd || 0), max: SPEC_COOLDOWN };
+    return { left: Number(player.specCd || 0), max: droneAbilityCooldown(SPEC_COOLDOWN) };
   }
   if (String(abilityId || "").toLowerCase() === "ability_spectrum-plus_prismatic-reflecting") {
     if ((player.specPlusT || 0) > 0) {
-      const total = SPECPLUS_DURATION + SPECPLUS_COOLDOWN;
+      const total = SPECPLUS_DURATION + droneAbilityCooldown(SPECPLUS_COOLDOWN);
       return { left: total, max: total };
     }
-    return { left: Number(player.specPlusCd || 0), max: SPECPLUS_COOLDOWN };
+    return { left: Number(player.specPlusCd || 0), max: droneAbilityCooldown(SPECPLUS_COOLDOWN) };
   }
   // Tartarus Tir rapide : instant, juste la recharge 72 s.
   if (String(abilityId || "").toLowerCase() === "ability_tartarus_rapid-fire") {
-    return { left: Number(player.tartRapidCd || 0), max: TART_RAPID_CD };
+    return { left: Number(player.tartRapidCd || 0), max: droneAbilityCooldown(TART_RAPID_CD) };
   }
   // Tartarus Plus Tir rapide : pendant 3 s voile plein, après la recharge descend.
   if (String(abilityId || "").toLowerCase() === "ability_tartarus-plus_rapid-fire-plus") {
     if ((player.tartRapidPlusT || 0) > 0) {
-      const total = TART_RAPIDPLUS_DURATION + TART_RAPIDPLUS_CD;
+      const total = TART_RAPIDPLUS_DURATION + droneAbilityCooldown(TART_RAPIDPLUS_CD);
       return { left: total, max: total };
     }
-    return { left: Number(player.tartRapidPlusCd || 0), max: TART_RAPIDPLUS_CD };
+    return { left: Number(player.tartRapidPlusCd || 0), max: droneAbilityCooldown(TART_RAPIDPLUS_CD) };
   }
   // Tartarus Speed Boost (toggle) : actif = voile plein, inactif = rien (CD 0).
   if (String(abilityId || "").toLowerCase() === "ability_tartarus_speed-boost") {
@@ -6720,323 +6724,323 @@ function getAbilityCooldown(abilityId) {
   // Tartarus Plus Speed Boost (toggle) : actif = voile plein, sinon switch 10 s.
   if (String(abilityId || "").toLowerCase() === "ability_tartarus-plus_speed-boost-plus") {
     if (player.tartPlusBoostOn === true) return { left: 1, max: 1 };
-    return { left: Number(player.tartPlusBoostCd || 0), max: TARTPLUS_BOOST_SWITCH_CD };
+    return { left: Number(player.tartPlusBoostCd || 0), max: droneAbilityCooldown(TARTPLUS_BOOST_SWITCH_CD) };
   }
   // Tempest Volt Back-up (passif) : pendant les 10 s voile plein, après la recharge.
   if (String(abilityId || "").toLowerCase() === "ability_tempest_volt-backup") {
     if ((player.tempestBackupT || 0) > 0) {
-      const total = TEMPEST_BACKUP_INVULN + TEMPEST_BACKUP_CD;
+      const total = TEMPEST_BACKUP_INVULN + droneAbilityCooldown(TEMPEST_BACKUP_CD);
       return { left: total, max: total };
     }
-    return { left: Number(player.tempestBackupCd || 0), max: TEMPEST_BACKUP_CD };
+    return { left: Number(player.tempestBackupCd || 0), max: droneAbilityCooldown(TEMPEST_BACKUP_CD) };
   }
   // Tempest Décharge : pendant 20 s voile plein, après la recharge descend.
   if (String(abilityId || "").toLowerCase() === "ability_tempest_volt-discharge") {
     if ((player.tempestDischT || 0) > 0) {
-      const total = TEMPEST_DISCH_DURATION + TEMPEST_DISCH_CD;
+      const total = TEMPEST_DISCH_DURATION + droneAbilityCooldown(TEMPEST_DISCH_CD);
       return { left: total, max: total };
     }
-    return { left: Number(player.tempestDischCd || 0), max: TEMPEST_DISCH_CD };
+    return { left: Number(player.tempestDischCd || 0), max: droneAbilityCooldown(TEMPEST_DISCH_CD) };
   }
   // Tempest Lien volt : instant, juste la recharge 120 s.
   if (String(abilityId || "").toLowerCase() === "ability_tempest_voltage-link") {
-    return { left: Number(player.tempestLinkCd || 0), max: TEMPEST_LINK_CD };
+    return { left: Number(player.tempestLinkCd || 0), max: droneAbilityCooldown(TEMPEST_LINK_CD) };
   }
   // Zephyr MMT : pendant 10 s voile plein, après la recharge descend.
   if (String(abilityId || "").toLowerCase() === "ability_zephyr_mmt") {
     if ((player.mmtT || 0) > 0) {
-      const total = MMT_DURATION + MMT_COOLDOWN;
+      const total = MMT_DURATION + droneAbilityCooldown(MMT_COOLDOWN);
       return { left: total, max: total };
     }
-    return { left: Number(player.mmtCd || 0), max: MMT_COOLDOWN };
+    return { left: Number(player.mmtCd || 0), max: droneAbilityCooldown(MMT_COOLDOWN) };
   }
   // Zephyr TBR : pendant 10 s voile plein, après la recharge descend.
   if (String(abilityId || "").toLowerCase() === "ability_zephyr_tbr") {
     if ((player.tbrT || 0) > 0) {
-      const total = TBR_DURATION + TBR_COOLDOWN;
+      const total = TBR_DURATION + droneAbilityCooldown(TBR_COOLDOWN);
       return { left: total, max: total };
     }
-    return { left: Number(player.tbrCd || 0), max: TBR_COOLDOWN };
+    return { left: Number(player.tbrCd || 0), max: droneAbilityCooldown(TBR_COOLDOWN) };
   }
   // Spearhead JAMX : instant, juste la recharge 180 s.
   if (String(abilityId || "").toLowerCase() === "ability_spearhead_jam-x") {
-    return { left: Number(player.jamxCd || 0), max: JAMX_CD };
+    return { left: Number(player.jamxCd || 0), max: droneAbilityCooldown(JAMX_CD) };
   }
   // Spearhead Plus JAMX Creed : instant, juste la recharge 200 s.
   if (String(abilityId || "").toLowerCase() === "ability_spearhead-plus_jamx-creed") {
-    return { left: Number(player.creedCd || 0), max: CREED_CD };
+    return { left: Number(player.creedCd || 0), max: droneAbilityCooldown(CREED_CD) };
   }
   // Spearhead Target Marker : instant, juste la recharge 360 s.
   if (String(abilityId || "").toLowerCase() === "ability_spearhead_target-marker"
     || String(abilityId || "").toLowerCase() === "ability_spearhead-plus_target-marker"
     || String(abilityId || "").toLowerCase() === "ability_orcus-plus_target-marker") {
-    return { left: Number(player.markCd || 0), max: MARK_CD };
+    return { left: Number(player.markCd || 0), max: droneAbilityCooldown(MARK_CD) };
   }
   // Spearhead Plus Neutralizing Marker : instant, juste la recharge 360 s.
   if (String(abilityId || "").toLowerCase() === "ability_spearhead-plus_neutralizing-marker") {
-    return { left: Number(player.neutrCd || 0), max: NEUTR_CD };
+    return { left: Number(player.neutrCd || 0), max: droneAbilityCooldown(NEUTR_CD) };
   }
   if (String(abilityId || "").toLowerCase() === "ability_diminisher") {
     if ((player.diminishT || 0) > 0) {
-      const total = Number(player.diminishDuration || activeCenturionAbilityDuration("diminisher", DIMINISH_DURATION)) + DIMINISH_COOLDOWN;
+      const total = Number(player.diminishDuration || activeCenturionAbilityDuration("diminisher", DIMINISH_DURATION)) + droneAbilityCooldown(DIMINISH_COOLDOWN);
       return { left: total, max: total };
     }
-    return { left: Number(player.diminishCd || 0), max: DIMINISH_COOLDOWN };
+    return { left: Number(player.diminishCd || 0), max: droneAbilityCooldown(DIMINISH_COOLDOWN) };
   }
   // Hyperion GA : pendant les 10 s voile plein, après la recharge descend.
   if (String(abilityId || "").toLowerCase() === "ability_hyperion_ga") {
     if ((player.gaT || 0) > 0) {
-      const total = GA_DURATION + GA_COOLDOWN;
+      const total = GA_DURATION + droneAbilityCooldown(GA_COOLDOWN);
       return { left: total, max: total };
     }
-    return { left: Number(player.gaCd || 0), max: GA_COOLDOWN };
+    return { left: Number(player.gaCd || 0), max: droneAbilityCooldown(GA_COOLDOWN) };
   }
   // Hyperion QA : tir instantané, juste la recharge 90 s.
   if (String(abilityId || "").toLowerCase() === "ability_hyperion_qa") {
-    return { left: Number(player.qaCd || 0), max: QA_COOLDOWN };
+    return { left: Number(player.qaCd || 0), max: droneAbilityCooldown(QA_COOLDOWN) };
   }
   // Keres Spread : voile plein tant qu'un infecté reste, après la recharge descend.
   if (String(abilityId || "").toLowerCase() === "ability_keres_spr") {
     if (player.keresSprActive) return { left: 1, max: 1 };
-    return { left: Number(player.keresSprCd || 0), max: SPR_COOLDOWN };
+    return { left: Number(player.keresSprCd || 0), max: droneAbilityCooldown(SPR_COOLDOWN) };
   }
   // Keres Sleight : voile plein pendant le dash, après la recharge descend.
   if (String(abilityId || "").toLowerCase() === "ability_keres_sle") {
     if ((player.sleightT || 0) > 0) return { left: 1, max: 1 };
-    return { left: Number(player.sleightCd || 0), max: SLEIGHT_COOLDOWN };
+    return { left: Number(player.sleightCd || 0), max: droneAbilityCooldown(SLEIGHT_COOLDOWN) };
   }
   // Liberator Plus : pendant les 10 s voile plein, après la recharge descend.
   if (String(abilityId || "").toLowerCase() === "ability_liberator-plus_self-repair") {
     if ((player.libRepT || 0) > 0) {
-      const total = LIBREP_DURATION + LIBREP_COOLDOWN;
+      const total = LIBREP_DURATION + droneAbilityCooldown(LIBREP_COOLDOWN);
       return { left: total, max: total };
     }
-    return { left: Number(player.libRepCd || 0), max: LIBREP_COOLDOWN };
+    return { left: Number(player.libRepCd || 0), max: droneAbilityCooldown(LIBREP_COOLDOWN) };
   }
   // Lightning : pendant les 10 s voile plein, après la recharge descend.
   if (String(abilityId || "").toLowerCase() === "ability_lightning") {
     if ((player.lightT || 0) > 0) {
-      const total = LIGHT_DURATION + LIGHT_COOLDOWN;
+      const total = LIGHT_DURATION + droneAbilityCooldown(LIGHT_COOLDOWN);
       return { left: total, max: total };
     }
-    return { left: Number(player.lightCd || 0), max: LIGHT_COOLDOWN };
+    return { left: Number(player.lightCd || 0), max: droneAbilityCooldown(LIGHT_COOLDOWN) };
   }
   // Mimesis Scramble : durée = bouclier, voile plein pendant l'effet.
   if (String(abilityId || "").toLowerCase() === "ability_mimesis_scramble") {
     if ((player.scrambleT || 0) > 0) return { left: 1, max: 1 };
-    return { left: Number(player.scrambleCd || 0), max: SCRAMBLE_COOLDOWN };
+    return { left: Number(player.scrambleCd || 0), max: droneAbilityCooldown(SCRAMBLE_COOLDOWN) };
   }
   // Mimesis Phase Out : tir instantané, juste la recharge 300 s.
   if (String(abilityId || "").toLowerCase() === "ability_mimesis_phase-out") {
-    return { left: Number(player.phaseOutCd || 0), max: PHASEOUT_COOLDOWN };
+    return { left: Number(player.phaseOutCd || 0), max: droneAbilityCooldown(PHASEOUT_COOLDOWN) };
   }
   // Mimesis Hologram : voile plein (son + clones), après la recharge descend.
   if (String(abilityId || "").toLowerCase() === "ability_mimesis_hologram") {
     if (player.holoGramPhase != null) {
-      const total = hologramSoundDuration() + HOLOGRAM_CLONE_LIFE + HOLOGRAM_COOLDOWN;
+      const total = hologramSoundDuration() + HOLOGRAM_CLONE_LIFE + droneAbilityCooldown(HOLOGRAM_COOLDOWN);
       return { left: total, max: total };
     }
-    return { left: Number(player.holoGramCd || 0), max: HOLOGRAM_COOLDOWN };
+    return { left: Number(player.holoGramCd || 0), max: droneAbilityCooldown(HOLOGRAM_COOLDOWN) };
   }
   // Orcus / Orcus Plus : pendant l'effet voile plein, après la recharge descend.
   if (String(abilityId || "").toLowerCase() === "ability_orcus_assimilate"
     || String(abilityId || "").toLowerCase() === "ability_orcus-plus_assimilate") {
     if ((player.orcusT || 0) > 0) {
-      const total = Number(player.orcusDuration || activeOrcusDuration()) + ORCUS_COOLDOWN;
+      const total = Number(player.orcusDuration || activeOrcusDuration()) + droneAbilityCooldown(ORCUS_COOLDOWN);
       return { left: total, max: total };
     }
-    return { left: Number(player.orcusCd || 0), max: ORCUS_COOLDOWN };
+    return { left: Number(player.orcusCd || 0), max: droneAbilityCooldown(ORCUS_COOLDOWN) };
   }
   // Cyborg : pendant les 30 s voile plein, après la recharge descend.
   if (String(abilityId || "").toLowerCase() === "ability_cyborg_singularity") {
     if ((player.cyborgT || 0) > 0) {
-      const total = CYBORG_DURATION + CYBORG_COOLDOWN;
+      const total = CYBORG_DURATION + droneAbilityCooldown(CYBORG_COOLDOWN);
       return { left: total, max: total };
     }
-    return { left: Number(player.cyborgCd || 0), max: CYBORG_COOLDOWN };
+    return { left: Number(player.cyborgCd || 0), max: droneAbilityCooldown(CYBORG_COOLDOWN) };
   }
   // Venom : pendant les 35 s voile plein, après la recharge descend.
   if (String(abilityId || "").toLowerCase() === "ability_venom") {
     if ((player.venomT || 0) > 0) {
-      const total = Number(player.venomDuration || activeCenturionAbilityDuration("venom", VENOM_DURATION)) + VENOM_COOLDOWN;
+      const total = Number(player.venomDuration || activeCenturionAbilityDuration("venom", VENOM_DURATION)) + droneAbilityCooldown(VENOM_COOLDOWN);
       return { left: total, max: total };
     }
-    return { left: Number(player.venomCd || 0), max: VENOM_COOLDOWN };
+    return { left: Number(player.venomCd || 0), max: droneAbilityCooldown(VENOM_COOLDOWN) };
   }
   // Sentinel : pendant les 10 s voile plein, après la recharge descend.
   if (String(abilityId || "").toLowerCase() === "ability_sentinel") {
     if ((player.sentT || 0) > 0) {
-      const total = Number(player.sentDuration || activeCenturionAbilityDuration("sentinel", SENT_DURATION)) + SENT_COOLDOWN;
+      const total = Number(player.sentDuration || activeCenturionAbilityDuration("sentinel", SENT_DURATION)) + droneAbilityCooldown(SENT_COOLDOWN);
       return { left: total, max: total };
     }
-    return { left: Number(player.sentCd || 0), max: SENT_COOLDOWN };
+    return { left: Number(player.sentCd || 0), max: droneAbilityCooldown(SENT_COOLDOWN) };
   }
   // Spearhead Recon : pendant les 30 s voile plein, après la recharge descend.
   if (String(abilityId || "").toLowerCase() === "ability_spearhead_double-minimap"
     || String(abilityId || "").toLowerCase() === "ability_spearhead-plus_recon") {
     if ((player.reconT || 0) > 0) {
-      const total = RECON_DURATION + RECON_COOLDOWN;
+      const total = RECON_DURATION + droneAbilityCooldown(RECON_COOLDOWN);
       return { left: total, max: total };
     }
-    return { left: Number(player.reconCd || 0), max: RECON_COOLDOWN };
+    return { left: Number(player.reconCd || 0), max: droneAbilityCooldown(RECON_COOLDOWN) };
   }
   // Solaris / Plus : pendant le halo voile plein, après la recharge descend.
   if (String(abilityId || "").toLowerCase() === "ability_solaris_inc") {
     if ((player.incT || 0) > 0) {
-      const total = INC_DURATION + INC_COOLDOWN;
+      const total = INC_DURATION + droneAbilityCooldown(INC_COOLDOWN);
       return { left: total, max: total };
     }
-    return { left: Number(player.incCd || 0), max: INC_COOLDOWN };
+    return { left: Number(player.incCd || 0), max: droneAbilityCooldown(INC_COOLDOWN) };
   }
   if (String(abilityId || "").toLowerCase() === "ability_solaris-plus_incinerate-plus") {
     if ((player.incPlusT || 0) > 0) {
-      const total = INC_PLUS_DURATION + INC_PLUS_COOLDOWN;
+      const total = INC_PLUS_DURATION + droneAbilityCooldown(INC_PLUS_COOLDOWN);
       return { left: total, max: total };
     }
-    return { left: Number(player.incPlusCd || 0), max: INC_PLUS_COOLDOWN };
+    return { left: Number(player.incPlusCd || 0), max: droneAbilityCooldown(INC_PLUS_COOLDOWN) };
   }
   // Solace / Solace Plus : instantanés, juste la recharge.
   if (String(abilityId || "").toLowerCase() === "ability_solace") {
-    return { left: Number(player.solCd || 0), max: SOLACE_COOLDOWN };
+    return { left: Number(player.solCd || 0), max: droneAbilityCooldown(SOLACE_COOLDOWN) };
   }
   if (String(abilityId || "").toLowerCase() === "ability_solace-plus_nano-cluster-repairer-plus") {
-    return { left: Number(player.solPlusCd || 0), max: SOLACE_PLUS_COOLDOWN };
+    return { left: Number(player.solPlusCd || 0), max: droneAbilityCooldown(SOLACE_PLUS_COOLDOWN) };
   }
   // Pusat Plus : pendant les 10 s voile plein, après la recharge descend.
   if (String(abilityId || "").toLowerCase() === "ability_pusat-plus_speed-sap") {
     if ((player.sapT || 0) > 0) {
-      const total = SAP_DURATION + SAP_COOLDOWN;
+      const total = SAP_DURATION + droneAbilityCooldown(SAP_COOLDOWN);
       return { left: total, max: total };
     }
-    return { left: Number(player.sapCd || 0), max: SAP_COOLDOWN };
+    return { left: Number(player.sapCd || 0), max: droneAbilityCooldown(SAP_COOLDOWN) };
   }
   // Retiarus Supercharge : pendant les 10 s voile plein, après la recharge descend.
   if (String(abilityId || "").toLowerCase() === "ability_retiarus_spc") {
     if ((player.spcT || 0) > 0) {
-      const total = SPC_DURATION + SPC_COOLDOWN;
+      const total = SPC_DURATION + droneAbilityCooldown(SPC_COOLDOWN);
       return { left: total, max: total };
     }
-    return { left: Number(player.spcCd || 0), max: SPC_COOLDOWN };
+    return { left: Number(player.spcCd || 0), max: droneAbilityCooldown(SPC_COOLDOWN) };
   }
   // Retiarus Charge Shot : voile plein (charge + rayon), après la recharge descend.
   // Base 20 min, Plus 18 min, chacun sa recharge.
   if (String(abilityId || "").toLowerCase() === "ability_retiarus_chs") {
     if (player.chsPhase != null && !player.chsPlus) {
-      const total = chsChargeDuration() + 5 + CHS_COOLDOWN;
+      const total = chsChargeDuration() + 5 + droneAbilityCooldown(CHS_COOLDOWN);
       return { left: total, max: total };
     }
-    return { left: Number(player.chsCd || 0), max: CHS_COOLDOWN };
+    return { left: Number(player.chsCd || 0), max: droneAbilityCooldown(CHS_COOLDOWN) };
   }
   if (String(abilityId || "").toLowerCase() === "ability_retiarus-plus_chsp") {
     if (player.chsPhase != null && player.chsPlus) {
-      const total = chsChargeDuration() + 5 + CHS_PLUS_COOLDOWN;
+      const total = chsChargeDuration() + 5 + droneAbilityCooldown(CHS_PLUS_COOLDOWN);
       return { left: total, max: total };
     }
-    return { left: Number(player.chsPlusCd || 0), max: CHS_PLUS_COOLDOWN };
+    return { left: Number(player.chsPlusCd || 0), max: droneAbilityCooldown(CHS_PLUS_COOLDOWN) };
   }
   // Retiarus Supercharge Plus : pendant les 10 s voile plein, après la recharge descend.
   if (String(abilityId || "").toLowerCase() === "ability_retiarus-plus_spcp") {
     if ((player.spcPlusT || 0) > 0) {
-      const total = SPCP_DURATION + SPCP_COOLDOWN;
+      const total = SPCP_DURATION + droneAbilityCooldown(SPCP_COOLDOWN);
       return { left: total, max: total };
     }
-    return { left: Number(player.spcPlusCd || 0), max: SPCP_COOLDOWN };
+    return { left: Number(player.spcPlusCd || 0), max: droneAbilityCooldown(SPCP_COOLDOWN) };
   }
   // Paladin Éventreur : pendant les 3 s voile plein, après la recharge descend.
   if (String(abilityId || "").toLowerCase() === "ability_paladin_ripper") {
     if ((player.ripperT || 0) > 0) {
-      const total = RIPPER_DURATION + RIPPER_COOLDOWN;
+      const total = RIPPER_DURATION + droneAbilityCooldown(RIPPER_COOLDOWN);
       return { left: total, max: total };
     }
-    return { left: Number(player.ripperCd || 0), max: RIPPER_COOLDOWN };
+    return { left: Number(player.ripperCd || 0), max: droneAbilityCooldown(RIPPER_COOLDOWN) };
   }
   // Paladin Dernier rempart (passif) : juste la recharge 600 s, pas d'effet temporel.
   if (String(abilityId || "").toLowerCase() === "ability_paladin_last-stand") {
-    return { left: Number(player.lastStandCd || 0), max: LASTSTAND_COOLDOWN };
+    return { left: Number(player.lastStandCd || 0), max: droneAbilityCooldown(LASTSTAND_COOLDOWN) };
   }
   // Holo : 2 capacités indépendantes, voile plein pendant leur propre effet.
   if (String(abilityId || "").toLowerCase() === "ability_holo_self-reversal") {
     if ((player.holoSelfT || 0) > 0) {
-      const total = HOLO_DURATION + HOLO_COOLDOWN;
+      const total = HOLO_DURATION + droneAbilityCooldown(HOLO_COOLDOWN);
       return { left: total, max: total };
     }
-    return { left: Number(player.holoSelfCd || 0), max: HOLO_COOLDOWN };
+    return { left: Number(player.holoSelfCd || 0), max: droneAbilityCooldown(HOLO_COOLDOWN) };
   }
   if (String(abilityId || "").toLowerCase() === "ability_holo_enemy-reversal") {
     if ((player.holoEnemyT || 0) > 0) {
-      const total = HOLO_DURATION + HOLO_COOLDOWN;
+      const total = HOLO_DURATION + droneAbilityCooldown(HOLO_COOLDOWN);
       return { left: total, max: total };
     }
-    return { left: Number(player.holoEnemyCd || 0), max: HOLO_COOLDOWN };
+    return { left: Number(player.holoEnemyCd || 0), max: droneAbilityCooldown(HOLO_COOLDOWN) };
   }
   if (String(abilityId || "").toLowerCase() === "ability_disruptor_ddol") {
     if ((player.ddolT || 0) > 0) {
-      const total = DDOL_DURATION + DDOL_COOLDOWN;
+      const total = DDOL_DURATION + droneAbilityCooldown(DDOL_COOLDOWN);
       return { left: total, max: total };
     }
-    return { left: Number(player.ddolCd || 0), max: DDOL_COOLDOWN };
+    return { left: Number(player.ddolCd || 0), max: droneAbilityCooldown(DDOL_COOLDOWN) };
   }
   if (String(abilityId || "").toLowerCase() === "ability_disruptor_redirect") {
     if ((player.redirectT || 0) > 0) {
-      const total = REDIRECT_DURATION + REDIRECT_COOLDOWN;
+      const total = REDIRECT_DURATION + droneAbilityCooldown(REDIRECT_COOLDOWN);
       return { left: total, max: total };
     }
-    return { left: Number(player.redirectCd || 0), max: REDIRECT_COOLDOWN };
+    return { left: Number(player.redirectCd || 0), max: droneAbilityCooldown(REDIRECT_COOLDOWN) };
   }
   if (String(abilityId || "").toLowerCase() === "ability_disruptor_shield-disarray") {
     if ((player.disarrayT || 0) > 0) {
-      const total = DISARRAY_DURATION + DISARRAY_COOLDOWN;
+      const total = DISARRAY_DURATION + droneAbilityCooldown(DISARRAY_COOLDOWN);
       return { left: total, max: total };
     }
-    return { left: Number(player.disarrayCd || 0), max: DISARRAY_COOLDOWN };
+    return { left: Number(player.disarrayCd || 0), max: droneAbilityCooldown(DISARRAY_COOLDOWN) };
   }
   if (String(abilityId || "").toLowerCase() === "ability_hammerclaw-plus_reallocate") {
     if ((player.reallocT || 0) > 0) {
-      const total = REALLOC_DURATION + REALLOC_COOLDOWN;
+      const total = REALLOC_DURATION + droneAbilityCooldown(REALLOC_COOLDOWN);
       return { left: total, max: total };
     }
-    return { left: Number(player.reallocCd || 0), max: REALLOC_COOLDOWN };
+    return { left: Number(player.reallocCd || 0), max: droneAbilityCooldown(REALLOC_COOLDOWN) };
   }
   const hecateId = String(abilityId || "").toLowerCase();
   if (hecateId === "ability_hecate_particle-beam") {
     if ((player.hecateT || 0) > 0) {
-      const total = HECATE_DURATION + HECATE_COOLDOWN;
+      const total = HECATE_DURATION + droneAbilityCooldown(HECATE_COOLDOWN);
       return { left: total, max: total };
     }
-    return { left: Number(player.hecateCd || 0), max: HECATE_COOLDOWN };
+    return { left: Number(player.hecateCd || 0), max: droneAbilityCooldown(HECATE_COOLDOWN) };
   }
   if (hecateId === "ability_hecate-plus_particle-beam-plus") {
     if ((player.hecatePlusT || 0) > 0) {
-      const total = HECATE_PLUS_DURATION + HECATE_PLUS_COOLDOWN;
+      const total = HECATE_PLUS_DURATION + droneAbilityCooldown(HECATE_PLUS_COOLDOWN);
       return { left: total, max: total };
     }
-    return { left: Number(player.hecatePlusCd || 0), max: HECATE_PLUS_COOLDOWN };
+    return { left: Number(player.hecatePlusCd || 0), max: droneAbilityCooldown(HECATE_PLUS_COOLDOWN) };
   }
   // Stockpile : durée 10 s, recharge 0 s. Voile plein pendant l'effet.
   if (String(abilityId || "").toLowerCase() === "ability_hecate-plus_stockpile") {
     if ((player.stockT || 0) > 0) {
-      const total = STOCKPILE_DURATION + STOCKPILE_COOLDOWN;
+      const total = STOCKPILE_DURATION + droneAbilityCooldown(STOCKPILE_COOLDOWN);
       return { left: total, max: total };
     }
     return { left: 0, max: 0 };
   }
   // Griffe gelée : pas d'effet temporel, juste la recharge 90 s.
   if (String(abilityId || "").toLowerCase() === "ability_goliath-x_frozen-claw") {
-    return { left: Number(player.frozenClawCd || 0), max: FROZEN_CLAW_COOLDOWN };
+    return { left: Number(player.frozenClawCd || 0), max: droneAbilityCooldown(FROZEN_CLAW_COOLDOWN) };
   }
   if (String(abilityId || "").toLowerCase() === "ability_aegis_hp-repair") {
     if ((player.healHpT || 0) > 0) {
-      const total = HP_REPAIR_DURATION + HP_REPAIR_COOLDOWN;
+      const total = HP_REPAIR_DURATION + droneAbilityCooldown(HP_REPAIR_COOLDOWN);
       return { left: total, max: total };
     }
-    return { left: Number(player.healHpCd || 0), max: HP_REPAIR_COOLDOWN };
+    return { left: Number(player.healHpCd || 0), max: droneAbilityCooldown(HP_REPAIR_COOLDOWN) };
   }
   if (String(abilityId || "").toLowerCase() === "ability_aegis_shield-repair") {
     if ((player.healShT || 0) > 0) {
-      const total = SH_REPAIR_DURATION + SH_REPAIR_COOLDOWN;
+      const total = SH_REPAIR_DURATION + droneAbilityCooldown(SH_REPAIR_COOLDOWN);
       return { left: total, max: total };
     }
-    return { left: Number(player.healShCd || 0), max: SH_REPAIR_COOLDOWN };
+    return { left: Number(player.healShCd || 0), max: droneAbilityCooldown(SH_REPAIR_COOLDOWN) };
   }
   return { left: 0, max: 0 };
 }
@@ -7199,7 +7203,7 @@ function activatePoliceCloak() {
   // pendant l'effet, il ne descend qu'à la fin ou à la coupure.
   player.cloakCd = POLICE_CLOAK_DURATION + POLICE_CLOAK_COOLDOWN;
   persistCdUntil("cloakFx", POLICE_CLOAK_DURATION);
-  persistCdUntil("cloak", POLICE_CLOAK_DURATION + POLICE_CLOAK_COOLDOWN);
+  persistCdUntil("cloak", POLICE_CLOAK_DURATION + droneAbilityCooldown(POLICE_CLOAK_COOLDOWN));
   // Les NPC perdent la cible : on efface l'aggro existante.
   try {
     for (const e of enemies) {
@@ -16547,6 +16551,8 @@ function applyCurrentConfigStats(keepRatios = true, restoreShieldConfigNo = null
   player.laserHitBonusPct = clamp(Number(stats.bonusLaserHitPct || 0), -100, 100);
   player.rocketHitBonusPct = clamp(Number(stats.bonusRocketHitPct || 0), -100, 100);
   player.evasionBonusPct = clamp(Number(stats.bonusEvasionPct || 0), -100, 90);
+  player.droneCooldownReductionPct = Number(stats.bonusAbilityCooldownPct || 0);
+  player.droneDamageBonusPct = Number(stats.droneDesignEffects?.damagePct || 0);
   player.expBonusPct = Number(stats.bonusExpPct || 0);
   player.honorBonusPct = Number(stats.bonusHonorPct || 0);
 
@@ -19370,6 +19376,8 @@ function resetPlayerToBase() {
   player.laserHitBonusPct = clamp(Number(stats.bonusLaserHitPct || 0), -100, 100);
   player.rocketHitBonusPct = clamp(Number(stats.bonusRocketHitPct || 0), -100, 100);
   player.evasionBonusPct = clamp(Number(stats.bonusEvasionPct || 0), -100, 90);
+  player.droneCooldownReductionPct = Number(stats.bonusAbilityCooldownPct || 0);
+  player.droneDamageBonusPct = Number(stats.droneDesignEffects?.damagePct || 0);
   player.expBonusPct = Number(stats.bonusExpPct || 0);
   player.honorBonusPct = Number(stats.bonusHonorPct || 0);
 
@@ -21249,17 +21257,7 @@ function drawHoloClones(ox, oy) {
     const fi = getCachedImage(faction.imagePath);
     if (isImgReady(fi)) factionImage = fi; else loadImage(faction.imagePath, { priority: true });
   } catch {}
-  const droneIndicators = (account.user?.drones?.items || []).map(drone => {
-    const ability = drone?.fit?.ability;
-    const design = typeof ability === "string"
-      ? ability.toLowerCase()
-      : `${ability?.id || ""} ${ability?.name || ""}`.toLowerCase();
-    if (design.includes("hercules")) return "rgb(30,144,255)";
-    if (design.includes("havoc") || design.includes("havok")) return "rgb(255,45,55)";
-    if (drone?.type === "apis") return "rgb(90,180,255)";
-    if (drone?.type === "zeus") return "rgb(174,190,75)";
-    return "rgb(255,255,255)";
-  });
+  const droneIndicators = (account.user?.drones?.items || []).map(droneIndicatorColor);
   let formationImage = null;
   try {
     const af = getActiveDroneFormation(account.user);
@@ -28405,7 +28403,7 @@ function activeFormationEffects() {
 }
 
 function formationRocketDamageMult() {
-  return Math.max(0, 1 + Number(activeFormationEffects().rocketDamagePct || 0) / 100);
+  return Math.max(0, 1 + (Number(activeFormationEffects().rocketDamagePct || 0) + Number(player.droneDamageBonusPct || 0)) / 100);
 }
 
 function formationRocketCooldownMult() {
@@ -29324,9 +29322,10 @@ consumeUpgradeStock("laser", countPlayerLasers());
 // Bonus par canon x nombre équipé : vaisseau + drones.
 // 1x PR-L = +200, 2x = +400, 35x = +7000 tous les 5 tirs.
 // Idem vsMatch (LF-3, Magmadrill, Paritydrill, AA-1/AAP-1 Mimesis, PR-L Blacklight...) et U-LF4 instable.
-let laserBase = player.baseDamage + laserFitVsExtra(player.laserMods, t, player.droneLaserMods);
-laserBase += laserFitUnstableDelta(player.laserMods, player.droneLaserMods);
-const overdrive = laserFitOverdrive(player.laserMods, player.droneLaserMods, player.volleyCount);
+const droneLaserDamageMult = 1 + Math.max(0, Number(player.droneDamageBonusPct) || 0) / 100;
+let laserBase = player.baseDamage + laserFitVsExtra(player.laserMods, t, player.droneLaserMods) * droneLaserDamageMult;
+laserBase += laserFitUnstableDelta(player.laserMods, player.droneLaserMods) * droneLaserDamageMult;
+const overdrive = laserFitOverdrive(player.laserMods, player.droneLaserMods, player.volleyCount) * droneLaserDamageMult;
 // Boosters : dégâts globaux + précision laser.
 const shotBoosterMults = playerBoosterMults();
 const shotHitBonusPct = Number(player.laserHitBonusPct || 0) + Number(shotBoosterMults.hit || 0);
@@ -31219,7 +31218,8 @@ function collectOwnedDroneSpriteJobs() {
       const type = DRONE_TYPES[d?.type] || null;
       if (!type?.path) continue;
       const lvl = Math.max(0, Math.min(DRONE_MAX_LEVEL - 1, Math.floor(Number(d?.level) || 1) - 1));
-      wanted.add(`${type.path}${lvl}/`);
+      const path = getDroneDesign(d?.fit?.ability)?.sprite || type.path;
+      wanted.add(`${path}${lvl}/`);
     }
     // Sans drone (nouveau joueur) : l'iris de base, visible en boutique/HUD.
     if (!wanted.size && DRONE_TYPES.iris?.path) wanted.add(`${DRONE_TYPES.iris.path}0/`);
@@ -32235,10 +32235,10 @@ function tickNetplayVisuals(dt) {
           if (fresh) player.hp = Math.min(player.hpMax, Number(ev.hp) || player.hpMax);
           addFloatText(player.x, player.y - 90, ev.amount, "rgba(80,255,125,0.98)",
             { text: `+${DMG_FMT.format(ev.amount)}`, size: 21, life: 1, weight: 900, impact: true });
-          player.lastStandCd = LASTSTAND_COOLDOWN;
+          player.lastStandCd = droneAbilityCooldown(LASTSTAND_COOLDOWN);
           player.lastStandAnimT = LASTSTAND_FRAMES / LASTSTAND_FPS;
           player.lastStandFxOff = true;
-          persistCdUntil("lastStand", LASTSTAND_COOLDOWN);
+          persistCdUntil("lastStand", droneAbilityCooldown(LASTSTAND_COOLDOWN));
         } else {
           const r = getNetplayRemotes()?.get(String(ev.by));
           if (r) r.lastStandT = LASTSTAND_FRAMES / LASTSTAND_FPS;
@@ -32657,9 +32657,9 @@ function drawRemoteAbilityFx(r, shipFx) {
         const ca = Math.cos(angle + Math.PI), sa = Math.sin(angle + Math.PI);
         const frame = Math.floor(view.frame * 32 / Math.max(1, view.pack.frames)) % 32 + 1;
         for (let i = 0; i < slots.length; i++) {
-          const [type, level] = slots[i].split(":");
+          const [type, level, design] = slots[i].split(":");
           const off = offsets[i % offsets.length];
-          const src = getDroneSpritePath({ type, level: Math.max(1, Number(level) || 1) }, frame);
+          const src = getDroneSpritePath({ type, level: Math.max(1, Number(level) || 1) }, frame, design);
           const img = getCachedImage(src);
           if (!isImgReady(img)) { loadImage(src, { priority: true }); continue; }
           ctx.save();
@@ -33532,12 +33532,11 @@ function drawNetplayRemotes(ox, oy) {
           const shiftedY = visual.y + motion.side;
           const ddx = visual.x * ca - shiftedY * sa, ddy = visual.x * sa + shiftedY * ca;
           const spec = slots[i] || "";
-          const sep = spec.lastIndexOf(":");
-          const dtype = sep > 0 ? spec.slice(0, sep) : "iris";
-          const dlevel = sep > 0 ? Math.max(1, Number(spec.slice(sep + 1)) || 1) : 1;
+          const [dtype = 'iris', rawLevel, design] = spec.split(':');
+          const dlevel = Math.max(1, Number(rawLevel) || 1);
           let dimg = null;
           try {
-            const src = getDroneSpritePath({ type: dtype, level: dlevel }, dframe);
+            const src = getDroneSpritePath({ type: dtype, level: dlevel }, dframe, design);
             const cimg = getCachedImage(src);
             if (isImgReady(cimg)) dimg = cimg;
             else { try { loadImage(src, { priority: true }); } catch {} }
@@ -35164,17 +35163,7 @@ function drawPlayerBars(px, py) {
     loadImage(faction.imagePath, { priority: true });
     factionImage = null;
   }
-  const droneIndicators = (account.user?.drones?.items || []).map(drone => {
-    const ability = drone?.fit?.ability;
-    const design = typeof ability === "string"
-      ? ability.toLowerCase()
-      : `${ability?.id || ""} ${ability?.name || ""}`.toLowerCase();
-    if (design.includes("hercules")) return "rgb(30,144,255)";
-    if (design.includes("havoc") || design.includes("havok")) return "rgb(255,45,55)";
-    if (drone?.type === "apis") return "rgb(90,180,255)";
-    if (drone?.type === "zeus") return "rgb(174,190,75)";
-    return "rgb(255,255,255)";
-  });
+  const droneIndicators = (account.user?.drones?.items || []).map(droneIndicatorColor);
   const activeFormation = getActiveDroneFormation(account.user);
   const activeFormationDockIcon = activeFormation ? (formationDockIcon(activeFormation) || activeFormation.icon) : null;
   let droneFormationImage = activeFormationDockIcon ? getCachedImage(activeFormationDockIcon) : null;
@@ -40286,7 +40275,8 @@ function frame(t) {
       let dslotsNow = "";
       try {
         const items = account?.user?.drones?.items || [];
-        dslotsNow = items.slice(0, 12).map(d => `${String(d?.type || "iris").slice(0, 24)}:${Math.max(1, Number(d?.level) || 1)}`).join(",");
+        const hangar = getActiveHangarFromUser(account.user);
+        dslotsNow = items.slice(0, 12).map(d => `${String(d?.type || "iris").slice(0, 24)}:${Math.max(1, Number(d?.level) || 1)}:${getDroneDesign(getDroneFitForHangar(d, hangar?.id, hangar?.activeConfig)?.ability)?.id || ''}`).join(",");
       } catch {}
       // Zone sure : le serveur calme les NPC. Position seule, même en
       // combat : tirer depuis un portail / une base (ou y fuir en étant
@@ -40306,17 +40296,7 @@ function frame(t) {
       } catch {}
       try { firmNow = String(account.user?.faction || ""); } catch {}
       try {
-        dindNow = (account.user?.drones?.items || []).map(drone => {
-          const ability = drone?.fit?.ability;
-          const design = typeof ability === "string"
-            ? ability.toLowerCase()
-            : `${ability?.id || ""} ${ability?.name || ""}`.toLowerCase();
-          if (design.includes("hercules")) return "rgb(30,144,255)";
-          if (design.includes("havoc") || design.includes("havok")) return "rgb(255,45,55)";
-          if (drone?.type === "apis") return "rgb(90,180,255)";
-          if (drone?.type === "zeus") return "rgb(174,190,75)";
-          return "rgb(255,255,255)";
-        }).join("|");
+        dindNow = (account.user?.drones?.items || []).map(droneIndicatorColor).join("|");
       } catch {}
       try {
         const af = getActiveDroneFormation(account.user);
@@ -40403,7 +40383,7 @@ function frame(t) {
         shieldBuffSeq: Number(player._netShieldBuffSeq) || 0,
         abilityHealSeq: Number(player._netAbilityHealSeq) || 0,
         absorb: Math.max(0, Math.min(1, Number(player.shAbsorb) || 0.8)),
-        evade: Math.max(0, Math.min(0.9, Number(activeFormationEffects().evasionPct || 0) / 100)),
+        evade: Math.max(0, Math.min(0.9, (Number(activeFormationEffects().evasionPct || 0) + Number(player.evasionBonusPct || 0)) / 100)),
         range: Math.max(200, Math.min(5000, Math.round(Number(playerRange) || 800))),
         peta: petA, petl: petL, petx: petX, pety: petY, petd: petD, petn: petN, petf: petF,
         tbrClones: petA === 1 && player.tbrT > 0

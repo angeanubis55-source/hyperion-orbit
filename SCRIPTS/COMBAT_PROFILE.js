@@ -1,6 +1,7 @@
 // Profil calculé depuis le compte sauvegardé, jamais depuis un paquet pos.
 // L'intégrité des achats/inventaires relève de la migration économique.
 import { computeHangarStats } from "../SHIP/SHIP_HANGARS.js";
+import { droneDesignCooldown } from "../DRONE/DRONE_DESIGNS.js";
 import { getShipDesignBaseId, getShipPackById } from "../SHIP/SHIP_PACKS.js";
 import { activeBoosterMults, GROUP_BOOSTER_BONUS } from "../SRC/DATA/BOOSTERS.js";
 import { pilotSkillMults } from "../SRC/DATA/PILOT_SKILLS.js";
@@ -43,10 +44,10 @@ export function combatProfile(user, mapId, configNo = null, groupBoosters = {}) 
   const conditional = [...stats.laserMods, ...stats.droneLaserMods].reduce((sum, m) =>
     sum + Math.max(0, Number(m.damage) || 0) * Math.max(0, (Number(m.vsMult) || 1) - 1)
       + Math.max(0, Number(m.overdrive) || 0), 0);
-  const laser = (stats.totalLaserDamage + conditional) * boost.dmg * pct(pilot.alienDmgPct) * upgrade("laser");
+  const laser = (stats.totalLaserDamage + conditional * pct(stats.droneDesignEffects?.damagePct)) * boost.dmg * pct(pilot.alienDmgPct) * upgrade("laser");
   const rocketIds = Object.keys(ROCKET_TYPES).filter(key => Number(user.rockets?.[key]) > 0);
   const rocket = rocketIds.reduce((max, key) => Math.max(max, Number(ROCKET_TYPES[key].damage) || 0,
-    Number(ROCKET_TYPES[key].effect?.shieldDrain) || 0), 0) * boost.dmg * pct(pilot.rocketDmgPct) * upgrade("rocket");
+    Number(ROCKET_TYPES[key].effect?.shieldDrain) || 0), 0) * boost.dmg * pct(pilot.rocketDmgPct) * upgrade("rocket") * pct(stats.droneDesignEffects?.damagePct);
   const cfg = String(Number(hangar.activeConfig) === 2 ? 2 : 1);
   const pet = user.pet;
   const petFit = pet?.fitsByHangar?.[hangar.id]?.[cfg] || pet?.fits?.[cfg] || pet?.fit || {};
@@ -66,6 +67,9 @@ export function combatProfile(user, mapId, configNo = null, groupBoosters = {}) 
     penetration: clamp(stats.bonusPenetrationPct / 100, 0, 1),
     butterfly: Number(stats.formationEffects?.penetrationPct || stats.formationEffects?.shieldPenetrationPct || 0) >= 20,
     laserDamage: clamp(laser, 0, 1e8),
+    abilityCooldownMult: droneDesignCooldown(1, stats.bonusAbilityCooldownPct),
+    laserHitBonusPct: stats.bonusLaserHitPct,
+    rocketHitBonusPct: stats.bonusRocketHitPct,
     critChance: osl ? 0.05 + (3 * osl) / 100 : 0.05,
     critMult: osl ? 2 : 1.5,
     maxDamage: clamp(Math.max(laser * 8 * 4, rocket * 10, petDamage * 8 * 4,

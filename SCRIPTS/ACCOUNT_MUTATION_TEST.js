@@ -3,7 +3,9 @@ import assert from "node:assert/strict";
 import vm from "node:vm";
 import { readFileSync } from "node:fs";
 import { getCurrentUserFull, buyItem, sellCurrentUserOre, setPetMode, updateCurrentUserProgress,
-  loadSkylabFromShip, chargeShipUpgradesAutomatically, craftCurrentUserRecipe, completeCurrentUserGalaxyGate } from "../SRC/CORE/ACCOUNT.js";
+  loadSkylabFromShip, chargeShipUpgradesAutomatically, craftCurrentUserRecipe, completeCurrentUserGalaxyGate,
+  saveUser, saveHangarLoadout, saveCurrentUserDroneFits, getDroneFit } from "../SRC/CORE/ACCOUNT.js";
+import { createDrone } from '../DRONE/DRONE_TYPES.js';
 import { GALAXY_GATE_DEFINITIONS, normalizeGalaxyGateState } from "../SRC/CORE/GALAXY_GATES.js";
 import { CATALOG } from "../SRC/CORE/CATALOG.js";
 import { ORE_SELL_PRICES } from "../SRC/DATA/RESOURCES.js";
@@ -201,3 +203,41 @@ for (const gate of Object.values(GALAXY_GATE_DEFINITIONS)) for (const deferred o
     }
   });
 }
+
+test('designs drones : sauvegarde atomique, manque de stock et transfert sans duplication', t => {
+  const { ctx } = session(t); ctx.account.dirty = false;
+  const u = ctx.account.user;
+  u.drones.items = [createDrone('iris', 'd1'), createDrone('apis', 'd2'), createDrone('zeus', 'd3')];
+  u.inventory.counts.drone_design_admin = 2;
+  saveUser(u, { source: 'progress' });
+  const ship = getCurrentUserFull().hangars[0].fits['1'];
+  const fit = { equipment: [null, null], ability: 'drone_design_admin' };
+  assert.equal(saveHangarLoadout('h1', { ship, drones: { d1: fit, d2: fit } }, 1).ok, true);
+  assert.equal(getDroneFit(getCurrentUserFull().drones.items[0], 'h1', 1).ability, 'drone_design_admin');
+  assert.equal(getDroneFit(getCurrentUserFull().drones.items[0], 'h1', 2).ability, null);
+  const before = structuredClone(getCurrentUserFull().drones);
+  assert.equal(saveHangarLoadout('h1', { ship, drones: { d3: fit } }, 1).ok, false);
+  assert.deepEqual(getCurrentUserFull().drones, before, 'pas de modification partielle quand le stock manque');
+  assert.equal(saveCurrentUserDroneFits([
+    { droneId: 'd1', hangarId: 'h1', configNo: 1, fit: { ...fit, ability: null } },
+    { droneId: 'd3', hangarId: 'h1', configNo: 1, fit },
+  ]).ok, true);
+  const stored = getCurrentUserFull();
+  assert.equal(getDroneFit(stored.drones.items[0], 'h1', 1).ability, null);
+  assert.equal(getDroneFit(stored.drones.items[2], 'h1', 1).ability, 'drone_design_admin');
+  assert.equal(stored.inventory.counts.drone_design_admin, 2);
+});
+
+test('designs drones legacy : migration du stock une seule fois et aliases conserves', t => {
+  const { ctx } = session(t); ctx.account.dirty = false;
+  const u = ctx.account.user;
+  u.drones.designs = ['green', { name: 'Hermes', quantity: 3 }];
+  saveUser(u, { source: 'progress' });
+  for (let i = 0; i < 3; i++) {
+    const current = getCurrentUserFull();
+    assert.equal(current.inventory.counts.drone_design_admin, 1);
+    assert.equal(current.inventory.counts.drone_design_hermes, 3);
+    assert.deepEqual(current.drones.designs, []);
+    saveUser(current, { source: 'progress' });
+  }
+});

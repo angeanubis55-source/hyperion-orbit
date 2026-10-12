@@ -25,6 +25,7 @@ import { tickLowRaid, getLowRaidState } from "./LOW_RAID.js";
 import { damagePlayerLayers } from "../COMBAT/COMBAT_RULES.js";
 import { handleAccountApi, getAccountGameplayData, verifyWsToken, recordPvpKill, recordPvpPetKill, awardNpcKill, listFriends, friendFollowers, findUserByPseudo, hasFriendRequest, clanIdOfUser, clanTagOfUser, clanMemberUserIds, recordClanWarKill, adminGiveCredits, adminGiveExperience, adminGiveHonor, adminGiveModule, adminListAccounts, adminDeleteAccount, adminShipFamilies } from "./ACCOUNT_SERVER.js";
 import { combatProfile, validateCombatHit } from "./COMBAT_PROFILE.js";
+import { profileAbilityCooldown } from "../DRONE/DRONE_DESIGNS.js";
 import { selectNpcSnapshot } from "./NPC_SNAPSHOT.js";
 import { updateClockGuard, stopRejectedMotion } from "./CLOCK_GUARD.js";
 import { takeMovement, useMovementAbility, stopMovementAbility, syncMovementAbility, movementSpeed, usePhaseOut, shipOwnsAbility, dashTargetKey, isMovementAbilityKey } from "./MOVEMENT_RULES.js";
@@ -70,12 +71,12 @@ function jamPlayerAbilities(state, room, now, durationMs) {
   ]);
   if (state.cloaked && state._combat?.cloakSkill) {
     active.add(state._combat.cloakSkill.id);
-    state._cloakCdUntil = now + Number(state._combat.cloakSkill.cooldownSec || 240) * 1000;
+    state._cloakCdUntil = now + profileAbilityCooldown(Number(state._combat.cloakSkill.cooldownSec || 240), state._combat) * 1000;
   }
   stopMovementAbility(state, state._combat, now);
   state._abilityCds ||= {};
   for (const skill of active) {
-    const cooldown = Number(getAbilityInfo(skill)?.cooldownSec) || 0;
+    const cooldown = profileAbilityCooldown(Number(getAbilityInfo(skill)?.cooldownSec) || 0, state._combat);
     if (cooldown > 0) state._abilityCds[skill] = now + cooldown * 1000;
     if (isMovementAbilityKey(skill) && cooldown > 0) {
       state._moveCooldowns ||= {};
@@ -90,7 +91,7 @@ function jamPlayerAbilities(state, room, now, durationMs) {
   state._qaWindow = null;
   state._freeRocketCast = null;
   state.holoClones = [];
-  if (state._tempestBackupUntil > now) state._tempestBackupCdUntil = now + 360000;
+  if (state._tempestBackupUntil > now) state._tempestBackupCdUntil = now + profileAbilityCooldown(360, state._combat) * 1000;
   state._tempestBackupUntil = 0;
   state._tempestBackupRequestedUntil = 0;
   state._voltLinkFx = null;
@@ -258,7 +259,7 @@ function trackAbilityFx(state, profile, skill, msg, room, id, now, sim = null) {
   const durSec = hyperionQa || chargedShot ? Math.max(0.5, Math.min(10, Number(msg.chargeSec) || (chargedShot ? 3 : 2.5)))
     : key === "ability_mimesis_hologram" ? 3 + Math.max(0.5, Math.min(10, Number(msg.chargeSec) || 1.5))
     : Number(info.durationSec) * (profile.baseId === "centurion" ? 0.5 : 1);
-  const cdSec = Number(info.cooldownSec);
+  const cdSec = profileAbilityCooldown(info.cooldownSec, profile);
   if (hyperionQa && msg.phase === "fire") {
     const window = state._qaWindow;
     const target = String(msg.target || "").slice(0, 64);
@@ -3220,7 +3221,7 @@ wss.on("connection", (ws) => {
         const nowCloak = Date.now();
         if (msg.cloaked && !state.cloaked && profile.cloakSkill && nowCloak >= Number(state._jamUntil || 0) && nowCloak >= Number(state._cloakCdUntil || 0)) {
           state._cloakUntil = nowCloak + (Number(profile.cloakSkill.durationSec) || 30) * 1000;
-          state._cloakCdUntil = nowCloak + (Number(profile.cloakSkill.cooldownSec) || 240) * 1000;
+          state._cloakCdUntil = nowCloak + profileAbilityCooldown(Number(profile.cloakSkill.cooldownSec) || 240, profile) * 1000;
         }
         state.cloaked = msg.cloaked && nowCloak >= Number(state._jamUntil || 0) && nowCloak < Number(state._cloakUntil || 0);
       }

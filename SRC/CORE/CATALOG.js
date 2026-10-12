@@ -3,6 +3,7 @@
 
 import { SHIP_PACKS, getShipDesignBaseId, getShipPackById, isRemovedShipPack } from "../../SHIP/SHIP_PACKS.js";
 import { DRONE_FORMATIONS, SPECIAL_DRONE_PRICE, getDroneShopStillPath } from "../../DRONE/DRONE_TYPES.js";
+import { DRONE_DESIGNS, droneDesignBonusLabel } from "../../DRONE/DRONE_DESIGNS.js";
 import { ammoDescription } from "../../COMBAT/AMMO_TYPES.js";
 import { ROCKET_TYPES, rocketDescription, rocketShopIcon } from "../../COMBAT/ROCKET_TYPES.js";
 import { BOOSTERS } from "../DATA/BOOSTERS.js";
@@ -58,6 +59,10 @@ function balancedDesignPrice(pack) {
 }
 
 export const CATALOG = {
+  droneDesigns: Object.values(DRONE_DESIGNS).map(design => ({
+    id: design.itemId, name: design.name, icon: design.icon, shopHidden: true,
+    droneDesign: { id: design.id }, desc: droneDesignBonusLabel(design, { effects: design.effects }),
+  })),
   // Munitions lasers officielles (icônes : itemsControlMenu_texture officielle).
   // Dégâts : LCB-10 x1 (base, stock infini, non vendue), MCB-25 x2, MCB-50 x3,
   // UCB-100 x4, SAB-50 (vole le bouclier x2 + recharge le tien), RSB-75 x6.

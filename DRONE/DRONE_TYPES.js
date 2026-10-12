@@ -1,4 +1,5 @@
 "use strict";
+import { getDroneDesign } from "./DRONE_DESIGNS.js";
 export const MAX_IRIS_DRONES=8, IRIS_BASE_PRICE=15000000, SPECIAL_DRONE_PRICE=500000000, DRONE_MAX_LEVEL=6, DRONE_XP_SHARE=.05;
 export const DRONE_LEVEL_XP=Object.freeze([0,25000,100000,300000,750000,1500000]);
 export const DRONE_TYPES=Object.freeze({
@@ -39,9 +40,9 @@ export function formationDockIcon(formationOrId){const id=typeof formationOrId==
 const FORMATION_3D_IDS=Object.freeze(new Set(["ring","drill","veteran","dome","wheel","x","wave"]));
 export function isClassicFormation(formationOrId){const id=typeof formationOrId==="string"?formationOrId:formationOrId?.id;return !FORMATION_3D_IDS.has(id);}
 export function getDroneLevel(experience){const xp=Math.max(0,Number(experience)||0);let level=1;for(let i=1;i<DRONE_LEVEL_XP.length;i++)if(xp>=DRONE_LEVEL_XP[i])level=i+1;return Math.min(DRONE_MAX_LEVEL,level);}
-export function getDroneSpritePath(drone,frame=1){const type=DRONE_TYPES[drone?.type]||DRONE_TYPES.iris;const state=Math.max(0,Math.min(DRONE_MAX_LEVEL-1,Number(drone?.level||1)-1));return `${type.path}${state}/${Math.max(1,Math.min(32,Math.floor(Number(frame)||1)))}.png`;}
-export function getDroneShopSpritePath(type){return `DRONE/DRONE_SPRITES/SHOP/${(DRONE_TYPES[type]?.id||"iris").toUpperCase()}.gif`;}
+export function getDroneSpritePath(drone,frame=1,design=drone?.fit?.ability){const type=DRONE_TYPES[drone?.type]||DRONE_TYPES.iris;const state=Math.max(0,Math.min(DRONE_MAX_LEVEL-1,Number(drone?.level||1)-1));const path=getDroneDesign(design)?.sprite||type.path;return `${path}${state}/${Math.max(1,Math.min(32,Math.floor(Number(frame)||1)))}.png`;}
+export function getDroneShopSpritePath(type){return getDroneShopStillPath(type);}
 // Dernière frame figée (preview boutique) : même dossier, extension .png.
-export function getDroneShopStillPath(type){return `DRONE/DRONE_SPRITES/SHOP/${(DRONE_TYPES[type]?.id||"iris").toUpperCase()}.png`;}
+export function getDroneShopStillPath(type,design=null){return getDroneDesign(design)?.shopIcon||`DRONE/DRONE_SPRITES/SHOP/${(DRONE_TYPES[type]?.id||"iris").toUpperCase()}.png`;}
 export function getActiveDroneFormation(user){const selected=DRONE_FORMATIONS.find(x=>x.id===user?.drones?.activeFormation)||DRONE_FORMATIONS[0];return (user?.drones?.items?.length||0)>=selected.minDrones?selected:DRONE_FORMATIONS[0];}
 export function createDrone(type,id){const d=DRONE_TYPES[type];return d?{id,type,level:1,exp:0,fit:{equipment:Array(d.slots).fill(null),ability:null}}:null;}

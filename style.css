@@ -21491,3 +21491,16 @@ html body #profileOverlay #shopTabs .subtabBtn[data-shop="extras"] {
   order:99 !important;
   margin-top:auto !important;
 }
+
+#fitOverlay #fitCard.droneMode .droneEquipmentCard {
+  grid-template-columns:72px minmax(100px,1fr) minmax(110px,1fr) auto auto !important;
+}
+#fitOverlay #fitCard .droneCardDesignBonus {
+  color:#9adecc;
+  font-size:11px;
+  line-height:1.5;
+  white-space:normal;
+}
+#fitOverlay #fitCard .droneDesignSlot img {
+  width:100%; height:100%; object-fit:contain;
+}
