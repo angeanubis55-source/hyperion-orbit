@@ -33902,9 +33902,8 @@ function drawEnemyBody(e, exactFrame = null) {
   const h = e.isBoss ? baseH * 1.05 : baseH;
 
   ctx.save();
-  // Lissage du rendu graphique (suivi continu en mouvement).
-  ctx.imageSmoothingEnabled = renderSmoothingOn();
-  drawCenteredImage(ctx, img, w, h, renderSmoothingOn());
+  ctx.imageSmoothingEnabled = false;
+  drawCenteredImage(ctx, img, w, h);
   ctx.restore();
   // ✅ bulle ISH sur boss invulnérable (finale Zeta) : anim en boucle.
   try {
