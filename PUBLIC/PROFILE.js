@@ -164,6 +164,12 @@ let rouletteRailCells = [];
 // écouteurs document branchés une seule fois (renderShopPreview re-rend souvent).
 let shopQtyDocWired = false;
 let moduleReroll = null;
+// Clic relance depuis l'historique : délégué au document (branché une seule
+// fois) car le panneau se re-rend souvent et un écouteur direct meurt avec
+// son nœud ("clic sans effet"). Le slot est réassigné à chaque rendu pour
+// garder des closures fraîches ; le coût est recalculé sur le module live.
+let moduleHistoryRerollHandler = null;
+let moduleHistoryRerollWired = false;
 // Tirage auto (roulette) : enchaîne les tirages de base tant que la case
 // est cochée et que les crédits suivent. Persisté entre les re-renders.
 let moduleAutoRoll = false;
@@ -2642,28 +2648,35 @@ function renderExtrasRoulette(user) {
     historyPage += Number(button.dataset.historyPage);
     updateModuleHistory(historyUser);
   };
-  document.getElementById("moduleHistoryView")?.addEventListener("click", (event) => {
-    const btn = event.target.closest("[data-reroll-module]");
+  // Relance depuis une ligne d'historique : résolu sur le module LIVE
+  // (pas le snapshot d'historique) pour un prix toujours juste.
+  moduleHistoryRerollHandler = (btn) => {
     if (!btn || btn.disabled) return;
     const id = btn.dataset.rerollModule;
-    const entry = (historyUser?.inventory?.moduleRollHistory || []).find((h) => String(h?.id) === String(id));
-    if (!entry?.id) return;
     const fresh = getCurrentUserFull();
-    const owned = (fresh?.inventory?.shipModules || []).some((m) => String(m?.id) === String(entry.id));
-    if (!owned) { setMsg("Module plus en inventaire : relance impossible.", false); return; }
+    const live = (fresh?.inventory?.shipModules || []).find((m) => String(m?.id) === String(id));
+    if (!live?.id) { setMsg("Module plus en inventaire : relance impossible.", false); return; }
     moduleReroll = {
-      shipId: entry.shipId,
-      familyId: moduleFamilyId(entry),
-      type: entry.type,
-      tier: entry.tier,
-      statCount: Array.isArray(entry.bonuses) ? entry.bonuses.length : 0,
-      currentId: entry.id,
-      cost: nextModuleRerollCost(entry.rerolls),
-      rerolls: Number(entry.rerolls) || 0,
+      shipId: live.shipId,
+      familyId: moduleFamilyId(live),
+      type: live.type,
+      tier: live.tier,
+      statCount: Array.isArray(live.bonuses) ? live.bonuses.length : 0,
+      currentId: live.id,
+      cost: nextModuleRerollCost(Number(live.rerolls) || 0),
+      rerolls: Number(live.rerolls) || 0,
     };
     showRoulette();
     handleReroll();
-  });
+  };
+  if (!moduleHistoryRerollWired && typeof document !== "undefined") {
+    moduleHistoryRerollWired = true;
+    document.addEventListener("click", (event) => {
+      const btn = event.target instanceof Element ? event.target.closest("[data-reroll-module]") : null;
+      if (!btn) return;
+      try { moduleHistoryRerollHandler?.(btn); } catch {}
+    });
+  }
   const railEl = document.getElementById("rouletteRail");
   const btn = document.getElementById("btnRoll");
 
@@ -2910,7 +2923,8 @@ function renderExtrasRoulette(user) {
   // seuls les % changent. Prix multiplié par 5 à chaque relance.
   // Sauvegarde ATOMIQUE avant l'animation (même raison que le tirage).
   const handleReroll = () => {
-    if (rolling || !moduleReroll) return;
+    if (!moduleReroll) return;
+    if (rolling) { setMsg("Tirage en cours, patiente…", false); return; }
 
     const cost = moduleReroll.cost;
     const oldId = moduleReroll.currentId;
