@@ -1584,7 +1584,7 @@ export function ensureNetplayConnection() {
             : prev && prev.dslots === String(p.dslots || "").slice(0, 256)
             ? prev.droneSlots
             : String(p.dslots || "").split(",").map((s) => s.trim()).filter(Boolean).slice(0, 12),
-          gg: Number.isFinite(Number(p.gg)) ? Math.max(0, Math.min(63, Math.floor(Number(p.gg)))) : Math.max(0, Math.min(63, Math.floor(Number(prev?.gg) || 0))),
+          gg: Number.isFinite(Number(p.gg)) ? Math.max(0, Math.min(127, Math.floor(Number(p.gg)))) : Math.max(0, Math.min(127, Math.floor(Number(prev?.gg) || 0))),
           alt: p.alt === true,
           shots: Math.max(0, Math.floor(Number(p.shots) || 0)),
           rank: String(p.rank ?? prev?.rank ?? "").slice(0, 64),
@@ -1846,7 +1846,7 @@ function sendNow(local, force = false) {
       fint: Number(local.fint) > 0 ? Number(local.fint) : 0.25,
       bspd: Number(local.bspd) > 0 ? Number(local.bspd) : 4000,
       dslots: String(local.dslots || "").slice(0, 256),
-      gg: Math.max(0, Math.min(63, Math.floor(Number(local.gg) || 0))),
+      gg: Math.max(0, Math.min(127, Math.floor(Number(local.gg) || 0))),
       alt: local.alt === true,
       shots: Math.max(0, Math.floor(Number(local.shots) || 0)),
       rank: String(local.rank || "").slice(0, 64),
