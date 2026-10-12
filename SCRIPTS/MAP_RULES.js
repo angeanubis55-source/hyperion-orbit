@@ -57,7 +57,9 @@ export function validArrival(arrival, x, y, now) {
 
 export function reviveArrival(maps, state, map, faction, x, y) {
   if (!(state.pvpDead === true || state.hp <= 0)) return null;
-  if (["low", "maudite", "4-5"].includes(map)) return null;
+  // En 4-5, "upper" choisit la base X-8 pour l'option gratuite ; les
+  // réparations payantes sur place et au portail restent proposées au client.
+  if (["low", "maudite"].includes(map)) return null;
   const base = map === respawnMap(faction, map) ? baseArrival(maps, map, faction) : null;
   if (base && near({ x, y }, base, base.radius)) return base;
   if (near({ x, y }, state, 150)) return { x: state.x, y: state.y, radius: 150 };

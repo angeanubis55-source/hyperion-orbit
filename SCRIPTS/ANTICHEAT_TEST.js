@@ -381,3 +381,17 @@ test("le flag dead du client ne donne pas un droit de résurrection ou de télé
   assert.equal(reviveArrival(maps, dead, "1-2", "mmo", 999999, 999999), null);
   assert.ok(mapTransition(maps, dead, "1-2", "1-1", "mmo", 10000)?.revive);
 });
+
+test("4-5 : une mort permet la réparation sur place ou au portail, avec retour base en 1-8", async () => {
+  const maps = await loadServerMaps();
+  const dead = { x: 17807, y: 10300, hp: 0, pvpDead: true };
+  assert.ok(reviveArrival(maps, dead, "4-5", "mmo", dead.x, dead.y), "sur place doit réanimer le pool serveur");
+  const nearest = maps.get("4-5").portals.filter(p => !p.hidden && /^[123]-5$/.test(p.toMap))
+    .sort((a, b) => Math.hypot(a.x - dead.x, a.y - dead.y) - Math.hypot(b.x - dead.x, b.y - dead.y))[0];
+  assert.ok(reviveArrival(maps, dead, "4-5", "mmo", nearest.x, nearest.y));
+  assert.ok(mapTransition(maps, dead, "4-5", "1-8", "mmo", 10000)?.revive);
+  assert.equal(reviveArrival(maps, { ...dead, hp: 100, pvpDead: false }, "4-5", "mmo", dead.x, dead.y), null);
+  assert.equal(reviveArrival(maps, dead, "4-5", "mmo", 500, 500), null);
+  assert.equal(reviveArrival(maps, dead, "low", "mmo", dead.x, dead.y), null);
+  assert.equal(reviveArrival(maps, dead, "maudite", "mmo", dead.x, dead.y), null);
+});

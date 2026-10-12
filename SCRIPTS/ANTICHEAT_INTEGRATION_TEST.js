@@ -13,6 +13,7 @@ import { combatProfile } from "./COMBAT_PROFILE.js";
 import { CATALOG } from "../SRC/CORE/CATALOG.js";
 import { SHIP_PACKS } from "../SHIP/SHIP_PACKS.js";
 import { abilityShipKeyFor } from "../SHIP/SHIP_ABILITIES.js";
+import { loadServerMaps } from "./MAP_RULES.js";
 
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -226,6 +227,42 @@ ZoneNpcSim.prototype.drainPlayerHits = function() { this.playerHits.length = 0; 
   a.send({ t: "map", map: "4-5" });
   await pause(100);
   assert.equal((await peers()).peers.find(p => p.id === a.id).map, "1-1");
+
+  // Même situation que le blocage signalé : mort en 4-5, réparation,
+  // puis plusieurs déplacements ordinaires, sans retour à la position morte.
+  const battleMaps = await loadServerMaps();
+  const battleDeath = { x: 17807, y: 10300 };
+  const battlePortal = battleMaps.get('4-5').portals.filter(p => !p.hidden && /^[123]-5$/.test(p.toMap))
+    .sort((p, q) => Math.hypot(p.x - battleDeath.x, p.y - battleDeath.y) - Math.hypot(q.x - battleDeath.x, q.y - battleDeath.y))[0];
+  for (const [mode, spawnAt] of [['here', battleDeath], ['portal', battlePortal]]) {
+    const account = await makeAccount(`anticheat-revive-${mode}`, '4-5', battleDeath);
+    const peer = await connect(account, '4-5');
+    let after = peer.messages.length;
+    peer.send({ ...peer.pos, dead: true, hpPct: 0, shPct: 0 });
+    const dead = await peer.snapshot(after);
+    assert.equal(dead.dead, true); assert.equal(dead.pvpHp, 0);
+    after = peer.messages.length;
+    Object.assign(peer.pos, { x: spawnAt.x, y: spawnAt.y, dead: false, hpPct: 0.1, shPct: 0.1 });
+    peer.send(peer.pos);
+    const revived = await peer.snapshot(after);
+    assert.equal(revived.dead, false, `${mode} : le serveur doit confirmer la réparation en 4-5`);
+    assert.ok(revived.pvpHp > 0); assert.equal(revived.x, spawnAt.x); assert.equal(revived.y, spawnAt.y);
+    assert.ok(revived.teleportSeq > dead.teleportSeq);
+    const movementAt = peer.messages.length;
+    for (let step = 0; step < 6; step++) {
+      await pause(100);
+      peer.pos.x += 20;
+      const moveAt = peer.messages.length;
+      peer.send({ ...peer.pos, vx: 200, vy: 0, moving: true, mx: spawnAt.x + 500, my: spawnAt.y });
+      const moved = await peer.wait(m => m.t === 'snapshot' && m.players.some(p => p.id === peer.id && p.x === peer.pos.x), moveAt)
+        .then(m => m.players.find(p => p.id === peer.id));
+      assert.equal(moved.dead, false); assert.equal(moved.x, peer.pos.x);
+      assert.equal(moved.motionBlocked, false);
+    }
+    assert.equal(peer.messages.slice(movementAt).some(m => m.t === 'stateCorrection'), false,
+      `${mode} : aucun rollback après la réparation`);
+    peer.ws.close(); await once(peer.ws, 'close');
+  }
 
   // Le premier tick peut précéder la première fenêtre complète : attendre
   // le deuxième, sans accélérer ni modifier le code serveur livré.
