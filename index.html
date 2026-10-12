@@ -539,7 +539,6 @@
                 </div>
                 <span class="ggBuiltLine">GG construite <b id="ggBuilt">0 / 1</b></span>
                 <img id="ggPortalImage" alt="Portail Galaxy Gate">
-                <div id="ggRewards" class="ggRewards ggRewardsTip"></div>
               </div>
               <div class="ggDetails">
                 <button class="ggMultiplierRow" id="ggMultiplierBtn" type="button" disabled><span>Multiplicateur</span><b id="ggMultiplier">x1</b><span class="ggSpinSep"></span><span class="ggMultiplierAction">Désactivée</span></button>
@@ -549,12 +548,13 @@
                 <div><span>Vague</span><b id="ggWave">0 / 11</b></div>
                 <div class="ggPartsBar"><span>Pièces</span><strong id="ggParts">0 / 0</strong></div>
               </div>
-              <div class="ggSpinControls">
+              <div id="ggSpinControls" class="ggSpinControls">
                 <label for="ggSpinCount">Nombre de spins</label>
                 <select id="ggSpinCount">
                   <option value="1">1</option><option value="2">2</option><option value="5">5</option><option value="10">10</option><option value="50">50</option><option value="100">100</option>
                 </select>
-                <button id="ggSpinBtn" type="button" data-gg-spin><span>Spin</span><span class="ggSpinSep"></span><span><em id="ggCreditCost">100 000</em>&nbsp;Crédits</span></button>
+                <button id="ggSpinBtn" type="button" data-gg-spin><span>Spin</span><span class="ggSpinSep"></span><span><em id="ggCreditCost">125 000</em>&nbsp;Crédits</span></button>
+                <div id="ggKronosParts" class="ggKronosParts" aria-label="Pièces de Kronos par Galaxy Gate" hidden></div>
               </div>
             </div>
           </div>
@@ -570,6 +570,7 @@
           </div>
         </div>
       </div>
+      <div id="ggRewards" class="ggRewards ggRewardsTip" popover="auto" role="tooltip"></div>
     </div>
 
     <div id="starMapWindow" class="panel starMapPanel">
@@ -893,7 +894,7 @@
             <details class="wikiArticle"><summary>Récompenses et arrondis</summary><p>Les multiplicateurs de vaisseau, modules, boosters, pilote, formations et événements sont appliqués selon le type de récompense. Les valeurs finales sont arrondies en unités entières. Dans un groupe, le partage répartit le total disponible entre les membres éligibles plutôt que de dupliquer 100 % pour chacun.</p></details>
           </section>
           <section class="wikiPage" data-wiki-page="galaxy">
-            <details class="wikiArticle" open><summary>Construire sa gate</summary><p>Fenêtre <b>Galaxy Gates</b> : choisis Alpha / Beta / Gamma (<b>Ensemble ABG</b>, une seule roue), <b>Delta</b> (roue isolée, 128 pièces), <b>Epsilon</b> (roue isolée, 99 pièces), <b>Zeta</b> (roue isolée, 111 pièces), <b>Kappa</b> (roue isolée, 120 pièces) ou <b>Lambda</b> (roue isolée, 45 pièces), lance des <b>spins</b> (énergie puis crédits, 100 000 crédits le spin de base). Chaque spin pose des pièces ; à 100 % la gate est construite. <b>Kronos</b> n'a pas de roue : ses 21 pièces s'obtiennent en terminant les autres gates. Le <b>multiplicateur</b> est séparé par roue (ABG vs Delta) et accélère la construction quand il est disponible.</p></details>
+            <details class="wikiArticle" open><summary>Construire sa gate</summary><p>Fenêtre <b>Galaxy Gates</b> : choisis Alpha / Beta / Gamma (<b>Ensemble ABG</b>, une seule roue), <b>Delta</b> (roue isolée, 128 pièces), <b>Epsilon</b> (roue isolée, 99 pièces), <b>Zeta</b> (roue isolée, 111 pièces), <b>Kappa</b> (roue isolée, 120 pièces) ou <b>Lambda</b> (roue isolée, 45 pièces), lance des <b>spins</b> (énergie puis crédits, 125 000 crédits le spin de base). Chaque spin pose des pièces ; à 100 % la gate est construite. <b>Kronos</b> n'a pas de roue : ses 21 pièces s'obtiennent en terminant les autres gates. Le <b>multiplicateur</b> est séparé par roue (ABG vs Delta) et accélère la construction quand il est disponible.</p></details>
             <details class="wikiArticle"><summary>Enchaîner les vagues</summary><p>Entre avec <kbd>J</kbd> quand le portail est prêt. Vies limitées, vagues de NPC de plus en plus durs, boss final (ex. Cubikon). L'historique des spins et les balances crédits / énergie sont dans le panneau latéral.</p></details>
             <details class="wikiArticle"><summary>Récompenses d'une Galaxy Gate</summary><p>Les récompenses des NPC sont attribuées normalement pendant les vagues. Le bonus final est strictement personnel et n'est jamais partagé au groupe. Il est crédité au moment du message de fin, avant le retour vers la map X-1 de ta firme. Les groupes ne partagent ni butin ni objectifs à l'intérieur d'une gate.</p></details>
             <details class="wikiArticle"><summary>Alpha, Beta, Gamma, Delta, Epsilon, Zeta, Kappa, Lambda et Kronos</summary><p>Ces gates utilisent une progression persistante : pièces, construction, vies, vagues et validation finale. Delta (10 vagues, finale SaNeJiEwZ), Epsilon (11 vagues pirates), Zeta (10 vagues, Devourer à paliers avec bulle ISH), Kappa (11 vagues mixtes), Lambda (7 vagues de Boss) et Kronos (13 vagues Saturn, 21 pièces via les autres gates) sont isolées de l'ensemble ABG. Quitter ou être déconnecté ne doit pas transformer les récompenses en butin de groupe. Termine la dernière vague et attends le message de récompense avant le transfert.</p></details>

@@ -13,7 +13,7 @@ import { calculateRankPoints, getQuestExperienceReward, getQuestHonorReward } fr
 import { getFaction, getFactionBaseSpawn, normalizeFactionId } from "./FACTIONS.js";
 import { compactDroneEquipment, compactFitArray, compactFitDraft, compactPetFit } from "./FIT_LAYOUT.js";
 import { resizeShield } from "./EQUIPMENT_SYNC.js";
-import { clearGalaxyGateWaveKills, completeActiveGalaxyGate, consumeBuiltGalaxyGate, deployBuiltGalaxyGate, GALAXY_GATE_BUILD_LIMIT, GALAXY_GATE_DEFINITIONS, getGalaxyGateWaveKills, KRONOS_PARTS_BY_GATE, loseGalaxyGateLife, normalizeGalaxyGateState, normalizeGalaxyGateWave, palladiumExchangeForEnergy, PALLADIUM_PER_GALAXY_ENERGY, recordGalaxyGateWaveKill, resetGalaxyGateWaveKills, rollGalaxyGateResourceRewards, setGalaxyGateMultiplierArmed, spinGalaxyGate } from "./GALAXY_GATES.js";
+import { clearGalaxyGateWaveKills, completeActiveGalaxyGate, consumeBuiltGalaxyGate, deployBuiltGalaxyGate, GALAXY_GATE_BUILD_LIMIT, GALAXY_GATE_DEFINITIONS, getGalaxyGateWaveKills, loseGalaxyGateLife, normalizeGalaxyGateState, normalizeGalaxyGateWave, palladiumExchangeForEnergy, PALLADIUM_PER_GALAXY_ENERGY, recordGalaxyGateWaveKill, resetGalaxyGateWaveKills, rollGalaxyGateResourceRewards, GALAXY_GATE_EQUIPMENT_DROPS, rollGalaxyGateEquipmentReward, setGalaxyGateMultiplierArmed, spinGalaxyGate } from "./GALAXY_GATES.js";
 import { getCraftingRecipe, CRAFTING_ENABLED } from "../DATA/CRAFTING.js";
 import { getRefineryRecipe, refineOreOutput, isOreResource, ORE_SELL_PRICES, UPGRADE_SLOT_ORES, upgradeOreCapacity, planAutoUpgradeCharges, cargoAdd, cargoFree, CARGO_CAPACITY } from "../DATA/RESOURCES.js";
 import { getModuleRarity, MODULE_DAILY_ROLL_LIMIT, MODULE_ROLL_COST, MODULE_SELL_PRICES } from "../DATA/MODULE_DROPS.js";
@@ -61,6 +61,7 @@ import { activeBoosterMults, getBooster, normalizeBoostersState } from "../DATA/
 import { getPetVitalLimits } from "../../PET/PET_VITALS.js";
 import { computeHangarStats } from "../../SHIP/SHIP_HANGARS.js";
 import { getDroneDesign, getDroneFitForHangar } from "../../DRONE/DRONE_DESIGNS.js";
+import { GALAXY_GATE_DRONE_DESIGN_DROPS, rollGalaxyGateDroneDesignReward } from "./GALAXY_GATES.js";
 
 // localStorage keys
 const USERS_KEY = "orbit_users";
@@ -1733,8 +1734,8 @@ export function buyItem(itemId, requestedQuantity = 1, options = {}) {
 
   const item = findCatalogItem(itemId);
   if (!item) return { ok: false, error: "Item introuvable." };
-  // Articles retirés de la vente (Prometheus, A-BL) : quêtes et assemblage
-  // uniquement. Les gains gratuits (quêtes, enchères) restent possibles.
+  // Articles retirés de la vente : leurs récompenses restent disponibles.
+  // Les gains gratuits (quêtes, enchères, Galaxy Gates) restent possibles.
   if (item.shopHidden === true && options.free !== true) {
     return { ok: false, error: "Article non vendu en boutique." };
   }
@@ -2302,31 +2303,11 @@ export function completeCurrentUserGalaxyGate(gateId, currentUser = null, option
   const result = completeActiveGalaxyGate(u.galaxyGates, gateId);
   if (!result.ok) return { ok: false, error: "Aucune Galaxy Gate active correspondante." };
   const baseReward = GALAXY_GATE_DEFINITIONS[String(gateId || "").toLowerCase()]?.completion;
-  const reward = baseReward ? { ...baseReward, resources: rollGalaxyGateResourceRewards(baseReward.resources) } : null;
+  const rng = typeof options.rng === "function" ? options.rng : Math.random;
+  const reward = baseReward ? { ...baseReward, resources: rollGalaxyGateResourceRewards(baseReward.resources, rng),
+    droneDesign: rollGalaxyGateDroneDesignReward(GALAXY_GATE_DRONE_DESIGN_DROPS[String(gateId || "").toLowerCase()], rng),
+    equipment: rollGalaxyGateEquipmentReward(GALAXY_GATE_EQUIPMENT_DROPS[String(gateId || "").toLowerCase()], rng) } : null;
   u.galaxyGates = result.state;
-  // ✅ Kronos (officiel) : chaque gate terminée crédite des parts Kronos
-  // (total 21). Promotion auto en gate construite + pose auto sur la map.
-  let kronosGranted = 0;
-  try {
-    const doneId = String(gateId || "").toLowerCase();
-    const kronosDef = GALAXY_GATE_DEFINITIONS.kronos;
-    kronosGranted = Math.max(0, Math.floor(Number(KRONOS_PARTS_BY_GATE?.[doneId]) || 0));
-    if (kronosDef && kronosGranted > 0) {
-      u.galaxyGates.parts ||= {};
-      u.galaxyGates.built ||= {};
-      u.galaxyGates.parts.kronos = Math.max(0, Math.floor(Number(u.galaxyGates.parts.kronos) || 0)) + kronosGranted;
-      while (u.galaxyGates.parts.kronos >= kronosDef.requiredParts
-        && Math.max(0, Math.floor(Number(u.galaxyGates.built.kronos) || 0)) < GALAXY_GATE_BUILD_LIMIT) {
-        u.galaxyGates.parts.kronos -= kronosDef.requiredParts;
-        u.galaxyGates.built.kronos = Math.max(0, Math.floor(Number(u.galaxyGates.built.kronos) || 0)) + 1;
-      }
-      if (Math.max(0, Math.floor(Number(u.galaxyGates.built.kronos) || 0)) >= GALAXY_GATE_BUILD_LIMIT) {
-        u.galaxyGates.parts.kronos = 0;
-      }
-      const dep = deployBuiltGalaxyGate(u.galaxyGates, "kronos");
-      if (dep?.ok) u.galaxyGates = dep.state;
-    }
-  } catch { kronosGranted = 0; }
   // Le moteur GG affiche un premier decompte avant le message de recompense.
   // Dans ce mode, on valide la Gate maintenant mais il distribuera le gain
   // exactement au moment du message (puis le sauvegardera immediatement).
@@ -2360,8 +2341,11 @@ export function completeCurrentUserGalaxyGate(gateId, currentUser = null, option
     u.stats.rankPoints = calculateRankPoints(u.stats);
     u.ammo ||= {};
     u.ammo.x4 = Math.max(0, Math.floor(Number(u.ammo.x4 || 0))) + Math.max(0, Math.floor(Number(reward.x4 || 0)));
+    u.galaxyGates.energy += Math.max(0, Math.floor(Number(reward.energy) || 0));
     const xenomit = Math.max(0, Math.floor(Number(reward.xenomit) || 0));
     const resources = { ...reward.resources, xenomit };
+    if (reward.droneDesign?.amount > 0) incCount(u, reward.droneDesign.itemId, reward.droneDesign.amount);
+    if (reward.equipment?.amount > 0) incCount(u, reward.equipment.itemId, reward.equipment.amount);
     if (Object.values(resources).some(amount => amount > 0)) {
       u.inventory ||= {};
       u.inventory.resources ||= {};

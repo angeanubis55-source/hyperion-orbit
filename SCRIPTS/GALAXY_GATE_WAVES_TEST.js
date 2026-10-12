@@ -8,8 +8,109 @@ import { remainingWaveSpawns, createWaveSpawnState } from "../SRC/CORE/WAVES.js"
 import { NPC_TYPES } from "../NPC/NPC_TYPES.js";
 import { getWavePlan as lambdaPlan } from "../MAPS/LAMBDA_MAP/WAVES.js";
 import { getResourceName, getResourceIcon, cargoUsed, cargoAdd } from "../SRC/DATA/RESOURCES.js";
+import { GALAXY_GATE_DRONE_DESIGN_DROPS, rollGalaxyGateDroneDesignReward, galaxyGateDroneDesignRewardMessage } from '../SRC/CORE/GALAXY_GATES.js';
+import { KRONOS_PARTS_BY_GATE, consumeBuiltGalaxyGate } from '../SRC/CORE/GALAXY_GATES.js';
+import { GALAXY_GATE_EQUIPMENT_DROPS, rollGalaxyGateEquipmentReward, galaxyGateEquipmentRewardMessage } from '../SRC/CORE/GALAXY_GATES.js';
+import { findCatalogItem } from '../SRC/CORE/CATALOG.js';
+
+test('Epsilon : 50% Anchorlock, un laser maximum, tirage resolu conserve et catalogue equipable', () => {
+  const drop = GALAXY_GATE_EQUIPMENT_DROPS.epsilon;
+  assert.deepEqual(drop, { itemId: 'laser_lf5al', chance: 0.5 });
+  let wins = 0;
+  for (let i = 0; i < 100; i++) {
+    let draws = 0;
+    const reward = rollGalaxyGateEquipmentReward(drop, () => { draws++; return (i + 0.5) / 100; });
+    assert.equal(draws, 1);
+    wins += reward.amount;
+    assert.deepEqual(rollGalaxyGateEquipmentReward(reward, () => { throw new Error('pas de nouveau tirage'); }), reward);
+    assert.equal(galaxyGateEquipmentRewardMessage(reward), reward.amount ? '1x LF-5 Anchorlock reçu' : 'Aucun équipement reçu');
+  }
+  assert.equal(wins, 50);
+  assert.equal(rollGalaxyGateEquipmentReward(drop, () => 0.5).amount, 0);
+  assert.equal(rollGalaxyGateEquipmentReward(undefined), null);
+  assert.equal(galaxyGateEquipmentRewardMessage(null), null);
+  const item = findCatalogItem(drop.itemId);
+  assert.equal(item.shopHidden, true);
+  assert.equal(item.module.type, 'laser');
+  assert.equal(item.module.damage, 265);
+});
+
+test('Kronos : une piece par completion, quotas independants et nouvelle construction', () => {
+  let state = normalizeGalaxyGateState({});
+  for (const [id, required] of Object.entries(KRONOS_PARTS_BY_GATE)) {
+    for (let run = 1; run <= required; run++) {
+      state = completeActiveGalaxyGate({ ...state, active: id }, id).state;
+      if (id !== 'lambda' || run !== required) {
+        assert.equal(state.kronosParts[id], run);
+        assert.equal(state.parts.kronos, Object.values(state.kronosParts).reduce((a, b) => a + b, 0));
+        assert.equal(state.deployed.kronos, false, 'toutes les sources sont necessaires');
+      }
+    }
+    if (id !== 'lambda') {
+      const before = structuredClone(state);
+      state = completeActiveGalaxyGate({ ...state, active: id }, id).state;
+      assert.equal(state.parts.kronos, before.parts.kronos, 'une source complete ne donne pas de piece supplementaire');
+    }
+  }
+  assert.equal(state.deployed.kronos, true);
+  assert.equal(state.parts.kronos, 0);
+  assert.ok(Object.values(state.kronosParts).every(n => n === 0));
+  state = completeActiveGalaxyGate({ ...state, active: 'alpha' }, 'alpha').state;
+  assert.equal(state.kronosParts.alpha, 1, 'la prochaine construction peut commencer');
+  assert.equal(state.parts.kronos, 1);
+  const entered = consumeBuiltGalaxyGate(state, 'kronos');
+  assert.equal(entered.ok, true);
+  assert.equal(entered.state.kronosParts.alpha, 1, 'entrer dans Kronos conserve la prochaine construction');
+});
+
+test('Kronos : migration conserve le total acquis et normalization preserve les sources', () => {
+  for (let total = 0; total < 21; total++) {
+    const migrated = normalizeGalaxyGateState({ parts: { kronos: total }, completed: { alpha: 1, beta: 1 } });
+    assert.equal(migrated.parts.kronos, total);
+    assert.equal(Object.values(migrated.kronosParts).reduce((a, b) => a + b, 0), total);
+    assert.deepEqual(normalizeGalaxyGateState(migrated), migrated);
+  }
+  const state = normalizeGalaxyGateState({ kronosParts: { alpha: 1, beta: 2, epsilon: 999, delta: -5, lambda: Infinity } });
+  assert.equal(state.kronosParts.alpha, 1);
+  assert.equal(state.kronosParts.beta, 2);
+  assert.equal(state.kronosParts.epsilon, 4);
+  assert.equal(state.kronosParts.delta, 0);
+  assert.equal(state.kronosParts.lambda, 0);
+  assert.equal(state.parts.kronos, 7);
+  const stock = normalizeGalaxyGateState({ active: 'kronos', built: { kronos: 1 } });
+  assert.equal(completeActiveGalaxyGate({ ...stock, active: 'alpha', deployed: { kronos: true } }, 'alpha').state.kronosParts.alpha, 0);
+});
 
 const engine = readFileSync(new URL("../SRC/CORE/ORBIT_ENGINE.js", import.meta.url), "utf8").replace(/\r\n/g, "\n");
+test('Kronos : recompenses de base et ressources proportionnelles aux 75 millions de credits', () => {
+  const reward = GALAXY_GATE_DEFINITIONS.kronos.completion;
+  assert.equal(reward.credits, 75000000);
+  assert.equal(reward.honor, 1000000);
+  assert.equal(reward.exp, 75000000);
+  assert.equal(reward.x4, 100000);
+  assert.equal(reward.energy, 300);
+  assert.equal(reward.xenomit, 1875);
+  assert.deepEqual(reward.resources, { kyhalon: 75, tetrathrin: 75, bifenon: 75, schism: 7, diametrion: 37 });
+});
+test('GG : probabilites exactes, un CPU par gain et un seul tirage par completion', () => {
+  const expected = { delta: ['hermes', 33], zeta: ['havoc', 45], kappa: ['hercules', 25], kronos: ['saturn', 100] };
+  for (const [id, [design, percentage]] of Object.entries(expected)) {
+    const drop = GALAXY_GATE_DRONE_DESIGN_DROPS[id];
+    assert.equal(drop.itemId, `drone_design_${design}`);
+    assert.equal(drop.chance, percentage / 100);
+    let won = 0;
+    for (let i = 0; i < 100; i++) {
+      const reward = rollGalaxyGateDroneDesignReward(drop, () => (i + 0.5) / 100);
+      assert.ok(reward.amount === 0 || reward.amount === 1);
+      won += reward.amount;
+      assert.deepEqual(rollGalaxyGateDroneDesignReward(reward, () => { throw new Error('pas de second tirage'); }), reward);
+      assert.equal(galaxyGateDroneDesignRewardMessage(reward), reward.amount ? `1x Design de drones ${design} reçu` : 'Aucun Design de drones reçu');
+    }
+    assert.equal(won, percentage);
+    if (percentage < 100) assert.equal(rollGalaxyGateDroneDesignReward(drop, () => drop.chance).amount, 0);
+  }
+  for (const id of ['alpha','beta','gamma','epsilon','lambda']) assert.equal(rollGalaxyGateDroneDesignReward(GALAXY_GATE_DRONE_DESIGN_DROPS[id]), null);
+});
 test('GG : le premier spin et les suivants memorisent la gate choisie quelle que soit la recompense', () => {
   for (const gate of Object.values(GALAXY_GATE_DEFINITIONS).filter(gate => gate.group)) {
     for (const roll of [0.1, 0.25, 0.4, 0.98]) {
@@ -28,7 +129,7 @@ test('GG : le premier spin et les suivants memorisent la gate choisie quelle que
   }
 });
 test('GG : Xenomit proportionnel aux credits finaux, et automatiquement recalcule si le montant change', () => {
-  const expected = { alpha: 500, beta: 875, gamma: 1250, delta: 1625, epsilon: 750, zeta: 1125, kappa: 1500, lambda: 375, kronos: 2000 };
+  const expected = { alpha: 500, beta: 875, gamma: 1250, delta: 1625, epsilon: 750, zeta: 1125, kappa: 1500, lambda: 375, kronos: 1875 };
   for (const [id, amount] of Object.entries(expected)) {
     assert.equal(GALAXY_GATE_DEFINITIONS[id].completion.xenomit, amount);
     assert.equal(galaxyGateXenomitForCredits(GALAXY_GATE_DEFINITIONS[id].completion.credits), amount);
@@ -38,7 +139,7 @@ test('GG : Xenomit proportionnel aux credits finaux, et automatiquement recalcul
   for (const credits of [0, -40000, NaN, Infinity]) assert.equal(galaxyGateXenomitForCredits(credits), 0);
 });
 test('toutes les GG : 20 de chaque materiau pour 20 millions de credits finaux', () => {
-  const expected = { alpha: 20, beta: 35, gamma: 50, delta: 65, epsilon: 30, zeta: 45, kappa: 60, lambda: 15, kronos: 80 };
+  const expected = { alpha: 20, beta: 35, gamma: 50, delta: 65, epsilon: 30, zeta: 45, kappa: 60, lambda: 15, kronos: 75 };
   for (const [id, amount] of Object.entries(expected)) {
     assert.deepEqual(GALAXY_GATE_DEFINITIONS[id].completion.resources, {
       kyhalon: amount, tetrathrin: amount, bifenon: amount, schism: Math.floor(amount / 10), diametrion: Math.floor(amount / 2) });

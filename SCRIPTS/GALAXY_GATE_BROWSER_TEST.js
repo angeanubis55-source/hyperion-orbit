@@ -9,7 +9,8 @@ import { createServer } from "node:net";
 import { basename, dirname, extname, join, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { chromium } from "playwright-core";
-import { GALAXY_GATE_DEFINITIONS } from '../SRC/CORE/GALAXY_GATES.js';
+import { GALAXY_GATE_DEFINITIONS, KRONOS_PARTS_BY_GATE } from '../SRC/CORE/GALAXY_GATES.js';
+import { GALAXY_GATE_DRONE_DESIGN_DROPS, galaxyGateDroneDesignRewardMessage } from '../SRC/CORE/GALAXY_GATES.js';
 
 const root = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const temporary = await mkdtemp(join(tmpdir(), "orbit-gg-audit-"));
@@ -71,6 +72,22 @@ try {
         assert.ok(end > 0);
         body = source.slice(0, end) + `\nwindow.__ggAudit = {
           timers: [],
+          notify: showNotificationGroup,
+          async prepareKronos(completedId = null) {
+            started = false;
+            const mod = await import('./ACCOUNT.js');
+            const gg = await import('./GALAXY_GATES.js');
+            const user = getCurrentUserFull();
+            const kronosParts = { alpha: 1, beta: 2, epsilon: 3, kappa: 1, lambda: 4 };
+            if (completedId) kronosParts[completedId] = KRONOS_PARTS_BY_GATE[completedId];
+            user.galaxyGates = gg.normalizeGalaxyGateState({ lastOpenedGate: 'kronos', kronosParts });
+            mod.saveUser(user, { source: 'progress' });
+            account.user = user;
+            selectedGalaxyGateId = 'kronos';
+            window.GameWindowManager.restore('galaxyGateWindow');
+            renderGalaxyGateWindow();
+            await flushNetUser();
+          },
           async prepareSpin() {
             started = false;
             const mod = await import('./ACCOUNT.js');
@@ -94,11 +111,20 @@ try {
             enemies: enemies.map(e => ({ type: e.type, boss: !!e._onKill?.tp?.factionBase })),
             pending: gateCompletionPending, betweenWaves, gates: structuredClone(account.user.galaxyGates),
             xenomit: Number(account.user.inventory?.resources?.xenomit) || 0, rewardPhase: this.rewardPhase,
+            energy: account.user.galaxyGates.energy, energyPhase: this.energyPhase,
+            anchorlock: Number(account.user.inventory?.counts?.laser_lf5al) || 0, equipmentPhase: this.equipmentPhase,
             materials: Object.fromEntries(['kyhalon', 'tetrathrin', 'bifenon', 'schism', 'diametrion'].map(id => [id, Number(account.user.inventory?.resources?.[id]) || 0])),
+            designs: Object.fromEntries(['drone_design_hermes', 'drone_design_havoc', 'drone_design_hercules', 'drone_design_saturn'].map(id => [id, Number(account.user.inventory?.counts?.[id]) || 0])),
+            designPhase: this.designPhase, rewardMessages: this.rewardMessages,
             materialPhase: this.materialPhase }; },
-          async prepare(id) {
+          async prepare(id, win = true) {
             started = false;
+            this.designRoll = win ? 0 : 0.99;
+            this.rewardMessages = [];
+            this.designPhase = null;
             this.rewardPhase = null;
+            this.energyPhase = null;
+            this.equipmentPhase = null;
             this.materialPhase = null;
             const mod = await import('./ACCOUNT.js');
             const user = getCurrentUserFull(), last = GALAXY_GATE_DEFINITIONS[id].maxWaves;
@@ -139,12 +165,18 @@ try {
             const timers = this.timers.splice(0).sort((a, b) => a.delay - b.delay);
             for (const timer of timers) {
               const before = timer.delay === 3000 ? this.snapshot().xenomit : null;
+              const energyBefore = timer.delay === 3000 ? this.snapshot().energy : null;
+              const equipmentBefore = timer.delay === 3000 ? this.snapshot().anchorlock : null;
               const materialsBefore = timer.delay === 3000 ? this.snapshot().materials : null;
+              const designsBefore = timer.delay === 3000 ? this.snapshot().designs : null;
               const wasStarted = started;
               if (timer.delay === 3000) started = true;
               try { await timer.callback(); } finally { started = wasStarted; }
               if (before !== null) this.rewardPhase = { delay: timer.delay, before, after: this.snapshot().xenomit };
+              if (energyBefore !== null) this.energyPhase = { delay: timer.delay, before: energyBefore, after: this.snapshot().energy };
+              if (equipmentBefore !== null) this.equipmentPhase = { delay: timer.delay, before: equipmentBefore, after: this.snapshot().anchorlock };
               if (materialsBefore) this.materialPhase = { before: materialsBefore, after: this.snapshot().materials };
+              if (designsBefore) this.designPhase = { before: designsBefore, after: this.snapshot().designs };
             }
             await flushNetUser();
             // Le premier envoi peut porter la validation seule ; attendre
@@ -156,7 +188,9 @@ try {
           }
         };` + source.slice(end);
         body = body.replace('function scheduleGalaxyGateCompletion(gateId, completion) {',
-          'function scheduleGalaxyGateCompletion(gateId, completion) { const setTimeout = (callback, delay) => window.__ggAudit.timers.push({ callback, delay });');
+          'function scheduleGalaxyGateCompletion(gateId, completion) { const setTimeout = (callback, delay) => window.__ggAudit.timers.push({ callback, delay }); const showNotificationGroup = (messages, ...args) => { window.__ggAudit.rewardMessages = [...messages]; return window.__ggAudit.notify(messages, ...args); };');
+        body = body.replace('completeCurrentUserGalaxyGate(currentGateId, account.user, { deferReward: true })',
+          'completeCurrentUserGalaxyGate(currentGateId, account.user, { deferReward: true, rng: () => window.__ggAudit.designRoll })');
       }
       await route.fulfill({ status: 200, contentType: mime[extname(path)] || "application/octet-stream", body });
     } catch { await route.fulfill({ status: 404, body: "Not found" }); }
@@ -176,8 +210,112 @@ try {
   await page.waitForTimeout(1500);
 
   const results = [];
+  await page.evaluate(() => window.__ggAudit.prepareKronos());
+  await page.waitForFunction(() => !document.getElementById('galaxyGateWindow').classList.contains('gameWinOpening'));
+  for (const width of [1600, 800]) {
+    await page.setViewportSize({ width, height: 900 });
+    const reference = await page.evaluate(() => {
+      document.querySelector('[data-gg-gate="alpha"]').click();
+      const geometry = Object.fromEntries(['.ggBuiltLine', '.ggDetailsBottom', '#ggSpinControls', '#ggPortalImage', '#galaxyGateWindow'].map(selector => {
+        const bounds = document.querySelector(selector).getBoundingClientRect();
+        return [selector, { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height }];
+      }));
+      document.querySelector('[data-gg-gate="kronos"]').click();
+      return geometry;
+    });
+    const layout = await page.evaluate(() => {
+      const controls = document.getElementById('ggSpinControls');
+      const panel = document.getElementById('ggKronosParts');
+      const stats = document.querySelector('.ggDetailsBottom').getBoundingClientRect();
+      const bounds = panel.getBoundingClientRect();
+      const rewards = document.querySelector('.ggPreviewTop').getBoundingClientRect();
+      const multiplier = document.getElementById('ggMultiplierBtn').getBoundingClientRect();
+      return {
+        controlsHidden: [...controls.querySelectorAll('label, select, button')].every(node => getComputedStyle(node).display === 'none'),
+        countersVisible: getComputedStyle(panel).display === 'grid',
+        rows: [...panel.children].map(row => ({ text: row.textContent, x: row.getBoundingClientRect().x,
+          y: row.getBoundingClientRect().y })),
+        total: document.getElementById('ggParts').textContent,
+        statsBottom: stats.bottom, countersTop: bounds.top,
+        statsOverlapCounters: stats.bottom > bounds.top && stats.top < bounds.bottom,
+        countersOverflow: bounds.bottom > panel.parentElement.getBoundingClientRect().bottom,
+        headerOverlaps: rewards.right > multiplier.left,
+        separator: getComputedStyle(controls).borderTopWidth,
+        geometry: Object.fromEntries(['.ggBuiltLine', '.ggDetailsBottom', '#ggSpinControls', '#ggPortalImage', '#galaxyGateWindow'].map(selector => {
+          const rect = document.querySelector(selector).getBoundingClientRect();
+          return [selector, { x: rect.x, y: rect.y, width: rect.width, height: rect.height }];
+        })),
+      };
+    });
+    assert.equal(layout.controlsHidden, true, 'label, selection et bouton caches sur Kronos');
+    assert.equal(layout.countersVisible, true);
+    assert.deepEqual(layout.rows.map(row => row.text), ['Alpha1/4', 'Beta2/3', 'Gamma0/1', 'Delta0/1', 'Epsilon3/4', 'Zeta0/1', 'Kappa1/2', 'Lambda4/5']);
+    assert.equal(new Set(layout.rows.map(row => Math.round(row.x))).size, 4, 'quatre colonnes');
+    assert.equal(new Set(layout.rows.map(row => Math.round(row.y))).size, 2, 'deux lignes');
+    assert.equal(layout.total, '11 / 21');
+    assert.equal(layout.statsOverlapCounters, false, `les informations ne recouvrent pas les pieces (${layout.statsBottom} vs ${layout.countersTop})`);
+    assert.equal(layout.countersOverflow, false, 'tous les compteurs restent dans la fenetre');
+    assert.equal(layout.headerOverlaps, false, 'le multiplicateur ne recouvre pas les recompenses NPC');
+    assert.equal(layout.separator, '1px', 'le separateur du bloc de spin est conserve');
+    for (const [selector, bounds] of Object.entries(reference)) for (const key of ['x', 'y', 'width', 'height']) {
+      assert.ok(Math.abs(layout.geometry[selector][key] - bounds[key]) < 1, `${width}px ${selector} ${key} : meme disposition que les autres GG (${layout.geometry[selector][key]} vs ${bounds[key]})`);
+    }
+  }
+  await page.setViewportSize({ width: 1600, height: 900 });
+  for (const [id, required] of Object.entries(KRONOS_PARTS_BY_GATE)) {
+    await page.evaluate(id => window.__ggAudit.prepareKronos(id), id);
+    const check = await page.locator(`[data-gg-kronos-part="${id}"]`).evaluate(row => {
+      const icon = row.querySelector('.ggKronosCompleteCheck');
+      return { text: row.textContent, accessible: icon?.getAttribute('aria-label'),
+        color: icon && getComputedStyle(icon).color,
+        sizedToText: icon && getComputedStyle(icon).fontSize === getComputedStyle(row).fontSize };
+    });
+    assert.equal(check.text, GALAXY_GATE_DEFINITIONS[id].name + '✓');
+    assert.ok(check.accessible.includes(`${required}/${required}`));
+    assert.equal(check.color, 'rgb(0, 255, 136)', 'meme coche verte que la boutique');
+    assert.equal(check.sizedToText, true, 'coche a la taille du texte');
+  }
+  await page.evaluate(() => window.__ggAudit.prepareKronos('alpha'));
+  await page.waitForFunction(() => !document.getElementById('galaxyGateWindow').classList.contains('gameWinOpening'));
+  await page.locator('#ggRewardsHelp').hover();
+  assert.equal(await page.locator('#ggRewards').isVisible(), true, 'recompenses ouvertes au survol');
+  const rewardPosition = await page.evaluate(() => {
+    const tip = document.getElementById('ggRewards');
+    const bounds = tip.getBoundingClientRect();
+    const gate = document.getElementById('ggPortalImage').getBoundingClientRect();
+    const cover = document.createElement('div');
+    cover.style.cssText = 'position:fixed;inset:0;z-index:2147483647;background:#000';
+    document.body.appendChild(cover);
+    const onTop = tip.contains(document.elementFromPoint(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2));
+    cover.remove();
+    return { dx: Math.abs(bounds.x + bounds.width / 2 - gate.x - gate.width / 2),
+      dy: Math.abs(bounds.y + bounds.height / 2 - gate.y - gate.height / 2),
+      onTop, centeredText: getComputedStyle(tip).textAlign === 'center' };
+  });
+  assert.ok(rewardPosition.dx < 2 && rewardPosition.dy < 2, 'panneau centre sur l image du portail GG');
+  assert.equal(rewardPosition.centeredText, true);
+  assert.equal(rewardPosition.onTop, true, 'panneau devant toutes les fenetres du jeu');
+  if (process.env.GG_REWARDS_SCREENSHOT) await page.locator('#galaxyGateWindow').screenshot({ path: process.env.GG_REWARDS_SCREENSHOT });
+  await page.locator('#ggRewards').hover();
+  assert.equal(await page.locator('#ggRewards').isVisible(), true, 'panneau reste ouvert pendant la lecture');
+  await page.keyboard.press('Escape');
+  assert.equal(await page.locator('#ggRewards').isVisible(), false, 'Echap referme le panneau');
+  await page.locator('#ggRewardsHelp').click();
+  assert.equal(await page.locator('#ggRewards').isVisible(), true, 'recompenses accessibles au clic');
+  await page.evaluate(() => window.GameWindowManager.minimize('galaxyGateWindow'));
+  assert.equal(await page.locator('#ggRewards').isVisible(), false, 'recompenses masquees avec la fenetre GG');
+  await page.evaluate(() => window.GameWindowManager.restore('galaxyGateWindow'));
+  await page.locator('#ggRewardsHelp').click();
+  await page.evaluate(() => window.GameWindowManager.close('galaxyGateWindow'));
+  assert.equal(await page.locator('#ggRewards').isVisible(), false, 'fermer la fenetre ferme aussi les recompenses');
+  await page.evaluate(() => window.GameWindowManager.restore('galaxyGateWindow'));
+  await page.waitForFunction(() => !document.getElementById('galaxyGateWindow').classList.contains('gameWinOpening'));
+  if (process.env.KRONOS_AUDIT_SCREENSHOT) await page.locator('#galaxyGateWindow').screenshot({ path: process.env.KRONOS_AUDIT_SCREENSHOT });
+  await page.evaluate(() => document.querySelector('[data-gg-gate="alpha"]').click());
+  assert.equal(await page.locator('#ggSpinControls').isVisible(), true, 'les spins reviennent pour Alpha');
+  assert.equal(await page.locator('#ggKronosParts').isVisible(), false);
   const spinResults = [];
-  for (const id of ['alpha', 'beta', 'gamma', 'delta', 'epsilon', 'zeta', 'kappa', 'lambda']) {
+  for (const id of (process.env.KRONOS_LAYOUT_ONLY ? [] : ['alpha', 'beta', 'gamma', 'delta', 'epsilon', 'zeta', 'kappa', 'lambda'])) {
     for (const roll of [0.4, 0.1, 0.25]) {
       await page.evaluate(() => window.__ggAudit.prepareSpin());
       await page.evaluate(id => {
@@ -209,8 +347,8 @@ try {
     }), `/ASSETS/ORES/${icon}.png`);
     assert.ok(loaded, icon + ': icone chargee dans le navigateur');
   }
-  for (const id of ['alpha', 'beta', 'gamma', 'delta', 'epsilon', 'zeta', 'kappa', 'lambda', 'kronos']) for (const bossFirst of [true, false]) {
-    await page.evaluate(id => window.__ggAudit.prepare(id), id);
+  for (const id of (process.env.KRONOS_LAYOUT_ONLY ? [] : ['alpha', 'beta', 'gamma', 'delta', 'epsilon', 'zeta', 'kappa', 'lambda', 'kronos'])) for (const bossFirst of [true, false]) {
+    await page.evaluate(({ id, win }) => window.__ggAudit.prepare(id, win), { id, win: bossFirst });
     await page.evaluate(id => document.querySelector(`[data-gg-gate="${id}"]`).click(), id);
     const spawned = await page.evaluate(() => window.__ggAudit.spawn());
     assert.ok(spawned.enemies.length > 0, id + ': finale peuplee');
@@ -230,21 +368,49 @@ try {
     assert.equal(killed.betweenWaves, false, id + ': aucun portail vers une vague supplementaire');
     const count = killed.gates.completed[id];
     assert.equal(killed.xenomit, spawned.xenomit, id + ': bonus attendu avec les autres recompenses');
+    assert.equal(killed.energy, spawned.energy, id + ': energies attendues avec les autres recompenses');
+    assert.equal(killed.anchorlock, spawned.anchorlock, id + ': laser attendu avec les autres recompenses');
     assert.deepEqual(killed.materials, spawned.materials, id + ': materiaux attendus avec les autres recompenses');
+    assert.deepEqual(killed.designs, spawned.designs, id + ': CPU attendu avec les autres recompenses');
     const finished = await page.evaluate(() => window.__ggAudit.finish());
     const xenomit = GALAXY_GATE_DEFINITIONS[id].completion.credits / 40000;
     assert.equal(finished.map, '1-1', id + ': retour effectif a la base');
     assert.equal(finished.pending, false, id + ': verrou libere sur la nouvelle carte');
     assert.equal(finished.gates.completed[id], count, id + ': pas de double validation');
     assert.equal(finished.xenomit, killed.xenomit + xenomit, id + ': Xenomit proportionnel aux credits dans la soute');
+    const energy = id === 'kronos' ? 300 : 0;
+    assert.equal(finished.energy, killed.energy + energy, id + ': gain energie');
+    assert.deepEqual(finished.energyPhase, { delay: 3000, before: killed.energy, after: killed.energy + energy });
+    assert.deepEqual(finished.rewardMessages.filter(message => message.includes('énergies Galaxy')),
+      energy ? ['Vous avez reçu 300 énergies Galaxy'] : [], 'gain energie annonce une fois');
+    if (energy) assert.ok((await page.locator('#ggRewards').textContent()).includes('300 énergies Galaxy'));
     assert.deepEqual(finished.rewardPhase, { delay: 3000, before: killed.xenomit, after: killed.xenomit + xenomit },
       id + ': gain au moment de la recompense');
     assert.ok((await page.locator('#ggRewards').textContent()).replace(/\s/g, '').includes(`${xenomit}Xénomit`),
       'montant proportionnel visible dans les recompenses de la gate');
     const stored = (await (await fetch(url + '/api/me', { headers: { Authorization: `Bearer ${account.token}` } })).json()).user;
     assert.equal(stored.galaxyGates.completed[id], count, id + ': fin persistante sur le serveur');
+    assert.equal(stored.galaxyGates.energy, finished.energy, id + ': energies sauvegardees serveur');
+    const equipmentAmount = id === 'epsilon' && bossFirst ? 1 : 0;
+    assert.equal(finished.anchorlock, killed.anchorlock + equipmentAmount, id + ': un Anchorlock sur un tirage gagne');
+    assert.equal(Number(stored.inventory.counts.laser_lf5al) || 0, finished.anchorlock, 'laser sauvegarde serveur');
+    assert.deepEqual(finished.equipmentPhase, { delay: 3000, before: killed.anchorlock, after: killed.anchorlock + equipmentAmount });
+    assert.deepEqual(finished.rewardMessages.filter(message => message.includes('Anchorlock') || message === 'Aucun équipement reçu'),
+      id === 'epsilon' ? [equipmentAmount ? '1x LF-5 Anchorlock reçu' : 'Aucun équipement reçu'] : []);
+    if (id === 'epsilon') assert.ok((await page.locator('#ggRewards').textContent()).includes('50% LF-5 Anchorlock'));
     assert.equal(stored.inventory.resources.xenomit, finished.xenomit, id + ': Xenomit sauvegarde serveur');
     assert.deepEqual(finished.materialPhase, { before: killed.materials, after: finished.materials });
+    assert.deepEqual(finished.designPhase, { before: killed.designs, after: finished.designs });
+    const drop = GALAXY_GATE_DRONE_DESIGN_DROPS[id];
+    const amount = drop && (bossFirst || drop.chance === 1) ? 1 : 0;
+    for (const [itemId, before] of Object.entries(killed.designs)) {
+      assert.equal(finished.designs[itemId], before + (drop?.itemId === itemId ? amount : 0));
+      assert.equal(Number(stored.inventory.counts[itemId]) || 0, finished.designs[itemId], itemId + ': CPU sauvegarde serveur');
+    }
+    const expectedDesignMessage = drop ? galaxyGateDroneDesignRewardMessage({ itemId: drop.itemId, amount }) : null;
+    const designMessages = finished.rewardMessages.filter(message => message.includes('Design de drones'));
+    assert.deepEqual(designMessages, expectedDesignMessage ? [expectedDesignMessage] : [], 'resultat du tirage annonce exactement une fois');
+    if (drop) assert.ok((await page.locator('#ggRewards').textContent()).includes(`${Math.round(drop.chance * 100)}% Design de drones ( ${drop.itemId.replace('drone_design_', '')} )`));
     for (const [material, label] of [['kyhalon', 'Kyhalon'], ['tetrathrin', 'Tetrathrin'], ['bifenon', 'Bifenon'], ['schism', 'Schism'], ['diametrion', 'Diamétrion']]) {
       const gained = finished.materials[material] - killed.materials[material];
       const creditsPerUnit = material === 'schism' ? 10000000 : material === 'diametrion' ? 2000000 : 1000000;
@@ -256,7 +422,9 @@ try {
     results.push({ id, bossFirst, wave: spawned.wave, npc: spawned.enemies.length, completed: count });
   }
   assert.deepEqual(errors, []);
-  console.log(JSON.stringify({ spinResults, results, completion: 'selection spin, reprise, validation unique, sauvegarde et retour base : OK' }));
+  console.log(JSON.stringify({ spinResults, results, completion: process.env.KRONOS_LAYOUT_ONLY
+    ? 'Kronos : compteurs, quatre colonnes, deux lignes, aucun chevauchement et retour aux spins : OK'
+    : 'Kronos, selection spin, reprise, validation unique, sauvegarde et retour base : OK' }));
 } finally {
   if (browser) await browser.close();
   const stopped = server.exitCode === null ? once(server, 'exit') : Promise.resolve(); server.kill(); await stopped;

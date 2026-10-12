@@ -1,5 +1,49 @@
 ﻿"use strict";
 
+import { getDroneDesign } from "../../DRONE/DRONE_DESIGNS.js";
+import { findCatalogItem } from "./CATALOG.js";
+
+export const GALAXY_GATE_EQUIPMENT_DROPS = Object.freeze({
+  epsilon: Object.freeze({ itemId: "laser_lf5al", chance: 0.5 }),
+});
+
+export function rollGalaxyGateEquipmentReward(drop, rng = Math.random) {
+  const item = findCatalogItem(drop?.itemId);
+  if (!item?.module) return null;
+  if (typeof drop.amount === "number") return { itemId: item.id, amount: drop.amount > 0 ? 1 : 0 };
+  const chance = Math.max(0, Math.min(1, Number(drop.chance) || 0));
+  const amount = chance >= 1 || (chance > 0 && Number(rng()) < chance) ? 1 : 0;
+  return { itemId: item.id, amount };
+}
+
+export function galaxyGateEquipmentRewardMessage(reward) {
+  const item = findCatalogItem(reward?.itemId);
+  if (!item?.module) return null;
+  return reward.amount > 0 ? `1x ${item.name.replace(/^laser /i, "")} reçu` : "Aucun équipement reçu";
+}
+
+export const GALAXY_GATE_DRONE_DESIGN_DROPS = Object.freeze({
+  delta: Object.freeze({ itemId: "drone_design_hermes", chance: 0.33 }),
+  zeta: Object.freeze({ itemId: "drone_design_havoc", chance: 0.45 }),
+  kappa: Object.freeze({ itemId: "drone_design_hercules", chance: 0.25 }),
+  kronos: Object.freeze({ itemId: "drone_design_saturn", chance: 1 }),
+});
+
+export function rollGalaxyGateDroneDesignReward(drop, rng = Math.random) {
+  const design = getDroneDesign(drop?.itemId);
+  if (!design) return null;
+  if (typeof drop.amount === "number") return { itemId: design.itemId, amount: drop.amount > 0 ? 1 : 0 };
+  const chance = Math.max(0, Math.min(1, Number(drop.chance) || 0));
+  const amount = chance >= 1 || (chance > 0 && Number(rng()) < chance) ? 1 : 0;
+  return { itemId: design.itemId, amount };
+}
+
+export function galaxyGateDroneDesignRewardMessage(reward) {
+  const design = getDroneDesign(reward?.itemId);
+  if (!design) return null;
+  return reward.amount > 0 ? `1x Design de drones ${design.name.toLowerCase()} reçu` : "Aucun Design de drones reçu";
+}
+
 export function galaxyGateXenomitForCredits(credits) {
   const amount = Number(credits);
   return Number.isFinite(amount) ? Math.max(0, Math.floor(amount / 40000)) : 0;
@@ -44,7 +88,7 @@ export const GALAXY_GATE_DEFINITIONS = Object.freeze({
   // ✅ Lambda : roue de spin isolée (groupe "lambda"), 45 pièces / 7 vagues de Boss (officiel).
   lambda: Object.freeze({ id: "lambda", name: "Lambda", group: "lambda", requiredParts: 45, maxWaves: 7, maxLives: 5, image: "ASSETS/LAMBDA_PORTAL/DESACTIVE.png", completion: defineCompletionReward({ exp: 4125000, honor: 150000, credits: 15000000, x4: 15000 }), rewardScale: 1 }),
   // ✅ Kronos : PAS de roue (construction fidèle via complétions des autres gates), 21 pièces / 13 vagues Saturn.
-  kronos: Object.freeze({ id: "kronos", name: "Kronos", group: null, requiredParts: 21, maxWaves: 13, maxLives: 5, image: "ASSETS/KRONOS_PORTAL/DESACTIVE.png", completion: defineCompletionReward({ exp: 18000000, honor: 675000, credits: 80000000, x4: 37500 }), rewardScale: 1 }),
+  kronos: Object.freeze({ id: "kronos", name: "Kronos", group: null, requiredParts: 21, maxWaves: 13, maxLives: 5, image: "ASSETS/KRONOS_PORTAL/DESACTIVE.png", completion: defineCompletionReward({ exp: 75000000, honor: 1000000, credits: 75000000, x4: 100000, energy: 300 }), rewardScale: 1 }),
 });
 
 // Groupes de spin : "ensemble" (Alpha/Beta/Gamma, une seule roue), "delta",
@@ -62,7 +106,7 @@ export function getGalaxyGateSpinGroup(gateId) {
   return gate ? (gate.group || gate.id) : null;
 }
 
-export const GALAXY_SPIN_CREDIT_COST = 100000;
+export const GALAXY_SPIN_CREDIT_COST = 125000;
 export const GALAXY_GATE_BUILD_LIMIT = 1;
 
 // Échange Palladium -> énergie Galaxy (comptoir pirate 5-2). 10:1.
@@ -91,6 +135,7 @@ export function normalizeGalaxyGateState(raw) {
     built: {},
     deployed: {},
     completed: {},
+    kronosParts: {},
     lives: {},
     // ✅ multiplicateurs par groupe de spin : "ensemble" (ABG), "delta", "epsilon", "zeta", "kappa" et "lambda" isolés.
     multipliers: { ensemble: 1, delta: 1, epsilon: 1, zeta: 1, kappa: 1, lambda: 1 },
@@ -132,6 +177,33 @@ export function normalizeGalaxyGateState(raw) {
       state.waveKills[gate.id].byType = Object.fromEntries(entries.map(([type, count]) => [type, Math.floor(Number(count))]));
       state.waveKills[gate.id].killed = Math.max(killed, Object.values(state.waveKills[gate.id].byType).reduce((sum, count) => sum + count, 0));
     }
+  }
+  // Track the current Kronos assembly by source gate, independently of lifetime completions.
+  const hasKronosParts = source.kronosParts && typeof source.kronosParts === "object";
+  let legacyRemaining = state.parts.kronos;
+  for (const [id, required] of Object.entries(KRONOS_PARTS_BY_GATE)) {
+    const value = Number(source.kronosParts?.[id]);
+    state.kronosParts[id] = hasKronosParts
+      ? Math.min(required, Math.max(0, Number.isFinite(value) ? Math.floor(value) : 0))
+      : Math.min(required, state.completed[id] * required, legacyRemaining);
+    if (!hasKronosParts) legacyRemaining -= state.kronosParts[id];
+  }
+  // Legacy saves stored only a total. Preserve every earned piece, even if
+  // their original source cannot be recovered from lifetime completion counts.
+  if (!hasKronosParts) for (const [id, required] of Object.entries(KRONOS_PARTS_BY_GATE)) {
+    const amount = Math.min(required - state.kronosParts[id], legacyRemaining);
+    state.kronosParts[id] += amount;
+    legacyRemaining -= amount;
+  }
+  const kronosTotal = Object.values(state.kronosParts).reduce((sum, amount) => sum + amount, 0);
+  if (kronosTotal >= GALAXY_GATE_DEFINITIONS.kronos.requiredParts && state.built.kronos < GALAXY_GATE_BUILD_LIMIT) {
+    state.built.kronos++;
+  }
+  if (state.built.kronos >= GALAXY_GATE_BUILD_LIMIT) {
+    for (const id of Object.keys(KRONOS_PARTS_BY_GATE)) state.kronosParts[id] = 0;
+    state.parts.kronos = 0;
+  } else {
+    state.parts.kronos = kronosTotal;
   }
   // ✅ migration : ancien format 1 multiplicateur scalaire partagé (+ legacy
   // par gate) -> multiplicateurs par groupe de spin (ensemble = max hérité).
@@ -453,7 +525,11 @@ export function completeActiveGalaxyGate(stateInput, gateId) {
     state.lives[id] = GALAXY_GATE_DEFINITIONS[id].maxLives;
     autoDeployed = id;
   }
-  return { ok: true, state, autoDeployed };
+  // One completion contributes one piece, capped at this source gate's quota.
+  if (KRONOS_PARTS_BY_GATE[id] && state.built.kronos < GALAXY_GATE_BUILD_LIMIT) {
+    state.kronosParts[id] = Math.min(KRONOS_PARTS_BY_GATE[id], state.kronosParts[id] + 1);
+  }
+  return { ok: true, state: normalizeGalaxyGateState(state), autoDeployed };
 }
 
 export function loseGalaxyGateLife(stateInput, gateId) {

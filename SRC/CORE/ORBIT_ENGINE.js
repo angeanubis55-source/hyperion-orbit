@@ -89,8 +89,15 @@ import {
   GALAXY_GATE_BUILD_LIMIT,
   normalizeGalaxyGateWave, GALAXY_GATE_DEFINITIONS,
   GALAXY_SPIN_CREDIT_COST,
+  KRONOS_PARTS_BY_GATE,
   normalizeGalaxyGateState,
   rollGalaxyGateResourceRewards,
+  GALAXY_GATE_DRONE_DESIGN_DROPS,
+  rollGalaxyGateDroneDesignReward,
+  galaxyGateDroneDesignRewardMessage,
+  GALAXY_GATE_EQUIPMENT_DROPS,
+  rollGalaxyGateEquipmentReward,
+  galaxyGateEquipmentRewardMessage,
 } from "./GALAXY_GATES.js";
 import { computeHangarStats } from "../../SHIP/SHIP_HANGARS.js";
 import { resizeShield } from "./EQUIPMENT_SYNC.js";
@@ -106,7 +113,7 @@ import { getShipPackById as getShipPackByIdData, getShipDesignBaseId } from "../
 import { getAbilityInfo, formatAbilityTiming, policeAbilityIds, abilityIconFile, HYPERION_QA_DAMAGE, HYPERION_QA_BURST_SEC, HYPERION_QA_SALVOS } from "../../SHIP/SHIP_ABILITIES.js";
 import { abilityFxCodeFor, abilityIdForFxCode, healSpecFor } from "./ABILITY_FX.js";
 import { DRONE_FORMATIONS, DRONE_MAX_LEVEL, DRONE_TYPES, DRONE_XP_SHARE, formationDockIcon, getActiveDroneFormation, getDroneLevel, getDroneShopSpritePath, getDroneSpritePath, isClassicFormation } from "../../DRONE/DRONE_TYPES.js";
-import { getDroneDesign, getDroneFitForHangar, droneDesignCooldown, droneIndicatorColor } from "../../DRONE/DRONE_DESIGNS.js";
+import { DRONE_DESIGNS, getDroneDesign, getDroneFitForHangar, droneDesignCooldown, droneIndicatorColor } from "../../DRONE/DRONE_DESIGNS.js";
 import { getOfficialDroneFormationPositions } from "../../DRONE/DRONE_FORMATIONS.js";
 import { PET_XP_SHARE, PET_FUEL_MAX, PET_FUEL_TICK_SEC, PET_FUEL_BASE_TICK, PET_FUEL_GEAR_TICK, PET_FUEL_ONESHOT, getPetDamageBonus, getPetLevel, getPetLevelXp, getPetNextLevelXp, getPetStage, getPetStageBase, normalizePetMode, PET_STAGE_DIRS, PET_SPRITE_FRAMES } from "../../PET/PET_TYPES.js";
 import { clamp, circleRectResolve, clampSegmentToWalls, dist2, movingCircleHit, segCircleHit } from "./COLLISION.js";
@@ -1066,6 +1073,8 @@ const ui = {
   ggCreditCost: document.getElementById("ggCreditCost"),
   ggResult: document.getElementById("ggResult"),
   ggHistory: document.getElementById("ggHistory"),
+  ggSpinControls: document.getElementById("ggSpinControls"),
+  ggKronosParts: document.getElementById("ggKronosParts"),
   ggSpinCount: document.getElementById("ggSpinCount"),
   ggSpinBtn: document.getElementById("ggSpinBtn"),
   ggNpcRewardScale: document.getElementById("ggNpcRewardScale"),
@@ -14370,7 +14379,11 @@ function renderGalaxyGateWindow(message = "") {
   const completion = gate.completion;
   const materials = Object.entries(completion.resources || {}).map(([id, amount]) =>
     `<span>${Array.isArray(amount) ? `${formatInteger(amount[0])}–${formatInteger(amount[1])}` : formatInteger(amount)} ${getResourceName(id)}</span>`).join("");
-  ui.ggRewards.innerHTML = `<strong>Récompenses finales</strong><span>${formatInteger(completion.exp)} XP</span><span>${formatInteger(completion.honor)} honneur</span><span>${formatInteger(completion.credits)} crédits</span><span>${formatInteger(completion.x4)} UCB-100</span><span>${formatInteger(completion.xenomit)} Xénomit</span>${materials}`;
+  const designDrop = GALAXY_GATE_DRONE_DESIGN_DROPS[gate.id];
+  const designReward = designDrop ? `<span>${Math.round(designDrop.chance * 100)}% Design de drones ( ${getDroneDesign(designDrop.itemId).name.toLowerCase()} )</span>` : '';
+  const equipmentDrop = GALAXY_GATE_EQUIPMENT_DROPS[gate.id];
+  const equipmentReward = equipmentDrop ? `<span>${Math.round(equipmentDrop.chance * 100)}% ${findCatalogItem(equipmentDrop.itemId).name.replace(/^laser /i, "")}</span>` : '';
+  ui.ggRewards.innerHTML = `<strong>Récompenses finales</strong><span>${formatInteger(completion.exp)} XP</span><span>${formatInteger(completion.honor)} honneur</span><span>${formatInteger(completion.credits)} crédits</span><span>${formatInteger(completion.x4)} UCB-100</span><span>${formatInteger(completion.xenomit)} Xénomit</span>${Number(completion.energy) > 0 ? `<span>${formatInteger(completion.energy)} énergies Galaxy</span>` : ""}${materials}${designReward}${equipmentReward}`;
   ui.ggNpcRewardScale.innerHTML = `Récompenses des NPC <em>×${gate.rewardScale}</em>`;
   // ✅ multiplicateur affiché/armé par groupe de spin (ABG vs Delta isolés).
   const ggSpinGroup = gate.group || gate.id;
@@ -14401,6 +14414,23 @@ function renderGalaxyGateWindow(message = "") {
   ui.ggWave.textContent = `${activeWave} / ${gate.maxWaves}`;
   const selectedSpinCount = Math.max(1, Number(ui.ggSpinCount?.value || 1));
   ui.ggCreditCost.textContent = formatInteger(GALAXY_SPIN_CREDIT_COST * selectedSpinCount);
+  const isKronos = gate.id === "kronos";
+  if (ui.ggSpinControls) {
+    ui.ggSpinControls.classList.toggle("kronosSpinControls", isKronos);
+    const spinLabel = ui.ggSpinControls.querySelector('label[for="ggSpinCount"]');
+    if (spinLabel) spinLabel.hidden = isKronos;
+  }
+  if (ui.ggSpinCount) ui.ggSpinCount.hidden = isKronos;
+  if (ui.ggKronosParts) {
+    ui.ggKronosParts.hidden = !isKronos;
+    if (isKronos) ui.ggKronosParts.innerHTML = Object.entries(KRONOS_PARTS_BY_GATE).map(([id, required]) => {
+      const amount = stock >= GALAXY_GATE_BUILD_LIMIT ? required : state.kronosParts?.[id] || 0;
+      const counter = amount >= required
+        ? `<b class="ggKronosCompleteCheck shopOwnedCheck" title="${amount}/${required} pièces — complet" aria-label="${amount}/${required} pièces, complet">✓</b>`
+        : `<b>${amount}/${required}</b>`;
+      return `<div class="ggKronosPart${amount >= required ? " complete" : ""}" data-gg-kronos-part="${id}"><span>${GALAXY_GATE_DEFINITIONS[id].name}</span>${counter}</div>`;
+    }).join("");
+  }
   ui.ggSpinBtn.hidden = gate.id === "kronos";
   ui.ggSpinBtn.disabled = gate.id === "kronos";
   if (ui.ggSpinCount) ui.ggSpinCount.disabled = gate.id === "kronos";
@@ -14512,6 +14542,74 @@ ui.ggTabs?.addEventListener("click", event => {
 });
 
 ui.ggSpinCount?.addEventListener("change", () => renderGalaxyGateWindow());
+
+// Center the reward preview on the portal image, above the game's window stack.
+{
+  const trigger = document.getElementById("ggRewardsHelp");
+  const preview = trigger?.closest(".ggPreviewTop");
+  const tip = ui.ggRewards;
+  const topLayer = typeof tip?.showPopover === "function";
+  if (!topLayer) tip?.removeAttribute("popover");
+  const position = () => {
+    if (!tip || !ui.galaxyGateWindow) return;
+    const bounds = ui.galaxyGateWindow.getBoundingClientRect();
+    const image = ui.ggPortalImage?.getBoundingClientRect() || bounds;
+    if (topLayer) {
+      tip.style.left = `${image.left + image.width / 2}px`;
+      tip.style.top = `${image.top + image.height / 2}px`;
+    } else {
+      tip.style.left = `${image.left - bounds.left + image.width / 2}px`;
+      tip.style.top = `${image.top - bounds.top + image.height / 2}px`;
+    }
+    tip.style.maxHeight = `${Math.max(0, Math.min(bounds.height - 40, window.innerHeight - 24))}px`;
+  };
+  const show = () => {
+    if (!tip) return;
+    position();
+    tip.classList.add("is-open");
+    if (topLayer && !tip.matches(":popover-open")) tip.showPopover();
+    trigger?.setAttribute("aria-expanded", "true");
+  };
+  const hide = () => {
+    if (!tip) return;
+    if (topLayer && tip.matches(":popover-open")) tip.hidePopover();
+    tip.classList.remove("is-open");
+    trigger?.setAttribute("aria-expanded", "false");
+  };
+  const leave = event => {
+    if (preview?.contains(event.relatedTarget) || tip?.contains(event.relatedTarget)) return;
+    if (preview?.matches(":hover") || preview?.contains(document.activeElement) || tip?.contains(document.activeElement)) return;
+    hide();
+  };
+  preview?.addEventListener("pointerenter", show);
+  preview?.addEventListener("pointerleave", leave);
+  preview?.addEventListener("focusin", show);
+  preview?.addEventListener("focusout", leave);
+  trigger?.addEventListener("click", show);
+  trigger?.setAttribute("aria-controls", "ggRewards");
+  trigger?.setAttribute("aria-expanded", "false");
+  tip?.addEventListener("pointerleave", leave);
+  tip?.addEventListener("toggle", event => {
+    if (event.newState === "closed") hide();
+  });
+  ui.galaxyGateWindow?.addEventListener("pointerdown", event => {
+    if (!preview?.contains(event.target) && !tip?.contains(event.target)) hide();
+  });
+  window.addEventListener("resize", () => { if (tip?.classList.contains("is-open")) position(); });
+  window.addEventListener("orbit:window-minimized", event => {
+    if (event.detail?.id === "galaxyGateWindow") hide();
+  });
+  if (ui.ggPortalImage && typeof ResizeObserver === "function") {
+    new ResizeObserver(() => {
+      if (tip?.classList.contains("is-open")) position();
+    }).observe(ui.ggPortalImage);
+  }
+  if (ui.galaxyGateWindow) {
+    new MutationObserver(() => {
+      if (ui.galaxyGateWindow.hidden || ui.galaxyGateWindow.style.display === "none") hide();
+    }).observe(ui.galaxyGateWindow, { attributes: true, attributeFilter: ["style", "hidden"] });
+  }
+}
 
 ui.ggMultiplierBtn?.addEventListener("click", () => {
   const state = getCurrentUserFull()?.galaxyGates;
@@ -27557,12 +27655,29 @@ function scheduleGalaxyGateCompletion(gateId, completion) {
       const baseReward = reward;
       const credits = Math.max(0, Math.floor(Number(baseReward.credits) || 0));
       const x4 = Math.max(0, Math.floor(Number(baseReward.x4) || 0));
+      const energy = Math.max(0, Math.floor(Number(baseReward.energy) || 0));
+      if (account.user && energy > 0) {
+        account.user.galaxyGates = normalizeGalaxyGateState(account.user.galaxyGates);
+        account.user.galaxyGates.energy += energy;
+      }
       player.credits += credits;
       player.ammo.x4 += x4;
       const xpResult = awardExperience(Math.max(0, Number(baseReward.exp) || 0), "gate");
       const honorResult = awardHonor(Math.max(0, Number(baseReward.honor) || 0));
       const xenomit = Math.max(0, Math.floor(Number(baseReward.xenomit) || 0));
       const resources = rollGalaxyGateResourceRewards(baseReward.resources);
+      const droneDesign = rollGalaxyGateDroneDesignReward(baseReward.droneDesign || GALAXY_GATE_DRONE_DESIGN_DROPS[gateId]);
+      const equipment = rollGalaxyGateEquipmentReward(baseReward.equipment || GALAXY_GATE_EQUIPMENT_DROPS[gateId]);
+      if (account.user && equipment?.amount > 0) {
+        account.user.inventory ||= {};
+        account.user.inventory.counts ||= {};
+        account.user.inventory.counts[equipment.itemId] = Math.max(0, Math.floor(Number(account.user.inventory.counts[equipment.itemId]) || 0)) + equipment.amount;
+      }
+      if (account.user && droneDesign?.amount > 0) {
+        account.user.inventory ||= {};
+        account.user.inventory.counts ||= {};
+        account.user.inventory.counts[droneDesign.itemId] = Math.max(0, Math.floor(Number(account.user.inventory.counts[droneDesign.itemId]) || 0)) + droneDesign.amount;
+      }
       const resourceGains = { ...resources, xenomit };
       if (account.user && Object.values(resourceGains).some(amount => amount > 0)) {
         account.user.inventory ||= {};
@@ -27576,8 +27691,11 @@ function scheduleGalaxyGateCompletion(gateId, completion) {
         ...baseReward,
         credits,
         x4,
+        energy,
         xenomit,
         resources,
+        droneDesign,
+        equipment,
         exp: xpResult?.gained ?? Math.max(0, Math.floor(Number(baseReward.exp) || 0)),
         honor: honorResult?.gained ?? Math.max(0, Math.floor(Number(baseReward.honor) || 0)),
       };
@@ -27594,10 +27712,13 @@ function scheduleGalaxyGateCompletion(gateId, completion) {
       `Vous avez gagné ${formatInteger(reward.honor)} honneur`,
       `Vous avez reçu ${formatInteger(reward.credits)} crédits`,
       ...(Number(reward.x4) > 0 ? [`Vous avez reçu ${formatInteger(reward.x4)} UCB-100`] : []),
+      ...(Number(reward.energy) > 0 ? [`Vous avez reçu ${formatInteger(reward.energy)} énergies Galaxy`] : []),
       ...(Number(reward.xenomit) > 0 ? [`Vous avez reçu ${formatInteger(reward.xenomit)} Xénomit`] : []),
       ...Object.entries(reward.resources || {}).filter(([, amount]) => amount > 0)
         .map(([id, amount]) => `Vous avez reçu ${formatInteger(amount)} ${getResourceName(id, amount)}`),
       ...(Array.isArray(reward.resourceMessages) ? reward.resourceMessages : []),
+      ...(galaxyGateDroneDesignRewardMessage(reward.droneDesign) ? [galaxyGateDroneDesignRewardMessage(reward.droneDesign)] : []),
+      ...(galaxyGateEquipmentRewardMessage(reward.equipment) ? [galaxyGateEquipmentRewardMessage(reward.equipment)] : []),
     ];
     showNotificationGroup(messages, "reward");
     addGameLog(`${gateName} · ${messages.join(" · ")}`, "reward");
@@ -41844,7 +41965,26 @@ function drawHangarSwapFx() {
   drawHangarSwapImage(hangarSwapFx.t, hangarSwapFx.dur);
 }
 
+// Console (F12) : ajoute dix CPU de chaque design sans changer les fits.
+async function GivesDrones() {
+  saveProgressNow();
+  const user = getCurrentUserFull();
+  if (!user) return "Aucun utilisateur connecté.";
+  user.inventory ||= {};
+  user.inventory.counts ||= {};
+  for (const design of Object.values(DRONE_DESIGNS)) {
+    const owned = Math.max(0, Math.floor(Number(user.inventory.counts[design.itemId]) || 0));
+    user.inventory.counts[design.itemId] = owned + 10;
+  }
+  account.user = user;
+  saveUser(user);
+  await flushNetUser();
+  return "OK : +10 Havoc, Hermes, Hercules, ADMIN et SATURN.";
+}
+window.GivesDrones = GivesDrones;
+
 window.__ORBIT_ENGINE__ = {
+  GivesDrones,
   switchMap: switchMapConfig,
   getHangarAccess,
   markHangarChanged,

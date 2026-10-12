@@ -9,6 +9,7 @@ import { combatProfile } from './COMBAT_PROFILE.js';
 import { useMovementAbility, syncMovementAbility } from './MOVEMENT_RULES.js';
 import { pruneUnavailableLoadout } from '../SRC/CORE/FIT_INVENTORY.js';
 import { CATALOG } from '../SRC/CORE/CATALOG.js';
+import { getItemRarity } from '../SRC/DATA/ITEM_RARITIES.js';
 
 function fixture(designs = [], shipId = 'goliath') {
   const hangar = { id: 'h1', shipId, active: true, activeConfig: 1,
@@ -18,6 +19,12 @@ function fixture(designs = [], shipId = 'goliath') {
   const user = { ship: shipId, hangars: [hangar], inventory: { counts: {}, shipModules: [] }, drones: { items, activeFormation: 'standard' } };
   return { hangar, user, stats: computeHangarStats(hangar, user) };
 }
+
+test('designs : Havoc/Hermes rares, Hercules epique, SATURN/ADMIN legendaires', () => {
+  for (const [design, rarity] of Object.entries({ havoc: 'rare', hermes: 'rare', hercules: 'epic', saturn: 'legendary', admin: 'legendary' })) {
+    assert.equal(getItemRarity(DRONE_DESIGNS[design].itemId).id, rarity);
+  }
+});
 
 for (const [id, expected] of Object.entries({ havoc: { damagePct: 10 }, hermes: { cooldownPct: 10 },
   hercules: { shieldPct: 20, hpPct: 20 }, admin: { damagePct: 10, hpPct: 10, cooldownPct: 10, evasionPct: 10 },

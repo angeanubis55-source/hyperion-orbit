@@ -7,6 +7,7 @@ import { getCurrentUserFull, buyItem, sellCurrentUserOre, setPetMode, updateCurr
   saveUser, saveHangarLoadout, saveCurrentUserDroneFits, getDroneFit } from "../SRC/CORE/ACCOUNT.js";
 import { createDrone } from '../DRONE/DRONE_TYPES.js';
 import { GALAXY_GATE_DEFINITIONS, normalizeGalaxyGateState } from "../SRC/CORE/GALAXY_GATES.js";
+import { GALAXY_GATE_DRONE_DESIGN_DROPS } from '../SRC/CORE/GALAXY_GATES.js';
 import { CATALOG } from "../SRC/CORE/CATALOG.js";
 import { ORE_SELL_PRICES } from "../SRC/DATA/RESOURCES.js";
 
@@ -175,16 +176,38 @@ test("la synchronisation applique aussi une diminution du stock et revient sur x
   assert.equal(ctx.player.rockets.plt2026, 2);
 });
 
+test('Kronos : progression par source sauvegardee et aucune piece sur une completion repetee', t => {
+  const { ctx } = session(t);
+  const user = ctx.account.user;
+  user.galaxyGates = normalizeGalaxyGateState({ active: 'alpha' });
+  const result = completeCurrentUserGalaxyGate('alpha', user, { deferReward: true });
+  assert.equal(result.ok, true);
+  assert.equal(result.user.galaxyGates.kronosParts.alpha, 1);
+  assert.equal(getCurrentUserFull().galaxyGates.kronosParts.alpha, 1);
+  assert.equal(getCurrentUserFull().galaxyGates.parts.kronos, 1);
+  assert.equal(completeCurrentUserGalaxyGate('alpha', result.user).ok, false);
+  assert.equal(getCurrentUserFull().galaxyGates.kronosParts.alpha, 1);
+});
+
 for (const gate of Object.values(GALAXY_GATE_DEFINITIONS)) for (const deferred of [false, true]) {
   test(`${gate.id} : Xénomit proportionnel aux crédits, gain ${deferred ? 'différé' : 'immédiat'} et unique`, t => {
     const { ctx } = session(t);
     ctx.account.dirty = false;
     const user = ctx.account.user;
     user.inventory.resources = { prometium: 3000, xenomit: 17, kyhalon: 11, tetrathrin: 12, bifenon: 13, schism: 14, diametrion: 15 };
-    user.galaxyGates = normalizeGalaxyGateState({ active: gate.id });
+    user.galaxyGates = normalizeGalaxyGateState({ active: gate.id, energy: 17 });
+    const before = { credits: user.credits, exp: user.stats.exp, honor: user.stats.honor, x4: user.ammo.x4 };
     const result = completeCurrentUserGalaxyGate(gate.id, user, { deferReward: deferred });
     const xenomit = gate.completion.credits / 40000;
     assert.equal(result.ok, true, gate.id);
+    const energy = gate.id === 'kronos' ? 300 : 0;
+    assert.equal(result.reward.energy || 0, energy);
+    assert.equal(result.user.galaxyGates.energy, 17 + (deferred ? 0 : energy));
+    assert.equal(getCurrentUserFull().galaxyGates.energy, 17 + (deferred ? 0 : energy), 'energies sauvegardees');
+    for (const key of ['credits', 'exp', 'honor', 'x4']) {
+      const after = key === 'exp' || key === 'honor' ? result.user.stats[key] : key === 'x4' ? result.user.ammo.x4 : result.user.credits;
+      assert.equal(after, (before[key] || 0) + (deferred ? 0 : gate.completion[key]), key + ': gain de base applique une fois');
+    }
     assert.equal(result.reward.xenomit, xenomit, gate.id);
     assert.equal(result.user.inventory.resources.xenomit, 17 + (deferred ? 0 : xenomit), gate.id);
     assert.equal(result.user.inventory.resources.prometium, 3000);
@@ -197,10 +220,58 @@ for (const gate of Object.values(GALAXY_GATE_DEFINITIONS)) for (const deferred o
       assert.equal(getCurrentUserFull().inventory.resources[id], initial + (deferred ? 0 : amount));
     }
     assert.equal(completeCurrentUserGalaxyGate(gate.id, result.user).ok, false, 'pas de récompense répétée');
+    assert.equal(getCurrentUserFull().galaxyGates.energy, 17 + (deferred ? 0 : energy), 'pas de double gain energie');
     assert.equal(getCurrentUserFull().inventory.resources.xenomit, 17 + (deferred ? 0 : xenomit));
     for (const [id, initial] of [['kyhalon', 11], ['tetrathrin', 12], ['bifenon', 13], ['schism', 14], ['diametrion', 15]]) {
       assert.equal(getCurrentUserFull().inventory.resources[id], initial + (deferred ? 0 : result.reward.resources[id]));
     }
+  });
+}
+
+for (const deferred of [false, true]) for (const roll of [0.499, 0.5]) {
+  test(`Epsilon : Anchorlock, tirage ${roll}, gain ${deferred ? 'differe' : 'immediat'} sauvegarde une seule fois`, t => {
+    const { ctx } = session(t);
+    const user = ctx.account.user;
+    user.galaxyGates = normalizeGalaxyGateState({ active: 'epsilon' });
+    user.inventory.counts.laser_lf5al = 2;
+    let draws = 0;
+    const result = completeCurrentUserGalaxyGate('epsilon', user, { deferReward: deferred, rng: () => { draws++; return roll; } });
+    const amount = roll < 0.5 ? 1 : 0;
+    assert.equal(result.ok, true);
+    assert.equal(draws, 1);
+    assert.deepEqual(result.reward.equipment, { itemId: 'laser_lf5al', amount });
+    assert.equal(result.user.inventory.counts.laser_lf5al, 2 + (deferred ? 0 : amount));
+    assert.equal(getCurrentUserFull().inventory.counts.laser_lf5al, 2 + (deferred ? 0 : amount));
+    assert.equal(completeCurrentUserGalaxyGate('epsilon', result.user, { rng: () => { throw new Error('pas de seconde recompense'); } }).ok, false);
+    assert.equal(getCurrentUserFull().inventory.counts.laser_lf5al, 2 + (deferred ? 0 : amount));
+  });
+}
+
+test('Anchorlock : achat en boutique refuse sans retirer les lasers deja possedes', t => {
+  const { ctx } = session(t);
+  const user = ctx.account.user;
+  user.inventory.counts.laser_lf5al = 3;
+  saveUser(user);
+  const credits = user.credits;
+  assert.equal(buyItem('laser_lf5al').ok, false);
+  assert.equal(getCurrentUserFull().credits, credits);
+  assert.equal(getCurrentUserFull().inventory.counts.laser_lf5al, 3);
+});
+
+for (const [gateId, drop] of Object.entries(GALAXY_GATE_DRONE_DESIGN_DROPS)) for (const deferred of [false, true]) for (const roll of [0, 0.99]) {
+  test(`${gateId} : design, tirage ${roll}, gain ${deferred ? 'differe' : 'immediat'}, stock unique`, t => {
+    const { ctx } = session(t); ctx.account.dirty = false;
+    const user = ctx.account.user;
+    user.galaxyGates = normalizeGalaxyGateState({ active: gateId });
+    user.inventory.counts[drop.itemId] = 4;
+    const result = completeCurrentUserGalaxyGate(gateId, user, { deferReward: deferred, rng: () => roll });
+    const amount = roll < drop.chance ? 1 : 0;
+    assert.equal(result.ok, true);
+    assert.deepEqual(result.reward.droneDesign, { itemId: drop.itemId, amount });
+    assert.equal(result.user.inventory.counts[drop.itemId], 4 + (deferred ? 0 : amount));
+    assert.equal(getCurrentUserFull().inventory.counts[drop.itemId], 4 + (deferred ? 0 : amount));
+    assert.equal(completeCurrentUserGalaxyGate(gateId, result.user, { rng: () => { throw new Error('une gate deja terminee ne relance pas le tirage'); } }).ok, false);
+    assert.equal(getCurrentUserFull().inventory.counts[drop.itemId], 4 + (deferred ? 0 : amount));
   });
 }
 

@@ -44,7 +44,7 @@ try {
   assert.ok(ready, output);
   const account = await api('/api/register', null, { pseudo: 'drone-audit', email: 'drone@example.test', password: 'test-password-123', faction: 'mmo' });
   const user = { ...account.user, ship: 'goliath', revision: account.user.revision + 1, schemaVersion: 4,
-    inventory: { ...account.user.inventory, ships: ['goliath'], counts: Object.fromEntries(Object.values(DRONE_DESIGNS).map(d => [d.itemId, 10])) },
+    inventory: { ...account.user.inventory, ships: ['goliath'], counts: {} },
     drones: { items: Array.from({ length: 10 }, (_, i) => ({ ...createDrone(i < 8 ? 'iris' : i === 8 ? 'apis' : 'zeus', `d${i}`), exp: 1500000, level: 6 })), formations: ['standard'], activeFormation: 'standard', designs: [] },
     hangars: [{ id: 'drone-hangar', active: true, shipId: 'goliath', activeConfig: 1, lastMap: '1-1', lastPos: { x: 1500, y: 1500 }, lastHpPct: 1, lastShPct: 1,
       fits: { '1': { lasers: [], gens: [], extras: [], shipMods: [] }, '2': { lasers: [], gens: [], extras: [], shipMods: [] } } }],
@@ -67,7 +67,7 @@ try {
       let body = await readFile(path);
       if (parsed.pathname === '/PUBLIC/PROFILE.js') body = body.toString('utf8') + `\nwindow.__droneProfileAudit = {
         open() { openHangarOverlay(); openFitModal('drone-hangar'); setFitSection('drones'); },
-        clear() { for (const draft of Object.values(fitState.droneDrafts || {})) draft.ability = null; renderDroneEquipment(user); renderInventoryPalette(); },
+        clear() { clearFitSelection(); for (const draft of Object.values(fitState.droneDrafts || {})) draft.ability = null; renderDroneEquipment(user); renderInventoryPalette(); },
         save() { saveFitModal(); },
         snapshot() { return structuredClone(fitState.droneDrafts); }
       };`;
@@ -98,6 +98,16 @@ try {
   await page.waitForFunction(() => window.__droneProfileAudit && window.__droneEngineAudit
     && getComputedStyle(document.getElementById('loadingOverlay')).display === 'none');
   const access = await page.evaluate(() => window.__droneEngineAudit.base()); assert.ok(access.canEquip);
+  assert.equal(await page.evaluate(() => typeof window.GivesDrones), 'function');
+  await page.evaluate(async () => {
+    window.__droneEngineAudit.pause();
+    await window.GivesDrones();
+    const net = await import('/SRC/CORE/ACCOUNT_NET.js');
+    for (let i = 0; i < 10 && net.netHasPendingSave(); i++) await net.flushNetUser();
+    window.__droneEngineAudit.resume();
+  });
+  const granted = (await api('/api/me', account.token)).user;
+  for (const design of Object.values(DRONE_DESIGNS)) assert.equal(granted.inventory.counts[design.itemId], 10);
   await page.evaluate(() => window.__droneProfileAudit.open());
   assert.equal(await page.locator('.droneCardDesignBonus').filter({ hasText: 'Aucun bonus' }).count(), 10);
   const results = [];
@@ -107,6 +117,12 @@ try {
     // Double-clic natif sur chaque CPU : dix vrais placements dans les slots DESIGN.
     for (let copy = 0; copy < 10; copy++) await cells.first().dblclick();
     assert.equal(await page.locator('.droneDesignSlot.filled').count(), 10, design.id);
+    const rarity = ({ havoc: 'rare', hermes: 'rare', hercules: 'epic', admin: 'legendary', saturn: 'legendary' })[design.id];
+    assert.equal(await page.locator(`.droneDesignSlot.filled.rarity-${rarity}`).count(), 10);
+    await page.locator('[data-drone-design="d0"]').click({ modifiers: ['Shift'] });
+    assert.equal(await page.locator('.droneDesignSlot.selected').count(), 10, design.id + ': Maj selectionne les dix designs identiques');
+    await page.locator('[data-drone-design="d0"]').click({ modifiers: ['Shift'] });
+    assert.equal(await page.locator('.droneDesignSlot.selected').count(), 0, 'Maj sur le groupe deja choisi deselectionne');
     assert.ok((await page.locator('.droneCardDesignBonus').allTextContents()).every(text => !text.includes('Aucun bonus')));
     for (const image of await page.locator('.droneCardSprite').evaluateAll(images => images.map(i => i.getAttribute('src')))) assert.equal(image, design.shopIcon);
     assert.deepEqual(Object.values(await page.evaluate(() => window.__droneProfileAudit.snapshot())).map(f => f.ability), Array(10).fill(design.itemId));
@@ -114,7 +130,7 @@ try {
       const label = card.querySelector('.droneCardDesignBonus').getBoundingClientRect(), slot = card.querySelector('.droneDesignSlot').getBoundingClientRect();
       return label.right > slot.left + 1;
     })); assert.equal(badLayout, false, 'label place a gauche du design');
-    if (design.id === 'admin') await page.screenshot({ path: join(root, '.tmp', 'DRONE_DESIGN_PREVIEW.png') });
+    if (design.id === 'admin' && process.env.DRONE_AUDIT_SCREENSHOT) await page.screenshot({ path: process.env.DRONE_AUDIT_SCREENSHOT });
     await page.evaluate(() => { window.__droneProfileAudit.save(); window.__droneEngineAudit.pause(); });
     await page.evaluate(async () => {
       const net = await import('/SRC/CORE/ACCOUNT_NET.js');
@@ -155,8 +171,36 @@ try {
   const moved = await page.evaluate(() => window.__droneProfileAudit.snapshot());
   assert.equal(moved.d0.ability, null); assert.equal(moved.d1.ability, 'drone_design_saturn');
   assert.equal(await page.locator('.droneDesignSlot.filled').count(), 9, 'deplacer un design ne duplique pas le CPU');
+  await page.locator('[data-drone-design="d1"]').click({ modifiers: ['Shift'] });
+  assert.equal(await page.locator('.droneDesignSlot.selected').count(), 9);
+  await page.locator('[data-drone-design="d1"]').dblclick({ modifiers: ['Control'] });
+  assert.equal(await page.locator('.droneDesignSlot.filled').count(), 0, 'Ctrl + double-clic retire toute la selection');
+  assert.equal(await page.locator('#fitInvGrid .invCell[data-item-id="drone_design_saturn"]:not(.disabled)').count(), 10);
+  assert.equal(await page.locator('.droneCardDesignBonus').filter({ hasText: 'Aucun bonus' }).count(), 10);
+  // Selection manuelle de deux CPU, puis retour en groupe dans l'inventaire.
+  for (let i = 0; i < 3; i++) await page.locator('#fitInvGrid .invCell[data-item-id="drone_design_saturn"]:not(.disabled)').first().dblclick();
+  assert.equal(await page.locator('.droneDesignSlot.filled').count(), 3, JSON.stringify(await page.evaluate(() => window.__droneProfileAudit.snapshot())));
+  await page.keyboard.down('Control');
+  await page.locator('[data-drone-design="d0"]').click({ delay: 30 });
+  assert.equal(await page.locator('.droneDesignSlot.selected').count(), 1, 'premier Ctrl selectionne un design');
+  await page.locator('[data-drone-design="d1"]').click({ delay: 30 });
+  await page.keyboard.up('Control');
+  assert.equal(await page.locator('.droneDesignSlot.selected').count(), 2, 'Ctrl ajoute des designs a la selection');
+  await page.locator('[data-drone-design="d0"]').dragTo(page.locator('.fitInventoryPane'), { targetPosition: { x: 5, y: 5 } });
+  const returned = await page.evaluate(() => window.__droneProfileAudit.snapshot());
+  assert.equal(returned.d0.ability, null); assert.equal(returned.d1.ability, null);
+  assert.equal(returned.d2.ability, 'drone_design_saturn', 'le design non selectionne reste equipe');
+  assert.equal(await page.locator('.droneDesignSlot.filled').count(), 1);
+  // Maj selectionne uniquement le meme design parmi une flotte mixte.
+  await page.locator('#fitInvGrid .invCell[data-item-id="drone_design_havoc"]:not(.disabled)').first().dblclick();
+  await page.locator('[data-drone-design="d2"]').click({ modifiers: ['Shift'] });
+  assert.equal(await page.locator('.droneDesignSlot.selected').count(), 1);
+  assert.equal(await page.locator('[data-drone-design="d0"]').evaluate(slot => slot.classList.contains('selected')), false);
+  await page.locator('[data-drone-design="d2"]').dblclick({ modifiers: ['Control'] });
+  const mixed = await page.evaluate(() => window.__droneProfileAudit.snapshot());
+  assert.equal(mixed.d0.ability, 'drone_design_havoc'); assert.equal(mixed.d2.ability, null);
   await page.setViewportSize({ width: 1280, height: 720 });
-  assert.ok(await page.locator('[data-drone-design="d1"]').isVisible());
+  assert.ok(await page.locator('[data-drone-design="d0"]').isVisible());
   assert.deepEqual(errors, []);
   console.log(JSON.stringify({ results, validation: 'CPU, labels, sauvegarde, configuration et visuels multijoueur : OK' }));
 } finally {

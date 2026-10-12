@@ -3917,16 +3917,26 @@ html body #profileOverlay .profileHeaderTop .profileTitle, html body #profileOve
 #ggRewards.ggRewardsTip {
   display:none;
   position:absolute;
-  top:32px;
-  left:8px;
-  z-index:4;
+  inset:auto;
+  top:50%;
+  left:50%;
+  transform:translate(-50%,-50%);
+  z-index:100050;
+  margin:0;
   width:max-content;
-  max-width:260px;
+  max-width:min(260px,calc(100vw - 24px));
+  max-height:calc(100vh - 24px);
+  box-sizing:border-box;
   min-height:0;
-  background:rgba(3,20,33,.88);
-  backdrop-filter:blur(2px);
+  overflow:auto;
+  text-align:center;
+  background:#031421;
+  box-shadow:0 8px 28px rgba(0,0,0,.65);
 }
-.ggPreviewTop:hover ~ #ggRewards.ggRewardsTip, .ggPreviewTop:focus-within ~ #ggRewards.ggRewardsTip, #ggRewards.ggRewardsTip:hover {
+#ggRewards.ggRewardsTip[popover] {
+  position:fixed;
+}
+#ggRewards.ggRewardsTip.is-open {
   display:grid;
 }
 .ggRing {
@@ -4211,6 +4221,49 @@ html body #profileOverlay .profileHeaderTop .profileTitle, html body #profileOve
   border-radius:0;
   background:none;
 }
+.ggSpinControls[hidden], .ggKronosParts[hidden] {
+  display:none;
+}
+.ggSpinControls > [hidden] {
+  display:none;
+}
+.ggSpinControls.kronosSpinControls {
+  height:53px;
+  padding-top:4px;
+}
+.ggKronosParts {
+  position:relative;
+  z-index:1;
+  grid-column:1/-1;
+  display:grid;
+  grid-template-columns:repeat(4,minmax(0,1fr));
+  grid-template-rows:repeat(2,24px);
+  gap:0 8px;
+  min-width:0;
+  height:48px;
+  align-self:start;
+}
+.ggKronosPart {
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:clamp(2px,.5vw,6px);
+  min-width:0;
+  color:#fff;
+  font:800 clamp(10px,1.8vw,14px)/24px ui-sans-serif,system-ui;
+  white-space:nowrap;
+}
+.ggKronosPart b {
+  color:#ffd36b;
+  font-variant-numeric:tabular-nums;
+  text-align:right;
+}
+.ggKronosPart .ggKronosCompleteCheck {
+  color:#00ff88;
+  font-weight:900;
+  font-size:1em;
+  line-height:1;
+}
 .ggSpinControls label {
   display:flex;
   align-items:center;
@@ -4413,6 +4466,7 @@ html body #profileOverlay .profileHeaderTop .profileTitle, html body #profileOve
 .questSeriesInfo b {
   color:#ffd071;
 }
+@media (max-width:900px){.ggSpinControls.kronosSpinControls{height:105px;padding-top:1px}}
 @media (max-width:900px){.galaxyGatePanel{min-width:calc(100vw - 24px)}.ggWorkspace{grid-template-columns:1fr}.ggGateNav .ggTabs{grid-template-columns:repeat(2,1fr)}.ggHistory{height:180px;min-height:180px;max-height:180px}.ggCore{grid-template-columns:1fr 1fr}.ggSpinControls{grid-template-columns:1fr 1fr}.ggSpinControls label{grid-column:1}.ggSpinControls select{grid-column:2}.ggSpinControls #ggSpinBtn{grid-column:1/-1}}
 .orbitNotifications {
   position:fixed;

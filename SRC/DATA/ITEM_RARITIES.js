@@ -8,6 +8,8 @@ export const ITEM_RARITIES = Object.freeze({
 });
 
 const ITEM_RARITY_BY_ID = Object.freeze({
+  drone_design_saturn: "legendary", drone_design_admin: "legendary",
+  drone_design_hercules: "epic", drone_design_havoc: "rare", drone_design_hermes: "rare",
   ammo_x2: "common", ammo_x3: "rare", ammo_x4: "epic", ammo_sab: "rare", ammo_x6: "legendary",
   ammo_rcb: "legendary", ammo_cbo: "epic", ammo_job: "rare", ammo_rb: "rare", ammo_pib: "epic",
   ammo_idb: "epic", ammo_vb: "rare", ammo_emaa: "rare", ammo_sbl: "rare", ammo_abl: "epic", ammo_tent: "rare",
