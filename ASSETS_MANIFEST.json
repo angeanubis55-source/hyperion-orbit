@@ -1,6 +1,7 @@
 {
   "version": 1,
   "assets": [
+    "./.tmp/DRONE_DESIGN_PREVIEW.png",
     "./ASSETS/ALPHA_PORTAL/ACTIVE.png",
     "./ASSETS/ALPHA_PORTAL/DESACTIVE.png",
     "./ASSETS/ALPHA_PORTAL/JUMP.png",

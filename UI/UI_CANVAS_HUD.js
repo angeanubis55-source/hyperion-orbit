@@ -62,7 +62,7 @@ export function drawTargetLock(context, entity, image, sprite, offsetX, offsetY,
 // de 3 AU-DESSUS du grade (visible par tous).
 //   haut : epsilon (gauche), delta (milieu), zeta (droite)
 //   bas  : alpha (gauche), beta (milieu), gamma (droite)
-// Kronos : couronne dorée SVG à la place des 6 anneaux.
+// Kronos : rien a afficher (anneaux alpha-zeta uniquement).
 // Bits : alpha=1, beta=2, gamma=4, delta=8, epsilon=16, zeta=32, kronos=64.
 const GG_RING_BITS_HUD = Object.freeze({ alpha: 1, beta: 2, gamma: 4, delta: 8, epsilon: 16, zeta: 32, kronos: 64 });
 const GG_RING_GRID_HUD = Object.freeze([
@@ -73,47 +73,9 @@ const GG_RING_GRID_HUD = Object.freeze([
   Object.freeze({ id: "beta", col: 1, row: 1 }),
   Object.freeze({ id: "gamma", col: 2, row: 1 }),
 ]);
-function drawGgKronosCrown(context, cx, cy) {
-  // Couronne dorée SVG-like, même doré que les anneaux (#FFD700).
-  context.save();
-  context.translate(cx, cy);
-  context.globalAlpha = 0.96;
-  context.fillStyle = "#FFD700";
-  context.strokeStyle = "#8a6d00";
-  context.lineWidth = 0.8;
-  context.shadowColor = "rgba(255,184,0,0.35)";
-  context.shadowBlur = 1.5;
-  context.beginPath();
-  context.moveTo(-8, 5);
-  context.lineTo(-8, -3);
-  context.lineTo(-4, 0);
-  context.lineTo(0, -5);
-  context.lineTo(4, 0);
-  context.lineTo(8, -3);
-  context.lineTo(8, 5);
-  context.closePath();
-  context.fill();
-  context.stroke();
-  context.shadowBlur = 0;
-  // Pointes de la couronne.
-  for (const tx of [-8, 0, 8]) {
-    context.beginPath();
-    context.arc(tx, tx === 0 ? -5.5 : -3.5, 1, 0, Math.PI * 2);
-    context.fill();
-    context.stroke();
-  }
-  // Bandeau de base.
-  context.fillRect(-8, 3.4, 16, 1.6);
-  context.restore();
-}
 function drawGgRingsAboveRank(context, mask, rankCenterX, rankTopY) {
   const bits = Math.max(0, Math.floor(Number(mask) || 0));
   if (!(bits > 0)) return;
-  // Kronos : couronne à la place des 6 anneaux.
-  if (bits & GG_RING_BITS_HUD.kronos) {
-    drawGgKronosCrown(context, rankCenterX, rankTopY - 8);
-    return;
-  }
   const gap = 5.5;
   const rowGap = 5.5;
   for (const spot of GG_RING_GRID_HUD) {
@@ -133,7 +95,7 @@ function drawGgRingsAboveRank(context, mask, rankCenterX, rankTopY) {
     context.restore();
   }
 }
-export function drawPlayerStatus(context, player, playerName, x, y, rankImage = null, factionImage = null, droneIndicators = [], droneFormationImage = null, moduleIndicators = [], adminTag = false, showDetails = true, nameColor = "rgba(255,255,255,0.95)", tagColor = null, ggMask = 0) {
+export function drawPlayerStatus(context, player, playerName, x, y, rankImage = null, factionImage = null, droneIndicators = [], droneFormationImage = null, moduleIndicators = [], adminTag = false, showDetails = true, nameColor = "rgba(255,255,255,0.95)", tagColor = null, ggMask = 0, smoothRender = true) {
   if (!context || !player || player.dead) return;
   const width = 120;
   const height = 4;
@@ -256,7 +218,9 @@ export function drawPlayerStatus(context, player, playerName, x, y, rankImage = 
     context.fillStyle = nameColor;
     context.fillText(displayName, x, nameY);
   }
-  context.imageSmoothingEnabled = false;
+  const smooth = smoothRender !== false;
+  context.imageSmoothingEnabled = smooth;
+  if (smooth) context.imageSmoothingQuality = "low";
   if (rankImage?.complete && rankImage.naturalWidth > 0) {
     context.drawImage(
       rankImage,

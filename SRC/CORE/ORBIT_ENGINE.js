@@ -8355,6 +8355,9 @@ const DEFAULT_GAME_SETTINGS = {
   music: true,
   musicVolume: 1,
   textures: true,
+  // Lissage du rendu graphique (vaisseaux, drones, PET, NPC, plaque).
+  // ON par défaut = rendu suivi continu ; OFF = tout en pixel-net.
+  smoothRender: true,
   drones: true,
   remoteDrones: true,
   autoStart: false,
@@ -8456,15 +8459,15 @@ const GFX_QUALITY_ALL_FLAGS = Object.freeze([
   "shipSmoke", "npcEngineEffects", "npcExplosions", "rocketSmoke",
   "showHalos", "showNpcShots", "boxAnims", "portalAnims",
   "shipEffect", "customDesignEffects",
-  "textures", "moveMarker", "drones", "remoteDrones",
+  "textures", "smoothRender", "moveMarker", "drones", "remoteDrones",
   "showBonusBoxes", "showResourceBoxes", "showCargoBoxes", "showNpcs",
 ]);
 const GFX_QUALITY_LIGHT_FLAGS = Object.freeze([
-  "showNpcs",
+  "showNpcs", "smoothRender",
 ]);
 const GFX_QUALITY_MID_FLAGS = Object.freeze([
   "boxAnims", "portalAnims", "shipEffect", "customDesignEffects",
-  "textures", "moveMarker", "drones", "remoteDrones",
+  "textures", "smoothRender", "moveMarker", "drones", "remoteDrones",
   "showBonusBoxes", "showResourceBoxes", "showCargoBoxes", "showNpcShots",
   "npcExplosions", "rocketSmoke", "showHalos", "showNpcs",
 ]);
@@ -8627,6 +8630,10 @@ function setGameSetting(key, value) {
 
   if (key === "moveMarker") {
     showToast(GAME_SETTINGS.moveMarker ? "Marqueur de déplacement affiché" : "Marqueur de déplacement masqué", 1.1);
+  }
+
+  if (key === "smoothRender") {
+    showToast(GAME_SETTINGS.smoothRender ? "Lissage du rendu activé" : "Lissage du rendu désactivé", 1.1);
   }
 
   // ✅ Anims portails activées en pleine session : on précharge les 25 frames
@@ -9041,6 +9048,8 @@ function renderSettingsWindow() {
   const textures = document.getElementById("optTextures");
   if (autoStart) autoStart.checked = !!GAME_SETTINGS.autoStart;
   if (textures) textures.checked = !!GAME_SETTINGS.textures;
+  const smoothRender = document.getElementById("optSmoothRender");
+  if (smoothRender) smoothRender.checked = GAME_SETTINGS.smoothRender !== false;
   const drones = document.getElementById("optDrones");
   if (drones) drones.checked = !!GAME_SETTINGS.drones;
   const remoteDrones = document.getElementById("optRemoteDrones");
@@ -9137,6 +9146,10 @@ function wireSettingsWindow() {
 
   texBtn?.addEventListener("change", () => {
     setGameSetting("textures", texBtn.checked);
+  });
+
+  document.getElementById("optSmoothRender")?.addEventListener("change", (ev) => {
+    setGameSetting("smoothRender", ev.currentTarget.checked);
   });
 
   autoStart?.addEventListener("change", () => {
@@ -16199,263 +16212,6 @@ window.giveHybridAlloy = function giveHybridAlloy(amount = 100) {
   return resources.hybrid_alloy;
 };
 
-// Commande locale de développement (F12, sans refresh) : 100 M de chaque
-// munition + roquette, +100 Mds de crédits. Sauvegardé immédiatement.
-window.giveMaxStock = function giveMaxStock() {
-  if (!account.user) loadAccountUser();
-  if (!account.user) throw new Error("Aucun pilote connecté.");
-  const AMOUNT = 100000000;
-  for (const key of ["x2", "x3", "x4", "sab", "x6", "rcb", "cbo", "job", "rb", "pib", "idb", "vb", "emaa", "sbl", "abl", "tent"]) {
-    player.ammo[key] = AMOUNT;
-  }
-  player.rockets ||= {};
-  for (const id of ROCKET_IDS) player.rockets[id] = AMOUNT;
-  player.credits = Math.max(0, Math.floor(Number(player.credits) || 0)) + 100000000000;
-  updateAmmoUI();
-  markProgressDirty();
-  saveProgressNow();
-  showNotification(`Stock max : ${formatInteger(AMOUNT)} munitions/roquettes de chaque + 100 Mds crédits`, 4, "reward");
-  return { ammo: AMOUNT, rockets: AMOUNT, credits: player.credits };
-};
-
-// Commandes locales de développement (F12, sans refresh) : anneaux dorés GG
-// pour tests visuels. Exemples console :
-//   giveAlphaCircle() / resetAlphaCircle()
-//   giveAllCircles() / resetAllCircles()
-//   giveBetaCircle() ... giveZetaCircle() + reset* pareils.
-//   giveKronosCrown() / resetKronosCrown() (couronne à la place des anneaux).
-const GG_CIRCLE_IDS = Object.freeze(["alpha", "beta", "gamma", "delta", "epsilon", "zeta", "kronos"]);
-function setGgCircleCompleted(gateId, completed) {
-  if (!account.user) loadAccountUser();
-  if (!account.user) throw new Error("Aucun pilote connecté.");
-  const id = String(gateId || "").toLowerCase();
-  if (!GG_CIRCLE_IDS.includes(id)) throw new Error(`GG inconnue : ${gateId} (alpha/beta/gamma/delta/epsilon/zeta/kronos).`);
-  account.user.galaxyGates ||= {};
-  account.user.galaxyGates.completed ||= {};
-  account.user.galaxyGates.completed[id] = completed ? Math.max(1, Math.floor(Number(account.user.galaxyGates.completed[id]) || 1)) : 0;
-  markProgressDirty();
-  saveProgressNow();
-  try { renderGalaxyGateWindow(); } catch {}
-  try { window.dispatchEvent(new CustomEvent("orbit:galaxy-gates")); } catch {}
-  showNotification(completed ? `Anneau ${id} ajouté (test)` : `Anneau ${id} retiré (test)`, 3, "reward");
-  return account.user.galaxyGates.completed[id];
-}
-function setAllGgCirclesCompleted(completed) {
-  if (!account.user) loadAccountUser();
-  if (!account.user) throw new Error("Aucun pilote connecté.");
-  account.user.galaxyGates ||= {};
-  account.user.galaxyGates.completed ||= {};
-  // giveAll/resetAll ne touchent que les 6 anneaux (pas la couronne Kronos).
-  for (const id of GG_CIRCLE_IDS) {
-    if (id === "kronos") continue;
-    account.user.galaxyGates.completed[id] = completed ? Math.max(1, Math.floor(Number(account.user.galaxyGates.completed[id]) || 1)) : 0;
-  }
-  markProgressDirty();
-  saveProgressNow();
-  try { renderGalaxyGateWindow(); } catch {}
-  try { window.dispatchEvent(new CustomEvent("orbit:galaxy-gates")); } catch {}
-  showNotification(completed ? "Tous les anneaux GG ajoutés (test)" : "Tous les anneaux GG retirés (test)", 3, "reward");
-  return { ...account.user.galaxyGates.completed };
-}
-window.giveAlphaCircle = function giveAlphaCircle() { return setGgCircleCompleted("alpha", true); };
-window.giveBetaCircle = function giveBetaCircle() { return setGgCircleCompleted("beta", true); };
-window.giveGammaCircle = function giveGammaCircle() { return setGgCircleCompleted("gamma", true); };
-window.giveDeltaCircle = function giveDeltaCircle() { return setGgCircleCompleted("delta", true); };
-window.giveEpsilonCircle = function giveEpsilonCircle() { return setGgCircleCompleted("epsilon", true); };
-window.giveZetaCircle = function giveZetaCircle() { return setGgCircleCompleted("zeta", true); };
-window.giveKronosCrown = function giveKronosCrown() { return setGgCircleCompleted("kronos", true); };
-window.giveAllCircles = function giveAllCircles() { return setAllGgCirclesCompleted(true); };
-window.resetAlphaCircle = function resetAlphaCircle() { return setGgCircleCompleted("alpha", false); };
-window.resetBetaCircle = function resetBetaCircle() { return setGgCircleCompleted("beta", false); };
-window.resetGammaCircle = function resetGammaCircle() { return setGgCircleCompleted("gamma", false); };
-window.resetDeltaCircle = function resetDeltaCircle() { return setGgCircleCompleted("delta", false); };
-window.resetEpsilonCircle = function resetEpsilonCircle() { return setGgCircleCompleted("epsilon", false); };
-window.resetZetaCircle = function resetZetaCircle() { return setGgCircleCompleted("zeta", false); };
-window.resetKronosCrown = function resetKronosCrown() { return setGgCircleCompleted("kronos", false); };
-window.resetAllCircles = function resetAllCircles() { return setAllGgCirclesCompleted(false); };
-// Alias minuscules (console insensible à la casse pour tes tests).
-window.givealphacircle = window.giveAlphaCircle;
-window.resetalphacircle = window.resetAlphaCircle;
-window.giveallcircles = window.giveAllCircles;
-window.resetallcircles = window.resetAllCircles;
-window.givekronoscrown = window.giveKronosCrown;
-window.resetkronoscrown = window.resetKronosCrown;
-
-// Commande locale de développement (F12, sans refresh) : recharge complète
-// de toutes les compétences (IEM/ISH + aptitudes vaisseau + robot réparateur),
-// sans refresh et sans toucher aux effets en cours. À taper dans la console :
-//   resetAllSkills()
-window.resetAllSkills = function resetAllSkills() {
-  // IEM / ISH (déclarés plus bas en `let` : assignés ici à l'appel, donc initialisés).
-  try { pulseCd = 0; } catch {}
-  try { iemCd = 0; } catch {}
-  try { ishCd = 0; } catch {}
-  try { persistCdUntil("pulse", 0); } catch {}
-  try { persistCdUntil("ish", 0); } catch {}
-
-  // Aptitudes vaisseau : on ne vide que les recharges, jamais les effets actifs.
-  // (cloakT / podT / healHpT / healShT / nebT restent intacts si > 0.)
-  try { player.cloakCd = 0; } catch {}
-  try { player.podCd = 0; } catch {}
-  try { player.healHpCd = 0; } catch {}
-  try { player.healShCd = 0; } catch {}
-  try { player.hammerHpCd = 0; } catch {}
-  try { player.hammerHpPlusCd = 0; } catch {}
-  try { player.hammerShCd = 0; } catch {}
-  try { player.hammerShPlusCd = 0; } catch {}
-  try { player.hammerPodCd = 0; } catch {}
-  try { player.hammerPodPlusCd = 0; } catch {}
-  try { player.nebCd = 0; } catch {}
-  try { player.valCd = 0; } catch {}
-  try { player.shlCd = 0; } catch {}
-  try { player.bskCd = 0; } catch {}
-  try { player.rvgCd = 0; } catch {}
-  try { player.drawFireCd = 0; } catch {}
-  try { player.protectionCd = 0; } catch {}
-  try { player.travelCd = 0; } catch {}
-  try { player.yamatoCd = 0; } catch {}
-  try { player.fortifyCd = 0; } catch {}
-  try { player.prismCd = 0; } catch {}
-  try { player.specCd = 0; } catch {}
-  try { player.specPlusCd = 0; } catch {}
-  try { player.tartRapidCd = 0; } catch {}
-  try { player.tartRapidPlusCd = 0; } catch {}
-  try { player.tartBoostOn = false; } catch {}
-  try { player.tartPlusBoostOn = false; } catch {}
-  try { player.tartPlusBoostCd = 0; } catch {}
-  try { player.diminishCd = 0; } catch {}
-  try { player.ddolCd = 0; } catch {}
-  try { player.redirectCd = 0; } catch {}
-  try { player.disarrayCd = 0; } catch {}
-  try { player.reallocCd = 0; } catch {}
-  try { player.hecateCd = 0; } catch {}
-  try { player.hecatePlusCd = 0; } catch {}
-  try { player.frozenClawCd = 0; } catch {}
-  try { player.holoSelfCd = 0; } catch {}
-  try { player.holoEnemyCd = 0; } catch {}
-  try { player.gaCd = 0; } catch {}
-  try { player.qaCd = 0; } catch {}
-  try { player.keresSprCd = 0; } catch {}
-  try { player.sleightCd = 0; } catch {}
-  try { player.libRepCd = 0; } catch {}
-  try { player.lightCd = 0; } catch {}
-  try { player.scrambleCd = 0; } catch {}
-  try { player.phaseOutCd = 0; } catch {}
-  try { player.holoGramCd = 0; } catch {}
-  try { player.orcusCd = 0; } catch {}
-  try { player.cyborgCd = 0; } catch {}
-  try { player.venomCd = 0; } catch {}
-  try { player.ripperCd = 0; } catch {}
-  try { player.lastStandCd = 0; } catch {}
-  // Dernier rempart : l'effect passif revient avec le reset.
-  try { player.lastStandAnimT = 0; } catch {}
-  try { player.lastStandFxOff = false; } catch {}
-  try { player.tempestBackupCd = 0; } catch {}
-  try { player.tempestBackupT = 0; } catch {}
-  try { player.tempestDischCd = 0; } catch {}
-  try { player.tempestDischT = 0; } catch {}
-  try { player.tempestLinkCd = 0; } catch {}
-  try { player.tempestLinkFx = []; player.tempestLinkBeams = []; } catch {}
-  try { player.mmtCd = 0; } catch {}
-  try { player.mmtT = 0; } catch {}
-  try { player.tbrCd = 0; } catch {}
-  try { player.tbrT = 0; } catch {}
-  try { player.tbrClones = []; } catch {}
-  try { player.jamxCd = 0; } catch {}
-  try { player.creedCd = 0; } catch {}
-  try { player.jamxHalos = []; } catch {}
-  try { player.markCd = 0; } catch {}
-  try { player.neutrCd = 0; } catch {}
-  try { player.sapCd = 0; } catch {}
-  try { player.spcCd = 0; } catch {}
-  try { player.spcPlusCd = 0; } catch {}
-  try { player.chsCd = 0; } catch {}
-  try { player.chsPlusCd = 0; } catch {}
-  try { player.sentCd = 0; } catch {}
-  try { player.reconCd = 0; } catch {}
-  try { player.solCd = 0; } catch {}
-  try { player.solPlusCd = 0; } catch {}
-  try { player.incCd = 0; } catch {}
-  try { player.incPlusCd = 0; } catch {}
-  try { persistCdUntil("cloak", 0); } catch {}
-  try { persistCdUntil("cloak", 0); } catch {}
-  try { persistCdUntil("pod", 0); } catch {}
-  try { persistCdUntil("hpRep", 0); } catch {}
-  try { persistCdUntil("shRep", 0); } catch {}
-  try { persistCdUntil("hammerHp", 0); } catch {}
-  try { persistCdUntil("hammerSh", 0); } catch {}
-  try { persistCdUntil("hammerPod", 0); } catch {}
-  try { persistCdUntil("neb", 0); } catch {}
-  try { persistCdUntil("val", 0); } catch {}
-  try { persistCdUntil("shl", 0); } catch {}
-  try { persistCdUntil("bsk", 0); } catch {}
-  try { persistCdUntil("rvg", 0); } catch {}
-  try { persistCdUntil("drawFire", 0); } catch {}
-  try { persistCdUntil("protection", 0); } catch {}
-  try { persistCdUntil("travel", 0); } catch {}
-  try { persistCdUntil("fortify", 0); } catch {}
-  try { persistCdUntil("prism", 0); } catch {}
-  try { persistCdUntil("diminish", 0); } catch {}
-  try { persistCdUntil("ddol", 0); } catch {}
-  try { persistCdUntil("redirect", 0); } catch {}
-  try { persistCdUntil("disarray", 0); } catch {}
-  try { persistCdUntil("realloc", 0); } catch {}
-  try { persistCdUntil("hecate", 0); } catch {}
-  try { persistCdUntil("frozenClaw", 0); } catch {}
-  try { persistCdUntil("holoSelf", 0); } catch {}
-  try { persistCdUntil("holoEnemy", 0); } catch {}
-  try { persistCdUntil("ga", 0); } catch {}
-  try { persistCdUntil("qa", 0); } catch {}
-  try { persistCdUntil("keresSpr", 0); } catch {}
-  try { persistCdUntil("sleight", 0); } catch {}
-  try { persistCdUntil("libRep", 0); } catch {}
-  try { persistCdUntil("light", 0); } catch {}
-  try { persistCdUntil("scramble", 0); } catch {}
-  try { persistCdUntil("phaseOut", 0); } catch {}
-  try { persistCdUntil("holoGram", 0); } catch {}
-  try { persistCdUntil("orcus", 0); } catch {}
-  try { persistCdUntil("cyborg", 0); } catch {}
-  try { persistCdUntil("ripper", 0); } catch {}
-  try { persistCdUntil("lastStand", 0); } catch {}
-  try { persistCdUntil("sap", 0); } catch {}
-  try { persistCdUntil("spc", 0); } catch {}
-  try { persistCdUntil("spcPlus", 0); } catch {}
-  try { persistCdUntil("chs", 0); } catch {}
-  try { persistCdUntil("chsPlus", 0); } catch {}
-  try { persistCdUntil("sent", 0); } catch {}
-  try { persistCdUntil("recon", 0); } catch {}
-  try { persistCdUntil("sol", 0); } catch {}
-  try { persistCdUntil("solPlus", 0); } catch {}
-  try { persistCdUntil("inc", 0); } catch {}
-  try { persistCdUntil("incPlus", 0); } catch {}
-
-  // Tir / roquettes : pour que tout soit réellement "rechargé".
-  try { fireCooldown = 0; } catch {}
-  try { laserCd = 0; } catch {}
-  try { rocketCooldown = 0; } catch {}
-  try { rsbCooldown = 0; } catch {}
-  try { rcbCooldown = 0; } catch {}
-
-  // Robot réparateur : prêt immédiatement (repairT plein = pas d'attente).
-  try {
-    const ready = Number(REPAIR?.cooldown || 6);
-    player.repairT = ready;
-    player.repairTickT = 0;
-  } catch {}
-
-  // Rafraîchit tous les HUD sans refresh.
-  try { updateSkillUI(); } catch {}
-  try { updateRepairUI(); } catch {}
-  try { updateAmmoUI(); } catch {}
-  try { syncActionDockState(); } catch {}
-  try { showNotification("Compétences rechargées : IEM / ISH / aptitudes / robot prêts", 3, "reward"); } catch {}
-  try { showToast("Compétences rechargées", 1.2); } catch {}
-  return true;
-};
-// Alias : même commande sous d'autres noms.
-window.reloadSkills = window.resetAllSkills;
-window.resetSkills = window.resetAllSkills;
-
 function savedHpPct() {
   return player.hpMax > 0 ? clamp(player.hp / player.hpMax, 0, 1) : null;
 }
@@ -21447,7 +21203,8 @@ function drawHoloClones(ox, oy) {
     const img = playerImgs[idx] || playerImgs[0];
     ctx.save();
     ctx.translate(x, y);
-    if (isImgReady(img)) drawCenteredImage(ctx, img, pw, ph);
+    // Lissage du rendu graphique (suivi continu en mouvement).
+    if (isImgReady(img)) drawCenteredImage(ctx, img, pw, ph, renderSmoothingOn());
     ctx.restore();
     // Réacteurs identiques (vivants : état animé dans le tick).
     try {
@@ -21468,14 +21225,15 @@ function drawHoloClones(ox, oy) {
           if (!isImgReady(dimg)) { try { loadImage(src, { priority: true }); } catch {} return; }
           ctx.save();
           ctx.translate(x + dx, y + dy);
-          drawCenteredImage(ctx, dimg, 64, 56);
+          // Lissage du rendu graphique (suivi continu en mouvement).
+          drawCenteredImage(ctx, dimg, 64, 56, renderSmoothingOn());
           ctx.restore();
         });
       }
     } catch {}
     // Barres + plaque identiques (pseudo, grade, firme + anneaux GG au-dessus du grade).
     try {
-      drawPlayerStatus(ctx, { hp: c.hp, hpMax: c.hpMax, sh: c.sh, shMax: c.shMax, r: Number(c.r || 18) }, pseudo, x, y, rankImage, factionImage, droneIndicators, formationImage, [], false, true, undefined, undefined, galaxyGateRingMaskOfUser(account.user));
+      drawPlayerStatus(ctx, { hp: c.hp, hpMax: c.hpMax, sh: c.sh, shMax: c.shMax, r: Number(c.r || 18) }, pseudo, x, y, rankImage, factionImage, droneIndicators, formationImage, [], false, true, undefined, undefined, galaxyGateRingMaskOfUser(account.user), renderSmoothingOn());
     } catch {}
   }
 }
@@ -23378,7 +23136,8 @@ function drawPet(ox, oy) {
     if (!sprite) sprite = isImgReady(baseImage) ? baseImage : null;
   }
   if (sprite && (baseImage || isImgReady(sprite))) {
-    drawCenteredImage(ctx, sprite, PET_DRAW_W, PET_DRAW_H);
+    // Lissage du rendu graphique (suivi continu en mouvement).
+    drawCenteredImage(ctx, sprite, PET_DRAW_W, PET_DRAW_H, renderSmoothingOn());
     if (GAME_SETTINGS.shipSmoke) petEngine.draw(ctx, petState, sprite, frame, isImgReady);
   }
   else { ctx.fillStyle = "#79f5ff"; ctx.beginPath(); ctx.arc(0, 0, 20, 0, TAU); ctx.fill(); }
@@ -23467,7 +23226,8 @@ function drawTbrClones(ox, oy, remote = null) {
       if (!sprite) sprite = isImgReady(baseImage) ? baseImage : null;
     }
     if (sprite && (baseImage || isImgReady(sprite))) {
-      drawCenteredImage(ctx, sprite, PET_DRAW_W, PET_DRAW_H);
+      // Lissage du rendu graphique (suivi continu en mouvement).
+      drawCenteredImage(ctx, sprite, PET_DRAW_W, PET_DRAW_H, renderSmoothingOn());
       // Clé = le clone lui-même (objet stable) pour l'anim des réacteurs.
       if (GAME_SETTINGS.shipSmoke) {
         try { petEngine.draw(ctx, c, sprite, frame, isImgReady); } catch {}
@@ -25812,6 +25572,11 @@ function displayNpcShotsOn() {
 }
 function displayHalosOn() {
   try { return GAME_SETTINGS.showHalos !== false; } catch { return true; }
+}
+// Lissage du rendu graphique (case "Affichage & Performances").
+// ON = suivi continu (vaisseaux, drones, PET, NPC, plaque) ; OFF = pixel-net partout.
+function renderSmoothingOn() {
+  try { return GAME_SETTINGS.smoothRender !== false; } catch { return true; }
 }
 function displayNpcsOn() {
   try { return GAME_SETTINGS.showNpcs !== false; } catch { return true; }
@@ -31861,7 +31626,9 @@ function drawPlayerBody() {
     const sil = outlineSilhouette(`ship:${pack?.id || "player"}:${idx}`, img, w, h, "#259abb");
     strokeOutlineCentered(sil, w, h, "#259abb", petLocatorPulse());
   }
-  drawCenteredImage(ctx, img, w, h);
+  // Lissage du rendu graphique : aux positions fractionnaires (en mouvement),
+  // le vaisseau suit en continu au lieu d'accrocher d'un pixel à l'autre.
+  drawCenteredImage(ctx, img, w, h, renderSmoothingOn());
 
   ctx.save();
   ctx.imageSmoothingEnabled = false;
@@ -32829,7 +32596,8 @@ function drawRemoteAbilityFx(r, shipFx) {
       if (!view) continue;
       ctx.save();
       ctx.translate(Number(clone.rx ?? clone.x) - rx, Number(clone.ry ?? clone.y) - ry);
-      drawCenteredImage(ctx, view.img, view.w, view.h);
+      // Lissage du rendu graphique (suivi continu en mouvement).
+      drawCenteredImage(ctx, view.img, view.w, view.h, renderSmoothingOn());
       if (GAME_SETTINGS.shipSmoke) {
         shipEngine.update(clone, view.pack, 0.016, true);
         shipEngine.draw(ctx, { ...clone, angle: clone.rangle ?? clone.angle }, view.pack, isImgReady, view.frame);
@@ -32848,14 +32616,16 @@ function drawRemoteAbilityFx(r, shipFx) {
           if (!isImgReady(img)) { loadImage(src, { priority: true }); continue; }
           ctx.save();
           ctx.translate(off.x * ca - off.y * sa, off.x * sa + off.y * ca);
-          drawCenteredImage(ctx, img, 64, 56);
+          // Lissage du rendu graphique (suivi continu en mouvement).
+          drawCenteredImage(ctx, img, 64, 56, renderSmoothingOn());
           ctx.restore();
         }
       }
+      // Plaque stable : ne suit pas le balancement du vaisseau.
       drawPlayerStatus(ctx, { hp: 1, hpMax: 1, sh: 1, shMax: 1, r: 18 },
-        (r.clan ? `[${r.clan}] ` : "") + String(r.pseudo || "Pilote"), 0, 0,
+        (r.clan ? `[${r.clan}] ` : "") + String(r.pseudo || "Pilote"), 0, -swayBob,
         getCachedImage(r.rank || ""), getCachedImage(getFaction(r.firm)?.imagePath || ""),
-        r.droneIndicators || [], getCachedImage(r.ficon || ""), r.moduleIndicators || [], false, true, undefined, undefined, Math.max(0, Math.floor(Number(r.gg) || 0)));
+        r.droneIndicators || [], getCachedImage(r.ficon || ""), r.moduleIndicators || [], false, true, undefined, undefined, Math.max(0, Math.floor(Number(r.gg) || 0)), renderSmoothingOn());
       ctx.restore();
     }
   };
@@ -33511,7 +33281,8 @@ function drawNetplayRemotes(ox, oy) {
             const sil = outlineSilhouette(`net-ship:${r.id}:${pack?.id || r.shipId}:${idx}`, img, w, h, "#259abb");
             strokeOutlineCentered(sil, w, h, "#259abb", petLocatorPulse());
           }
-          drawCenteredImage(ctx, img, pack.w ?? 170, pack.h ?? 170);
+          // Lissage du rendu graphique (suivi continu en mouvement).
+          drawCenteredImage(ctx, img, pack.w ?? 170, pack.h ?? 170, renderSmoothingOn());
           drawCustomDesignParticles(r.shipId, r.id);
           drawn = true;
         }
@@ -33728,8 +33499,8 @@ function drawNetplayRemotes(ox, oy) {
           ctx.save();
           ctx.translate(ddx, ddy);
           if (dimg) {
-            ctx.imageSmoothingEnabled = false;
-            drawCenteredImage(ctx, dimg, 64, 56);
+            // Lissage du rendu graphique (suivi continu en mouvement).
+            drawCenteredImage(ctx, dimg, 64, 56, renderSmoothingOn());
           } else {
             ctx.fillStyle = "rgba(124,240,255,0.9)";
             ctx.rotate(Math.PI / 4);
@@ -33753,7 +33524,8 @@ function drawNetplayRemotes(ox, oy) {
           const remotePetProxy = netPetProxies.get(String(r.id));
           if (remotePetProxy && Target.get() === remotePetProxy && remotePetProxy.hp > 0) {
             ctx.save();
-            ctx.translate(prx - x, pry - y);
+            // Plaque/PET stables : ne suivent pas le balancement du vaisseau.
+            ctx.translate(prx - x, pry - y - swayBob);
             // Barres uniquement : le pseudo normal du PET est deja dessine
             // avec sa firme sous le sprite, inutile de le doubler en rouge.
             drawNpcStatus(ctx, remotePetProxy, "", true);
@@ -33811,10 +33583,12 @@ function drawNetplayRemotes(ox, oy) {
             peng.px = wx; peng.py = wy;
             try { petEngine.update(peng.holder, 0.016, GAME_SETTINGS.shipSmoke); } catch {}
             ctx.save();
-            ctx.translate(prx - x, pry - y);
+            // Le PET suit le balancement du vaisseau (+ son flottement propre).
+            ctx.translate(prx - x, pry - y + swayBob);
             ctx.translate(0, Math.sin(performance.now() / 1000 * 4) * 2);
             ctx.imageSmoothingEnabled = false;
-            drawCenteredImage(ctx, psprite, PET_DRAW_W, PET_DRAW_H);
+            // Lissage du rendu graphique (suivi continu en mouvement).
+            drawCenteredImage(ctx, psprite, PET_DRAW_W, PET_DRAW_H, renderSmoothingOn());
             try { if (GAME_SETTINGS.shipSmoke) petEngine.draw(ctx, peng.holder, psprite, pframe, isImgReady); } catch {}
             // Etiquette du REX distant : pseudo + firme, comme sur son ecran.
             try {
@@ -33914,13 +33688,15 @@ function drawNetplayRemotes(ox, oy) {
           shMax: Number(r.shMax) > 0 ? 1 : 0,
           r: 20, dead: false,
         },
-        (r.clan ? `[${r.clan}] ` : "") + String(r.pseudo || "Pilote"), 0, 0,
+        // Plaque stable : ne suit pas le balancement du vaisseau.
+        (r.clan ? `[${r.clan}] ` : "") + String(r.pseudo || "Pilote"), 0, -swayBob,
         rRank, rFact, dind, rFicon, mind,
         String(r.shipId || "").toLowerCase() === "police",
         showRemoteDetails,
         remoteColors.name,
         remoteColors.tag,
         Math.max(0, Math.floor(Number(r.gg) || 0)),
+        renderSmoothingOn(),
       );
     } catch {}
     ctx.restore();
@@ -34126,8 +33902,9 @@ function drawEnemyBody(e, exactFrame = null) {
   const h = e.isBoss ? baseH * 1.05 : baseH;
 
   ctx.save();
-  ctx.imageSmoothingEnabled = false;
-  drawCenteredImage(ctx, img, w, h);
+  // Lissage du rendu graphique (suivi continu en mouvement).
+  ctx.imageSmoothingEnabled = renderSmoothingOn();
+  drawCenteredImage(ctx, img, w, h, renderSmoothingOn());
   ctx.restore();
   // ✅ bulle ISH sur boss invulnérable (finale Zeta) : anim en boucle.
   try {
@@ -34600,7 +34377,8 @@ function drawPlayerDrones() {
     }
     ctx.save();
     ctx.translate(x, y);
-    drawCenteredImage(ctx, renderImage, 64, 56);
+    // Lissage du rendu graphique (suivi continu en mouvement).
+    drawCenteredImage(ctx, renderImage, 64, 56, renderSmoothingOn());
     ctx.restore();
   });
   const activeIds = new Set(drones.map((drone, index) => String(drone.id || index)));
@@ -35244,7 +35022,26 @@ function drawTargetMarker(e, ox, oy, time) {
   const spr = targetLockSprite(e);
   const img = getCachedImage(spr.src);
   if (!isImgReady(img)) return;
-  drawTargetLock(ctx, e, img, spr, ox, oy, time);
+  // Lock collé au vaisseau distant : suit son balancement (même formule que
+  // son rendu), sinon la PNG reste fixe pendant que la coque bouge dessous.
+  let swayY = 0;
+  try {
+    const rid = e?._netPlayer ?? e?._netPet;
+    if (rid != null) {
+      const pe = netplayEngines.get(String(rid));
+      const spd = pe ? Math.hypot(pe.vx || 0, pe.vy || 0) : 999;
+      const swayAmt = spd < 60 ? 1 : 0.3;
+      swayY = Math.sin(performance.now() / 1000 * 4 + (String(rid).charCodeAt(0) || 0)) * 2 * swayAmt;
+    }
+  } catch {}
+  if (swayY) {
+    ctx.save();
+    ctx.translate(0, swayY);
+    drawTargetLock(ctx, e, img, spr, ox, oy, time);
+    ctx.restore();
+  } else {
+    drawTargetLock(ctx, e, img, spr, ox, oy, time);
+  }
 }
 
 // Lock partagé : gris si le NPC est revendiqué par un autre joueur hors
@@ -35401,6 +35198,7 @@ function drawPlayerBars(px, py) {
     undefined,
     undefined,
     galaxyGateRingMaskOfUser(account.user),
+    renderSmoothingOn(),
   );
 }
 
