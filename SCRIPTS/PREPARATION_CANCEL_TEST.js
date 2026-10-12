@@ -13,7 +13,7 @@ function engineFunction(name, asynchronous = false) {
   assert.ok(start >= 0 && end > start, name);
   return `${asynchronous ? 'async ' : ''}${source.slice(start, end + 2)}`;
 }
-const functions = ['onPlayerPreparationDamage', 'cancelHangarPreparation', 'cancelStarJump', 'isPortalJumpInProgress', 'isPlayerMovementLocked', 'requestHangarSwap', 'tickHangarSwap', 'hurtPlayer']
+const functions = ['onPlayerPreparationDamage', 'cancelHangarPreparation', 'cancelStarJump', 'isPortalJumpInProgress', 'isPlayerMovementLocked', 'syncPhoneControls', 'requestHangarSwap', 'tickHangarSwap', 'hurtPlayer']
   .map(name => engineFunction(name)).concat(['activateHangarAtSavedLocation', 'completeHangarTravelMidpoint'].map(name => engineFunction(name, true))).join('\n');
 
 function harness() {
@@ -24,6 +24,7 @@ function harness() {
   const context = vm.createContext({
     StarJump: { channel: null }, hangarSwapFx: null, hangarActivationPreparation: null,
     portalJumpActive: false, mapSwitchInProgress: false,
+    phoneControls: null,
     player: { hp: 100, hpMax: 100, sh: 100, shMax: 100, shAbsorb: 1, dead: false, iFrames: 0, invincibleT: 0, x: 100, y: 100, r: 18 },
     started: true, account: { user }, window: { __CURRENT_MAP_ID__: '1-1' },
     structuredClone, netActive: () => false,
@@ -279,7 +280,7 @@ test('Jump : les ordres map, minimap et collecte sont ignores pendant la prepara
 
 test('Jump : le vrai pas de mouvement arrete l inertie et les destinations du bot puis reprend apres annulation', () => {
   const h = harness(), c = h.context;
-  const from = source.indexOf('  refreshHoldMoveTarget();\n  const movementStepTarget = botMovementStep(dt);');
+  const from = source.indexOf('  refreshHoldMoveTarget();\n');
   const to = source.indexOf('\n  updateShipMoveSound();', from);
   assert.ok(from >= 0 && to > from);
   Object.assign(c, {
@@ -359,7 +360,7 @@ function portalHarness(zone = true) {
     'getInteractivePortals', 'getPortalOpenFade', 'getPortalJumpFade', 'pickPortalButtonAtScreen', 'updatePortalButtonCursor',
     'drawZonePortals', 'startGatePortalJump', 'tickGatePortalJumps', 'setMoveTargetFromScreen',
     'setMoveTargetFromMiniEvent', 'selectCollectable', 'activatePhaseOut'].map(name => engineFunction(name)).join('\n'), c);
-  const from = source.indexOf('  refreshHoldMoveTarget();\n  const movementStepTarget = botMovementStep(dt);');
+  const from = source.indexOf('  refreshHoldMoveTarget();\n');
   const to = source.indexOf('\n  updateShipMoveSound();', from);
   vm.runInContext(`function movementFrame() {${source.slice(from, to)}\n}`, c);
   return { ...h, portals, draws };

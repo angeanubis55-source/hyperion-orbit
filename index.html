@@ -10,10 +10,18 @@
     // Fenêtre de départ à chaque refresh : pas de bypass session (la classe
     // orbitSessionReady n'est plus posée, l'overlay reste visible avec DÉPART).
     </script>
-  <link rel="stylesheet" href="style.css?v=ui-refresh-56" />
+  <link rel="stylesheet" href="style.css?v=ui-refresh-58" />
 </head>
 <body>
 <canvas id="game"></canvas>
+<div id="phoneControls" hidden role="group" aria-label="Commandes téléphone">
+  <button class="phoneJoystick phoneJoystickMove" data-phone-stick="move" type="button" aria-label="Joystick de déplacement" tabindex="-1">
+    <span class="phoneJoystickKnob" aria-hidden="true"></span><span class="phoneJoystickLabel">Déplacement</span>
+  </button>
+  <button class="phoneJoystick phoneJoystickAim" data-phone-stick="aim" type="button" aria-label="Joystick de visée et de tir" tabindex="-1">
+    <span class="phoneJoystickKnob" aria-hidden="true"></span><span class="phoneJoystickLabel">Visée / tir</span>
+  </button>
+</div>
 <div id="orbitNotifications" class="orbitNotifications" aria-live="polite"></div>
 
 <div id="loadingOverlay" class="loadingOverlay" role="dialog" aria-modal="true" aria-labelledby="loadingTitle">
@@ -293,6 +301,7 @@
             <article class="settingsCard">
               <div class="settingsSectionSub">Combat</div>
               <label class="settingsCheck" for="optDoubleClickAttack"><input id="optDoubleClickAttack" type="checkbox" /><span><b>Attaque au double-clic</b><small>Double-cliquer un NPC verrouille et tire.</small></span></label>
+              <label class="settingsCheck" for="optPhoneMode"><input id="optPhoneMode" type="checkbox" /><span><b>Mode de Jeu pour Téléphone</b><small>Joystick gauche : déplacement. Joystick droit : viser puis relâcher pour activer ou arrêter le tir.</small></span></label>
             </article>
             <article class="settingsCard">
               <div class="settingsSectionSub">Langue</div>

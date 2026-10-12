@@ -8,6 +8,7 @@ import { createDeferredPersistence } from "./DEFERRED_PERSISTENCE.js";
 import { drawCombatFloatTexts } from "./COMBAT_TEXT_RENDERER.js";
 import { createSpriteOutlineCache } from "./SPRITE_OUTLINE_CACHE.js";
 import { createSpriteHitCache } from "./SPRITE_HIT_CACHE.js";
+import { createPhoneControls, pickPhoneAimTarget, drawPhoneAimCone } from "./PHONE_CONTROLS.js";
 import { NpcEngine } from "../../NPC/NPC_ENGINE_RENDERER.js";
 import { ShipEngine } from "../../SHIP/SHIP_ENGINE_RENDERER.js";
 import { PetEngine } from "../../PET/PET_ENGINE_RENDERER.js";
@@ -981,6 +982,7 @@ function lockSessionHangar() {
 // ============================================================
 const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d", { alpha: false });
+let phoneControls = null;
 
 function resize() {
   const dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
@@ -8364,6 +8366,7 @@ const DEFAULT_GAME_SETTINGS = {
   moveMarker: true,
   // Attaque au double-clic sur un NPC/joueur. Désactivable dans Général.
   doubleClickAttack: true,
+  phoneMode: false,
   // FPS maximum : 0 = auto (vsync, calé sur les Hz de l'écran).
   fpsLimit: 0,
   backgroundRefresh: "enabled",
@@ -8511,6 +8514,7 @@ function loadGameSettings() {
       sfxMuted: normalizeSfxMuted(parsed?.sfxMuted),
     };
     settings.soundVolume = clamp(Math.round(Number(settings.soundVolume) || 0), 0, 100);
+    settings.phoneMode = settings.phoneMode === true;
     settings.fpsLimit = normalizeFpsLimit(settings.fpsLimit);
     settings.backgroundRefresh = normalizeBackgroundRefresh(settings.backgroundRefresh);
     settings.fxDensity = normalizeFxDensity(settings.fxDensity);
@@ -9056,6 +9060,9 @@ function renderSettingsWindow() {
   if (moveMarker) moveMarker.checked = !!GAME_SETTINGS.moveMarker;
   const doubleClickAttack = document.getElementById("optDoubleClickAttack");
   if (doubleClickAttack) doubleClickAttack.checked = GAME_SETTINGS.doubleClickAttack !== false;
+  const phoneMode = document.getElementById("optPhoneMode");
+  if (phoneMode) phoneMode.checked = GAME_SETTINGS.phoneMode === true;
+  syncPhoneControls();
   const fpsLimit = document.getElementById("optFpsLimit");
   if (fpsLimit) fpsLimit.value = String(normalizeFpsLimit(GAME_SETTINGS.fpsLimit));
   const gfxQuality = document.getElementById("optGfxQuality");
@@ -9184,6 +9191,8 @@ function wireSettingsWindow() {
   doubleClickAttack?.addEventListener("change", () => {
     setGameSetting("doubleClickAttack", doubleClickAttack.checked);
   });
+  const phoneMode = document.getElementById("optPhoneMode");
+  phoneMode?.addEventListener("change", () => setGameSetting("phoneMode", phoneMode.checked));
 
   document.getElementById("optBackgroundRefresh")?.addEventListener("change", event => {
     setBackgroundRefreshSetting(event.currentTarget.value);
@@ -15024,6 +15033,7 @@ function isPortalJumpInProgress() {
 
 function lockPortalJump() {
   portalJumpActive = true;
+  phoneControls?.cancel();
   cancelCollectableTarget();
   moveTarget.active = false;
   player.vx = 0;
@@ -20604,6 +20614,53 @@ const moveTarget = { active: false, x: 0, y: 0 };
 
 const pointer = createPointerState();
 const DRAG_THRESHOLD = 8;
+
+function syncPhoneControls() {
+  if (!phoneControls) return;
+  phoneControls.configure(GAME_SETTINGS.phoneMode === true && started && !player.dead && !document.hidden,
+    isPlayerMovementLocked());
+}
+
+function phoneAimTarget(angle) {
+  const locked = Target.get();
+  return pickPhoneAimTarget(player, spatialNpcsNear(player.x, player.y, playerRange), angle, playerRange,
+    enemy => shouldDetectNpc(player, enemy, NPC_SENSOR_RANGES.visibility, locked));
+}
+
+function releasePhoneAim(angle) {
+  if (GAME_SETTINGS.phoneMode !== true || !started || player.dead || isPlayerMovementLocked()) return;
+  // Un simple toucher de la poignee droite bascule le tir du NPC deja locke.
+  // Une visee dans le vide conserve le lock et ne lance aucun tir.
+  const target = Number.isFinite(angle) ? phoneAimTarget(angle) : Target.get();
+  if (!target || !(target.hp > 0) || target._netPlayer || target._netPet || target.isPetTarget) return;
+  Target.set(target);
+  try { botNotifyManual(); } catch {}
+  toggleAttack();
+}
+
+function drawPhoneAim(ox, oy) {
+  const angle = phoneControls?.aimAngle();
+  if (!Number.isFinite(angle)) return;
+  drawPhoneAimCone(ctx, player, angle, playerRange, phoneAimTarget(angle), ox, oy);
+}
+
+const phoneControlsRoot = document.getElementById("phoneControls");
+if (phoneControlsRoot) {
+  phoneControls = createPhoneControls(phoneControlsRoot, {
+    onMoveStart() {
+      cancelCollectableTarget();
+      moveTarget.active = false;
+      pointer.reset();
+      try { botNotifyManual(); } catch {}
+    },
+    onMoveStop() {
+      moveTarget.active = false;
+      player.vx = 0;
+      player.vy = 0;
+    },
+    onAimRelease: releasePhoneAim,
+  });
+}
 
 // ✅ Position souris écran mémorisée
 function rememberPointer(e) {
@@ -30488,6 +30545,7 @@ for (let i = collectables.length - 1; i >= 0; i--) {
 // Death / Respawn
 // ============================================================
 function resetRun({ randomSpawn = false, preparedZoneCamps = null, preparedZonePortals = null } = {}) {
+  phoneControls?.cancel();
   portalJumpActive = false;
   let spawnedFromPortal = false;
   attackActive = false;
@@ -30876,6 +30934,7 @@ function die() {
   laserCombatInRange = null;
   escapeWatch = null;
   player.dead = true;
+  phoneControls?.cancel();
   portalJumpActive = false;
   // Mort = aptitudes coupées : leurs recharges démarrent.
   // Le CPU CL04K-XL tombe aussi (sans recharge, silencieux).
@@ -36641,6 +36700,9 @@ if (startHintT > 0) {
   }
 
   refreshHoldMoveTarget();
+  syncPhoneControls();
+  const phoneMove = phoneControls?.movement();
+  if (phoneMove) botNotifyManual();
   const movementStepTarget = botMovementStep(dt);
   let mx = 0, my = 0;
   const movementLocked = isPlayerMovementLocked();
@@ -36649,6 +36711,10 @@ if (movementLocked) {
   moveTarget.active = false;
   player.vx = 0;
   player.vy = 0;
+} else if (phoneMove && !player.dead) {
+  moveTarget.active = false;
+  mx = phoneMove.x;
+  my = phoneMove.y;
 } else if (movementStepTarget.active && !player.dead) {
   const dx = movementStepTarget.x - player.x;
   const dy = movementStepTarget.y - player.y;
@@ -36666,7 +36732,13 @@ if (movementLocked) {
   }
 }
 
-  if (!movementLocked) updatePlayerVelocity(player, { x: mx, y: my }, dt);
+  if (!movementLocked) {
+    updatePlayerVelocity(player, { x: mx, y: my }, dt);
+    if (phoneMove) {
+      player.vx *= phoneMove.strength;
+      player.vy *= phoneMove.strength;
+    }
+  }
 
   // Fortification (officiel) : vitesse plafonnée à 200 pendant l'effet.
   if ((player.fortifyT || 0) > 0) {
@@ -36678,7 +36750,7 @@ if (movementLocked) {
   }
 
   if (!player.dead && !movementLocked) {
-    advancePlayerToTarget(player, movementStepTarget, dt);
+    advancePlayerToTarget(player, phoneMove ? null : movementStepTarget, dt);
 
     if (isZoneMap) {
       resolvePlayerWalls();
@@ -37187,6 +37259,8 @@ for (const ptl of zonePortals) {
       player.angle = Math.atan2(qaLock.y - player.y, qaLock.x - player.x);
     } else if (attackActive && tAim) {
       player.angle = Math.atan2(tAim.y - player.y, tAim.x - player.x);
+    } else if (phoneMove?.strength > 0 && Math.hypot(player.vx, player.vy) > 0.01) {
+      player.angle = Math.atan2(player.vy, player.vx);
     } else if (Bot.active === true && !player.dead && Math.hypot(Number(player.vx) || 0, Number(player.vy) || 0) > 60) {
       // Bot sans attaque en cours (navigation portail, approche NPC au-delà
       // de 1400 m, contournement) : il regarde où il va vraiment, pas la
@@ -38638,6 +38712,7 @@ function draw() {
 
   if (botMinimalRenderActive()) {
     drawBotMinimalScene(ox, oy);
+    drawPhoneAim(ox, oy);
     return;
   }
 
@@ -38647,6 +38722,7 @@ function draw() {
   drawSafeModules(ox, oy);
   drawLowRaidZone(ox, oy);
   drawMoveTarget(ox, oy);
+  drawPhoneAim(ox, oy);
   try { drawBotOverlays(ox, oy); } catch {}
   drawCollectables(ox, oy);
   drawPetLocator(ox, oy);
