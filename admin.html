@@ -104,12 +104,6 @@
     </table>
   </div>
   <div class="card">
-    <h2>Designs de drones</h2>
-    <div class="row"><input id="designPseudo" type="text" placeholder="Pseudo…" maxlength="20" autocomplete="off"></div>
-    <div class="row" style="margin-top:8px"><select id="designSel" style="flex:1"></select><input id="designQty" type="number" value="1" min="1" max="99" style="max-width:90px"><button id="designGiveBtn" type="button">Donner</button></div>
-    <p id="designMsg" class="msg"></p>
-  </div>
-  <div class="card">
     <h2>Bannis</h2>
     <table>
       <thead><tr><th>Pseudo</th><th>Motif</th><th>Jusqu'au</th><th>Actions</th></tr></thead>
@@ -535,9 +529,40 @@
       btn.disabled = false;
       refresh();
     };
+    const designRow = document.createElement("div");
+    designRow.className = "modCell";
+    designRow.style.marginTop = "4px";
+    const designSel = document.createElement("select");
+    designSel.title = "Design de drone à donner";
+    designSel.dataset.designSel = "1";
+    const qtyInput = document.createElement("input");
+    qtyInput.type = "number"; qtyInput.min = "1"; qtyInput.max = "99";
+    qtyInput.title = "Quantité (1 à 99)";
+    qtyInput.style.maxWidth = "70px";
+    const designBtn = document.createElement("button");
+    designBtn.type = "button"; designBtn.className = "small"; designBtn.textContent = "Design";
+    designBtn.title = "Donner le design au joueur";
+    designBtn.onclick = async () => {
+      designBtn.disabled = true;
+      try {
+        const out = await call("/api/admin/give-drone-design", { method: "POST", body: JSON.stringify({ pseudo: p.pseudo, design: designSel.value, count: qtyInput.value }) });
+        if (!out || out.ok !== true) throw new Error(out?.error || "Échec.");
+        toast(`${out.pseudo} : +${out.given}x ${out.name} (stock ${out.after}).`, "ok");
+      } catch (e) { toast(e?.message || "Erreur.", "err"); }
+      designBtn.disabled = false;
+      refresh();
+    };
+    designRow.appendChild(designSel);
+    designRow.appendChild(qtyInput);
+    designRow.appendChild(designBtn);
     const savedMod = modSelByKey[p.id] || {};
-    const saveModSel = () => { modSelByKey[p.id] = { ship: shipSel.value, stat: statSel.value, pct: pctInput.value }; };
+    const saveModSel = () => { modSelByKey[p.id] = { ship: shipSel.value, stat: statSel.value, pct: pctInput.value, design: designSel.value, dqty: qtyInput.value }; };
     shipSel.onchange = saveModSel; statSel.onchange = saveModSel; pctInput.oninput = saveModSel;
+    designSel.onchange = saveModSel; qtyInput.oninput = saveModSel;
+    qtyInput.value = savedMod.dqty != null ? savedMod.dqty : "1";
+    designSel.dataset.saved = savedMod.design || "";
+    fillDesignSelect(designSel, savedMod.design);
+    if (!droneDesignsCache) ensureDroneDesigns().catch(() => {});
     statSel.value = savedMod.stat || "damage";
     pctInput.value = savedMod.pct != null ? savedMod.pct : "30";
     if (shipFamilies && shipFamilies.length) {
@@ -567,39 +592,28 @@
     wrap.appendChild(pctInput);
     wrap.appendChild(btn);
     td.appendChild(wrap);
+    td.appendChild(designRow);
   }
-  /* ---------- Give design de drone : pseudo + design + quantité ---------- */
+  /* ---------- Give design de drone par joueur (colonne Module) ---------- */
   let droneDesignsCache = null;
+  function fillDesignSelect(sel, savedId) {
+    const cur = savedId || sel.value;
+    sel.innerHTML = "";
+    for (const d of (droneDesignsCache || [])) {
+      const o = document.createElement("option");
+      o.value = d.id; o.textContent = d.name;
+      sel.appendChild(o);
+    }
+    if (cur) sel.value = cur;
+  }
   async function ensureDroneDesigns() {
     if (droneDesignsCache) return droneDesignsCache;
     try {
       const out = await call("/api/admin/drone-designs");
       droneDesignsCache = (out && out.ok === true && Array.isArray(out.designs)) ? out.designs : [];
     } catch { droneDesignsCache = []; }
-    const sel = $("designSel");
-    if (sel) {
-      sel.innerHTML = "";
-      for (const d of droneDesignsCache) {
-        const o = document.createElement("option");
-        o.value = d.id; o.textContent = d.name;
-        sel.appendChild(o);
-      }
-    }
+    document.querySelectorAll("select[data-design-sel]").forEach((sel) => fillDesignSelect(sel, sel.dataset.saved));
     return droneDesignsCache;
-  }
-  async function giveDroneDesign() {
-    const pseudo = ($("designPseudo").value || "").trim();
-    const design = $("designSel") ? $("designSel").value : "";
-    const count = Math.floor(Number($("designQty") ? $("designQty").value : 0) || 0);
-    const msg = $("designMsg");
-    msg.textContent = ""; msg.className = "msg";
-    if (!pseudo || !design) { msg.textContent = "Pseudo et design requis."; msg.className = "msg err"; return; }
-    try {
-      const out = await call("/api/admin/give-drone-design", { method: "POST", body: JSON.stringify({ pseudo, design, count }) });
-      if (!out || out.ok !== true) throw new Error(out?.error || "Échec.");
-      msg.textContent = `${out.pseudo} : +${out.given}x ${out.name} (stock ${out.after}).`;
-      msg.className = "msg ok";
-    } catch (e) { msg.textContent = e?.message || "Erreur."; msg.className = "msg err"; }
   }
   async function refresh() {
     if (!$("app") || $("app").style.display === "none") return;
@@ -870,7 +884,6 @@
   $("bcBtn").onclick = broadcast;
   $("bcInput").addEventListener("keydown", (e) => { if (e.key === "Enter") broadcast(); });
   $("chatReplyBtn").onclick = replyChat;
-  $("designGiveBtn").onclick = giveDroneDesign;
   $("chatReplyInput").addEventListener("keydown", (e) => { if (e.key === "Enter") replyChat(); });
   let searchT = 0;
   $("accountSearch")?.addEventListener("input", () => { clearTimeout(searchT); searchT = setTimeout(() => { try { refreshAccounts(); } catch {} }, 250); });
