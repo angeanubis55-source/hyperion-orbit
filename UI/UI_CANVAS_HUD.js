@@ -81,7 +81,7 @@ function drawGgRingsAboveRank(context, mask, rankCenterX, rankTopY) {
   for (const spot of GG_RING_GRID_HUD) {
     if (!(bits & GG_RING_BITS_HUD[spot.id])) continue;
     const cx = rankCenterX + (spot.col - 1) * gap;
-    const cy = rankTopY - 3 - (1 - spot.row) * rowGap;
+    const cy = rankTopY - 5 - (1 - spot.row) * rowGap;
     context.save();
     context.globalAlpha = 0.95;
     // Simple cercle doré, glow quasi nul.
