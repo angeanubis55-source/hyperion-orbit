@@ -23,7 +23,7 @@ const {
 } = AC;
 import { tickLowRaid, getLowRaidState } from "./LOW_RAID.js";
 import { damagePlayerLayers } from "../COMBAT/COMBAT_RULES.js";
-import { handleAccountApi, getAccountGameplayData, verifyWsToken, recordPvpKill, recordPvpPetKill, awardNpcKill, listFriends, friendFollowers, findUserByPseudo, hasFriendRequest, clanIdOfUser, clanTagOfUser, clanMemberUserIds, recordClanWarKill, adminGiveCredits, adminGiveExperience, adminGiveHonor, adminGiveModule, adminListAccounts, adminDeleteAccount, adminShipFamilies } from "./ACCOUNT_SERVER.js";
+import { handleAccountApi, getAccountGameplayData, verifyWsToken, recordPvpKill, recordPvpPetKill, awardNpcKill, listFriends, friendFollowers, findUserByPseudo, hasFriendRequest, clanIdOfUser, clanTagOfUser, clanMemberUserIds, recordClanWarKill, adminGiveCredits, adminGiveExperience, adminGiveHonor, adminGiveModule, adminListAccounts, adminDeleteAccount, adminResetGalaxyGate, adminGiveGalaxyGate, adminDroneDesigns, adminGiveDroneDesign, adminShipFamilies } from "./ACCOUNT_SERVER.js";
 import { combatProfile, validateCombatHit } from "./COMBAT_PROFILE.js";
 import { profileAbilityCooldown } from "../DRONE/DRONE_DESIGNS.js";
 import { selectNpcSnapshot } from "./NPC_SNAPSHOT.js";
@@ -833,6 +833,11 @@ function handleAdminApi(request, response, pathname) {
     adminJson(response, 200, { ok: true, ships: adminShipFamilies() });
     return true;
   }
+  if (pathname === "/api/admin/drone-designs" && request.method === "GET") {
+    // Designs de drones pour le select "give design" du panneau admin.
+    adminJson(response, 200, { ok: true, designs: adminDroneDesigns() });
+    return true;
+  }
   if (pathname === "/api/admin/accounts" && request.method === "GET") {
     // Tous les comptes (connectés + hors ligne) + invités connectés.
     // Mêmes actions que les connectés : mute/ban/give par id/pseudo.
@@ -888,7 +893,7 @@ function handleAdminApi(request, response, pathname) {
     adminJson(response, 200, { ok: true, accounts: out, guests, onlineCount, total: out.length });
     return true;
   }
-  if ((pathname === "/api/admin/broadcast" || pathname === "/api/admin/kick" || pathname === "/api/admin/mute" || pathname === "/api/admin/give" || pathname === "/api/admin/give-exp" || pathname === "/api/admin/give-honor" || pathname === "/api/admin/give-module" || pathname === "/api/admin/ban" || pathname === "/api/admin/unban" || pathname === "/api/admin/delete" || pathname === "/api/admin/cheat-hold") && request.method === "POST") {
+  if ((pathname === "/api/admin/broadcast" || pathname === "/api/admin/kick" || pathname === "/api/admin/mute" || pathname === "/api/admin/give" || pathname === "/api/admin/give-exp" || pathname === "/api/admin/give-honor" || pathname === "/api/admin/give-module" || pathname === "/api/admin/reset-gg" || pathname === "/api/admin/give-gg" || pathname === "/api/admin/give-drone-design" || pathname === "/api/admin/ban" || pathname === "/api/admin/unban" || pathname === "/api/admin/delete" || pathname === "/api/admin/cheat-hold") && request.method === "POST") {
     readJsonBody(request).then((body) => {
       try {
         if (pathname === "/api/admin/delete") {
@@ -1023,6 +1028,61 @@ function handleAdminApi(request, response, pathname) {
             if (peer) {
               const b = res.module?.bonuses?.[0] || {};
               const txt = `L'admin t'a donné un module ${res.module?.shipId} : ${b.pct > 0 ? "+" : ""}${b.pct}% ${b.stat}.`;
+              sendToPeer(peer.id, { t: "chatMsg", from: "[ADMIN]", text: txt, at: Date.now(), by: "admin" });
+            }
+          } catch {}
+          adminJson(response, 200, res);
+          return;
+        }
+        if (pathname === "/api/admin/give-gg") {
+          // Ajoute la completion d'une Galaxy Gate (pseudo + gate ou "all").
+          // L'anneau doré apparaît à la prochaine synchro du joueur.
+          const res = adminGiveGalaxyGate(String(body?.pseudo || ""), String(body?.gate || ""));
+          if (!res || res.ok !== true) {
+            adminJson(response, res?.error === "Compte introuvable." ? 404 : 400, res || { ok: false, error: "Paramètres invalides." });
+            return;
+          }
+          try {
+            const peer = findPeerByPseudo(res.pseudo);
+            if (peer) {
+              const names = (res.gates || []).map((g) => String(g).slice(0, 1).toUpperCase() + String(g).slice(1));
+              const txt = `L'admin t'a ajouté la GG ${names.join(", ")} (anneau ajouté).`;
+              sendToPeer(peer.id, { t: "chatMsg", from: "[ADMIN]", text: txt, at: Date.now(), by: "admin" });
+            }
+          } catch {}
+          adminJson(response, 200, res);
+          return;
+        }
+        if (pathname === "/api/admin/give-drone-design") {
+          // Donne un design de drone (pseudo + design + quantité 1-99).
+          const res = adminGiveDroneDesign(String(body?.pseudo || ""), String(body?.design || ""), body?.count);
+          if (!res || res.ok !== true) {
+            adminJson(response, res?.error === "Compte introuvable." ? 404 : 400, res || { ok: false, error: "Paramètres invalides." });
+            return;
+          }
+          try {
+            const peer = findPeerByPseudo(res.pseudo);
+            if (peer) {
+              const txt = `L'admin t'a donné ${res.given}x design ${res.name} (stock : ${res.after}).`;
+              sendToPeer(peer.id, { t: "chatMsg", from: "[ADMIN]", text: txt, at: Date.now(), by: "admin" });
+            }
+          } catch {}
+          adminJson(response, 200, res);
+          return;
+        }
+        if (pathname === "/api/admin/reset-gg") {
+          // Retire la complétion d'une Galaxy Gate (pseudo + gate ou "all").
+          // L'anneau doré disparaît à la prochaine synchro du joueur.
+          const res = adminResetGalaxyGate(String(body?.pseudo || ""), String(body?.gate || ""));
+          if (!res || res.ok !== true) {
+            adminJson(response, res?.error === "Compte introuvable." ? 404 : 400, res || { ok: false, error: "Paramètres invalides." });
+            return;
+          }
+          try {
+            const peer = findPeerByPseudo(res.pseudo);
+            if (peer) {
+              const names = (res.gates || []).map((g) => String(g).slice(0, 1).toUpperCase() + String(g).slice(1));
+              const txt = `L'admin t'a retiré la GG ${names.join(", ")} (anneau retiré).`;
               sendToPeer(peer.id, { t: "chatMsg", from: "[ADMIN]", text: txt, at: Date.now(), by: "admin" });
             }
           } catch {}

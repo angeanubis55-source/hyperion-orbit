@@ -99,9 +99,15 @@
     <h2>Joueurs <span id="accountCount" class="badge off">0</span></h2>
     <div class="searchRow"><input id="accountSearch" type="text" placeholder="Rechercher un pseudo…" maxlength="20" autocomplete="off"></div>
     <table>
-      <thead><tr><th>Pseudo</th><th>Statut</th><th>Map</th><th>Crédits</th><th>EXP</th><th>Honneur</th><th>Actions</th><th>Module</th></tr></thead>
-      <tbody id="accountRows"><tr><td colspan="8">Chargement…</td></tr></tbody>
+      <thead><tr><th>Pseudo</th><th>Statut</th><th>Map</th><th>Crédits</th><th>EXP</th><th>Honneur</th><th>Actions</th><th>Module</th><th>GG</th></tr></thead>
+      <tbody id="accountRows"><tr><td colspan="9">Chargement…</td></tr></tbody>
     </table>
+  </div>
+  <div class="card">
+    <h2>Designs de drones</h2>
+    <div class="row"><input id="designPseudo" type="text" placeholder="Pseudo…" maxlength="20" autocomplete="off"></div>
+    <div class="row" style="margin-top:8px"><select id="designSel" style="flex:1"></select><input id="designQty" type="number" value="1" min="1" max="99" style="max-width:90px"><button id="designGiveBtn" type="button">Donner</button></div>
+    <p id="designMsg" class="msg"></p>
   </div>
   <div class="card">
     <h2>Bannis</h2>
@@ -168,6 +174,7 @@
       $("loginBox").style.display = "none";
       $("app").style.display = "block";
       try { ensureShips(); } catch {}
+      try { ensureDroneDesigns(); } catch {}
       refresh();
     } catch (e) {
       $("loginMsg").textContent = e?.message || "Erreur.";
@@ -414,6 +421,90 @@
     }
     return shipsLoading;
   }
+  /* ---------- GG terminées : listbox + bouton Retirer par joueur ---------- */
+  const GG_NAMES = { alpha: "Alpha", beta: "Beta", gamma: "Gamma", delta: "Delta", epsilon: "Epsilon", zeta: "Zeta", kappa: "Kappa", lambda: "Lambda", kronos: "Kronos" };
+  const ggSelByKey = {};
+  function syncGgCell(td, a) {
+    let wrap = td.querySelector("div");
+    let sel = td.querySelector("select");
+    let btn = td.querySelector("button");
+    if (!wrap) {
+      wrap = document.createElement("div");
+      wrap.className = "modCell";
+      sel = document.createElement("select");
+      sel.title = "GG terminée à retirer (anneau compris)";
+      btn = document.createElement("button");
+      btn.type = "button"; btn.className = "small danger"; btn.textContent = "Retirer";
+      btn.title = "Retirer la complétion (et l'anneau)";
+      btn.onclick = async () => {
+        const gate = sel.value;
+        const pseudo = wrap.dataset.pseudo || a.pseudo;
+        if (!gate) return;
+        btn.disabled = true;
+        try {
+          const out = await call("/api/admin/reset-gg", { method: "POST", body: JSON.stringify({ pseudo, gate }) });
+          if (!out || out.ok !== true) throw new Error(out?.error || "Échec.");
+          toast(`${out.pseudo} : GG ${gate === "all" ? "toutes" : gate} retirée.`, "ok");
+        } catch (e) { toast(e?.message || "Erreur.", "err"); }
+        btn.disabled = false;
+        refresh();
+      };
+      wrap.appendChild(sel);
+      wrap.appendChild(btn);
+      const add = document.createElement("button");
+      add.type = "button"; add.className = "small"; add.textContent = "Ajouter";
+      add.title = "Ajouter une complétion (et l'anneau)";
+      add.style.marginLeft = "6px";
+      add.onclick = () => openGiveGgModal(wrap.dataset.pseudo || a.pseudo);
+      wrap.appendChild(add);
+      td.appendChild(wrap);
+    }
+    wrap.dataset.pseudo = a.pseudo;
+    sel.onchange = () => { ggSelByKey[a.id] = sel.value; };
+    const completed = (a && a.gg && typeof a.gg === "object") ? a.gg : {};
+    const gates = Object.keys(completed).filter((g) => GG_NAMES[g] && Number(completed[g]) > 0);
+    const prev = ggSelByKey[a.id] || sel.value;
+    sel.innerHTML = "";
+    if (!gates.length) {
+      const o = document.createElement("option");
+      o.value = ""; o.textContent = "—";
+      sel.appendChild(o);
+      btn.disabled = true;
+      return;
+    }
+    for (const g of gates) {
+      const o = document.createElement("option");
+      o.value = g;
+      o.textContent = `${GG_NAMES[g]} (x${Math.max(1, Math.floor(Number(completed[g]) || 0))})`;
+      sel.appendChild(o);
+    }
+    const all = document.createElement("option");
+    all.value = "all"; all.textContent = "Toutes";
+    sel.appendChild(all);
+    sel.value = [...gates, "all"].includes(prev) ? prev : gates[0];
+    btn.disabled = false;
+  }
+  function openGiveGgModal(pseudo) {
+    const opts = Object.entries(GG_NAMES).map(([v, label]) => `<option value="${v}">${esc(label)}</option>`).join("") + `<option value="all">Toutes</option>`;
+    openModal({
+      title: `Ajouter une GG — ${pseudo}`,
+      sub: "La complétion est ajoutée (anneau visible à la prochaine synchro).",
+      bodyHTML: `<select id="ggGiveSel" style="width:100%;height:34px;">${opts}</select>`,
+      actions: [
+        { label: "Annuler", onClick: closeModal },
+        { label: "Ajouter", onClick: async () => {
+          const gate = $("ggGiveSel").value;
+          try {
+            const out = await call("/api/admin/give-gg", { method: "POST", body: JSON.stringify({ pseudo, gate }) });
+            if (!out || out.ok !== true) throw new Error(out?.error || "Échec.");
+            closeModal();
+            toast(`${out.pseudo} : GG ${gate} ajoutée.`, "ok");
+          } catch (e) { modalError(e?.message || "Erreur."); return; }
+          refresh();
+        } },
+      ],
+    });
+  }
   const modSelByKey = {};
   function buildModuleCell(td, p) {
     const wrap = document.createElement("div");
@@ -477,6 +568,39 @@
     wrap.appendChild(btn);
     td.appendChild(wrap);
   }
+  /* ---------- Give design de drone : pseudo + design + quantité ---------- */
+  let droneDesignsCache = null;
+  async function ensureDroneDesigns() {
+    if (droneDesignsCache) return droneDesignsCache;
+    try {
+      const out = await call("/api/admin/drone-designs");
+      droneDesignsCache = (out && out.ok === true && Array.isArray(out.designs)) ? out.designs : [];
+    } catch { droneDesignsCache = []; }
+    const sel = $("designSel");
+    if (sel) {
+      sel.innerHTML = "";
+      for (const d of droneDesignsCache) {
+        const o = document.createElement("option");
+        o.value = d.id; o.textContent = d.name;
+        sel.appendChild(o);
+      }
+    }
+    return droneDesignsCache;
+  }
+  async function giveDroneDesign() {
+    const pseudo = ($("designPseudo").value || "").trim();
+    const design = $("designSel") ? $("designSel").value : "";
+    const count = Math.floor(Number($("designQty") ? $("designQty").value : 0) || 0);
+    const msg = $("designMsg");
+    msg.textContent = ""; msg.className = "msg";
+    if (!pseudo || !design) { msg.textContent = "Pseudo et design requis."; msg.className = "msg err"; return; }
+    try {
+      const out = await call("/api/admin/give-drone-design", { method: "POST", body: JSON.stringify({ pseudo, design, count }) });
+      if (!out || out.ok !== true) throw new Error(out?.error || "Échec.");
+      msg.textContent = `${out.pseudo} : +${out.given}x ${out.name} (stock ${out.after}).`;
+      msg.className = "msg ok";
+    } catch (e) { msg.textContent = e?.message || "Erreur."; msg.className = "msg err"; }
+  }
   async function refresh() {
     if (!$("app") || $("app").style.display === "none") return;
     try {
@@ -511,7 +635,7 @@
       if (!wanted.has(k)) { try { tr.remove(); } catch {} accountRowByKey.delete(k); }
     }
     if (!rows.length && !guestsShown.length) {
-      tb.innerHTML = `<tr><td colspan="8">Aucun compte.</td></tr>`;
+      tb.innerHTML = `<tr><td colspan="9">Aucun compte.</td></tr>`;
       return;
     }
     const ph = tb.querySelector("td[colspan]");
@@ -525,9 +649,9 @@
     for (const a of rows) {
       const key = "a:" + a.id;
       let tr = accountRowByKey.get(key);
-      if (!tr || !tr.isConnected) {
+      if (!tr || !tr.isConnected || tr.children.length < 9) {
         tr = document.createElement("tr");
-        tr.innerHTML = `<td></td><td></td><td></td><td class="num"></td><td class="num"></td><td class="num"></td><td></td><td></td>`;
+        tr.innerHTML = `<td></td><td></td><td></td><td class="num"></td><td class="num"></td><td class="num"></td><td></td><td></td><td></td>`;
         accountRowByKey.set(key, tr);
       }
       if (a.muted) tr.className = "mutedRow"; else tr.className = "";
@@ -547,14 +671,15 @@
       c[6].innerHTML = "";
       appendAdminActions(c[6], a, a.online === true, false);
       if (!c[7].firstChild) buildModuleCell(c[7], a);
+      syncGgCell(c[8], a);
       placeRow(tr);
     }
     for (const g of guestsShown) {
       const key = "g:" + g.pseudo;
       let tr = accountRowByKey.get(key);
-      if (!tr || !tr.isConnected) {
+      if (!tr || !tr.isConnected || tr.children.length < 9) {
         tr = document.createElement("tr");
-        tr.innerHTML = `<td></td><td></td><td></td><td class="num"></td><td class="num"></td><td class="num"></td><td></td><td><span style="color:#5d96a5">—</span></td>`;
+        tr.innerHTML = `<td></td><td></td><td></td><td class="num"></td><td class="num"></td><td class="num"></td><td></td><td></td><td><span style="color:#5d96a5">—</span></td>`;
         accountRowByKey.set(key, tr);
       }
       tr.className = "";
@@ -745,6 +870,7 @@
   $("bcBtn").onclick = broadcast;
   $("bcInput").addEventListener("keydown", (e) => { if (e.key === "Enter") broadcast(); });
   $("chatReplyBtn").onclick = replyChat;
+  $("designGiveBtn").onclick = giveDroneDesign;
   $("chatReplyInput").addEventListener("keydown", (e) => { if (e.key === "Enter") replyChat(); });
   let searchT = 0;
   $("accountSearch")?.addEventListener("input", () => { clearTimeout(searchT); searchT = setTimeout(() => { try { refreshAccounts(); } catch {} }, 250); });

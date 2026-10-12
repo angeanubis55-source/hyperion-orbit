@@ -14,6 +14,7 @@ import { pilotSkillMults } from "../SRC/DATA/PILOT_SKILLS.js";
 import { calculateRankPoints } from "../SRC/CORE/PROGRESSION.js";
 import { getShipDesignBaseId, getShipFamilyId, getShipFamilyIds, getShipFamilyName, getShipPackById } from "../SHIP/SHIP_PACKS.js";
 import { DRONE_XP_SHARE, getDroneLevel } from "../DRONE/DRONE_TYPES.js";
+import { DRONE_DESIGNS, getDroneDesign } from "../DRONE/DRONE_DESIGNS.js";
 import { PET_XP_SHARE, getPetLevel } from "../PET/PET_TYPES.js";
 import { NPC_REWARDS } from "../NPC/NPC_BALANCE.js";
 
@@ -450,18 +451,27 @@ export function adminGiveCredits(pseudo, amount) {
 
 // Admin : liste tous les comptes pour le panneau (connectés + hors ligne).
 // Retourne [{ accountId, id (pid stable u_xxx), pseudo, credits, exp, honor,
-// faction, createdAt, updatedAt }]. Tri par pseudo, max 5000.
+// gg (complétions Galaxy Gates non nulles), faction, createdAt, updatedAt }].
+// Tri par pseudo, max 5000.
 export function adminListAccounts() {
   try {
     initAccountDb();
     const rows = db.prepare("SELECT id, pseudo, faction, data, created_at, updated_at FROM users ORDER BY pseudo COLLATE NOCASE LIMIT 5000").all();
     return rows.map((r) => {
       let credits = 0, exp = 0, honor = 0;
+      let gg = {};
       try {
         const data = JSON.parse(r.data || "{}");
         credits = Math.max(0, Math.floor(Number(data.credits) || 0));
         exp = Math.max(0, Math.floor(Number(data?.stats?.exp) || 0));
         honor = Math.max(0, Math.floor(Number(data?.stats?.honor) || 0));
+        const completed = data?.galaxyGates?.completed;
+        if (completed && typeof completed === "object") {
+          for (const [gate, count] of Object.entries(completed)) {
+            const n = Math.max(0, Math.floor(Number(count) || 0));
+            if (n > 0 && /^[a-z]{3,8}$/.test(String(gate))) gg[String(gate)] = n;
+          }
+        }
       } catch {}
       const accountId = String(r.id);
       return {
@@ -469,12 +479,81 @@ export function adminListAccounts() {
         id: `u_${accountId}`.slice(0, 128),
         pseudo: String(r.pseudo || "Pilote").slice(0, 20),
         faction: String(r.faction || ""),
-        credits, exp, honor,
+        credits, exp, honor, gg,
         createdAt: Number(r.created_at) || 0,
         updatedAt: Number(r.updated_at) || 0,
       };
     });
   } catch { return []; }
+}
+
+// Admin (panneau /api/admin/reset-gg + /api/admin/give-gg) : retire/ajoute
+// la complétion d'une Galaxy Gate d'un compte par pseudo ("all" = toutes).
+// L'anneau doré apparaît/disparaît : le client adopte la version serveur à
+// sa prochaine synchro (révision bumpée). Reset retire aussi les pièces
+// Kronos issues de cette gate.
+const ADMIN_GG_IDS = Object.freeze(["alpha", "beta", "gamma", "delta", "epsilon", "zeta", "kappa", "lambda", "kronos"]);
+export function adminGiveGalaxyGate(pseudo, gate) {
+  try {
+    initAccountDb();
+    const key = norm(pseudo);
+    if (!key) return { ok: false, error: "Pseudo manquant." };
+    const row = db.prepare("SELECT * FROM users WHERE pseudo_norm = ?").get(key);
+    if (!row) return { ok: false, error: "Compte introuvable." };
+    const id = String(gate || "").toLowerCase();
+    const all = id === "all";
+    if (!all && !ADMIN_GG_IDS.includes(id)) return { ok: false, error: "Gate inconnue." };
+    let data = {};
+    try { data = JSON.parse(row.data || "{}") || {}; } catch { data = {}; }
+    data.galaxyGates ||= {};
+    data.galaxyGates.completed ||= {};
+    const targets = all ? [...ADMIN_GG_IDS] : [id];
+    const before = {};
+    for (const g of targets) {
+      before[g] = Math.max(0, Math.floor(Number(data.galaxyGates.completed[g]) || 0));
+      data.galaxyGates.completed[g] = Math.max(1, before[g]);
+    }
+    const now = Date.now();
+    const newRev = Math.max(Math.floor(Number(data.revision) || 0), Number(row.revision) || 0) + 1;
+    data._adminWriteToken = randomBytes(12).toString("hex");
+    data.revision = newRev;
+    data.updatedAt = now;
+    db.prepare("UPDATE users SET data = ?, revision = ?, updated_at = ? WHERE id = ?")
+      .run(JSON.stringify(data), newRev, now, row.id);
+    return { ok: true, id: String(row.id), pseudo: String(row.pseudo || "Pilote").slice(0, 20), gates: targets, before, revision: newRev };
+  } catch { return { ok: false, error: "Erreur serveur." }; }
+}
+export function adminResetGalaxyGate(pseudo, gate) {
+  try {
+    initAccountDb();
+    const key = norm(pseudo);
+    if (!key) return { ok: false, error: "Pseudo manquant." };
+    const row = db.prepare("SELECT * FROM users WHERE pseudo_norm = ?").get(key);
+    if (!row) return { ok: false, error: "Compte introuvable." };
+    const id = String(gate || "").toLowerCase();
+    const all = id === "all";
+    if (!all && !ADMIN_GG_IDS.includes(id)) return { ok: false, error: "Gate inconnue." };
+    let data = {};
+    try { data = JSON.parse(row.data || "{}") || {}; } catch { data = {}; }
+    data.galaxyGates ||= {};
+    data.galaxyGates.completed ||= {};
+    data.galaxyGates.kronosParts ||= {};
+    const targets = all ? [...ADMIN_GG_IDS] : [id];
+    const before = {};
+    for (const g of targets) {
+      before[g] = Math.max(0, Math.floor(Number(data.galaxyGates.completed[g]) || 0));
+      data.galaxyGates.completed[g] = 0;
+      if (g !== "kronos") data.galaxyGates.kronosParts[g] = 0;
+    }
+    const now = Date.now();
+    const newRev = Math.max(Math.floor(Number(data.revision) || 0), Number(row.revision) || 0) + 1;
+    data._adminWriteToken = randomBytes(12).toString("hex");
+    data.revision = newRev;
+    data.updatedAt = now;
+    db.prepare("UPDATE users SET data = ?, revision = ?, updated_at = ? WHERE id = ?")
+      .run(JSON.stringify(data), newRev, now, row.id);
+    return { ok: true, id: String(row.id), pseudo: String(row.pseudo || "Pilote").slice(0, 20), gates: targets, before, revision: newRev };
+  } catch { return { ok: false, error: "Erreur serveur." }; }
 }
 
 // Admin : suppression DEFINITIVE d'un compte (id u_xxx / brut ou pseudo).
@@ -1628,6 +1707,49 @@ export function adminGiveHonor(pseudo, amount) {
     db.prepare("UPDATE users SET data = ?, revision = ?, updated_at = ? WHERE id = ?")
       .run(JSON.stringify(data), newRev, now, row.id);
     return { ok: true, id: String(row.id), pseudo: String(row.pseudo || "Pilote").slice(0, 20), before, after, given: delta, revision: newRev };
+  } catch { return { ok: false, error: "Erreur serveur." }; }
+}
+
+// Admin : liste des designs de drones pour le panneau (select give design).
+// Retourne [{ id, name }] trié par nom. Id = itemId d'inventaire
+// ("drone_design_havoc", ...) directement équipable.
+export function adminDroneDesigns() {
+  try {
+    return Object.values(DRONE_DESIGNS)
+      .map((d) => ({ id: String(d.itemId), name: String(d.name) }))
+      .sort((a, b) => a.name.localeCompare(b.name, "fr"));
+  } catch { return []; }
+}
+
+// Admin : donne un design de drone à un compte (panneau
+// /api/admin/give-drone-design). Ajoute `count` exemplaires au stock
+// d'inventaire (équipables ensuite sur les drones). 1 à 99 par opération.
+export function adminGiveDroneDesign(pseudo, designId, count = 1) {
+  try {
+    initAccountDb();
+    const key = norm(pseudo);
+    if (!key) return { ok: false, error: "Pseudo manquant." };
+    const row = db.prepare("SELECT * FROM users WHERE pseudo_norm = ?").get(key);
+    if (!row) return { ok: false, error: "Compte introuvable." };
+    const design = getDroneDesign(designId);
+    if (!design) return { ok: false, error: "Design inconnu." };
+    const n = Math.floor(Number(String(count ?? "").replace(/[\s_]/g, "")) || 0);
+    if (!Number.isFinite(n) || n < 1 || n > 99) return { ok: false, error: "Quantité invalide (1 à 99)." };
+    let data = {};
+    try { data = JSON.parse(row.data || "{}") || {}; } catch { data = {}; }
+    data.inventory ||= {};
+    data.inventory.counts ||= {};
+    const before = Math.max(0, Math.floor(Number(data.inventory.counts[design.itemId]) || 0));
+    const after = before + n;
+    const now = Date.now();
+    const newRev = Math.max(Math.floor(Number(data.revision) || 0), Number(row.revision) || 0) + 1;
+    data.inventory.counts[design.itemId] = after;
+    data._adminWriteToken = randomBytes(12).toString("hex");
+    data.revision = newRev;
+    data.updatedAt = now;
+    db.prepare("UPDATE users SET data = ?, revision = ?, updated_at = ? WHERE id = ?")
+      .run(JSON.stringify(data), newRev, now, row.id);
+    return { ok: true, id: String(row.id), pseudo: String(row.pseudo || "Pilote").slice(0, 20), design: design.itemId, name: design.name, before, after, given: n, revision: newRev };
   } catch { return { ok: false, error: "Erreur serveur." }; }
 }
 
