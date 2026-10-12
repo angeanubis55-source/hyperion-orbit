@@ -3,7 +3,8 @@ import assert from "node:assert/strict";
 import vm from "node:vm";
 import { readFileSync } from "node:fs";
 import { getCurrentUserFull, buyItem, sellCurrentUserOre, setPetMode, updateCurrentUserProgress,
-  loadSkylabFromShip, chargeShipUpgradesAutomatically, craftCurrentUserRecipe } from "../SRC/CORE/ACCOUNT.js";
+  loadSkylabFromShip, chargeShipUpgradesAutomatically, craftCurrentUserRecipe, completeCurrentUserGalaxyGate } from "../SRC/CORE/ACCOUNT.js";
+import { GALAXY_GATE_DEFINITIONS, normalizeGalaxyGateState } from "../SRC/CORE/GALAXY_GATES.js";
 import { CATALOG } from "../SRC/CORE/CATALOG.js";
 import { ORE_SELL_PRICES } from "../SRC/DATA/RESOURCES.js";
 
@@ -171,3 +172,32 @@ test("la synchronisation applique aussi une diminution du stock et revient sur x
   assert.equal(ctx.player.ammo.x4, 0); assert.equal(ctx.player.ammo.active, "x1");
   assert.equal(ctx.player.rockets.plt2026, 2);
 });
+
+for (const gate of Object.values(GALAXY_GATE_DEFINITIONS)) for (const deferred of [false, true]) {
+  test(`${gate.id} : Xénomit proportionnel aux crédits, gain ${deferred ? 'différé' : 'immédiat'} et unique`, t => {
+    const { ctx } = session(t);
+    ctx.account.dirty = false;
+    const user = ctx.account.user;
+    user.inventory.resources = { prometium: 3000, xenomit: 17, kyhalon: 11, tetrathrin: 12, bifenon: 13, schism: 14, diametrion: 15 };
+    user.galaxyGates = normalizeGalaxyGateState({ active: gate.id });
+    const result = completeCurrentUserGalaxyGate(gate.id, user, { deferReward: deferred });
+    const xenomit = gate.completion.credits / 40000;
+    assert.equal(result.ok, true, gate.id);
+    assert.equal(result.reward.xenomit, xenomit, gate.id);
+    assert.equal(result.user.inventory.resources.xenomit, 17 + (deferred ? 0 : xenomit), gate.id);
+    assert.equal(result.user.inventory.resources.prometium, 3000);
+    assert.equal(getCurrentUserFull().inventory.resources.xenomit, 17 + (deferred ? 0 : xenomit), 'gain sauvegardé');
+    for (const [id, initial] of [['kyhalon', 11], ['tetrathrin', 12], ['bifenon', 13], ['schism', 14], ['diametrion', 15]]) {
+      const amount = result.reward.resources[id];
+      const creditsPerUnit = id === 'schism' ? 10000000 : id === 'diametrion' ? 2000000 : 1000000;
+      assert.equal(amount, Math.floor(gate.completion.credits / creditsPerUnit), `${gate.id} : ${id} proportionnel aux credits`);
+      assert.equal(result.user.inventory.resources[id], initial + (deferred ? 0 : amount));
+      assert.equal(getCurrentUserFull().inventory.resources[id], initial + (deferred ? 0 : amount));
+    }
+    assert.equal(completeCurrentUserGalaxyGate(gate.id, result.user).ok, false, 'pas de récompense répétée');
+    assert.equal(getCurrentUserFull().inventory.resources.xenomit, 17 + (deferred ? 0 : xenomit));
+    for (const [id, initial] of [['kyhalon', 11], ['tetrathrin', 12], ['bifenon', 13], ['schism', 14], ['diametrion', 15]]) {
+      assert.equal(getCurrentUserFull().inventory.resources[id], initial + (deferred ? 0 : result.reward.resources[id]));
+    }
+  });
+}

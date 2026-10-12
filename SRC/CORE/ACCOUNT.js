@@ -13,7 +13,7 @@ import { calculateRankPoints, getQuestExperienceReward, getQuestHonorReward } fr
 import { getFaction, getFactionBaseSpawn, normalizeFactionId } from "./FACTIONS.js";
 import { compactDroneEquipment, compactFitArray, compactFitDraft, compactPetFit } from "./FIT_LAYOUT.js";
 import { resizeShield } from "./EQUIPMENT_SYNC.js";
-import { clearGalaxyGateWaveKills, completeActiveGalaxyGate, consumeBuiltGalaxyGate, deployBuiltGalaxyGate, GALAXY_GATE_BUILD_LIMIT, GALAXY_GATE_DEFINITIONS, getGalaxyGateWaveKills, KRONOS_PARTS_BY_GATE, loseGalaxyGateLife, normalizeGalaxyGateState, normalizeGalaxyGateWave, palladiumExchangeForEnergy, PALLADIUM_PER_GALAXY_ENERGY, recordGalaxyGateWaveKill, resetGalaxyGateWaveKills, setGalaxyGateMultiplierArmed, spinGalaxyGate } from "./GALAXY_GATES.js";
+import { clearGalaxyGateWaveKills, completeActiveGalaxyGate, consumeBuiltGalaxyGate, deployBuiltGalaxyGate, GALAXY_GATE_BUILD_LIMIT, GALAXY_GATE_DEFINITIONS, getGalaxyGateWaveKills, KRONOS_PARTS_BY_GATE, loseGalaxyGateLife, normalizeGalaxyGateState, normalizeGalaxyGateWave, palladiumExchangeForEnergy, PALLADIUM_PER_GALAXY_ENERGY, recordGalaxyGateWaveKill, resetGalaxyGateWaveKills, rollGalaxyGateResourceRewards, setGalaxyGateMultiplierArmed, spinGalaxyGate } from "./GALAXY_GATES.js";
 import { getCraftingRecipe, CRAFTING_ENABLED } from "../DATA/CRAFTING.js";
 import { getRefineryRecipe, refineOreOutput, isOreResource, ORE_SELL_PRICES, UPGRADE_SLOT_ORES, upgradeOreCapacity, planAutoUpgradeCharges, cargoAdd, cargoFree, CARGO_CAPACITY } from "../DATA/RESOURCES.js";
 import { getModuleRarity, MODULE_DAILY_ROLL_LIMIT, MODULE_ROLL_COST, MODULE_SELL_PRICES } from "../DATA/MODULE_DROPS.js";
@@ -2269,7 +2269,8 @@ export function completeCurrentUserGalaxyGate(gateId, currentUser = null, option
   if (!u) return { ok: false, error: "Aucun utilisateur connecté." };
   const result = completeActiveGalaxyGate(u.galaxyGates, gateId);
   if (!result.ok) return { ok: false, error: "Aucune Galaxy Gate active correspondante." };
-  const reward = GALAXY_GATE_DEFINITIONS[String(gateId || "").toLowerCase()]?.completion;
+  const baseReward = GALAXY_GATE_DEFINITIONS[String(gateId || "").toLowerCase()]?.completion;
+  const reward = baseReward ? { ...baseReward, resources: rollGalaxyGateResourceRewards(baseReward.resources) } : null;
   u.galaxyGates = result.state;
   // ✅ Kronos (officiel) : chaque gate terminée crédite des parts Kronos
   // (total 21). Promotion auto en gate construite + pose auto sur la map.
@@ -2327,6 +2328,16 @@ export function completeCurrentUserGalaxyGate(gateId, currentUser = null, option
     u.stats.rankPoints = calculateRankPoints(u.stats);
     u.ammo ||= {};
     u.ammo.x4 = Math.max(0, Math.floor(Number(u.ammo.x4 || 0))) + Math.max(0, Math.floor(Number(reward.x4 || 0)));
+    const xenomit = Math.max(0, Math.floor(Number(reward.xenomit) || 0));
+    const resources = { ...reward.resources, xenomit };
+    if (Object.values(resources).some(amount => amount > 0)) {
+      u.inventory ||= {};
+      u.inventory.resources ||= {};
+      for (const [id, amount] of Object.entries(resources)) {
+        if (amount > 0) u.inventory.resources[id] = Math.max(0, Math.floor(Number(u.inventory.resources[id]) || 0)) + amount;
+      }
+      noteNetResourceGain(resources);
+    }
     // Mode multi : la gate consommée survit via pendingGalaxyGates, mais les
     // gains crédits/munitions seraient perdus sur 409 (XP : MAX du merge).
     noteNetCreditGain(Math.max(0, Math.floor(Number(reward.credits || 0))));

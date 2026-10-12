@@ -1,21 +1,50 @@
 ﻿"use strict";
 
+export function galaxyGateXenomitForCredits(credits) {
+  const amount = Number(credits);
+  return Number.isFinite(amount) ? Math.max(0, Math.floor(amount / 40000)) : 0;
+}
+
+export function galaxyGateMaterialAmountForCredits(credits) {
+  const amount = Number(credits);
+  return Number.isFinite(amount) ? Math.max(0, Math.floor(amount / 1000000)) : 0;
+}
+
+function defineCompletionReward(reward) {
+  const amount = galaxyGateMaterialAmountForCredits(reward.credits);
+  return Object.freeze({ ...reward, xenomit: galaxyGateXenomitForCredits(reward.credits),
+    resources: Object.freeze({ kyhalon: amount, tetrathrin: amount, bifenon: amount,
+      schism: Math.floor(amount / 10), diametrion: Math.floor(amount / 2) }) });
+}
+
+// Resolve each material independently once per completion. Numeric amounts
+// are already resolved and keep their value during delayed distribution.
+export function rollGalaxyGateResourceRewards(resources, rng = Math.random) {
+  return Object.fromEntries(Object.entries(resources || {}).map(([id, value]) => {
+    if (!Array.isArray(value)) return [id, Math.max(0, Math.floor(Number(value) || 0))];
+    const min = Math.max(0, Math.floor(Number(value[0]) || 0));
+    const max = Math.max(min, Math.floor(Number(value[1]) || 0));
+    const random = Math.max(0, Math.min(1 - Number.EPSILON, Number(rng()) || 0));
+    return [id, min + Math.floor(random * (max - min + 1))];
+  }));
+}
+
 export const GALAXY_GATE_DEFINITIONS = Object.freeze({
-  alpha: Object.freeze({ id: "alpha", name: "Alpha", group: "ensemble", requiredParts: 34, maxWaves: 11, maxLives: 5, image: "ASSETS/ALPHA_PORTAL/DESACTIVE.png", completion: Object.freeze({ exp: 6000000, honor: 150000, credits: 20000000, x4: 30000 }), rewardScale: 1 }),
-  beta: Object.freeze({ id: "beta", name: "Beta", group: "ensemble", requiredParts: 48, maxWaves: 11, maxLives: 5, image: "ASSETS/BETA_PORTAL/DESACTIVE.png", completion: Object.freeze({ exp: 12000000, honor: 300000, credits: 35000000, x4: 60000 }), rewardScale: 2 }),
-  gamma: Object.freeze({ id: "gamma", name: "Gamma", group: "ensemble", requiredParts: 82, maxWaves: 11, maxLives: 5, image: "ASSETS/GAMMA_PORTAL/DESACTIVE.png", completion: Object.freeze({ exp: 18000000, honor: 450000, credits: 50000000, x4: 100000 }), rewardScale: 3 }),
+  alpha: Object.freeze({ id: "alpha", name: "Alpha", group: "ensemble", requiredParts: 34, maxWaves: 11, maxLives: 5, image: "ASSETS/ALPHA_PORTAL/DESACTIVE.png", completion: defineCompletionReward({ exp: 6000000, honor: 150000, credits: 20000000, x4: 30000 }), rewardScale: 1 }),
+  beta: Object.freeze({ id: "beta", name: "Beta", group: "ensemble", requiredParts: 48, maxWaves: 11, maxLives: 5, image: "ASSETS/BETA_PORTAL/DESACTIVE.png", completion: defineCompletionReward({ exp: 12000000, honor: 300000, credits: 35000000, x4: 60000 }), rewardScale: 2 }),
+  gamma: Object.freeze({ id: "gamma", name: "Gamma", group: "ensemble", requiredParts: 82, maxWaves: 11, maxLives: 5, image: "ASSETS/GAMMA_PORTAL/DESACTIVE.png", completion: defineCompletionReward({ exp: 18000000, honor: 450000, credits: 50000000, x4: 100000 }), rewardScale: 3 }),
   // ✅ Delta : roue de spin isolée (groupe "delta"), 128 pièces / 10 vagues (officiel).
-  delta: Object.freeze({ id: "delta", name: "Delta", group: "delta", requiredParts: 128, maxWaves: 10, maxLives: 5, image: "ASSETS/DELTA_PORTAL/DESACTIVE.png", completion: Object.freeze({ exp: 13500000, honor: 337500, credits: 65000000, x4: 67500 }), rewardScale: 3 }),
+  delta: Object.freeze({ id: "delta", name: "Delta", group: "delta", requiredParts: 128, maxWaves: 10, maxLives: 5, image: "ASSETS/DELTA_PORTAL/DESACTIVE.png", completion: defineCompletionReward({ exp: 13500000, honor: 337500, credits: 65000000, x4: 67500 }), rewardScale: 3 }),
   // ✅ Epsilon : roue de spin isolée (groupe "epsilon"), 99 pièces / 11 vagues pirates (officiel).
-  epsilon: Object.freeze({ id: "epsilon", name: "Epsilon", group: "epsilon", requiredParts: 99, maxWaves: 11, maxLives: 5, image: "ASSETS/EPSILON_PORTAL/DESACTIVE.png", completion: Object.freeze({ exp: 7500000, honor: 225000, credits: 30000000, x4: 30000 }), rewardScale: 1 }),
+  epsilon: Object.freeze({ id: "epsilon", name: "Epsilon", group: "epsilon", requiredParts: 99, maxWaves: 11, maxLives: 5, image: "ASSETS/EPSILON_PORTAL/DESACTIVE.png", completion: defineCompletionReward({ exp: 7500000, honor: 225000, credits: 30000000, x4: 30000 }), rewardScale: 1 }),
   // ✅ Zeta : roue de spin isolée (groupe "zeta"), 111 pièces / 10 vagues (finale scriptée Devourer).
-  zeta: Object.freeze({ id: "zeta", name: "Zeta", group: "zeta", requiredParts: 111, maxWaves: 10, maxLives: 5, image: "ASSETS/ZETA_PORTAL/DESACTIVE.png", completion: Object.freeze({ exp: 9000000, honor: 300000, credits: 45000000, x4: 37500 }), rewardScale: 1 }),
+  zeta: Object.freeze({ id: "zeta", name: "Zeta", group: "zeta", requiredParts: 111, maxWaves: 10, maxLives: 5, image: "ASSETS/ZETA_PORTAL/DESACTIVE.png", completion: defineCompletionReward({ exp: 9000000, honor: 300000, credits: 45000000, x4: 37500 }), rewardScale: 1 }),
   // ✅ Kappa : roue de spin isolée (groupe "kappa"), 120 pièces / 11 vagues mixtes (officiel).
-  kappa: Object.freeze({ id: "kappa", name: "Kappa", group: "kappa", requiredParts: 120, maxWaves: 11, maxLives: 5, image: "ASSETS/KAPPA_PORTAL/DESACTIVE.png", completion: Object.freeze({ exp: 13500000, honor: 487500, credits: 60000000, x4: 45000 }), rewardScale: 1 }),
+  kappa: Object.freeze({ id: "kappa", name: "Kappa", group: "kappa", requiredParts: 120, maxWaves: 11, maxLives: 5, image: "ASSETS/KAPPA_PORTAL/DESACTIVE.png", completion: defineCompletionReward({ exp: 13500000, honor: 487500, credits: 60000000, x4: 45000 }), rewardScale: 1 }),
   // ✅ Lambda : roue de spin isolée (groupe "lambda"), 45 pièces / 7 vagues de Boss (officiel).
-  lambda: Object.freeze({ id: "lambda", name: "Lambda", group: "lambda", requiredParts: 45, maxWaves: 7, maxLives: 5, image: "ASSETS/LAMBDA_PORTAL/DESACTIVE.png", completion: Object.freeze({ exp: 4125000, honor: 150000, credits: 15000000, x4: 15000 }), rewardScale: 1 }),
+  lambda: Object.freeze({ id: "lambda", name: "Lambda", group: "lambda", requiredParts: 45, maxWaves: 7, maxLives: 5, image: "ASSETS/LAMBDA_PORTAL/DESACTIVE.png", completion: defineCompletionReward({ exp: 4125000, honor: 150000, credits: 15000000, x4: 15000 }), rewardScale: 1 }),
   // ✅ Kronos : PAS de roue (construction fidèle via complétions des autres gates), 21 pièces / 13 vagues Saturn.
-  kronos: Object.freeze({ id: "kronos", name: "Kronos", group: null, requiredParts: 21, maxWaves: 13, maxLives: 5, image: "ASSETS/KRONOS_PORTAL/DESACTIVE.png", completion: Object.freeze({ exp: 18000000, honor: 675000, credits: 80000000, x4: 37500 }), rewardScale: 1 }),
+  kronos: Object.freeze({ id: "kronos", name: "Kronos", group: null, requiredParts: 21, maxWaves: 13, maxLives: 5, image: "ASSETS/KRONOS_PORTAL/DESACTIVE.png", completion: defineCompletionReward({ exp: 18000000, honor: 675000, credits: 80000000, x4: 37500 }), rewardScale: 1 }),
 });
 
 // Groupes de spin : "ensemble" (Alpha/Beta/Gamma, une seule roue), "delta",
@@ -178,7 +207,6 @@ export function spinGalaxyGate(stateInput, gateId, count = 1, credits = 0, rng =
   const registerDuplicate = (duplicateGate) => {
     const group = duplicateGate.group || duplicateGate.id;
     state.multipliers[group] = Math.min(5, Math.max(1, Number(state.multipliers?.[group]) || 1) + 1);
-    state.lastOpenedGate = duplicateGate.id;
     if (state.multipliers[group] >= 5) state.multiplierArmed[group] = true;
     rewards.duplicates.push({ gate: duplicateGate.id, multiplier: state.multipliers[group] });
   };
@@ -229,9 +257,6 @@ export function spinGalaxyGate(stateInput, gateId, count = 1, credits = 0, rng =
         rewards.built++;
         rewards.builtByGate[partGate.id]++;
       }
-      if (partGate) {
-        state.lastOpenedGate = partGate.id;
-      }
     } else if (roll < 0.32) {
       registerDuplicate(randomGate());
     } else if (roll < 0.55) {
@@ -271,6 +296,7 @@ export function spinGalaxyGate(stateInput, gateId, count = 1, credits = 0, rng =
   }
 
   if (!performed) return { ok: false, error: `Énergie insuffisante et ${GALAXY_SPIN_CREDIT_COST.toLocaleString("fr-FR")} crédits requis par spin.`, state, credits: balance };
+  state.lastOpenedGate = gate.id;
   state.energy += rewards.energy;
   balance += rewards.credits;
   // ✅ auto-placement : chaque GG terminée par ce spin est directement posée

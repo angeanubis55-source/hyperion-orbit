@@ -3,12 +3,69 @@ import assert from "node:assert/strict";
 import vm from "node:vm";
 import { readFileSync } from "node:fs";
 import { GALAXY_GATE_DEFINITIONS, normalizeGalaxyGateState, normalizeGalaxyGateWave, completeActiveGalaxyGate,
-  recordGalaxyGateWaveKill, getGalaxyGateWaveKills, resetGalaxyGateWaveKills } from "../SRC/CORE/GALAXY_GATES.js";
+  recordGalaxyGateWaveKill, getGalaxyGateWaveKills, resetGalaxyGateWaveKills, rollGalaxyGateResourceRewards, galaxyGateXenomitForCredits, galaxyGateMaterialAmountForCredits, spinGalaxyGate } from "../SRC/CORE/GALAXY_GATES.js";
 import { remainingWaveSpawns, createWaveSpawnState } from "../SRC/CORE/WAVES.js";
 import { NPC_TYPES } from "../NPC/NPC_TYPES.js";
 import { getWavePlan as lambdaPlan } from "../MAPS/LAMBDA_MAP/WAVES.js";
+import { getResourceName, getResourceIcon, cargoUsed, cargoAdd } from "../SRC/DATA/RESOURCES.js";
 
 const engine = readFileSync(new URL("../SRC/CORE/ORBIT_ENGINE.js", import.meta.url), "utf8").replace(/\r\n/g, "\n");
+test('GG : le premier spin et les suivants memorisent la gate choisie quelle que soit la recompense', () => {
+  for (const gate of Object.values(GALAXY_GATE_DEFINITIONS).filter(gate => gate.group)) {
+    for (const roll of [0.1, 0.25, 0.4, 0.98]) {
+      const input = { energy: 10, lastOpenedGate: 'alpha' };
+      const first = spinGalaxyGate(input, gate.id, 1, 0, () => roll);
+      assert.equal(first.ok, true);
+      assert.equal(first.state.lastOpenedGate, gate.id, `${gate.id} : premier spin ${roll}`);
+      assert.equal(first.state.history.at(-1).gate, gate.id);
+      const next = spinGalaxyGate(first.state, gate.id, 3, first.credits, () => roll);
+      assert.equal(next.state.lastOpenedGate, gate.id, `${gate.id} : spins suivants ${roll}`);
+      if (gate.group === 'ensemble' && roll === 0.1) {
+        assert.equal(first.rewards.partsByGate.alpha, 1, 'les pieces ABG restent partagees entre les trois gates');
+      }
+      assert.equal(input.lastOpenedGate, 'alpha', 'la sauvegarde source reste intacte');
+    }
+  }
+});
+test('GG : Xenomit proportionnel aux credits finaux, et automatiquement recalcule si le montant change', () => {
+  const expected = { alpha: 500, beta: 875, gamma: 1250, delta: 1625, epsilon: 750, zeta: 1125, kappa: 1500, lambda: 375, kronos: 2000 };
+  for (const [id, amount] of Object.entries(expected)) {
+    assert.equal(GALAXY_GATE_DEFINITIONS[id].completion.xenomit, amount);
+    assert.equal(galaxyGateXenomitForCredits(GALAXY_GATE_DEFINITIONS[id].completion.credits), amount);
+  }
+  assert.equal(galaxyGateXenomitForCredits(40000000), 1000);
+  assert.equal(galaxyGateXenomitForCredits(20039999), 500, 'arrondi a l entier inferieur');
+  for (const credits of [0, -40000, NaN, Infinity]) assert.equal(galaxyGateXenomitForCredits(credits), 0);
+});
+test('toutes les GG : 20 de chaque materiau pour 20 millions de credits finaux', () => {
+  const expected = { alpha: 20, beta: 35, gamma: 50, delta: 65, epsilon: 30, zeta: 45, kappa: 60, lambda: 15, kronos: 80 };
+  for (const [id, amount] of Object.entries(expected)) {
+    assert.deepEqual(GALAXY_GATE_DEFINITIONS[id].completion.resources, {
+      kyhalon: amount, tetrathrin: amount, bifenon: amount, schism: Math.floor(amount / 10), diametrion: Math.floor(amount / 2) });
+  }
+  assert.equal(galaxyGateMaterialAmountForCredits(40000000), 40);
+  assert.equal(galaxyGateMaterialAmountForCredits(20999999), 20);
+  for (const credits of [0, -1000000, NaN, Infinity]) assert.equal(galaxyGateMaterialAmountForCredits(credits), 0);
+});
+test('GG : les montants des materiaux restent identiques a la distribution differee', () => {
+  for (const gate of Object.values(GALAXY_GATE_DEFINITIONS)) {
+    const noRandom = () => { throw new Error('aucun tirage aleatoire pour les recompenses fixes'); };
+    const reward = rollGalaxyGateResourceRewards(gate.completion.resources, noRandom);
+    assert.deepEqual(reward, gate.completion.resources);
+    assert.deepEqual(rollGalaxyGateResourceRewards(reward, noRandom), reward);
+  }
+});
+test('Schism et Diametrion : icones disponibles et aucun espace de soute utilise', () => {
+  const manifest = JSON.parse(readFileSync(new URL('../ASSETS_MANIFEST.json', import.meta.url), 'utf8'));
+  for (const [id, label] of [['schism', 'Schism'], ['diametrion', 'Diamétrion']]) {
+    assert.equal(getResourceName(id), label);
+    const icon = getResourceIcon(id);
+    assert.ok(readFileSync(new URL('..' + icon, import.meta.url)).length > 0);
+    assert.ok(manifest.assets.includes('.' + icon));
+    assert.equal(cargoUsed({ prometium: 3000, [id]: 100 }), 3000);
+    assert.equal(cargoAdd({ prometium: 3000 }, id, 100).added, 100);
+  }
+});
 function engineFunction(name) {
   const from = engine.indexOf(`function ${name}(`), to = engine.indexOf("\n}", from);
   assert.ok(from >= 0 && to > from);

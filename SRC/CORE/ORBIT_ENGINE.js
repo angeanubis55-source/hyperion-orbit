@@ -90,6 +90,7 @@ import {
   normalizeGalaxyGateWave, GALAXY_GATE_DEFINITIONS,
   GALAXY_SPIN_CREDIT_COST,
   normalizeGalaxyGateState,
+  rollGalaxyGateResourceRewards,
 } from "./GALAXY_GATES.js";
 import { computeHangarStats } from "../../SHIP/SHIP_HANGARS.js";
 import { resizeShield } from "./EQUIPMENT_SYNC.js";
@@ -14363,7 +14364,9 @@ function renderGalaxyGateWindow(message = "") {
   ui.ggPortalImage.src = gate.image;
   ui.ggPortalImage.alt = `Portail ${gate.name}`;
   const completion = gate.completion;
-  ui.ggRewards.innerHTML = `<strong>Récompenses finales</strong><span>${formatInteger(completion.exp)} XP</span><span>${formatInteger(completion.honor)} honneur</span><span>${formatInteger(completion.credits)} crédits</span><span>${formatInteger(completion.x4)} UCB-100</span>`;
+  const materials = Object.entries(completion.resources || {}).map(([id, amount]) =>
+    `<span>${Array.isArray(amount) ? `${formatInteger(amount[0])}–${formatInteger(amount[1])}` : formatInteger(amount)} ${getResourceName(id)}</span>`).join("");
+  ui.ggRewards.innerHTML = `<strong>Récompenses finales</strong><span>${formatInteger(completion.exp)} XP</span><span>${formatInteger(completion.honor)} honneur</span><span>${formatInteger(completion.credits)} crédits</span><span>${formatInteger(completion.x4)} UCB-100</span><span>${formatInteger(completion.xenomit)} Xénomit</span>${materials}`;
   ui.ggNpcRewardScale.innerHTML = `Récompenses des NPC <em>×${gate.rewardScale}</em>`;
   // ✅ multiplicateur affiché/armé par groupe de spin (ABG vs Delta isolés).
   const ggSpinGroup = gate.group || gate.id;
@@ -14526,7 +14529,6 @@ ui.galaxyGateWindow?.addEventListener("click", event => {
     return;
   }
   account.user = result.user;
-  if (GALAXY_GATE_DEFINITIONS[result.state.lastOpenedGate]) selectedGalaxyGateId = result.state.lastOpenedGate;
   player.credits = result.user.credits;
   player.ammo.x2 = result.user.ammo.x2;
   player.ammo.x3 = result.user.ammo.x3;
@@ -27561,10 +27563,23 @@ function scheduleGalaxyGateCompletion(gateId, completion) {
       player.ammo.x4 += x4;
       const xpResult = awardExperience(Math.max(0, Number(baseReward.exp) || 0), "gate");
       const honorResult = awardHonor(Math.max(0, Number(baseReward.honor) || 0));
+      const xenomit = Math.max(0, Math.floor(Number(baseReward.xenomit) || 0));
+      const resources = rollGalaxyGateResourceRewards(baseReward.resources);
+      const resourceGains = { ...resources, xenomit };
+      if (account.user && Object.values(resourceGains).some(amount => amount > 0)) {
+        account.user.inventory ||= {};
+        account.user.inventory.resources ||= {};
+        for (const [id, amount] of Object.entries(resourceGains)) {
+          if (amount > 0) account.user.inventory.resources[id] = Math.max(0, Math.floor(Number(account.user.inventory.resources[id]) || 0)) + amount;
+        }
+        noteNetResourceGain(resourceGains);
+      }
       reward = {
         ...baseReward,
         credits,
         x4,
+        xenomit,
+        resources,
         exp: xpResult?.gained ?? Math.max(0, Math.floor(Number(baseReward.exp) || 0)),
         honor: honorResult?.gained ?? Math.max(0, Math.floor(Number(baseReward.honor) || 0)),
       };
@@ -27581,6 +27596,9 @@ function scheduleGalaxyGateCompletion(gateId, completion) {
       `Vous avez gagné ${formatInteger(reward.honor)} honneur`,
       `Vous avez reçu ${formatInteger(reward.credits)} crédits`,
       ...(Number(reward.x4) > 0 ? [`Vous avez reçu ${formatInteger(reward.x4)} UCB-100`] : []),
+      ...(Number(reward.xenomit) > 0 ? [`Vous avez reçu ${formatInteger(reward.xenomit)} Xénomit`] : []),
+      ...Object.entries(reward.resources || {}).filter(([, amount]) => amount > 0)
+        .map(([id, amount]) => `Vous avez reçu ${formatInteger(amount)} ${getResourceName(id, amount)}`),
       ...(Array.isArray(reward.resourceMessages) ? reward.resourceMessages : []),
     ];
     showNotificationGroup(messages, "reward");

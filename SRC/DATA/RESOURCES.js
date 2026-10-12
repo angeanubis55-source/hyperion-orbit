@@ -24,6 +24,8 @@ export const RESOURCE_TYPES = Object.freeze({
   bifenon: Object.freeze({ id: "bifenon", name: "Bifenon", plural: "Bifenon", icon: "/ASSETS/ORES/BIFENON.png" }),
   tetrathrin: Object.freeze({ id: "tetrathrin", name: "Tetrathrin", plural: "Tetrathrin", icon: "/ASSETS/ORES/TETRATHRIN.png" }),
   kyhalon: Object.freeze({ id: "kyhalon", name: "Kyhalon", plural: "Kyhalon", icon: "/ASSETS/ORES/KYHALON.png" }),
+  schism: Object.freeze({ id: "schism", name: "Schism", plural: "Schism", icon: "/ASSETS/ORES/SCHISM.png" }),
+  diametrion: Object.freeze({ id: "diametrion", name: "Diamétrion", plural: "Diamétrion", icon: "/ASSETS/ORES/DIAMETRION.png" }),
   rinusk: Object.freeze({ id: "rinusk", name: "Rinusk", plural: "Rinusk", icon: "/ASSETS/ORES/RINUSK.png" }),
   blacklight_trace: Object.freeze({ id: "blacklight_trace", name: "Traceur Blacklight", plural: "Traceurs Blacklight", icon: "/ASSETS/ORES/BLACKLIGHT_TRACE.png" }),
   mindfire_cerebrum: Object.freeze({ id: "mindfire_cerebrum", name: "Cerebrum Mindfire", plural: "Cerebrum Mindfire", icon: "/ASSETS/ORES/MINDFIRE_CEREBRUM.png" }),
