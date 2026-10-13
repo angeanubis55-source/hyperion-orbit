@@ -12,7 +12,7 @@ export const DRONE_DESIGNS = Object.freeze({
   havoc: design("havoc", "Havoc", "HAVOK", { damagePct: 1 }),
   hermes: design("hermes", "Hermes", "HERMES", { cooldownPct: 1 }),
   hercules: design("hercules", "Hercules", "HERCULES", { shieldPct: 2, hpPct: 2 }),
-  admin: design("admin", "ADMIN", "ADMIN", { damagePct: 1, hpPct: 1, cooldownPct: 1, evasionPct: 1 }),
+  admin: design("admin", "ADMIN", "ADMIN", { damagePct: 1, shieldPct: 1, hpPct: 1, cooldownPct: 1, evasionPct: 1, laserHitPct: 1, rocketHitPct: 1, honorPct: 1, expPct: 1, speedPct: 1 }),
   saturn: design("saturn", "SATURN", "SATURN", { hpPct: 2.5, laserHitPct: 2.5, rocketHitPct: 2.5 }),
 });
 
@@ -34,7 +34,7 @@ export function getDroneFitForHangar(drone, hangarId, configNo = 1) {
 }
 
 export function getDroneDesignBonuses(user, hangarId, configNo = 1, fitForDrone = null) {
-  const effects = { damagePct: 0, shieldPct: 0, hpPct: 0, cooldownPct: 0, evasionPct: 0, laserHitPct: 0, rocketHitPct: 0 };
+  const effects = { damagePct: 0, shieldPct: 0, hpPct: 0, cooldownPct: 0, evasionPct: 0, laserHitPct: 0, rocketHitPct: 0, honorPct: 0, expPct: 0, speedPct: 0 };
   const counts = Object.fromEntries(Object.keys(DRONE_DESIGNS).map(id => [id, 0]));
   for (const drone of user?.drones?.items || []) {
     const fit = fitForDrone ? fitForDrone(drone) : getDroneFitForHangar(drone, hangarId, configNo);
@@ -50,7 +50,8 @@ export function droneDesignBonusLabel(value, bonuses) {
   const selected = getDroneDesign(value);
   if (!selected) return "Aucun bonus";
   const labels = { damagePct: "dégâts bonus", hpPct: "PV bonus", shieldPct: "bouclier bonus",
-    cooldownPct: "recharge en moins", evasionPct: "évasion bonus", laserHitPct: "précision laser bonus", rocketHitPct: "précision roquettes bonus" };
+    cooldownPct: "recharge en moins", evasionPct: "évasion bonus", laserHitPct: "précision laser bonus", rocketHitPct: "précision roquettes bonus",
+    honorPct: "honneur bonus", expPct: "expérience bonus", speedPct: "vitesse bonus" };
   return Object.keys(selected.effects).map(key => `${Number(bonuses?.effects?.[key] || 0).toLocaleString("fr-FR")} % ${labels[key]}`).join(" · ");
 }
 

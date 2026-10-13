@@ -27,7 +27,7 @@ test('designs : Havoc/Hermes rares, Hercules epique, SATURN/ADMIN legendaires', 
 });
 
 for (const [id, expected] of Object.entries({ havoc: { damagePct: 10 }, hermes: { cooldownPct: 10 },
-  hercules: { shieldPct: 20, hpPct: 20 }, admin: { damagePct: 10, hpPct: 10, cooldownPct: 10, evasionPct: 10 },
+  hercules: { shieldPct: 20, hpPct: 20 }, admin: { damagePct: 10, shieldPct: 10, hpPct: 10, cooldownPct: 10, evasionPct: 10, laserHitPct: 10, rocketHitPct: 10, honorPct: 10, expPct: 10, speedPct: 10 },
   saturn: { hpPct: 25, laserHitPct: 25, rocketHitPct: 25 } })) {
   test(`${id} : bonus de dix designs appliques une seule fois sur tout le vaisseau`, () => {
     const baseline = fixture();
@@ -37,6 +37,9 @@ for (const [id, expected] of Object.entries({ havoc: { damagePct: 10 }, hermes: 
     assert.ok(Math.abs(fitted.stats.totalLaserDamage - baseline.stats.totalLaserDamage * (1 + (expected.damagePct || 0) / 100)) < 1e-8);
     assert.ok(Math.abs(fitted.stats.bonusShield - baseline.stats.bonusShield * (1 + (expected.shieldPct || 0) / 100)) < 1e-8);
     assert.equal(fitted.stats.bonusHPPct, expected.hpPct || 0);
+    assert.equal(fitted.stats.bonusHonorPct, expected.honorPct || 0);
+    assert.equal(fitted.stats.bonusExpPct, expected.expPct || 0);
+    assert.equal(fitted.stats.droneDesignEffects.speedPct, expected.speedPct || 0);
     assert.equal(fitted.stats.bonusAbilityCooldownPct, expected.cooldownPct || 0);
     const profile = combatProfile(fitted.user, '1-1');
     const normal = combatProfile(baseline.user, '1-1');
@@ -51,7 +54,7 @@ for (const [id, expected] of Object.entries({ havoc: { damagePct: 10 }, hermes: 
 test('designs mixtes et partiels : cumuls, label total et isolation entre hangars/configs', () => {
   const f = fixture(['havoc','havoc','hercules','hercules','hermes','hermes','admin','admin','saturn','saturn']);
   const bonuses = getDroneDesignBonuses(f.user, 'h1', 1);
-  assert.deepEqual(bonuses.effects, { damagePct: 4, shieldPct: 4, hpPct: 11, cooldownPct: 4, evasionPct: 2, laserHitPct: 5, rocketHitPct: 5 });
+  assert.deepEqual(bonuses.effects, { damagePct: 4, shieldPct: 6, hpPct: 11, cooldownPct: 4, evasionPct: 2, laserHitPct: 7, rocketHitPct: 7, honorPct: 2, expPct: 2, speedPct: 2 });
   assert.equal(droneDesignBonusLabel('havoc', bonuses), '4 % dégâts bonus');
   assert.equal(droneDesignBonusLabel(null, bonuses), 'Aucun bonus');
   for (const [hid, cfg] of [['h1',2], ['h2',1]]) {

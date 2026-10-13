@@ -211,6 +211,9 @@ const fit =
   bonusLaserHitPct += droneDesignEffects.laserHitPct;
   bonusRocketHitPct += droneDesignEffects.rocketHitPct;
   bonusEvasionPct += droneDesignEffects.evasionPct;
+  bonusHonorPct += droneDesignEffects.honorPct;
+  bonusExpPct += droneDesignEffects.expPct;
+  bonusSpeedPct += droneDesignEffects.speedPct;
 
   // ✅ ÉTAPE 3 : calculer les valeurs finales
   const totalLaserDamage = baseDamage * (1 + bonusDamagePct / 100);

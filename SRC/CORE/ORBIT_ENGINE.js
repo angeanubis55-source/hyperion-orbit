@@ -38876,10 +38876,29 @@ const MAP_BACKGROUND = {
   src: "ASSETS/BACKGROUNDS/Hyperion_fond.webp",
 };
 
+// ✅ Fond par tranche de vagues (ex. GG Awakened via rules.waveBackgrounds) :
+// sinon fond global. Résolu à chaque frame pour changer dès la vague suivante.
+function currentMapBackgroundSrc() {
+  try {
+    const list = rules?.waveBackgrounds;
+    if (rules?.mode === "gate" && Array.isArray(list)) {
+      const w = Math.max(1, Math.floor(Number(wave) || 1));
+      for (const entry of list) {
+        const lo = Math.max(1, Math.floor(Number(entry?.minWave) || 1));
+        const hi = Math.max(lo, Math.floor(Number(entry?.maxWave) || lo));
+        if (w >= lo && w <= hi && entry?.src) return entry.src;
+      }
+    }
+  } catch {}
+  return MAP_BACKGROUND.src;
+}
+
 loadImage(MAP_BACKGROUND.src, { priority: true });
 
 function drawMapBackground() {
-  const img = getCachedImage(MAP_BACKGROUND.src);
+  // getCachedImage déclenche le chargement si besoin : aucun flash noir
+  // prolongé quand on change de tranche (préchargé à l'entrée de toute façon).
+  const img = getCachedImage(currentMapBackgroundSrc());
   if (!isImgReady(img)) return;
   const sourceW = Math.max(1, Number(img.naturalWidth || img.width) || 1920);
   const sourceH = Math.max(1, Number(img.naturalHeight || img.height) || 1080);
@@ -40923,6 +40942,12 @@ async function switchMapConfig(nextConfig, { mapId, spawnId = null } = {}) {
     for (const type of gateTypes) if (NPC_TYPES[type]) jobs.push(ensureNpcLoaded(type));
   }
   for (const targetPortal of preparedZonePortals) jobs.push(...preloadPortalSprites(targetPortal));
+  // ✅ fonds par tranche de vagues (ex. GG Awakened) : préchargés à l'entrée.
+  if (Array.isArray(nextRules.waveBackgrounds)) {
+    for (const entry of nextRules.waveBackgrounds) {
+      if (entry?.src) jobs.push(loadImage(entry.src, { priority: true }));
+    }
+  }
   await Promise.allSettled(jobs);
 
   saveStateImmediate();

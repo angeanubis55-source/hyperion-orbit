@@ -37,6 +37,13 @@ export function init() {
         name: "???",
         initialGuard: true,
       },
+      // ✅ Fonds par tranche de vagues : 1 → 1-5, 2 → 6-11, 3 → 12-16, 4 → 17.
+      waveBackgrounds: [
+        { minWave: 1, maxWave: 5, src: "ASSETS/BACKGROUNDS/AWAKENED_1.png" },
+        { minWave: 6, maxWave: 11, src: "ASSETS/BACKGROUNDS/AWAKENED_2.png" },
+        { minWave: 12, maxWave: 16, src: "ASSETS/BACKGROUNDS/AWAKENED_3.png" },
+        { minWave: 17, maxWave: 17, src: "ASSETS/BACKGROUNDS/AWAKENED_4.png" },
+      ],
     },
   });
 }
