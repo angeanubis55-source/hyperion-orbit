@@ -1,4 +1,4 @@
-// MAPS/AWAKENED_MAP/WAVES.js — table rase : les vagues seront branchées une par une.
+// MAPS/AWAKENED_MAP/WAVES.js — 17 vagues Awakened (finale : vague 17).
 export const DEFAULT_WAVE_TYPE = "npc_Awakened_Lordakium";
 
 export const WAVE_PLANS = [

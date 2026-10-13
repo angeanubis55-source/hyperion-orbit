@@ -27243,11 +27243,14 @@ function updateBossEncounters() {
   for (const boss of enemies) {
     const state = boss?._bossEncounter;
     if (!state?.invulnerable || boss.hp <= 0) continue;
+    // ✅ garde initiale : file NON ENCORE SPAWNÉE (paliers futurs exclus :
+    // sinon, avec des paliers en attente, remaining ne tombe jamais à 0 et
+    // la garde ne tombe jamais) OU autre NPC non-boss en vie.
+    const queueLeft = Array.isArray(waveSpawns.queue)
+      ? waveSpawns.queue.reduce((sum, spawn) => sum + Math.max(0, Number(spawn?.left) || 0), 0)
+      : Math.max(0, Number(waveSpawns.remaining) || 0);
     const remaining = state.initialGuard
-      // ✅ garde initiale : file non vide OU autre NPC non-boss en vie.
-      // Les autres boss ne se bloquent pas entre eux (ex. vague 8 Awakened :
-      // 3 Devourers vulnérables dès que les Protegit sont morts).
-      ? waveSpawns.remaining > 0 || enemies.some(enemy => enemy?.hp > 0 && enemy !== boss && !enemy._bossEncounter)
+      ? queueLeft > 0 || enemies.some(enemy => enemy?.hp > 0 && enemy !== boss && !enemy._bossEncounter)
       : enemies.some(enemy => enemy?.hp > 0 && enemy._bossPhaseMinion && enemy.masterId === boss.id);
     if (remaining) continue;
     state.invulnerable = false;
