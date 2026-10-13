@@ -2583,9 +2583,10 @@ export const NPC_TYPES = {
     bulletSprite: { src: "COMBAT/MUNITIONS/X3.png", w: 78, h: 20, glow: true, invert: true },
     ammoKey: "x3",
     // ✅ même vitesse que le joueur -50 (250 de base en repli).
+    // ✅ vie/bouclier x4 vs homologue.
     matchPlayerSpeed: true,
     playerSpeedDelta: -50,
-    r: 18, hp: 100000, shield: 80000, speed: 250, bulletDmg: 2000, bulletSpeed: 4500, shootRange: 700,
+    r: 18, hp: 400000, shield: 320000, speed: 250, bulletDmg: 2000, bulletSpeed: 4500, shootRange: 700,
   },
   npc_Awakened_Impulse_II: {
     name: "Awakened Impulse II",
@@ -2644,11 +2645,12 @@ export const NPC_TYPES = {
     passiveNative: false,
     spriteSpeed: 0,
     // ✅ munitions x3, même vitesse que le joueur -50 (comme l'icy), portée 700.
+    // ✅ vie/bouclier x4 vs homologue.
     bulletSprite: { src: "COMBAT/MUNITIONS/X3.png", w: 78, h: 20, glow: true, invert: true },
     ammoKey: "x3",
     matchPlayerSpeed: true,
     playerSpeedDelta: -50,
-    r: 18, hp: 50000, shield: 40000, speed: 420, bulletDmg: 1500, bulletSpeed: 4500, shootRange: 700,
+    r: 18, hp: 200000, shield: 160000, speed: 420, bulletDmg: 1500, bulletSpeed: 4500, shootRange: 700,
   },
   npc_Awakened_Police: {
     name: "Awakened Police",
