@@ -31813,8 +31813,8 @@ function drawMinimap() {
 // Labels / colors
 // ============================================================
 function npcLabelFor(e) {
-  // ✅ Awakened : nom brouillé (code 10 caractères lettres/chiffres/?),
-  // régénéré toutes les 0,2 s, différent par NPC.
+  // ✅ Awakened : nom brouillé (code 25 caractères lettres/chiffres/?),
+  // régénéré toutes les 0,05 s, différent par NPC.
   if (e && typeof e.type === "string" && e.type.indexOf("npc_Awakened_") === 0) {
     try { return awakenedScrambleName(e); } catch {}
   }
@@ -31823,15 +31823,17 @@ function npcLabelFor(e) {
 }
 
 // ✅ Code brouillé façon "signal corrompu" : LCG déterministe semé par
-// l'id du NPC + la tranche de 0,2 s (stable pendant la tranche).
+// l'id du NPC + la tranche de 0,05 s (stable pendant la tranche).
 const AWAKENED_SCRAMBLE_CHARS = "abcdefghijklmnopqrstuvwxyz0123456789?";
+const AWAKENED_SCRAMBLE_LEN = 25;
+const AWAKENED_SCRAMBLE_MS = 50;
 function awakenedScrambleName(e) {
-  const slice = Math.floor(performance.now() / 200);
+  const slice = Math.floor(performance.now() / AWAKENED_SCRAMBLE_MS);
   if (e._scrambleT !== slice || typeof e._scrambleName !== "string") {
     e._scrambleT = slice;
     let seed = ((Number(e.id) || 0) * 2654435761 + slice * 40503) | 0;
     let out = "";
-    for (let i = 0; i < 10; i++) {
+    for (let i = 0; i < AWAKENED_SCRAMBLE_LEN; i++) {
       seed = (seed * 1103515245 + 12345) & 0x7fffffff;
       out += AWAKENED_SCRAMBLE_CHARS[seed % AWAKENED_SCRAMBLE_CHARS.length];
     }
