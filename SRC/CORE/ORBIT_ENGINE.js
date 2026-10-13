@@ -17119,12 +17119,12 @@ function enemySpriteContainsPoint(e, dx, dy) {
   const cfg = NPC_TYPES[e.type];
   const sp = cfg?.sprite;
   if (sp?._ready && sp._imgs?.length) {
-    const idx = getEnemySpriteFrame(e, cfg, sp);
-    const img = sp._imgs[idx] || sp._imgs[0] || sp._previewImg;
-    if (isImgReady(img)) {
-      const size = enemySpriteSize(e);
-      return spriteHitCache.contains(img, size.w, size.h, dx, dy);
-    }
+    const size = enemySpriteSize(e);
+    // ✅ zone cliquable pleine (sprite + anneau 30 px monde) : aucun clic
+    // à travers, même dans les trous transparents. Tous les NPC se
+    // verrouillent facilement, même les plus petits.
+    const ring = 30;
+    return Math.abs(dx) <= size.w / 2 + ring && Math.abs(dy) <= size.h / 2 + ring;
   }
   // Pendant le chargement, le corps affiche un disque, pas le rectangle du PNG.
   const radius = Math.max(0, Number(e.r) || 18);
@@ -17746,7 +17746,7 @@ function ensurePulseFxLoaded() {
 
 const pulseFxs = [];
 
-function spawnPulseFx(x, y, scale = 1, followPlayer = false) {
+function spawnPulseFx(x, y, scale = 1, followPlayer = false, followNpcId = null) {
   if (!pulseReady || !pulseImgs?.length) return;
   pushBounded(pulseFxs, {
     x,
@@ -17755,6 +17755,8 @@ function spawnPulseFx(x, y, scale = 1, followPlayer = false) {
     scale: Math.max(0.2, Number(scale) || 1),
     followPlayer: followPlayer === true,
     followNetId: typeof followPlayer === "string" ? followPlayer : null,
+    // ✅ suit un NPC (ex. IEM claquée par un Saimon qui bouge).
+    followNpcId: followNpcId ?? null,
   }, ENTITY_LIMITS.pulseFxs);
 }
 
@@ -17779,14 +17781,18 @@ function drawPulseFx(ox, oy) {
   for (const fx of pulseFxs) {
     let fxTarget = null;
     try { if (fx.followNetId) fxTarget = getNetplayRemotes()?.get(String(fx.followNetId)); } catch {}
-    if (!fx.followPlayer && !fxTarget && isBeyondSensorRadius(fx.x, fx.y)) continue;
-    if (fxTarget && isBeyondSensorRadius(Number(fxTarget.rx ?? fxTarget.x), Number(fxTarget.ry ?? fxTarget.y))) continue;
+    let fxNpc = null;
+    try { if (fx.followNpcId != null) fxNpc = getEnemyById(fx.followNpcId); } catch {}
+    const fxX = fxNpc && fxNpc.hp > 0 ? Number(fxNpc.x) : (fxTarget ? Number(fxTarget.rx ?? fxTarget.x) : fx.x);
+    const fxY = fxNpc && fxNpc.hp > 0 ? Number(fxNpc.y) : (fxTarget ? Number(fxTarget.ry ?? fxTarget.y) : fx.y);
+    if (!fx.followPlayer && !fxTarget && !fxNpc && isBeyondSensorRadius(fx.x, fx.y)) continue;
+    if ((fxTarget || fxNpc) && isBeyondSensorRadius(fxX, fxY)) continue;
     const idx = Math.min(frames - 1, Math.floor(fx.t * fps));
     const img = pulseImgs[idx];
     if (!isImgReady(img)) continue;
 
-    const x = (fx.followPlayer ? player.x : (fxTarget ? Number(fxTarget.rx ?? fxTarget.x) : fx.x)) + ox;
-    const y = (fx.followPlayer ? player.y : (fxTarget ? Number(fxTarget.ry ?? fxTarget.y) : fx.y)) + oy;
+    const x = (fx.followPlayer ? player.x : (fxNpc && fxNpc.hp > 0 ? Number(fxNpc.x) : (fxTarget ? Number(fxTarget.rx ?? fxTarget.x) : fx.x))) + ox;
+    const y = (fx.followPlayer ? player.y : (fxNpc && fxNpc.hp > 0 ? Number(fxNpc.y) : (fxTarget ? Number(fxTarget.ry ?? fxTarget.y) : fx.y))) + oy;
 
     const w = (PULSE_PACK.w || (img.naturalWidth || img.width || 256)) * fx.scale;
     const h = (PULSE_PACK.h || (img.naturalHeight || img.height || 256)) * fx.scale;
@@ -25915,6 +25921,19 @@ const Target = (() => {
   }
 
   function set(e) {
+    // ✅ IEM reçue d'un NPC : impossible de (re)verrouiller CE NPC pendant
+    // l'effet (les autres restent verrouillables). Le clear reste possible.
+    if (e && typeof player !== "undefined" && Array.isArray(player.iemNoLockIds)) {
+      const now = performance.now();
+      const blocked = player.iemNoLockIds.some(entry => entry && entry.id === e.id && entry.until > now);
+      if (blocked) {
+        if (cur && cur.id === e.id) {
+          breakLocalRepairLinks();
+          cur = null;
+        }
+        return;
+      }
+    }
     let next = e && e.hp > 0 ? e : null;
     if (next !== cur) breakLocalRepairLinks();
     // IEM distant : apres la rupture du lock, le joueur reste impossible a
@@ -26450,17 +26469,32 @@ function drainShieldFromEnemy(e, amount, recipient = player, transferPct) {
 // ============================================================
 // Combat
 // ============================================================
-// ✅ IEM claquée par un NPC (ex. Saimon Awakened à 10 % PV) : miroir de
-// l'IEM joueur. Casse le verrouillage et coupe nos tirs quelques secondes.
+// ✅ IEM claquée par un NPC (ex. Saimon Awakened à 50 % PV) : miroir de
+// l'IEM joueur, limitée au lanceur (avec 50 saimons, un lockout global
+// clouerait le joueur en permanence). Casse le verrouillage, interdit de
+// reverrouiller CE NPC pendant 3 s (les autres restent tirables), FX qui suit.
 function npcIemBlast(e, cfg = {}) {
-  try { spawnPulseFx(e.x, e.y, 1, false); } catch {}
+  try { spawnPulseFx(e.x, e.y, 1, false, e.id); } catch {}
   try { SFX.play("pulseIEM"); } catch {}
   if (player.dead) return;
   const radius = Math.max(0, Number(cfg.radius) || 550);
   if (Math.hypot(player.x - e.x, player.y - e.y) > radius) return;
-  try { stopAttack(); } catch {}
-  try { Target.clear(); } catch {}
-  player.iemBlockT = Math.max(Number(player.iemBlockT) || 0, Math.max(0, Number(cfg.lockoutSec) || 3));
+  const secs = Math.max(0, Number(cfg.lockoutSec) || 3);
+  try {
+    if (Target.get() === e) {
+      try { stopAttack(); } catch {}
+      try { Target.clear(); } catch {}
+    }
+  } catch {}
+  // ✅ anti-reverrouillage par NPC (voir Target.set) : { id, until }.
+  try {
+    const now = performance.now();
+    const list = Array.isArray(player.iemNoLockIds) ? player.iemNoLockIds : [];
+    player.iemNoLockIds = list
+      .filter(entry => entry && entry.until > now && entry.id !== e.id)
+      .concat([{ id: e.id, until: now + secs * 1000 }])
+      .slice(-12);
+  } catch {}
   try { showNotification(`IEM du ${NPC_TYPES[e.type]?.name || "Saimon"} !`, 2, "info"); } catch {}
 }
 
@@ -27210,7 +27244,10 @@ function updateBossEncounters() {
     const state = boss?._bossEncounter;
     if (!state?.invulnerable || boss.hp <= 0) continue;
     const remaining = state.initialGuard
-      ? waveSpawns.remaining > 0 || enemies.some(enemy => enemy?.hp > 0 && enemy !== boss)
+      // ✅ garde initiale : file non vide OU autre NPC non-boss en vie.
+      // Les autres boss ne se bloquent pas entre eux (ex. vague 8 Awakened :
+      // 3 Devourers vulnérables dès que les Protegit sont morts).
+      ? waveSpawns.remaining > 0 || enemies.some(enemy => enemy?.hp > 0 && enemy !== boss && !enemy._bossEncounter)
       : enemies.some(enemy => enemy?.hp > 0 && enemy._bossPhaseMinion && enemy.masterId === boss.id);
     if (remaining) continue;
     state.invulnerable = false;
@@ -28471,8 +28508,6 @@ function tryFireRocket(opts = {}) {
   const silent = opts.auto === true;
   const notify = (text, dur, type) => { if (!silent) showNotification(text, dur, type); };
   if (player.dead || !started) return false;
-  // ✅ IEM reçue d'un NPC : tirs coupés (roquettes comprises).
-  if ((player.iemBlockT || 0) > 0) return false;
   const rocket = activeRocket();
   // Standards uniquement : les lance-roquettes passent par le bouton USE (salves).
   if (rocket.manual === false) {
@@ -29365,8 +29400,6 @@ function tickVolleyFloats(dt) {
 
 function tryFireOnce(ammoOverride = null, silent = false) {
   if (player.dead) return false;
-  // ✅ IEM reçue d'un NPC : tirs coupés.
-  if ((player.iemBlockT || 0) > 0) return false;
   if (Number(getNetSelf()?.redirectSilenceT) > 0) return false;
 
   if (ammoOverride) setAmmo(ammoOverride);
@@ -29797,7 +29830,7 @@ function waveController(dt) {
     finishWaveCountdownNotice();
   }
 
-if (waveSpawns.remaining > 0 && enemies.length < MAX_ALIVE) {
+if (waveSpawns.remaining > 0 && (waveSpawns.queue || []).length > 0 && enemies.length < MAX_ALIVE) {
   if (waveSpawns.tick(dt)) {
     const next = waveSpawns.peek();
     const type = next?.type || DEFAULT_WAVE_TYPE;
@@ -29839,6 +29872,13 @@ if (waveSpawns.remaining > 0 && enemies.length < MAX_ALIVE) {
     waveSpawns.consume();
   }
 }
+
+  // ✅ paliers de vague (ex. Awakened vague 5 : 3 Impulse II verts après les
+  // 30 Blighted) : file vide + aucun NPC en vie → on libère le palier suivant
+  // au lieu de clôturer la vague.
+  if (waveSpawns.remaining > 0 && (waveSpawns.queue || []).length === 0 && enemies.length === 0) {
+    try { if (typeof waveSpawns.releaseStaged === "function") waveSpawns.releaseStaged(); } catch {}
+  }
 
   if (tryCompleteClearedGalaxyGate()) return;
   if (waveSpawns.remaining === 0 && enemies.length === 0) {
@@ -35762,8 +35802,6 @@ function update(dt) {
   player.pvpAttackT = Math.max(0, (player.pvpAttackT || 0) - dt);
   player.invincibleT = Math.max(0, (player.invincibleT || 0) - dt);
   player.portalLockT = Math.max(0, (player.portalLockT || 0) - dt);
-  // ✅ IEM reçue d'un NPC (ex. Saimon Awakened) : tirs coupés pendant l'effet.
-  player.iemBlockT = Math.max(0, (player.iemBlockT || 0) - dt);
   // Camouflage ultime (Police) : durée + recharge. La recharge ne descend
   // que hors effet (pendant l'effet le voile reste plein).
   if ((player.cloakT || 0) > 0) {

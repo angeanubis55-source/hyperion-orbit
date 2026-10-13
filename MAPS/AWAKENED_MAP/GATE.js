@@ -30,6 +30,13 @@ export function init() {
     rules: {
       mapLabel: "GG Awakened",
       mode: "gate",
+      // ✅ Vague 7 : le Devourer vert est invulnérable (bulle ISH comme Zeta)
+      // tant que ses 30 Protegit sont en vie (garde initiale).
+      bossEncounter: {
+        bossType: "npc_Awakened_Devourer",
+        name: "???",
+        initialGuard: true,
+      },
     },
   });
 }

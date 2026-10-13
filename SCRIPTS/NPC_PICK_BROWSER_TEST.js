@@ -90,7 +90,8 @@ try {
         oracle.width = img.naturalWidth; oracle.height = img.naturalHeight;
         oracleCtx.drawImage(img, 0, 0);
         const rgba = oracleCtx.getImageData(0, 0, oracle.width, oracle.height).data;
-        // Every frame has opaque and transparent samples, plus regularly spaced pixels.
+        // Zone cliquable pleine (sprite + anneau) : chaque pixel du sprite
+        // verrouille le NPC, opaque comme transparent (aucun clic à travers).
         const indexes = new Set();
         for (let y = 0; y < oracle.height; y += Math.max(1, Math.floor(oracle.height / 20))) {
           for (let x = 0; x < oracle.width; x += Math.max(1, Math.floor(oracle.width / 20))) {
@@ -115,7 +116,7 @@ try {
             const screen = worldToScreenPoint(npc.x + ((px + 0.5) / oracle.width - 0.5) * w,
               npc.y + ((py + 0.5) / oracle.height - 0.5) * h, camera, innerWidth, innerHeight);
             const hit = production.pickEnemyAtScreen(screen.x, screen.y) === npc;
-            const expected = rgba[index * 4 + 3] > 0;
+            const expected = true;
             samples++;
             if (hit !== expected && failures.length < 20) failures.push(`${type}:${frame}:${px},${py}:boss=${boss}`);
           }

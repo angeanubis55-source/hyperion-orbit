@@ -2526,7 +2526,9 @@ export const NPC_TYPES = {
     playSprite: true,
     passiveNative: true,
     spriteSpeed: 20,
-    bulletSprite: { src: "COMBAT/MUNITIONS/KRISTALLON.png", w: 40, h: 15, glow: true, invert: true },
+    // ✅ munitions x3.
+    bulletSprite: { src: "COMBAT/MUNITIONS/X3.png", w: 78, h: 20, glow: true, invert: true },
+    ammoKey: "x3",
     r: 40, hp: 2000000, shield: 1000000, speed: 220, bulletDmg: 12000, bulletSpeed: 4500, shootRange: 600,
   },
   // ✅ Awakened verts (GG ???) : mêmes stats que leurs homologues normaux, sprites verts dédiés.
@@ -2536,7 +2538,9 @@ export const NPC_TYPES = {
     playSprite: true,
     passiveNative: true,
     spriteSpeed: 20,
-    bulletSprite: { src: "COMBAT/MUNITIONS/KRISTALLON.png", w: 40, h: 15, glow: true, invert: true },
+    // ✅ munitions x3.
+    bulletSprite: { src: "COMBAT/MUNITIONS/X3.png", w: 78, h: 20, glow: true, invert: true },
+    ammoKey: "x3",
     r: 18, hp: 600000, shield: 400000, speed: 450, bulletDmg: 4000, bulletSpeed: 4500, shootRange: 580,
     onKill: { spawn: [ { type: "npc_Blighted_Gygerthrall", count: 3, radius: 120 } ] },
   },
@@ -2563,8 +2567,11 @@ export const NPC_TYPES = {
     playSprite: false,
     passiveNative: false,
     spriteSpeed: 0,
-    bulletSprite: { src: "COMBAT/MUNITIONS/SPECIAL8.png", w: 55, h: 17, glow: true, invert: true },
-    r: 18, hp: 100000, shield: 100000, speed: 200, bulletDmg: 1200, bulletSpeed: 4500, shootRange: 500,
+    // ✅ munitions x3.
+    bulletSprite: { src: "COMBAT/MUNITIONS/X3.png", w: 78, h: 20, glow: true, invert: true },
+    ammoKey: "x3",
+    // ✅ vague 9 : vie/bouclier x3, dégâts x10, +100 vitesse vs homologue.
+    r: 18, hp: 300000, shield: 300000, speed: 300, bulletDmg: 12000, bulletSpeed: 4500, shootRange: 500,
   },
   npc_Awakened_Icy: {
     name: "Awakened Icy",
@@ -2586,7 +2593,9 @@ export const NPC_TYPES = {
     playSprite: false,
     passiveNative: false,
     spriteSpeed: 0,
-    bulletSprite: { src: "COMBAT/MUNITIONS/ABL.png", w: 43, h: 12, glow: true, invert: true },
+    // ✅ munitions x3.
+    bulletSprite: { src: "COMBAT/MUNITIONS/X3.png", w: 78, h: 20, glow: true, invert: true },
+    ammoKey: "x3",
     r: 18, hp: 1200000, shield: 750000, speed: 450, bulletDmg: 12000, bulletSpeed: 4500, shootRange: 580,
   },
   npc_Awakened_Mordon: {
@@ -2613,9 +2622,9 @@ export const NPC_TYPES = {
     bulletSprite: { src: "COMBAT/MUNITIONS/X3.png", w: 78, h: 20, glow: true, invert: true },
     ammoKey: "x3",
     // ✅ vague 4 : vie/bouclier x10, dégâts x6 (x3 puis doublés), +50 vitesse vs homologue.
-    // Juste avant de mourir (10 % PV) : claque une IEM (delock + tirs coupés 3 s, 550px).
+    // Juste avant de mourir (50 % PV) : claque une IEM (delock + tirs coupés 3 s, 550px).
     r: 18, hp: 60000, shield: 60000, speed: 370, bulletDmg: 1200, bulletSpeed: 4500, shootRange: 500,
-    iemBlast: { hpPct: 10, radius: 550, lockoutSec: 3 },
+    iemBlast: { hpPct: 50, radius: 550, lockoutSec: 3 },
   },
   npc_Awakened_Protegit: {
     name: "Awakened Protegit",

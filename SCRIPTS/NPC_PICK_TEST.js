@@ -131,17 +131,17 @@ function pickerHarness(config = {}) {
   } };
 }
 
-test('selection et survol NPC : meme silhouette a la souris, coins et centre creux exclus', () => {
+test('selection et survol NPC : zone pleine, aucun clic a travers', () => {
   const { c, pick, screen } = pickerHarness();
   const npc = { type: 'npc_test', x: 12000, y: 7000, hp: 100, r: 18, angle: 0, spritePlay: true, spriteIdx: 0 };
   c.enemies.push(npc);
-  assert.equal(pick(npc.x - 40, npc.y - 20), null);
-  assert.equal(pick(npc.x, npc.y), null, 'un trou transparent ne verrouille pas le NPC');
+  assert.equal(pick(npc.x - 40, npc.y - 20), npc);
+  assert.equal(pick(npc.x, npc.y), npc, 'le trou transparent verrouille quand meme le NPC');
   assert.equal(pick(npc.x - 15, npc.y), npc);
-  const visible = screen(npc.x - 15, npc.y), empty = screen(npc.x, npc.y);
+  const visible = screen(npc.x - 15, npc.y), full = screen(npc.x, npc.y);
   assert.equal(c.updateEnemyCursor(visible.x, visible.y), true);
   assert.equal(c.canvas.style.cursor, 'pointer');
-  assert.equal(c.updateEnemyCursor(empty.x, empty.y), false);
+  assert.equal(c.updateEnemyCursor(full.x, full.y), true);
 });
 
 test('selection : frame animee et frame directionnelle identiques au corps dessine', () => {
@@ -154,14 +154,14 @@ test('selection : frame animee et frame directionnelle identiques au corps dessi
   npc.spriteIdx = 1;
   c.drawEnemyBody(npc);
   assert.equal(draws.at(-1)[0], c.NPC_TYPES.npc_test.sprite._imgs[1]);
-  assert.equal(pick(npc.x - 15, npc.y), null);
+  assert.equal(pick(npc.x - 15, npc.y), npc);
   assert.equal(pick(npc.x + 30, npc.y), npc);
   npc.spritePlay = false;
   for (const angle of [0, Math.PI]) {
     npc.angle = angle; c.drawEnemyBody(npc);
     const index = c.getEnemySpriteFrame(npc, c.NPC_TYPES.npc_test, c.NPC_TYPES.npc_test.sprite);
     assert.equal(draws.at(-1)[0], c.NPC_TYPES.npc_test.sprite._imgs[index]);
-    assert.equal(pick(npc.x + 30, npc.y), index === 1 ? npc : null);
+    assert.equal(pick(npc.x + 30, npc.y), npc);
   }
 });
 
@@ -172,7 +172,7 @@ test('selection boss : taille reelle 105 %, pas de rotation ajoutee a une frame 
   c.enemies.push(npc); c.drawEnemyBody(npc);
   assert.equal(draws.at(-1)[3], 94.5); assert.equal(draws.at(-1)[4], 52.5);
   assert.equal(pick(npc.x + 46, npc.y), npc, 'le bord visible depasse la taille standard');
-  assert.equal(pick(npc.x, npc.y + 46), null);
+  assert.equal(pick(npc.x, npc.y + 46), npc, 'anneau de 30 px autour du sprite');
 });
 
 test('selection : frames de repli et disque de chargement suivent le rendu sans case vide clickable', () => {
@@ -187,23 +187,37 @@ test('selection : frames de repli et disque de chargement suivent le rendu sans 
   assert.equal(pick(npc.x + 40, npc.y), null, 'la taille du PNG non charge ne compte pas');
 });
 
-test('NPC superposes : cliquer un trou selectionne le corps visible derriere, NPC morts ignores', () => {
+test('NPC superposes : aucun clic a travers, le plus proche gagne, NPC morts ignores', () => {
   const { c, pick } = pickerHarness();
   const front = { type: 'npc_test', x: 12000, y: 7000, hp: 100, r: 18, spritePlay: true, spriteIdx: 0 };
   const behind = { ...front, x: 12015 };
   c.enemies.push(front, behind);
-  assert.equal(pick(front.x, front.y), behind);
-  behind.hp = 0; assert.equal(pick(front.x, front.y), null);
+  assert.equal(pick(front.x, front.y), front);
+  behind.hp = 0; assert.equal(pick(front.x, front.y), front);
 });
 
-test('le clic dans le vide du PNG reste disponible pour les joueurs et PET', () => {
+test('le clic hors NPC reste disponible pour les joueurs et PET', () => {
   const { c, pick } = pickerHarness();
   c.enemies.push({ type: 'npc_test', x: 12000, y: 7000, hp: 100, r: 18, spritePlay: true, spriteIdx: 0 });
   c.petLockValid = () => true;
-  assert.equal(pick(12000, 7000), c.petTargetProxy);
+  assert.equal(pick(12080, 7000), c.petTargetProxy);
   c.petLockValid = () => false; c.netplayNpcActive = () => true;
   const remote = { id: 'friend', x: 12000, y: 7000, hp: 100 };
   c.netPlayerProxies.set(remote.id, remote);
-  assert.equal(pick(12000, 7000), remote);
-  remote._netCloaked = true; assert.equal(pick(12000, 7000), null);
+  assert.equal(pick(12080, 7000), remote);
+  remote._netCloaked = true; assert.equal(pick(12080, 7000), null);
+});
+
+test('selection : anneau de confort de 30 px autour du sprite (tous les NPC)', () => {
+  const { c, pick } = pickerHarness();
+  const npc = { type: 'npc_test', x: 12000, y: 7000, hp: 100, r: 18, spritePlay: true, spriteIdx: 0 };
+  c.enemies.push(npc);
+  // Sprite 90x50 : hors rectangle (45/25) mais dans l'anneau (+30) => touche.
+  assert.equal(pick(npc.x + 55, npc.y), npc);
+  assert.equal(pick(npc.x, npc.y - 35), npc);
+  assert.equal(pick(npc.x + 60, npc.y), npc);
+  assert.equal(pick(npc.x, npc.y - 40), npc);
+  // Hors anneau => rien.
+  assert.equal(pick(npc.x + 76, npc.y), null);
+  assert.equal(pick(npc.x, npc.y - 56), null);
 });
