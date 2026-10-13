@@ -1,30 +1,23 @@
-// MAPS/AWAKENED_MAP/WAVES.js — placeholder en attendant le design final des vagues.
-// 10 vagues : Lordakium éveillés en ouverture, Devourer éveillé en finale.
+// MAPS/AWAKENED_MAP/WAVES.js — table rase : les vagues seront branchées une par une.
 export const DEFAULT_WAVE_TYPE = "npc_Awakened_Lordakium";
 
 export const WAVE_PLANS = [
   null,
-  [{ type: "npc_Awakened_Lordakium", count: 20 }],
-  [{ type: "npc_Awakened_Lordakium", count: 30 }],
-  [{ type: "npc_Streuner", count: 20 }],
-  [{ type: "npc_Saimon", count: 30 }],
-  [{ type: "npc_Devolarium", count: 20 }],
-  [{ type: "npc_Kristallin", count: 30 }],
-  [{ type: "npc_Sibelon", count: 20 }],
-  [{ type: "npc_Kristallon", count: 16 }],
-  [{ type: "npc_Protegit", count: 30 }],
-
-  // ✅ Finale : Awakened Devourer + retour base faction au kill.
-  [
-    {
-      type: "npc_Awakened_Devourer",
-      count: 1,
-      onKill: {
-        reward: 0,
-        tp: { factionBase: true },
-      },
-    },
-  ],
+  // Vague 1 : 1 seul police Awakened (tir x3 façon joueur + faux lasers, même vitesse que le joueur).
+  // À sa mort : 30 icy verts.
+  [{ type: "npc_Awakened_Police", count: 1,
+    onKill: { spawn: [ { type: "npc_Awakened_Icy", count: 30, radius: 400 } ] } }],
+  // Vague 2 : 1 cubikon vert, mécanique 1-6 (immobile, vagues d'icy verts au contact,
+  // renfort sous 5 survivants, reset/regen idle) — quotas doublés : 40 icy max.
+  // À sa mort : 15 protegit verts.
+  [{ type: "npc_Awakened_Cubikon", count: 1,
+    onKill: { spawn: [ { type: "npc_Awakened_Protegit", count: 15, radius: 300 } ] } }],
+  // Vague 3 : 50 mordons verts (vie/bouclier x3, +100 vitesse vs homologue).
+  // Chaque mordon tué fait apparaître 1 protegit vert + 1 icy vert.
+  [{ type: "npc_Awakened_Mordon", count: 50,
+    onKill: { spawn: [ { type: "npc_Awakened_Protegit", count: 1, radius: 260 }, { type: "npc_Awakened_Icy", count: 1, radius: 260 } ] } }],
+  // Vague 4 : 50 saimons verts (vie/bouclier x10, dégâts x3 vs homologue).
+  [{ type: "npc_Awakened_Saimon", count: 50 }],
 ];
 
 export function getWavePlan(w) {

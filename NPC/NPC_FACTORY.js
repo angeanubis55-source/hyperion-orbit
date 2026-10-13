@@ -25,8 +25,33 @@ export function createNpcEntity({ id, type, x, y, config, wave = 1, random = Mat
     bulletSpeed: config.bulletSpeed ?? 500, bulletDmg: config.bulletDmg ?? 6,
     bulletSpread: config.bulletSpread ?? 0.05, burst: config.burst ?? 1,
     bulletSprite: config.bulletSprite || null, bulletScale: config.bulletScale ?? 1.5,
+    // ✅ tir façon joueur : clé de munition (x3...), faux lasers visuels, vitesse calée sur le joueur.
+    ammoKey: config.ammoKey || "x1",
+    fauxLasers: Math.max(0, Math.floor(Number(config.fauxLasers) || 0)),
+    altShot: config.altShot === true, _altShot: false,
+    matchPlayerSpeed: config.matchPlayerSpeed === true,
+    // ✅ décalage appliqué à la vitesse joueur (ex. -50 pour l'icy).
+    playerSpeedDelta: Number.isFinite(Number(config.playerSpeedDelta)) ? Number(config.playerSpeedDelta) : 0,
+    // ✅ toujours en mouvement (aucun mode hold/pause en combat).
+    alwaysMove: config.alwaysMove === true,
+    // ✅ drones façon joueur (formation + design) : visuels + bonus dégâts du design.
+    droneCfg: config.drones ? {
+      count: Math.max(0, Math.min(12, Math.floor(Number(config.drones.count) || 0))),
+      formation: String(config.drones.formation || "standard"),
+      design: String(config.drones.design || ""),
+      level: Math.max(1, Math.min(6, Math.floor(Number(config.drones.level) || 6))),
+    } : null,
+    // ✅ mécanique Cubikon (1-6 + vert) : type de minions + quotas (défaut : 20 Protegit).
+    // despawnOnReset / fleeOnDeath : défaut true (classique), false pour les icy verts (ils restent combattre).
+    cubikonMinions: config.cubikonMinions ? {
+      type: String(config.cubikonMinions.type || "npc_Protegit"),
+      max: Math.max(1, Math.floor(Number(config.cubikonMinions.max) || 20)),
+      refill: Math.max(1, Math.floor(Number(config.cubikonMinions.refill) || 20)),
+      despawnOnReset: config.cubikonMinions.despawnOnReset !== false,
+      fleeOnDeath: config.cubikonMinions.fleeOnDeath !== false,
+    } : null,
     bulletR: config.bulletR ?? 7, orbit: config.orbit ?? 0.45,
-    angle: type === "npc_Cubikon" ? 0 : between(random, 0, Math.PI * 2), freezeT: 0,
+    angle: (type === "npc_Cubikon" || !!config.cubikonMinions) ? 0 : between(random, 0, Math.PI * 2), freezeT: 0,
     passiveNative: !!config.passiveNative, _provoked: false,
     isHealer: !!config.isHealer,
     healPulseCd: Number(config.healPulseInterval ?? 2), healPulseT: 0,
@@ -34,7 +59,7 @@ export function createNpcEntity({ id, type, x, y, config, wave = 1, random = Mat
   };
   entity.hp = entity.hpMax;
   entity.sh = entity.shMax;
-  if (type === "npc_Cubikon") {
+  if (type === "npc_Cubikon" || config.cubikonMinions) {
     Object.assign(entity, {
       _spawnedOnce: false, _sinceHit: 999, _resetting: false, _minionIds: [],
       _animPhase: null, _openDelayT: 0, _holdLastT: 0, spriteDir: 1,

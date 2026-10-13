@@ -2522,12 +2522,135 @@ export const NPC_TYPES = {
   },
   npc_Awakened_Devourer: {
     name: "Awakened Devourer",
-    sprite: { path: "NPC/NPC_SPRITES/AWAKENED_DEVOURER/", frames: 16, firstNumber: 1, ext: ".png", w: 683, h: 683 },
+    sprite: { path: "NPC/NPC_SPRITES/DEVOURER_VERT/", frames: 16, firstNumber: 1, ext: ".png", w: 683, h: 683 },
+    playSprite: true,
+    passiveNative: true,
+    spriteSpeed: 20,
+    bulletSprite: { src: "COMBAT/MUNITIONS/KRISTALLON.png", w: 40, h: 15, glow: true, invert: true },
+    r: 40, hp: 2000000, shield: 1000000, speed: 220, bulletDmg: 12000, bulletSpeed: 4500, shootRange: 600,
+  },
+  // ✅ Awakened verts (GG ???) : mêmes stats que leurs homologues normaux, sprites verts dédiés.
+  npc_Awakened_Blighted_Kristallon: {
+    name: "Awakened Blighted Kristallon",
+    sprite: { path: "NPC/NPC_SPRITES/BLIGHTED_KRISTALLON_VERT/", frames: 83, firstNumber: 1, ext: ".png", w: 188, h: 188 },
+    playSprite: true,
+    passiveNative: true,
+    spriteSpeed: 20,
+    bulletSprite: { src: "COMBAT/MUNITIONS/KRISTALLON.png", w: 40, h: 15, glow: true, invert: true },
+    r: 18, hp: 600000, shield: 400000, speed: 450, bulletDmg: 4000, bulletSpeed: 4500, shootRange: 580,
+    onKill: { spawn: [ { type: "npc_Blighted_Gygerthrall", count: 3, radius: 120 } ] },
+  },
+  npc_Awakened_Cubikon: {
+    name: "Awakened Cubikon",
+    sprite: { path: "NPC/NPC_SPRITES/CUBIKON_BLANC_VERT/", frames: 13, firstNumber: 1, ext: ".png", w: 383, h: 384, angleOffset: 0 },
+    playSprite: false,
+    passiveNative: true,
+    spriteSpeed: 20,
+    bulletSprite: { src: "COMBAT/MUNITIONS/X0.png", w: 0, h: 0, glow: true, invert: true },
+    // ✅ mécanique Cubikon 1-6 : immobile (speed 0 forcé comme en 1-6), ne tire pas.
+    // Minions : icy verts au lieu des Protegit, quotas doublés (40).
+    // Les icy restent combattre : pas d'auto-despawn au reset, pas de fuite à la mort.
+    // À sa mort : 15 protegit verts (repris tel quel dans le plan de vague).
+    // Vie/bouclier doublés vs homologue.
+    r: 18, hp: 3200000, shield: 2400000, speed: 0, bulletDmg: 0, bulletSpeed: 0, shootRange: 0,
+    shootRate: 0.0,
+    cubikonMinions: { type: "npc_Awakened_Icy", max: 40, refill: 40, despawnOnReset: false, fleeOnDeath: false },
+    onKill: { spawn: [ { type: "npc_Awakened_Protegit", count: 15, radius: 300 } ] },
+  },
+  npc_Awakened_Devolarium: {
+    name: "Awakened Devolarium",
+    sprite: { path: "NPC/NPC_SPRITES/DEVOLARIUM_CORRUPTED_BLANC_VERT/", frames: 32, firstNumber: 1, ext: ".png", w: 304, h: 304 },
     playSprite: false,
     passiveNative: false,
     spriteSpeed: 0,
     bulletSprite: { src: "COMBAT/MUNITIONS/SPECIAL8.png", w: 55, h: 17, glow: true, invert: true },
-    r: 18, hp: 250000, shield: 150000, speed: 250, bulletDmg: 3000, bulletSpeed: 4500, shootRange: 550,
+    r: 18, hp: 100000, shield: 100000, speed: 200, bulletDmg: 1200, bulletSpeed: 4500, shootRange: 500,
+  },
+  npc_Awakened_Icy: {
+    name: "Awakened Icy",
+    sprite: { path: "NPC/NPC_SPRITES/ICY_VERT/", frames: 32, firstNumber: 1, ext: ".png", w: 75, h: 75 },
+    playSprite: false,
+    passiveNative: false,
+    spriteSpeed: 0,
+    // ✅ munitions x3 comme le police.
+    bulletSprite: { src: "COMBAT/MUNITIONS/X3.png", w: 78, h: 20, glow: true, invert: true },
+    ammoKey: "x3",
+    // ✅ même vitesse que le joueur -50 (250 de base en repli).
+    matchPlayerSpeed: true,
+    playerSpeedDelta: -50,
+    r: 18, hp: 100000, shield: 80000, speed: 250, bulletDmg: 2000, bulletSpeed: 4500, shootRange: 550,
+  },
+  npc_Awakened_Impulse_II: {
+    name: "Awakened Impulse II",
+    sprite: { path: "NPC/NPC_SPRITES/IMPULSE_II_VERT/", frames: 32, firstNumber: 1, ext: ".png", w: 150, h: 120 },
+    playSprite: false,
+    passiveNative: false,
+    spriteSpeed: 0,
+    bulletSprite: { src: "COMBAT/MUNITIONS/ABL.png", w: 43, h: 12, glow: true, invert: true },
+    r: 18, hp: 1200000, shield: 750000, speed: 450, bulletDmg: 12000, bulletSpeed: 4500, shootRange: 580,
+  },
+  npc_Awakened_Mordon: {
+    name: "Awakened Mordon",
+    sprite: { path: "NPC/NPC_SPRITES/MORDON_VERT/", frames: 16, firstNumber: 1, ext: ".png", w: 150, h: 120 },
+    playSprite: true,
+    passiveNative: false,
+    spriteSpeed: 20,
+    // ✅ munitions x3.
+    bulletSprite: { src: "COMBAT/MUNITIONS/X3.png", w: 78, h: 20, glow: true, invert: true },
+    ammoKey: "x3",
+    // ✅ vague 3 : vie/bouclier x3 vs homologue, +100 vitesse.
+    // À sa mort : 1 protegit vert + 1 icy vert (repris tel quel dans le plan de vague).
+    r: 18, hp: 60000, shield: 30000, speed: 225, bulletDmg: 400, bulletSpeed: 4500, shootRange: 500,
+    onKill: { spawn: [ { type: "npc_Awakened_Protegit", count: 1, radius: 260 }, { type: "npc_Awakened_Icy", count: 1, radius: 260 } ] },
+  },
+  npc_Awakened_Saimon: {
+    name: "Awakened Saimon",
+    sprite: { path: "NPC/NPC_SPRITES/SAIMON_CORRUPTED_VERT/", frames: 32, firstNumber: 1, ext: ".png", w: 160, h: 143 },
+    playSprite: false,
+    passiveNative: false,
+    spriteSpeed: 0,
+    // ✅ munitions x3.
+    bulletSprite: { src: "COMBAT/MUNITIONS/X3.png", w: 78, h: 20, glow: true, invert: true },
+    ammoKey: "x3",
+    // ✅ vague 4 : vie/bouclier x10, dégâts x6 (x3 puis doublés), +50 vitesse vs homologue.
+    // Juste avant de mourir (10 % PV) : claque une IEM (delock + tirs coupés 3 s, 550px).
+    r: 18, hp: 60000, shield: 60000, speed: 370, bulletDmg: 1200, bulletSpeed: 4500, shootRange: 500,
+    iemBlast: { hpPct: 10, radius: 550, lockoutSec: 3 },
+  },
+  npc_Awakened_Protegit: {
+    name: "Awakened Protegit",
+    sprite: { path: "NPC/NPC_SPRITES/PROTEGIT_BLANC_VERT/", frames: 32, firstNumber: 1, ext: ".png", w: 75, h: 66 },
+    playSprite: false,
+    passiveNative: false,
+    spriteSpeed: 0,
+    // ✅ munitions x3, même vitesse que le joueur -50 (comme l'icy).
+    bulletSprite: { src: "COMBAT/MUNITIONS/X3.png", w: 78, h: 20, glow: true, invert: true },
+    ammoKey: "x3",
+    matchPlayerSpeed: true,
+    playerSpeedDelta: -50,
+    r: 18, hp: 50000, shield: 40000, speed: 420, bulletDmg: 1500, bulletSpeed: 4500, shootRange: 620,
+  },
+  npc_Awakened_Police: {
+    name: "Awakened Police",
+    sprite: { path: "NPC/NPC_SPRITES/SHIP_POLICE_BLANC_VERT/", frames: 32, firstNumber: 1, ext: ".png", w: 202, h: 179 },
+    playSprite: false,
+    passiveNative: false,
+    spriteSpeed: 0,
+    // ✅ tir façon joueur : munitions x3 + faux lasers visuels, même vitesse que le joueur.
+    // Pattern altShot : paire (gauche/droite) puis central, en alternance.
+    // Toujours en mouvement (jamais de hold/pause).
+    bulletSprite: { src: "COMBAT/MUNITIONS/X3.png", w: 78, h: 20, glow: true, invert: true },
+    ammoKey: "x3",
+    fauxLasers: 5,
+    altShot: true,
+    matchPlayerSpeed: true,
+    alwaysMove: true,
+    // ✅ 10 drones formation Papillon comme un joueur, designs ADMIN (niveau 6).
+    drones: { count: 10, formation: "butterfly", design: "admin", level: 6 },
+    // ✅ à sa mort : 30 icy verts (repris tel quel dans le plan de vague).
+    onKill: { spawn: [ { type: "npc_Awakened_Icy", count: 30, radius: 400 } ] },
+    // ✅ dégâts fixes : 1000 sur TOUS les tirs (réels paire/single + faux).
+    r: 18, hp: 1200000, shield: 750000, speed: 450, bulletDmg: 1000, bulletSpeed: 4500, shootRange: 580,
   },
   npc_Deadly_Battleray: {
     name: "-=[ Deadly Battleray ]=-",

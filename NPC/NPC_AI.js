@@ -50,7 +50,18 @@ export function tickNpcCombatAI(state, deltaTime, random = Math.random) {
 export function computeNpcCombatMove(entity, distance, nx, ny, ai, deltaTime, random = Math.random) {
   const state = ensureNpcCombatAI(ai, random);
   tickNpcCombatAI(state, deltaTime, random);
-  return computeNpcSteering(entity, distance, nx, ny, state, deltaTime, NPC_COMBAT_MOVE.closeBrake);
+  // ✅ alwaysMove (ex. police Awakened) : jamais de hold/pause, toujours en mouvement.
+  if (entity?.alwaysMove && (state.mode === "hold" || state.mode === "pause")) {
+    state.mode = random() < 0.7 ? "orbit" : "drift";
+    state.pauseT = 0;
+  }
+  const mv = computeNpcSteering(entity, distance, nx, ny, state, deltaTime, NPC_COMBAT_MOVE.closeBrake);
+  // ✅ garde-fou : direction dégénérée (chevauchement exact) → on garde le cap au lieu de se figer.
+  if (entity?.alwaysMove && (!Number.isFinite(mv.mxv + mv.myv) || (mv.mxv === 0 && mv.myv === 0))) {
+    const fa = Number(entity.angle) || 0;
+    return { mxv: Math.cos(fa), myv: Math.sin(fa) };
+  }
+  return mv;
 }
 
 export function computeNpcSteering(entity, distance, nx, ny, ai, deltaTime, closeBrake = 0.7) {

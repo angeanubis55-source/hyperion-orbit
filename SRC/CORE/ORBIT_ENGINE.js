@@ -127,7 +127,7 @@ import { createWaveSpawnState, remainingWaveSpawns } from "./WAVES.js";
 import { shouldShowNpcBars, updateProgressHud, updateResourceHud, updateWaveHud } from "../../UI/UI_HUD.js";
 import { createPerformanceMonitor } from "./PERFORMANCE_MONITOR.js";
 import { COLLECTABLE_PICKUP_HOLD_SEC } from "./COLLECTION_TIMING.js";
-import { computeNpcCombatMove as computeNpcCombatMovement, computeNpcSteering, setNpcVelocity } from "../../NPC/NPC_AI.js";
+import { computeNpcCombatMove as computeNpcCombatMovement, computeNpcSteering, setNpcVelocity, NPC_DIRECT_SPEED_FACTOR } from "../../NPC/NPC_AI.js";
 import { DEFAULT_NPC_RADAR_FADE_START, getNpcSensorRanges, npcSensorOpacity, shouldDetectNpc } from "../../NPC/NPC_SENSORS.js";
 import { shouldRunNpcFrame } from "../../NPC/NPC_ACTIVITY.js";
 import { NPC_SHOTS as NPC_SHOT_RULES } from "../../NPC/NPC_PROJECTILES.js";
@@ -26024,10 +26024,12 @@ function petLockValid() {
 }
 
 function refreshCubikonFromMinionHit(minion) {
-  if (minion?.type !== "npc_Protegit" || !minion.masterId) return;
+  if (!minion?.masterId) return;
   if (minion._netUid && netplayNpcActive()) return;
-  const cub = enemies.find(e => e.id === minion.masterId && e.type === "npc_Cubikon" && e.hp > 0);
+  const cub = enemies.find(e => e.id === minion.masterId && e.hp > 0 && (e.type === "npc_Cubikon" || e.cubikonMinions));
   if (!cub) return;
+  // ✅ le type de minion dépend du Cubikon (Protegit en 1-6, icy vert en Awakened).
+  if (String(minion.type) !== String(cub.cubikonMinions?.type || "npc_Protegit")) return;
   cub._sinceHit = 0;
   cub._resetting = false;
   cub._minionDespawning = false;
@@ -26039,12 +26041,14 @@ function refreshCubikonFromMinionHit(minion) {
 function refillLocalCubikonMinions(cub) {
   if (!cub || !(cub.hp > 0) || !cub._spawnedOnce || cub._resetting || isEntityJammed(cub)) return;
   if (!(cub._sinceHit < CUBIKON_RESET.idleDelay) || cub._animPhase) return;
-  const alive = enemies.filter(m => m && m.hp > 0 && m.type === "npc_Protegit" && m.masterId === cub.id).length;
+  // ✅ quotas du Cubikon (20 Protegit en 1-6, 40 icy verts en Awakened).
+  const minionType = String(cub.cubikonMinions?.type || "npc_Protegit");
+  const alive = enemies.filter(m => m && m.hp > 0 && String(m.type) === minionType && m.masterId === cub.id).length;
   if (alive < 5) {
     cub._animPhase = "delay";
     cub._openDelayT = 2.0;
     cub._holdLastT = 0;
-    cub._pendingSpawn = 20;
+    cub._pendingSpawn = Math.max(1, Math.floor(Number(cub.cubikonMinions?.refill) || 20));
     cub.spritePlay = false;
     cub.spriteDir = 1;
     cub.spriteIdx = 0;
@@ -26054,12 +26058,13 @@ function refillLocalCubikonMinions(cub) {
 
 function spawnProtegitOnCubikonHit(cub, count = 20) {
   if (!cub || cub.hp <= 0) return;
-  if (cub.type !== "npc_Cubikon") return;
+  if (cub.type !== "npc_Cubikon" && !cub.cubikonMinions) return;
 
-  // ✅ Vague fixe : 20 Protegit max liés à ce Cubikon.
-  const MAX_MINIONS = 20;
+  // ✅ Vague liée au Cubikon (20 Protegit max en 1-6, 40 icy verts en Awakened).
+  const minionType = String(cub.cubikonMinions?.type || "npc_Protegit");
+  const MAX_MINIONS = Math.max(1, Math.floor(Number(cub.cubikonMinions?.max) || 20));
 
-  cub._minionIds = enemies.filter(m => m && m.hp > 0 && m.type === "npc_Protegit" && m.masterId === cub.id).map(m => m.id);
+  cub._minionIds = enemies.filter(m => m && m.hp > 0 && String(m.type) === minionType && m.masterId === cub.id).map(m => m.id);
   const current = cub._minionIds.length;
   if (current >= MAX_MINIONS) return;
 
@@ -26075,7 +26080,7 @@ function spawnProtegitOnCubikonHit(cub, count = 20) {
     const sx = clamp(cub.x + Math.cos(ang) * dist, 80, WORLD.w - 80);
     const sy = clamp(cub.y + Math.sin(ang) * dist, 80, WORLD.h - 80);
 
-    const m = makeEnemy("npc_Protegit", sx, sy);
+    const m = makeEnemy(minionType, sx, sy);
     if (!m) continue;
 
     m.masterId = cub.id;
@@ -26392,18 +26397,19 @@ function drainShieldFromEnemy(e, amount, recipient = player, transferPct) {
     if (playerIsInSafeZone()) e._pendingSafeAggro = true;
   }
 
-  // ✅ Si tu tapes le Cubikon à la SAB, ça déclenche aussi ses Protegit.
+  // ✅ Si tu tapes le Cubikon à la SAB, ça déclenche aussi ses minions.
   // Multi : NPC partage — la vague est serveur (visible par tous), le
   // serveur pilote aussi l'animation via le snapshot. Pas de declenchement
   // local ici, sinon chaque ecran verrait sa propre vague fantome.
-  if (e.type === "npc_Cubikon") {
+  if (e.type === "npc_Cubikon" || e.cubikonMinions) {
     e._sinceHit = 0;
 
     if (!(e._netUid && netplayNpcActive()) && e._resetting) {
       e._resetting = false;
+      const sabMinionType = String(e.cubikonMinions?.type || "npc_Protegit");
       for (const m of enemies) {
         if (!m || m.hp <= 0) continue;
-        if (m.type !== "npc_Protegit") continue;
+        if (String(m.type) !== sabMinionType) continue;
         if (m.masterId !== e.id) continue;
         m.despawnDur = 0;
         m.despawnT = 0;
@@ -26417,7 +26423,7 @@ function drainShieldFromEnemy(e, amount, recipient = player, transferPct) {
       e._openDelayT = 2.0;
       e._holdLastT = 0;
 
-      e._pendingSpawn = 20;
+      e._pendingSpawn = Math.max(1, Math.floor(Number(e.cubikonMinions?.refill) || 20));
 
       e.spritePlay = false;
       e.spriteDir = 1;
@@ -26444,6 +26450,20 @@ function drainShieldFromEnemy(e, amount, recipient = player, transferPct) {
 // ============================================================
 // Combat
 // ============================================================
+// ✅ IEM claquée par un NPC (ex. Saimon Awakened à 10 % PV) : miroir de
+// l'IEM joueur. Casse le verrouillage et coupe nos tirs quelques secondes.
+function npcIemBlast(e, cfg = {}) {
+  try { spawnPulseFx(e.x, e.y, 1, false); } catch {}
+  try { SFX.play("pulseIEM"); } catch {}
+  if (player.dead) return;
+  const radius = Math.max(0, Number(cfg.radius) || 550);
+  if (Math.hypot(player.x - e.x, player.y - e.y) > radius) return;
+  try { stopAttack(); } catch {}
+  try { Target.clear(); } catch {}
+  player.iemBlockT = Math.max(Number(player.iemBlockT) || 0, Math.max(0, Number(cfg.lockoutSec) || 3));
+  try { showNotification(`IEM du ${NPC_TYPES[e.type]?.name || "Saimon"} !`, 2, "info"); } catch {}
+}
+
 function damageEnemy(e, dmg, shieldPenetration, crit, opts = {}) {
   if (!e || e.hp <= 0) return { total: 0, sh: 0, hp: 0, bypass: 0, isCrit: false, rawDamage: 0 };
   if (opts.ability && hyperionTargetBlocked(e, false)) return emptyEnemyDamageResult();
@@ -26529,6 +26549,16 @@ function damageEnemy(e, dmg, shieldPenetration, crit, opts = {}) {
   const shD = result.sh;
   const hpD = result.hp;
   if (result.total > 0) e._healthRevealed = true;
+  // ✅ IEM de fin de vie (ex. Saimon Awakened) : une seule fois, au passage
+  // sous le seuil ou sur le coup fatal (juste avant de mourir).
+  if (!e._iemFired) {
+    const iemCfg = NPC_TYPES[e.type]?.iemBlast;
+    const iemFrac = Math.max(0.01, Math.min(0.99, (Number(iemCfg?.hpPct) || 0) / 100));
+    if (iemCfg && (e.hp <= 0 || e.hp <= Math.max(1, Number(e.hpMax) || 1) * iemFrac)) {
+      e._iemFired = true;
+      npcIemBlast(e, iemCfg);
+    }
+  }
   triggerBossEncounterPhase(e, result.total);
 
   if (rules?.mode === "zone") {
@@ -26540,14 +26570,15 @@ function damageEnemy(e, dmg, shieldPenetration, crit, opts = {}) {
 
   // Multi : NPC partage — vague + animation pilotees par le serveur
   // (snapshot). Pas de declenchement local, sinon vague fantome par ecran.
-  if (e.type === "npc_Cubikon") {
+  if (e.type === "npc_Cubikon" || e.cubikonMinions) {
     e._sinceHit = 0;
 
     if (!(e._netUid && netplayNpcActive()) && e._resetting) {
       e._resetting = false;
+      const dmgMinionType = String(e.cubikonMinions?.type || "npc_Protegit");
       for (const m of enemies) {
         if (!m || m.hp <= 0) continue;
-        if (m.type !== "npc_Protegit") continue;
+        if (String(m.type) !== dmgMinionType) continue;
         if (m.masterId !== e.id) continue;
         m.despawnDur = 0;
         m.despawnT = 0;
@@ -26560,7 +26591,7 @@ function damageEnemy(e, dmg, shieldPenetration, crit, opts = {}) {
   e._animPhase = "delay";
   e._openDelayT = 2.0;      // ✅ ici ton délai
   e._holdLastT = 0;
-e._pendingSpawn = 20;
+e._pendingSpawn = Math.max(1, Math.floor(Number(e.cubikonMinions?.refill) || 20));
 
   e.spritePlay = false;
   e.spriteDir = 1;
@@ -26677,12 +26708,36 @@ function applyRocketVolleyHit(e, b, count, recipient = player) {
 function npcEffectiveSpeed(e, fallback = 320) {
   // Un speed explicite à 0 (boss BL immobiles, Cubikon...) doit rester 0 :
   // `Number(0) || fallback` vaudrait 320 et les ferait vagabonder.
+  // ✅ matchPlayerSpeed (ex. police Awakened) : même vitesse affichée que le
+  // joueur (+ delta éventuel, ex. -50 pour l'icy). On compense le facteur
+  // 0.75 appliqué aux NPC dans setNpcVelocity.
+  if (e?.matchPlayerSpeed === true) {
+    const slowPct = (e?.rocketSlowT || 0) > 0
+      ? clamp(Number(e.rocketSlowPct) || 0, 0, 95)
+      : 0;
+    const delta = Number.isFinite(Number(e?.playerSpeedDelta)) ? Number(e.playerSpeedDelta) : 0;
+    const playerSpeed = Math.max(0, (Number(player?.baseSpeed) || fallback) + delta);
+    return (playerSpeed / (Number(NPC_DIRECT_SPEED_FACTOR) || 0.75)) * (1 - slowPct / 100);
+  }
   const raw = Number(e?.speed);
   const baseSpeed = Number.isFinite(raw) ? Math.max(0, raw) : fallback;
   const slowPct = (e?.rocketSlowT || 0) > 0
     ? clamp(Number(e.rocketSlowPct) || 0, 0, 95)
     : 0;
   return baseSpeed * (1 - slowPct / 100);
+}
+
+// ✅ Bonus dégâts des designs de drones d'un NPC (ex. 10x ADMIN = +10 %),
+// comme les designs équipés d'un joueur.
+function npcDroneDamageMult(e) {
+  try {
+    const cfg = e?.droneCfg || NPC_TYPES[e?.type]?.drones;
+    const count = Math.max(0, Math.min(12, Math.floor(Number(cfg?.count) || 0)));
+    if (!count || !cfg?.design) return 1;
+    const perDrone = Number(getDroneDesign(cfg.design)?.effects?.damagePct) || 0;
+    if (!(perDrone > 0)) return 1;
+    return 1 + (perDrone * count) / 100;
+  } catch { return 1; }
 }
 
 function hurtPlayer(amount, source = null) {
@@ -27367,13 +27422,14 @@ if (ownsNpcLoot && !e.noRewards) {
   // (Pas de spawn manuel ici : onKill couvre solo + multi sans doublon.)
 }
 
-if (e.type === "npc_Cubikon") {
+if ((e.type === "npc_Cubikon" || e.cubikonMinions) && e.cubikonMinions?.fleeOnDeath !== false) {
+  const deathMinionType = String(e.cubikonMinions?.type || "npc_Protegit");
   for (const m of enemies) {
     if (!m || m.hp <= 0) continue;
-    if (m.type !== "npc_Protegit") continue;
+    if (String(m.type) !== deathMinionType) continue;
     if (m.masterId !== e.id) continue;
 
-    // À la mort du Cubikon, chaque Protegit fuit dans sa propre direction
+    // À la mort du Cubikon, chaque minion fuit dans sa propre direction
     // pendant deux secondes et perd progressivement toute sa vie.
     const fleeAngle = Math.random() * TAU;
     const fleeSpeed = Math.max(650, Number(m.speed) || 650);
@@ -28415,6 +28471,8 @@ function tryFireRocket(opts = {}) {
   const silent = opts.auto === true;
   const notify = (text, dur, type) => { if (!silent) showNotification(text, dur, type); };
   if (player.dead || !started) return false;
+  // ✅ IEM reçue d'un NPC : tirs coupés (roquettes comprises).
+  if ((player.iemBlockT || 0) > 0) return false;
   const rocket = activeRocket();
   // Standards uniquement : les lance-roquettes passent par le bouton USE (salves).
   if (rocket.manual === false) {
@@ -29056,6 +29114,77 @@ function tickPendingSalvo(dt) {
   }
 }
 
+// ✅ Faux lasers des NPC façon joueur (ex. police Awakened) : visuels seuls
+// (dégâts 0), étalés comme la salve du joueur (1 toutes les 0,2 s) au lieu
+// d'un paquet instantané. Comme le joueur, la position de départ est
+// recalculée au moment du tir (le NPC a pu bouger entre-temps).
+const pendingNpcFaux = [];
+const PENDING_NPC_FAUX_MAX = 240;
+
+function clearPendingNpcFaux() {
+  pendingNpcFaux.length = 0;
+}
+
+function scheduleNpcFaux(delay, entry) {
+  if (!entry) return;
+  if (delay <= 0) {
+    spawnPendingNpcFaux(entry);
+    return;
+  }
+  while (pendingNpcFaux.length >= PENDING_NPC_FAUX_MAX) pendingNpcFaux.shift();
+  pendingNpcFaux.push({ t: delay, entry });
+}
+
+function spawnPendingNpcFaux(entry) {
+  try {
+    const npc = enemies.find(x => x?.id === entry.npcId && x.hp > 0);
+    if (!npc) return;
+    const target = entry.target === "player" ? player
+      : (entry.targetId != null ? getEscortById(entry.targetId) : null);
+    if (!target || !(target.hp > 0)) return;
+    // ✅ position de départ recalculée depuis le NPC au moment du tir.
+    const ang = Math.atan2(target.y - npc.y, target.x - npc.x);
+    const fx = Math.cos(ang), fy = Math.sin(ang);
+    const px = -fy, py = fx;
+    const muzzle = (npc.r || 18) + 12;
+    const sx = npc.x + fx * muzzle + px * entry.off;
+    const sy = npc.y + fy * muzzle + py * entry.off;
+    const dx = target.x - sx, dy = target.y - sy;
+    const len = Math.hypot(dx, dy) || 1;
+    const spd = entry.spd;
+    // ✅ les faux portent leurs dégâts (1000) comme les vrais : MISS comme un tir normal.
+    const willMiss = Math.random() < Math.min(1, NPC_SHOT_RULES.missChance + npcLaserAccuracyPenalty(npc));
+    addCappedProjectile(enemyBullets, {
+      x: sx, y: sy,
+      vx: dx / len * spd, vy: dy / len * spd,
+      spd,
+      r: entry.bulletR ?? 7,
+      life: Math.max(entry.life, 2.5),
+      dmg: Math.max(1, Math.floor(Number(entry.dmg) || 0)), key: entry.key,
+      scale: entry.scale ?? 1.5,
+      sprite: entry.sprite || null,
+      target: entry.target,
+      targetId: entry.target === "player" ? null : entry.targetId,
+      homing: entry.homing,
+      ownerId: npc.id,
+      miss: willMiss, visual: false,
+      hitRadiusBonus: entry.hitRadiusBonus,
+    }, ENTITY_LIMITS.enemyBullets);
+  } catch {}
+}
+
+function tickPendingNpcFaux(dt) {
+  if (!pendingNpcFaux.length) return;
+  for (let i = pendingNpcFaux.length - 1; i >= 0; i--) {
+    const item = pendingNpcFaux[i];
+    item.t -= dt;
+    if (item.t <= 0) {
+      pendingNpcFaux.splice(i, 1);
+      spawnPendingNpcFaux(item.entry);
+    }
+  }
+}
+
 // Faux tirs des escortes : même visuel que le joueur (éclairs dmg 0),
 // spawnés depuis l'escorte au moment du tir, jamais de dégâts ni de son.
 const pendingEscortSalvo = [];
@@ -29236,6 +29365,8 @@ function tickVolleyFloats(dt) {
 
 function tryFireOnce(ammoOverride = null, silent = false) {
   if (player.dead) return false;
+  // ✅ IEM reçue d'un NPC : tirs coupés.
+  if ((player.iemBlockT || 0) > 0) return false;
   if (Number(getNetSelf()?.redirectSilenceT) > 0) return false;
 
   if (ammoOverride) setAmmo(ammoOverride);
@@ -30570,6 +30701,7 @@ bullets.length = 0;
 enemyBullets.length = 0;
 clearPendingSalvo();
 clearPendingEscortSalvo();
+clearPendingNpcFaux();
 shipDamages.length = 0;
 enemies.length = 0;
 escortShips.length = 0;
@@ -34421,6 +34553,63 @@ function drawPlayerDrones() {
   for (const id of droneVisualStates.keys()) if (!activeIds.has(id)) droneVisualStates.delete(id);
 }
 
+// ✅ Drones d'un NPC façon joueur (ex. police Awakened : 10 drones Papillon
+// ADMIN) : positions officielles de formation autour du NPC, suivi adouci,
+// sprites du design. Visuels seuls (aucun dégât direct).
+function drawNpcDrones(e) {
+  try {
+    if (!GAME_SETTINGS.drones) return;
+    if (!e || !(e.hp > 0)) return;
+    const cfg = e.droneCfg || NPC_TYPES[e.type]?.drones;
+    const count = Math.max(0, Math.min(12, Math.floor(Number(cfg?.count) || 0)));
+    if (!count) return;
+    const design = getDroneDesign(cfg.design)?.id || null;
+    const level = Math.max(1, Math.min(DRONE_MAX_LEVEL || 6, Math.floor(Number(cfg.level) || 6)));
+    const offsets = getDroneFormationOffsets(count, cfg.formation || "standard");
+    if (!offsets?.length) return;
+    const now = performance.now();
+    if (!Array.isArray(e._dronePos) || e._dronePos.length !== count) {
+      e._dronePos = offsets.map(o => ({ x: o.x, y: o.y, lastImage: null }));
+      e._droneT = now;
+    }
+    const elapsed = Math.min(0.05, Math.max(0, (now - Number(e._droneT || now)) / 1000));
+    const follow = 1 - Math.exp(-elapsed * 7.5);
+    e._droneT = now;
+    // Comme le joueur : le cap de la formation suit la direction du vaisseau
+    // en douceur (pas de saut quand le NPC tourne).
+    const rawHeading = Number(e.angle) || 0;
+    if (!Number.isFinite(e._droneHeading)) e._droneHeading = rawHeading;
+    e._droneHeading += shortestAngleDelta(e._droneHeading, rawHeading) * (1 - Math.exp(-elapsed * 11));
+    const heading = e._droneHeading;
+    const fa = heading + Math.PI;
+    const ca = Math.cos(fa), sa = Math.sin(fa);
+    // ✅ +π comme les corps (art orienté ouest à la frame 0 : angleOffset π par défaut).
+    const frame = angleToFrameIndex(heading + Math.PI, 32) + 1;
+    for (let i = 0; i < count; i++) {
+      const target = offsets[i] || offsets[0];
+      const st = e._dronePos[i];
+      st.x += (target.x - st.x) * follow;
+      st.y += (target.y - st.y) * follow;
+      const rx = st.x * ca - st.y * sa;
+      const ry = st.x * sa + st.y * ca;
+      const src = getDroneSpritePath({ type: "iris", level }, frame, design);
+      const image = getCachedImage(src);
+      let renderImage = image;
+      if (!isImgReady(image)) {
+        try { loadImage(src, { priority: true }); } catch {}
+        renderImage = st.lastImage || null;
+        if (!isImgReady(renderImage)) continue;
+      } else {
+        st.lastImage = image;
+      }
+      ctx.save();
+      ctx.translate(rx, ry);
+      drawCenteredImage(ctx, renderImage, 64, 56, renderSmoothingOn());
+      ctx.restore();
+    }
+  } catch {}
+}
+
 function tickGatePortalJumps(dt) {
   if (isZoneMap || !betweenWaves || mapSwitchInProgress) return false;
   const completed = advanceGatePortalJumps(getInteractivePortals(), dt);
@@ -35330,7 +35519,7 @@ function enemyShoot(e, dt, combatTarget = player) {
           r: e.bulletR ?? 7,
           life: Math.max(2.5, distance / projectileSpeed + 1.5),
           dmg: Math.max(1, Math.round(vary(e.bulletDmg ?? 10, 0.05) * (isEntityJammed(e) ? 0.9 : 1))),
-          key: "x1",
+          key: e.ammoKey || "x1",
           scale: e.bulletScale ?? 1.5,
           sprite: e.bulletSprite || null,
           target: "player",
@@ -35368,6 +35557,76 @@ function enemyShoot(e, dt, combatTarget = player) {
   e.shootCd = baseCd * (0.85 + Math.random() * 0.3);
 
   const ang0 = Math.atan2(combatTarget.y - e.y, combatTarget.x - e.x);
+  // ✅ Pattern de tir joueur (ex. police Awakened) : volée réelle en paire
+  // (gauche/droite) puis centrale, en alternance ; les 5 faux lasers suivent
+  // la phase inverse (central puis paire, en alternance), étalés comme le
+  // joueur (file d'attente 0,2 s, départ recalculé au moment du tir).
+  if (e.altShot === true) {
+    const isPair = e._altShot === true;
+    const ammo = e.ammoKey || "x1";
+    const spd = Math.max(120, e.bulletSpeed || 900);
+    const muzzleBase = (e.r || 18) + 12;
+    const fx = Math.cos(ang0), fy = Math.sin(ang0);
+    const px = -fy, py = fx;
+    const life = bulletLifeForRange(e.shootRange, spd);
+    // ✅ dégâts fixes voulus (1000 partout : réels paire/single comme faux).
+    // Pas de variance, pas de split, pas de bonus drones : le chiffre est exact.
+    const dmgBase = Math.max(1, Math.round(Number(e.bulletDmg ?? 1000) * (isEntityJammed(e) ? 0.9 : 1)));
+    const spawnShot = (off, dmg, visual) => {
+      const sx = e.x + fx * muzzleBase + px * off;
+      const sy = e.y + fy * muzzleBase + py * off;
+      const dx = combatTarget.x - sx, dy = combatTarget.y - sy;
+      const len = Math.hypot(dx, dy) || 1;
+      addCappedProjectile(enemyBullets, {
+        x: sx, y: sy,
+        vx: dx / len * spd, vy: dy / len * spd,
+        spd,
+        r: e.bulletR ?? 7,
+        life: Math.max(life, 2.5),
+        dmg, key: ammo,
+        scale: e.bulletScale ?? 1.5,
+        sprite: e.bulletSprite || null,
+        target: combatTarget === player ? "player" : "escort",
+        targetId: combatTarget === player ? null : combatTarget.id,
+        homing: NPC_SHOT_RULES.homing,
+        ownerId: e.id,
+        miss: visual ? false : (Math.random() < Math.min(1, NPC_SHOT_RULES.missChance + npcLaserAccuracyPenalty(e))),
+        visual: visual === true,
+        hitRadiusBonus: NPC_SHOT_RULES.hitRadiusBonus,
+      }, ENTITY_LIMITS.enemyBullets);
+    };
+    if (isPair) {
+      spawnShot(-SIDE_OFFSET, dmgBase, false);
+      spawnShot(SIDE_OFFSET, dmgBase, false);
+    } else {
+      spawnShot(0, dmgBase, false);
+    }
+    // Faux étalés comme le joueur (paire/single inversés, 1 toutes les 0,2 s).
+    // Eux aussi à 1000 (dégâts réels) : la position de départ sera recalculée
+    // au moment de chaque tir, le MISS sera tiré au sort à ce moment-là.
+    const fauxTarget = combatTarget === player ? "player" : "escort";
+    const fauxTargetId = combatTarget === player ? null : combatTarget.id;
+    const fauxTotal = Math.max(0, Math.floor(Number(e.fauxLasers ?? 5)));
+    for (let i = 1; i <= fauxTotal; i++) {
+      const fakeIsPair = ((i % 2) === 0) === isPair;
+      const offs = fakeIsPair ? [-SIDE_OFFSET, SIDE_OFFSET] : [0];
+      for (const off of offs) {
+        scheduleNpcFaux(i * 0.2, {
+          npcId: e.id, off, dmg: dmgBase,
+          spd, life, key: ammo,
+          scale: e.bulletScale ?? 1.5,
+          sprite: e.bulletSprite || null,
+          bulletR: e.bulletR ?? 7,
+          target: fauxTarget, targetId: fauxTargetId,
+          homing: NPC_SHOT_RULES.homing,
+          hitRadiusBonus: NPC_SHOT_RULES.hitRadiusBonus,
+        });
+      }
+    }
+    e._altShot = !isPair;
+    if (combatTarget === player) e._attackedPlayerRecently = true;
+    return;
+  }
   const burst = Math.max(1, e.burst || 1);
 
   for (let k = 0; k < burst; k++) {
@@ -35386,7 +35645,8 @@ function enemyShoot(e, dt, combatTarget = player) {
 
     const baseDmg = e.bulletDmg ?? 10;
     // Brouillé (JAMX) : -10 % de dégâts infligés.
-    const shotDmg = Math.max(1, Math.round(vary(baseDmg, 0.05) * (isEntityJammed(e) ? 0.9 : 1)));
+    // Drones du NPC : bonus dégâts de leur design (ex. 10x ADMIN = x1.1).
+    const shotDmg = Math.max(1, Math.round(vary(baseDmg, 0.05) * (isEntityJammed(e) ? 0.9 : 1) * npcDroneDamageMult(e)));
 
     addCappedProjectile(enemyBullets, {
       x: e.x + Math.cos(ang) * muzzle,
@@ -35397,7 +35657,7 @@ function enemyShoot(e, dt, combatTarget = player) {
       r: e.bulletR ?? 7,
       life: Math.max(life, 2.5),
       dmg: shotDmg,
-      key: "x1",
+      key: e.ammoKey || "x1",
       scale: e.bulletScale ?? 1.5,
       sprite: e.bulletSprite || null,
 
@@ -35409,6 +35669,39 @@ function enemyShoot(e, dt, combatTarget = player) {
       hitRadiusBonus: NPC_SHOT_RULES.hitRadiusBonus,
     }, ENTITY_LIMITS.enemyBullets);
     if (combatTarget === player) e._attackedPlayerRecently = true;
+  }
+
+  // ✅ Faux lasers façon joueur (ex. police Awakened) : visuels seuls
+  // (dégâts 0, jamais de MISS), en éventail autour du tir réel.
+  const fauxCount = Math.max(0, Math.floor(Number(e.fauxLasers) || 0));
+  if (fauxCount > 0) {
+    const fauxSpd = Math.max(120, e.bulletSpeed || 900);
+    const fauxMuzzle = (e.r || 18) + 12;
+    const fauxLife = bulletLifeForRange(e.shootRange, fauxSpd);
+    const fauxKey = e.ammoKey || "x1";
+    for (let f = 0; f < fauxCount; f++) {
+      const fa = ang0 + (f - (fauxCount - 1) / 2) * 0.04;
+      addCappedProjectile(enemyBullets, {
+        x: e.x + Math.cos(fa) * fauxMuzzle,
+        y: e.y + Math.sin(fa) * fauxMuzzle,
+        vx: Math.cos(fa) * fauxSpd,
+        vy: Math.sin(fa) * fauxSpd,
+        spd: fauxSpd,
+        r: e.bulletR ?? 7,
+        life: Math.max(fauxLife, 2.5),
+        dmg: 0,
+        key: fauxKey,
+        scale: e.bulletScale ?? 1.5,
+        sprite: e.bulletSprite || null,
+        target: combatTarget === player ? "player" : "escort",
+        targetId: combatTarget === player ? null : combatTarget.id,
+        homing: NPC_SHOT_RULES.homing,
+        ownerId: e.id,
+        miss: false,
+        visual: true,
+        hitRadiusBonus: NPC_SHOT_RULES.hitRadiusBonus,
+      }, ENTITY_LIMITS.enemyBullets);
+    }
   }
 }
 
@@ -35469,6 +35762,8 @@ function update(dt) {
   player.pvpAttackT = Math.max(0, (player.pvpAttackT || 0) - dt);
   player.invincibleT = Math.max(0, (player.invincibleT || 0) - dt);
   player.portalLockT = Math.max(0, (player.portalLockT || 0) - dt);
+  // ✅ IEM reçue d'un NPC (ex. Saimon Awakened) : tirs coupés pendant l'effet.
+  player.iemBlockT = Math.max(0, (player.iemBlockT || 0) - dt);
   // Camouflage ultime (Police) : durée + recharge. La recharge ne descend
   // que hors effet (pendant l'effet le voile reste plein).
   if ((player.cloakT || 0) > 0) {
@@ -36808,6 +37103,7 @@ if (movementLocked) {
   updateShipMoveSound();
   tickPendingSalvo(dt);
   tickPendingEscortSalvo(dt);
+  tickPendingNpcFaux(dt);
 
   {
     const spd = Math.hypot(player.vx, player.vy);
@@ -37869,8 +38165,8 @@ if (e.spritePlay) {
     const steps = Math.floor(e.spriteAcc);
     e.spriteAcc -= steps;
 
-    // ✅ Cubikon : pas de boucle %frames (on veut open/close)
-    if (e.type === "npc_Cubikon") {
+      // ✅ Cubikon (1-6 + vert) : pas de boucle %frames (on veut open/close)
+      if (e.type === "npc_Cubikon" || e.cubikonMinions) {
       const dir = e.spriteDir || 1;
       e.spriteIdx += steps * dir;
     } else {
@@ -37879,8 +38175,8 @@ if (e.spritePlay) {
   }
 }
 
-// ✅ Cubikon : OPEN -> HOLD 2s -> SPAWN -> CLOSE -> IDLE
-if (e.type === "npc_Cubikon" && e._animPhase) {
+// ✅ Cubikon (1-6 + vert) : OPEN -> HOLD 2s -> SPAWN -> CLOSE -> IDLE
+if ((e.type === "npc_Cubikon" || e.cubikonMinions) && e._animPhase) {
   const sp = NPC_TYPES[e.type]?.sprite;
   const frames = sp?.frames || sp?._imgs?.length || 1;
   const last = frames - 1;
@@ -37955,11 +38251,13 @@ if (e.type === "npc_Cubikon" && e._animPhase) {
     // Multi : NPC partage — le reset idle (regen + despawn) est serveur.
     // En local on ne toucherait que des fantomes et on ferait flicker la
     // barre de vie (regen locale ecrasee par le snapshot 20 Hz).
-    if (e.type === "npc_Cubikon" && !(e._netUid && netplayNpcActive())) {
+    if ((e.type === "npc_Cubikon" || e.cubikonMinions) && !(e._netUid && netplayNpcActive())) {
       e._sinceHit = (e._sinceHit ?? 999) + dt;
       refillLocalCubikonMinions(e);
 
       if (e._minionDespawning == null) e._minionDespawning = false;
+      // ✅ type de minions du Cubikon (Protegit en 1-6, icy vert en Awakened).
+      const resetMinionType = String(e.cubikonMinions?.type || "npc_Protegit");
 
       // Brouillé : pas de reset/regen idle.
       if (e._sinceHit >= CUBIKON_RESET.idleDelay && !isEntityJammed(e)) {
@@ -37981,7 +38279,7 @@ if (e.type === "npc_Cubikon" && e._animPhase) {
 
           for (const m of enemies) {
             if (!m || m.hp <= 0) continue;
-            if (m.type !== "npc_Protegit") continue;
+            if (String(m.type) !== resetMinionType) continue;
             if (m.masterId !== e.id) continue;
 
             m.despawnDur = 0;
@@ -37990,12 +38288,25 @@ if (e.type === "npc_Cubikon" && e._animPhase) {
         }
 
         if (fullHP && fullSH) {
+          // ✅ vert : les icy restent combattre, le reset se termine quand même.
+          if (e.cubikonMinions?.despawnOnReset === false) {
+            e._spawnedOnce = false;
+            e._resetting = false;
+            e._minionDespawning = false;
+            e._sinceHit = 999;
+
+            e._provoked = false;
+            e._aggro = false;
+            e._aggroT = 0;
+            e._attackedPlayerRecently = false;
+            if (e.aiZ) e.aiZ.state = "wander";
+          } else {
           if (!e._minionDespawning) {
             e._minionDespawning = true;
 
             for (const m of enemies) {
               if (!m || m.hp <= 0) continue;
-              if (m.type !== "npc_Protegit") continue;
+              if (String(m.type) !== resetMinionType) continue;
               if (m.masterId !== e.id) continue;
 
               m.value = 0;
@@ -38008,7 +38319,7 @@ if (e.type === "npc_Cubikon" && e._animPhase) {
           }
 
           const hasMinionAlive = enemies.some(m =>
-            m && m.hp > 0 && m.type === "npc_Protegit" && m.masterId === e.id
+            m && m.hp > 0 && String(m.type) === resetMinionType && m.masterId === e.id
           );
 
           if (!hasMinionAlive) {
@@ -38023,6 +38334,7 @@ if (e.type === "npc_Cubikon" && e._animPhase) {
             e._attackedPlayerRecently = false;
             if (e.aiZ) e.aiZ.state = "wander";
           }
+          }
         }
       } else {
         e._resetting = false;
@@ -38030,7 +38342,9 @@ if (e.type === "npc_Cubikon" && e._animPhase) {
       }
     }
 
-    if (e.type === "npc_Protegit" && e.despawnDur) {
+    // ✅ despawn piloté par les flags (posés uniquement par les chemins Cubikon,
+    // 1-6 comme Awakened) : plus de filtre par type de minion.
+    if (e.despawnDur) {
       e.despawnT = (e.despawnT || 0) + dt;
 
       if (e.despawnT >= e.despawnDur) {
@@ -38040,7 +38354,8 @@ if (e.type === "npc_Cubikon" && e._animPhase) {
       }
     }
 
-    if (e.type === "npc_Protegit" && e._cubikonDeathDecayActive) {
+    // ✅ décomposition à la mort du Cubikon, pilotée par flags (voir ci-dessus).
+    if (e._cubikonDeathDecayActive) {
       e.hp = Math.max(0, e.hp - (e._cubikonDeathDecay || 0) * dt);
       if (e.hp <= 0) {
         e.hp = 0;
@@ -38121,8 +38436,10 @@ if (e.type === "npc_Cubikon" && e._animPhase) {
 
     const dx = combatTarget.x - e.x;
     const dy = combatTarget.y - e.y;
-    const d = Math.hypot(dx, dy) || 1;
-    const nx = dx / d, ny = dy / d;
+    const d = Math.hypot(dx, dy);
+    // ✅ chevauchement exact (ex. NPC à la même vitesse que le joueur collé à lui) :
+    // direction (0,0) interdite (vecteur nul + frame NaN) → on garde le cap.
+    const nx = d > 0.01 ? dx / d : Math.cos(e.angle || 0), ny = d > 0.01 ? dy / d : Math.sin(e.angle || 0);
 
     const zoneMode = rules?.mode === "zone";
 
@@ -38916,6 +39233,7 @@ function draw() {
         }
       }
     }
+    drawNpcDrones(e);
     drawEnemyBody(e, enemySpriteFrame);
     if (GAME_SETTINGS.npcEngineEffects) npcEngine.draw(ctx, e, enemyConfig, isImgReady, enemySpriteFrame);
     drawRocketDebuffEffect(e);

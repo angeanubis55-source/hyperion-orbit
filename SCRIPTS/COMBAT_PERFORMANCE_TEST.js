@@ -771,6 +771,7 @@ function shotHarness({ shared = true, active = true, shots = false, impacts = fa
     isPlayerUntargetable: () => false, rules: {},
     dist2: (x, y, a, b) => (x-a)**2 + (y-b)**2,
     bulletLifeForRange: () => 2.5, vary: n => n, isEntityJammed: () => false,
+    npcDroneDamageMult: () => 1,
     addCappedProjectile: (list, bullet) => list.push(bullet), enemyBullets: projectiles,
     NPC_SHOT_RULES: { missChance: 0, homing: true, hitRadiusBonus: 0 }, ENTITY_LIMITS: { enemyBullets: 500 },
   });
