@@ -2526,10 +2526,10 @@ export const NPC_TYPES = {
     playSprite: true,
     passiveNative: true,
     spriteSpeed: 20,
-    // ✅ munitions x3.
+    // ✅ munitions x3, portée 700.
     bulletSprite: { src: "COMBAT/MUNITIONS/X3.png", w: 78, h: 20, glow: true, invert: true },
     ammoKey: "x3",
-    r: 40, hp: 2000000, shield: 1000000, speed: 220, bulletDmg: 12000, bulletSpeed: 4500, shootRange: 600,
+    r: 40, hp: 2000000, shield: 1000000, speed: 220, bulletDmg: 12000, bulletSpeed: 4500, shootRange: 700,
   },
   // ✅ Awakened verts (GG ???) : mêmes stats que leurs homologues normaux, sprites verts dédiés.
   npc_Awakened_Blighted_Kristallon: {
@@ -2538,10 +2538,10 @@ export const NPC_TYPES = {
     playSprite: true,
     passiveNative: true,
     spriteSpeed: 20,
-    // ✅ munitions x3.
+    // ✅ munitions x3, portée 700.
     bulletSprite: { src: "COMBAT/MUNITIONS/X3.png", w: 78, h: 20, glow: true, invert: true },
     ammoKey: "x3",
-    r: 18, hp: 600000, shield: 400000, speed: 450, bulletDmg: 4000, bulletSpeed: 4500, shootRange: 580,
+    r: 18, hp: 600000, shield: 400000, speed: 450, bulletDmg: 4000, bulletSpeed: 4500, shootRange: 700,
     onKill: { spawn: [ { type: "npc_Blighted_Gygerthrall", count: 3, radius: 120 } ] },
   },
   npc_Awakened_Cubikon: {
@@ -2567,11 +2567,11 @@ export const NPC_TYPES = {
     playSprite: false,
     passiveNative: false,
     spriteSpeed: 0,
-    // ✅ munitions x3.
+    // ✅ munitions x3, portée 700.
     bulletSprite: { src: "COMBAT/MUNITIONS/X3.png", w: 78, h: 20, glow: true, invert: true },
     ammoKey: "x3",
-    // ✅ vague 9 : vie/bouclier x3, dégâts x10, +100 vitesse vs homologue.
-    r: 18, hp: 300000, shield: 300000, speed: 300, bulletDmg: 12000, bulletSpeed: 4500, shootRange: 500,
+    // ✅ vague 9 : vie/bouclier x3, dégâts x10, +200 vitesse (+100 puis +100) vs homologue.
+    r: 18, hp: 300000, shield: 300000, speed: 400, bulletDmg: 12000, bulletSpeed: 4500, shootRange: 700,
   },
   npc_Awakened_Icy: {
     name: "Awakened Icy",
@@ -2579,13 +2579,13 @@ export const NPC_TYPES = {
     playSprite: false,
     passiveNative: false,
     spriteSpeed: 0,
-    // ✅ munitions x3 comme le police.
+    // ✅ munitions x3 comme le police, portée 700.
     bulletSprite: { src: "COMBAT/MUNITIONS/X3.png", w: 78, h: 20, glow: true, invert: true },
     ammoKey: "x3",
     // ✅ même vitesse que le joueur -50 (250 de base en repli).
     matchPlayerSpeed: true,
     playerSpeedDelta: -50,
-    r: 18, hp: 100000, shield: 80000, speed: 250, bulletDmg: 2000, bulletSpeed: 4500, shootRange: 550,
+    r: 18, hp: 100000, shield: 80000, speed: 250, bulletDmg: 2000, bulletSpeed: 4500, shootRange: 700,
   },
   npc_Awakened_Impulse_II: {
     name: "Awakened Impulse II",
@@ -2593,10 +2593,10 @@ export const NPC_TYPES = {
     playSprite: false,
     passiveNative: false,
     spriteSpeed: 0,
-    // ✅ munitions x3.
+    // ✅ munitions x3, portée 700.
     bulletSprite: { src: "COMBAT/MUNITIONS/X3.png", w: 78, h: 20, glow: true, invert: true },
     ammoKey: "x3",
-    r: 18, hp: 1200000, shield: 750000, speed: 450, bulletDmg: 12000, bulletSpeed: 4500, shootRange: 580,
+    r: 18, hp: 1200000, shield: 750000, speed: 450, bulletDmg: 12000, bulletSpeed: 4500, shootRange: 700,
   },
   npc_Awakened_Mordon: {
     name: "Awakened Mordon",
@@ -2604,12 +2604,12 @@ export const NPC_TYPES = {
     playSprite: true,
     passiveNative: false,
     spriteSpeed: 20,
-    // ✅ munitions x3.
+    // ✅ munitions x3, portée 700.
     bulletSprite: { src: "COMBAT/MUNITIONS/X3.png", w: 78, h: 20, glow: true, invert: true },
     ammoKey: "x3",
-    // ✅ vague 3 : vie/bouclier x3 vs homologue, +100 vitesse.
+    // ✅ vague 3 : vie/bouclier x3 vs homologue, +200 vitesse (+100 puis +100).
     // À sa mort : 1 protegit vert + 1 icy vert (repris tel quel dans le plan de vague).
-    r: 18, hp: 60000, shield: 30000, speed: 225, bulletDmg: 400, bulletSpeed: 4500, shootRange: 500,
+    r: 18, hp: 60000, shield: 30000, speed: 325, bulletDmg: 400, bulletSpeed: 4500, shootRange: 700,
     onKill: { spawn: [ { type: "npc_Awakened_Protegit", count: 1, radius: 260 }, { type: "npc_Awakened_Icy", count: 1, radius: 260 } ] },
   },
   npc_Awakened_Saimon: {
@@ -2618,12 +2618,12 @@ export const NPC_TYPES = {
     playSprite: false,
     passiveNative: false,
     spriteSpeed: 0,
-    // ✅ munitions x3.
+    // ✅ munitions x3, portée 700.
     bulletSprite: { src: "COMBAT/MUNITIONS/X3.png", w: 78, h: 20, glow: true, invert: true },
     ammoKey: "x3",
     // ✅ vague 4 : vie/bouclier x10, dégâts x6 (x3 puis doublés), +50 vitesse vs homologue.
     // Juste avant de mourir (50 % PV) : claque une IEM (delock + tirs coupés 3 s, 550px).
-    r: 18, hp: 60000, shield: 60000, speed: 370, bulletDmg: 1200, bulletSpeed: 4500, shootRange: 500,
+    r: 18, hp: 60000, shield: 60000, speed: 370, bulletDmg: 1200, bulletSpeed: 4500, shootRange: 700,
     iemBlast: { hpPct: 50, radius: 550, lockoutSec: 3 },
   },
   npc_Awakened_Protegit: {
@@ -2632,12 +2632,12 @@ export const NPC_TYPES = {
     playSprite: false,
     passiveNative: false,
     spriteSpeed: 0,
-    // ✅ munitions x3, même vitesse que le joueur -50 (comme l'icy).
+    // ✅ munitions x3, même vitesse que le joueur -50 (comme l'icy), portée 700.
     bulletSprite: { src: "COMBAT/MUNITIONS/X3.png", w: 78, h: 20, glow: true, invert: true },
     ammoKey: "x3",
     matchPlayerSpeed: true,
     playerSpeedDelta: -50,
-    r: 18, hp: 50000, shield: 40000, speed: 420, bulletDmg: 1500, bulletSpeed: 4500, shootRange: 620,
+    r: 18, hp: 50000, shield: 40000, speed: 420, bulletDmg: 1500, bulletSpeed: 4500, shootRange: 700,
   },
   npc_Awakened_Police: {
     name: "Awakened Police",
@@ -2658,8 +2658,8 @@ export const NPC_TYPES = {
     drones: { count: 10, formation: "butterfly", design: "admin", level: 6 },
     // ✅ à sa mort : 30 icy verts (repris tel quel dans le plan de vague).
     onKill: { spawn: [ { type: "npc_Awakened_Icy", count: 30, radius: 400 } ] },
-    // ✅ dégâts fixes : 1000 sur TOUS les tirs (réels paire/single + faux).
-    r: 18, hp: 1200000, shield: 750000, speed: 450, bulletDmg: 1000, bulletSpeed: 4500, shootRange: 580,
+    // ✅ dégâts fixes : 1000 sur TOUS les tirs (réels paire/single + faux), portée 700.
+    r: 18, hp: 1200000, shield: 750000, speed: 450, bulletDmg: 1000, bulletSpeed: 4500, shootRange: 700,
   },
   npc_Deadly_Battleray: {
     name: "-=[ Deadly Battleray ]=-",
