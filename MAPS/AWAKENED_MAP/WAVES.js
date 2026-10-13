@@ -88,8 +88,9 @@ export const WAVE_PLANS = [
   [{ type: "npc_Awakened_Devourer", count: 1 },
    { type: "npc_Awakened_Cubikon", count: 3,
      onKill: { spawn: [ { type: "npc_Awakened_Protegit", count: 15, radius: 300 } ] } }],
-  // Vague 17 (FINALE GG) : 1 seul impulse II vert. Retour base au kill.
-  [{ type: "npc_Awakened_Impulse_II", count: 1,
+  // Vague 17 (FINALE GG) : 1 seul impulse final (x10 vie/bouclier/dégâts/vitesse).
+  // Retour base au kill.
+  [{ type: "npc_Awakened_Impulse_Final", count: 1,
     onKill: { reward: 0, tp: { factionBase: true } } }],
 ];
 

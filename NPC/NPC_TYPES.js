@@ -2598,6 +2598,17 @@ export const NPC_TYPES = {
     ammoKey: "x3",
     r: 18, hp: 1200000, shield: 750000, speed: 450, bulletDmg: 12000, bulletSpeed: 4500, shootRange: 700,
   },
+  // ✅ Finale GG (vague 17, lui seul) : x10 vie/bouclier/dégâts (vitesse normale).
+  npc_Awakened_Impulse_Final: {
+    name: "Awakened Impulse Final",
+    sprite: { path: "NPC/NPC_SPRITES/IMPULSE_II_VERT/", frames: 32, firstNumber: 1, ext: ".png", w: 150, h: 120 },
+    playSprite: false,
+    passiveNative: false,
+    spriteSpeed: 0,
+    bulletSprite: { src: "COMBAT/MUNITIONS/X3.png", w: 78, h: 20, glow: true, invert: true },
+    ammoKey: "x3",
+    r: 18, hp: 12000000, shield: 7500000, speed: 450, bulletDmg: 120000, bulletSpeed: 4500, shootRange: 700,
+  },
   npc_Awakened_Mordon: {
     name: "Awakened Mordon",
     sprite: { path: "NPC/NPC_SPRITES/MORDON_VERT/", frames: 16, firstNumber: 1, ext: ".png", w: 150, h: 120 },

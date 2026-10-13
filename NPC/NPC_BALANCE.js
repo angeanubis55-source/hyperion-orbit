@@ -292,6 +292,7 @@ export const NPC_REWARDS = Object.freeze({
   npc_Awakened_Devolarium: { credits: 51200, exp: 6400, honor: 32 },
   npc_Awakened_Icy: { credits: 12800, exp: 6400, honor: 32 },
   npc_Awakened_Impulse_II: { credits: 650000, exp: 55000, honor: 200 },
+  npc_Awakened_Impulse_Final: { credits: 650000, exp: 55000, honor: 200 },
   npc_Awakened_Mordon: { credits: 9600, exp: 4800, honor: 16 },
   npc_Awakened_Saimon: { credits: 4000, exp: 2000, honor: 10 },
   npc_Awakened_Protegit: { credits: 20000, exp: 10000, honor: 50 },
