@@ -26470,22 +26470,20 @@ function drainShieldFromEnemy(e, amount, recipient = player, transferPct) {
 // Combat
 // ============================================================
 // ✅ IEM claquée par un NPC (ex. Saimon Awakened à 50 % PV) : miroir de
-// l'IEM joueur, limitée au lanceur (avec 50 saimons, un lockout global
-// clouerait le joueur en permanence). Casse le verrouillage, interdit de
-// reverrouiller CE NPC pendant 3 s (les autres restent tirables), FX qui suit.
+// l'IEM joueur, limitée au lanceur. À toute distance, elle casse le
+// verrouillage (et interdit de le reverrouiller 3 s) ; les autres NPC
+// restent tirables. Le visuel suit le NPC.
 function npcIemBlast(e, cfg = {}) {
   try { spawnPulseFx(e.x, e.y, 1, false, e.id); } catch {}
   try { SFX.play("pulseIEM"); } catch {}
   if (player.dead) return;
-  const radius = Math.max(0, Number(cfg.radius) || 550);
-  if (Math.hypot(player.x - e.x, player.y - e.y) > radius) return;
   const secs = Math.max(0, Number(cfg.lockoutSec) || 3);
-  try {
-    if (Target.get() === e) {
-      try { stopAttack(); } catch {}
-      try { Target.clear(); } catch {}
-    }
-  } catch {}
+  let wasLocked = false;
+  try { wasLocked = Target.get() === e; } catch {}
+  if (wasLocked) {
+    try { stopAttack(); } catch {}
+    try { Target.clear(); } catch {}
+  }
   // ✅ anti-reverrouillage par NPC (voir Target.set) : { id, until }.
   try {
     const now = performance.now();

@@ -2634,9 +2634,9 @@ export const NPC_TYPES = {
     bulletSprite: { src: "COMBAT/MUNITIONS/X3.png", w: 78, h: 20, glow: true, invert: true },
     ammoKey: "x3",
     // ✅ vague 4 : vie/bouclier x10, dégâts x6 (x3 puis doublés), +50 vitesse vs homologue.
-    // Juste avant de mourir (50 % PV) : claque une IEM (delock + tirs coupés 3 s, 550px).
+    // Juste avant de mourir (50 % PV) : claque une IEM (delock + non-reverrouillable 3 s, FX suit, 750px).
     r: 18, hp: 60000, shield: 60000, speed: 370, bulletDmg: 1200, bulletSpeed: 4500, shootRange: 700,
-    iemBlast: { hpPct: 50, radius: 550, lockoutSec: 3 },
+    iemBlast: { hpPct: 50, radius: 750, lockoutSec: 3 },
   },
   npc_Awakened_Protegit: {
     name: "Awakened Protegit",
