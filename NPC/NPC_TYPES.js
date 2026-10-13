@@ -2669,8 +2669,8 @@ export const NPC_TYPES = {
     drones: { count: 10, formation: "butterfly", design: "admin", level: 6 },
     // ✅ à sa mort : 30 icy verts (repris tel quel dans le plan de vague).
     onKill: { spawn: [ { type: "npc_Awakened_Icy", count: 30, radius: 400 } ] },
-    // ✅ dégâts fixes : 1000 sur TOUS les tirs (réels paire/single + faux), portée 700.
-    r: 18, hp: 1200000, shield: 750000, speed: 450, bulletDmg: 1000, bulletSpeed: 4500, shootRange: 700,
+    // ✅ dégâts fixes : 5000 sur TOUS les tirs (réels paire/single + faux), portée 700.
+    r: 18, hp: 12000000, shield: 7500000, speed: 450, bulletDmg: 5000, bulletSpeed: 4500, shootRange: 700,
   },
   npc_Deadly_Battleray: {
     name: "-=[ Deadly Battleray ]=-",
