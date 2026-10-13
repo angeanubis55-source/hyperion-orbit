@@ -688,6 +688,70 @@ export function getZonePortals(WORLD) {
 
     },
 
+    {
+
+      id: "p_11_to_awakened",
+
+      x: 4761,
+
+      y: 5446,
+
+      r: 260,
+
+      toMap: "awakened",
+
+  sprites: {
+
+    idle: {
+
+      src: "ASSETS/PORTAL/AWAKENED/DESACTIVE.png",
+
+      w: 512,
+
+      h: 512,
+
+      yOff: 0,
+
+    },
+
+
+
+    open: {
+
+      src: "ASSETS/PORTAL/AWAKENED/ACTIVE.png",
+
+      w: 512,
+
+      h: 512,
+
+      yOff: 0,
+
+    },
+
+
+
+    jump: {
+
+      src: "ASSETS/PORTAL/AWAKENED/JUMP.png",
+
+      w: 512,
+
+      h: 512,
+
+      yOff: 0,
+
+      scale: 1,
+
+      spinSpeed: 0,
+
+      alpha: 1,
+
+    },
+
+  },
+
+    },
+
   ];
 }
 

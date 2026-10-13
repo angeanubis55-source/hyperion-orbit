@@ -3792,7 +3792,7 @@ html body #profileOverlay .profileHeaderTop .profileTitle, html body #profileOve
   padding-top:10px;
   padding-bottom:10px;
 }
-/* ✅ Groupes d'onglets GG : Ensemble ABG séparé de Delta (roues isolées). */
+/* ✅ Groupes d'onglets GG : Ensemble ABG séparé des roues isolées (Delta, Epsilon, Zeta, Kappa, Lambda, Awakened, Kronos). */
 .ggGateNav .ggTabsGroup {
   display:grid;
   grid-template-columns:1fr;
@@ -3803,6 +3803,7 @@ html body #profileOverlay .profileHeaderTop .profileTitle, html body #profileOve
 .ggGateNav .ggTabsGroup[data-gg-group="zeta"],
 .ggGateNav .ggTabsGroup[data-gg-group="kappa"],
 .ggGateNav .ggTabsGroup[data-gg-group="lambda"],
+.ggGateNav .ggTabsGroup[data-gg-group="awakened"],
 .ggGateNav .ggTabsGroup[data-gg-group="kronos"] {
   margin-top:3px;
   padding-top:3px;
@@ -3876,7 +3877,7 @@ html body #profileOverlay .profileHeaderTop .profileTitle, html body #profileOve
   z-index:0;
   display:block;
   margin:0;
-  width:min(440px,85%);
+  width:min(280px,70%);
   height:auto;
   aspect-ratio:1/1;
   object-fit:contain;

@@ -492,7 +492,7 @@ export function adminListAccounts() {
 // L'anneau doré apparaît/disparaît : le client adopte la version serveur à
 // sa prochaine synchro (révision bumpée). Reset retire aussi les pièces
 // Kronos issues de cette gate.
-const ADMIN_GG_IDS = Object.freeze(["alpha", "beta", "gamma", "delta", "epsilon", "zeta", "kappa", "lambda", "kronos"]);
+const ADMIN_GG_IDS = Object.freeze(["alpha", "beta", "gamma", "delta", "epsilon", "zeta", "kappa", "lambda", "kronos", "awakened"]);
 export function adminGiveGalaxyGate(pseudo, gate) {
   try {
     initAccountDb();

@@ -39,7 +39,7 @@ const JUMP_FX_BY_CATEGORY = Object.freeze({
 });
 
 // Skins des portails spéciaux (assets conservés, tailles d'origine du jeu).
-// Branchés sur la destination : alpha/beta/gamma/delta/epsilon/zeta/kappa/lambda/kronos + pirates (5-2 <-> 4-5).
+// Branchés sur la destination : alpha/beta/gamma/delta/epsilon/zeta/kappa/lambda/kronos/awakened + pirates (5-2 <-> 4-5).
 const SPECIAL_SKINS = Object.freeze({
   alpha: Object.freeze({
     idle: { src: "ASSETS/ALPHA_PORTAL/DESACTIVE.png", w: 500, h: 500, yOff: 0 },
@@ -111,6 +111,15 @@ const SPECIAL_SKINS = Object.freeze({
     jumpFxW: 410,
     jumpFxH: 353,
   }),
+  awakened: Object.freeze({
+    idle: { src: "ASSETS/PORTAL/AWAKENED/DESACTIVE.png", w: 512, h: 512, yOff: 0 },
+    open: { src: "ASSETS/PORTAL/AWAKENED/ACTIVE.png", w: 512, h: 512, yOff: 0 },
+    jump: { src: "ASSETS/PORTAL/AWAKENED/JUMP.png", w: 512, h: 512, yOff: 0, scale: 1, spinSpeed: 0, alpha: 1 },
+    jumpFxPath: "ASSETS/PORTAL/AWAKENED/JUMP/",
+    jumpFxFrames: 25,
+    jumpFxW: 512,
+    jumpFxH: 512,
+  }),
   pirates: Object.freeze({
     idle: { src: "ASSETS/PIRATES_PORTAL/DESACTIVE.png", w: 362, h: 387, yOff: 0 },
     open: { src: "ASSETS/PIRATES_PORTAL/ACTIVE.png", w: 362, h: 387, yOff: 0 },
@@ -174,6 +183,7 @@ export function getPortalSkinForMap(toMap) {
   if (lower === "kappa") return SPECIAL_SKINS.kappa;
   if (lower === "lambda") return SPECIAL_SKINS.lambda;
   if (lower === "kronos") return SPECIAL_SKINS.kronos;
+  if (lower === "awakened") return SPECIAL_SKINS.awakened;
   if (PIRATES_DESTINATIONS.includes(lower)) return SPECIAL_SKINS.pirates;
   // Portails par map : NORMAUX / BATTLE / BL / QZ.
   const dir = SKIN_DIR_BY_MAP.get(id);

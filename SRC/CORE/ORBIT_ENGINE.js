@@ -14456,6 +14456,7 @@ function renderGalaxyGateWindow(message = "") {
   const zetaTabs = Object.values(GALAXY_GATE_DEFINITIONS).filter(item => (item.group || item.id) === "zeta").map(ggTabButton).join("");
   const kappaTabs = Object.values(GALAXY_GATE_DEFINITIONS).filter(item => (item.group || item.id) === "kappa").map(ggTabButton).join("");
   const lambdaTabs = Object.values(GALAXY_GATE_DEFINITIONS).filter(item => (item.group || item.id) === "lambda").map(ggTabButton).join("");
+  const awakenedTabs = Object.values(GALAXY_GATE_DEFINITIONS).filter(item => (item.group || item.id) === "awakened").map(ggTabButton).join("");
   const kronosTabs = Object.values(GALAXY_GATE_DEFINITIONS).filter(item => item.id === "kronos").map(ggTabButton).join("");
   ui.ggTabs.innerHTML = `<div class="ggTabsGroup" data-gg-group="ensemble"><div class="ggTabsButtons">${ensembleTabs}</div></div>`
     + `<div class="ggTabsGroup" data-gg-group="delta"><div class="ggTabsButtons">${deltaTabs}</div></div>`
@@ -14463,6 +14464,7 @@ function renderGalaxyGateWindow(message = "") {
     + `<div class="ggTabsGroup" data-gg-group="zeta"><div class="ggTabsButtons">${zetaTabs}</div></div>`
     + `<div class="ggTabsGroup" data-gg-group="kappa"><div class="ggTabsButtons">${kappaTabs}</div></div>`
     + `<div class="ggTabsGroup" data-gg-group="lambda"><div class="ggTabsButtons">${lambdaTabs}</div></div>`
+    + `<div class="ggTabsGroup" data-gg-group="awakened"><div class="ggTabsButtons">${awakenedTabs}</div></div>`
     + `<div class="ggTabsGroup" data-gg-group="kronos"><div class="ggTabsButtons">${kronosTabs}</div></div>`;
   const history = [...state.history].reverse();
   ui.ggHistory.innerHTML = history.length ? history.map(entry => {
@@ -14828,7 +14830,7 @@ const TRADE_BUTTON = {
 // 4-1..4-4 utilisent BATTLE/4-x, comme chaque map utilise son propre skin.
 function getPortalSpriteSet(ptl = null) {
   const gateId = String(window.__CURRENT_MAP_ID__ || rules?.mapLabel || "").toLowerCase();
-  const isGalaxyGate = ["alpha", "beta", "gamma", "delta", "epsilon", "zeta", "kappa", "lambda", "kronos"].includes(gateId);
+  const isGalaxyGate = ["alpha", "beta", "gamma", "delta", "epsilon", "zeta", "kappa", "lambda", "kronos", "awakened"].includes(gateId);
   const destination = isGalaxyGate && ptl === portal ? gateId
     : isGalaxyGate && ptl === gateReturnPortal
       ? getFactionHomeMap((account.user || getCurrentUserFull())?.faction)
@@ -29500,7 +29502,7 @@ function portalProvidesSafety(portal) {
   const playerSector = getFaction((account.user || getCurrentUserFull())?.faction).sector;
   if (sectorMatch && sectorMatch[1] !== playerSector) return false;
   const destination = String(portal?.toMap || "").trim().toLowerCase();
-  return !["alpha", "beta", "gamma", "delta", "epsilon", "zeta", "kappa", "lambda", "kronos"].includes(destination);
+  return !["alpha", "beta", "gamma", "delta", "epsilon", "zeta", "kappa", "lambda", "kronos", "awakened"].includes(destination);
 }
 
 function baseProvidesSafety() {
@@ -31112,7 +31114,7 @@ function die() {
 // ✅ Portails annexes (par destination) : jamais utilisés pour une
 // réapparition au portail — low, QZ, Galaxy Gates (aussi celles des X-1),
 // map maudite et 5-2 (portail central de 4-5).
-const ANNEX_PORTAL_MAPS = new Set(["low", "qz", "alpha", "beta", "gamma", "delta", "epsilon", "zeta", "kappa", "lambda", "kronos", "maudite", "5-2"]);
+const ANNEX_PORTAL_MAPS = new Set(["low", "qz", "alpha", "beta", "gamma", "delta", "epsilon", "zeta", "kappa", "lambda", "kronos", "awakened", "maudite", "5-2"]);
 
 function isAnnexPortal(portal) {
   // Retour Low : exclu aussi (sinon réapparition sur le portail masqué).

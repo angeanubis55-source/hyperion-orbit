@@ -378,12 +378,12 @@ try {
     assert.equal(finished.pending, false, id + ': verrou libere sur la nouvelle carte');
     assert.equal(finished.gates.completed[id], count, id + ': pas de double validation');
     assert.equal(finished.xenomit, killed.xenomit + xenomit, id + ': Xenomit proportionnel aux credits dans la soute');
-    const energy = id === 'kronos' ? 300 : 0;
+    const energy = GALAXY_GATE_DEFINITIONS[id].completion.energy || 0;
     assert.equal(finished.energy, killed.energy + energy, id + ': gain energie');
     assert.deepEqual(finished.energyPhase, { delay: 3000, before: killed.energy, after: killed.energy + energy });
     assert.deepEqual(finished.rewardMessages.filter(message => message.includes('énergies Galaxy')),
-      energy ? ['Vous avez reçu 300 énergies Galaxy'] : [], 'gain energie annonce une fois');
-    if (energy) assert.ok((await page.locator('#ggRewards').textContent()).includes('300 énergies Galaxy'));
+      energy ? [`Vous avez reçu ${energy} énergies Galaxy`] : [], 'gain energie annonce une fois');
+    if (energy) assert.ok((await page.locator('#ggRewards').textContent()).includes(`${energy} énergies Galaxy`));
     assert.deepEqual(finished.rewardPhase, { delay: 3000, before: killed.xenomit, after: killed.xenomit + xenomit },
       id + ': gain au moment de la recompense');
     assert.ok((await page.locator('#ggRewards').textContent()).replace(/\s/g, '').includes(`${xenomit}Xénomit`),

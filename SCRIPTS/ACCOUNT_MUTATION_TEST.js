@@ -200,7 +200,7 @@ for (const gate of Object.values(GALAXY_GATE_DEFINITIONS)) for (const deferred o
     const result = completeCurrentUserGalaxyGate(gate.id, user, { deferReward: deferred });
     const xenomit = gate.completion.credits / 40000;
     assert.equal(result.ok, true, gate.id);
-    const energy = gate.id === 'kronos' ? 300 : 0;
+    const energy = gate.completion.energy || 0;
     assert.equal(result.reward.energy || 0, energy);
     assert.equal(result.user.galaxyGates.energy, 17 + (deferred ? 0 : energy));
     assert.equal(getCurrentUserFull().galaxyGates.energy, 17 + (deferred ? 0 : energy), 'energies sauvegardees');
