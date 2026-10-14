@@ -1821,7 +1821,7 @@ export function adminGiveModule(pseudo, shipId, stat, pct) {
 // Texte libre (32 car. max) + couleur hexadécimale. Visible dans la fenêtre
 // Titre du joueur (débloqué, sélectionnable, « Cadeau de l'admin ») et par
 // tous sous son pseudo. Doublon de texte = couleur mise à jour, pas de doublon.
-const ADMIN_CUSTOM_TITLES_MAX = 20;
+// Aucune limite de nombre.
 export function adminGiveTitle(pseudo, name, color) {
   try {
     initAccountDb();
@@ -1844,7 +1844,6 @@ export function adminGiveTitle(pseudo, name, color) {
       existing.color = cleanColor;
       entry = { id: String(existing.id), name: String(existing.name), color: cleanColor };
     } else {
-      if (data.titles.custom.length >= ADMIN_CUSTOM_TITLES_MAX) return { ok: false, error: "Trop de titres cadeaux (max 20)." };
       entry = { id: `admin_${randomBytes(4).toString("hex")}`, name: cleanName, color: cleanColor };
       data.titles.custom.push(entry);
     }
