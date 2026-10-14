@@ -160,7 +160,7 @@ export function drawPlayerStatus(context, player, playerName, x, y, rankImage = 
   context.font = "800 12px ui-sans-serif, system-ui";
   if (titleInfo && titleInfo.text) {
     context.fillStyle = titleInfo.color || "rgba(255,243,176,0.95)";
-    context.fillText(`< ${String(titleInfo.text).slice(0, 32)} >`, x, nameY + 20);
+    context.fillText(`< ${String(titleInfo.text)} >`, x, nameY + 20);
   }
   // Vaisseau Police : anonymat — ni pseudo ni firme. Tag [ADMIN] arc-en-ciel
   // (balayage animé de gauche à droite) + grade admin, centrés.

@@ -32898,7 +32898,7 @@ function drawRemoteAbilityFx(r, shipFx) {
         (r.clan ? `[${r.clan}] ` : "") + String(r.pseudo || "Pilote"), 0, -swayBob,
         getCachedImage(r.rank || ""), getCachedImage(getFaction(r.firm)?.imagePath || ""),
         r.droneIndicators || [], getCachedImage(r.ficon || ""), r.moduleIndicators || [], false, true, undefined, undefined, Math.max(0, Math.floor(Number(r.gg) || 0)), renderSmoothingOn(),
-        (() => { try { if (r.showTitle !== true) return null; const t = getTitleById(r.title); if (t) return { text: t.name, color: t.color }; const tt = String(r.titleT || "").slice(0, 32); if (!tt) return null; const tc = String(r.titleC || ""); return { text: tt, color: /^#[0-9a-fA-F]{6}$/.test(tc.trim()) ? tc.trim().toLowerCase() : "#ffffff" }; } catch { return null; } })());
+        (() => { try { if (r.showTitle !== true) return null; const t = getTitleById(r.title); if (t) return { text: t.name, color: t.color }; const tt = String(r.titleT || ""); if (!tt) return null; const tc = String(r.titleC || ""); return { text: tt, color: /^#[0-9a-fA-F]{6}$/.test(tc.trim()) ? tc.trim().toLowerCase() : "#ffffff" }; } catch { return null; } })());
       ctx.restore();
     }
   };
@@ -33970,7 +33970,7 @@ function drawNetplayRemotes(ox, oy) {
         remoteColors.tag,
         Math.max(0, Math.floor(Number(r.gg) || 0)),
         renderSmoothingOn(),
-        (() => { try { if (r.showTitle !== true) return null; const t = getTitleById(r.title); if (t) return { text: t.name, color: t.color }; const tt = String(r.titleT || "").slice(0, 32); if (!tt) return null; const tc = String(r.titleC || ""); return { text: tt, color: /^#[0-9a-fA-F]{6}$/.test(tc.trim()) ? tc.trim().toLowerCase() : "#ffffff" }; } catch { return null; } })(),
+        (() => { try { if (r.showTitle !== true) return null; const t = getTitleById(r.title); if (t) return { text: t.name, color: t.color }; const tt = String(r.titleT || ""); if (!tt) return null; const tc = String(r.titleC || ""); return { text: tt, color: /^#[0-9a-fA-F]{6}$/.test(tc.trim()) ? tc.trim().toLowerCase() : "#ffffff" }; } catch { return null; } })(),
       );
     } catch {}
     ctx.restore();
@@ -40844,7 +40844,7 @@ function frame(t) {
         title: (() => { try { const v = visibleTitleOf(account.user); return v ? String(v.id).slice(0, 32) : ""; } catch { return ""; } })(),
         showTitle: (() => { try { return visibleTitleOf(account.user) != null; } catch { return false; } })(),
         // Texte/couleur résolus (titres cadeaux admin inconnus du catalogue distant).
-        titleT: (() => { try { const v = visibleTitleOf(account.user); return v ? String(v.name).slice(0, 32) : ""; } catch { return ""; } })(),
+        titleT: (() => { try { const v = visibleTitleOf(account.user); return v ? String(v.name) : ""; } catch { return ""; } })(),
         titleC: (() => { try { const v = visibleTitleOf(account.user); return v ? sanitizeTitleColor(v.color) : ""; } catch { return ""; } })(),
         safe: netSafe,
         rank: rankPathNow.slice(0, 64),

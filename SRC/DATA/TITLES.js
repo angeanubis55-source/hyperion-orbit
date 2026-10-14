@@ -120,7 +120,7 @@ export function getTitleById(id, user) {
       if (found) {
         return {
           id: key,
-          name: String(found.name).slice(0, 32),
+          name: String(found.name),
           desc: "Cadeau de l'admin",
           color: sanitizeTitleColor(found.color),
           rarity: "cadeau",
@@ -148,7 +148,7 @@ export function getCustomTitles(user) {
     const out = [];
     for (const c of customs) {
       const id = String(c?.id || "");
-      const name = String(c?.name || "").replace(/\s+/g, " ").trim().slice(0, 32);
+      const name = String(c?.name || "").replace(/\s+/g, " ").trim();
       if (!/^admin_[0-9a-f]{1,16}$/.test(id) || !name || seen.has(id)) continue;
       seen.add(id);
       out.push({ id, name, color: sanitizeTitleColor(c?.color) });

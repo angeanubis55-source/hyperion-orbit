@@ -1829,8 +1829,8 @@ export function adminGiveTitle(pseudo, name, color) {
     if (!key) return { ok: false, error: "Pseudo manquant." };
     const row = db.prepare("SELECT * FROM users WHERE pseudo_norm = ?").get(key);
     if (!row) return { ok: false, error: "Compte introuvable." };
-    const cleanName = String(name || "").replace(/\s+/g, " ").trim().slice(0, 32);
-    if (!cleanName) return { ok: false, error: "Texte vide (32 caractères max)." };
+    const cleanName = String(name || "").replace(/\s+/g, " ").trim();
+    if (!cleanName) return { ok: false, error: "Texte vide." };
     const rawColor = String(color || "").trim();
     const cleanColor = /^#[0-9a-fA-F]{6}$/.test(rawColor) ? rawColor.toLowerCase() : "#ffffff";
     let data = {};
