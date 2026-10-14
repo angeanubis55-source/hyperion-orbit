@@ -1817,6 +1817,48 @@ export function adminGiveModule(pseudo, shipId, stat, pct) {
   } catch { return { ok: false, error: "Erreur serveur." }; }
 }
 
+// Admin : give un titre cadeau à un compte (panneau /api/admin/give-title).
+// Texte libre (32 car. max) + couleur hexadécimale. Visible dans la fenêtre
+// Titre du joueur (débloqué, sélectionnable, « Cadeau de l'admin ») et par
+// tous sous son pseudo. Doublon de texte = couleur mise à jour, pas de doublon.
+const ADMIN_CUSTOM_TITLES_MAX = 20;
+export function adminGiveTitle(pseudo, name, color) {
+  try {
+    initAccountDb();
+    const key = norm(pseudo);
+    if (!key) return { ok: false, error: "Pseudo manquant." };
+    const row = db.prepare("SELECT * FROM users WHERE pseudo_norm = ?").get(key);
+    if (!row) return { ok: false, error: "Compte introuvable." };
+    const cleanName = String(name || "").replace(/\s+/g, " ").trim().slice(0, 32);
+    if (!cleanName) return { ok: false, error: "Texte vide (32 caractères max)." };
+    const rawColor = String(color || "").trim();
+    const cleanColor = /^#[0-9a-fA-F]{6}$/.test(rawColor) ? rawColor.toLowerCase() : "#ffffff";
+    let data = {};
+    try { data = JSON.parse(row.data || "{}") || {}; } catch { data = {}; }
+    if (!data.titles || typeof data.titles !== "object" || Array.isArray(data.titles)) data.titles = {};
+    if (!Array.isArray(data.titles.custom)) data.titles.custom = [];
+    if (!Array.isArray(data.titles.unlocked)) data.titles.unlocked = [];
+    const existing = data.titles.custom.find(c => String(c?.name || "").toLowerCase() === cleanName.toLowerCase());
+    let entry;
+    if (existing) {
+      existing.color = cleanColor;
+      entry = { id: String(existing.id), name: String(existing.name), color: cleanColor };
+    } else {
+      if (data.titles.custom.length >= ADMIN_CUSTOM_TITLES_MAX) return { ok: false, error: "Trop de titres cadeaux (max 20)." };
+      entry = { id: `admin_${randomBytes(4).toString("hex")}`, name: cleanName, color: cleanColor };
+      data.titles.custom.push(entry);
+    }
+    if (!data.titles.unlocked.map(String).includes(entry.id)) data.titles.unlocked.push(entry.id);
+    const newRev = Math.max(Math.floor(Number(data.revision) || 0), Number(row.revision) || 0) + 1;
+    data._adminWriteToken = randomBytes(12).toString("hex");
+    data.revision = newRev;
+    data.updatedAt = Date.now();
+    db.prepare("UPDATE users SET data = ?, revision = ?, updated_at = ? WHERE id = ?")
+      .run(JSON.stringify(data), newRev, Date.now(), row.id);
+    return { ok: true, id: String(row.id), pseudo: String(row.pseudo || "Pilote").slice(0, 20), title: entry, revision: newRev };
+  } catch { return { ok: false, error: "Erreur serveur." }; }
+}
+
 function handleAccountIdentity(req, body, res, kind) {
   const me = authUser(req);
   if (!me) return json(res, 401, { ok: false, error: "Session invalide." });

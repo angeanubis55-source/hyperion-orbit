@@ -272,6 +272,43 @@
       if (e.key === "Enter") $("modalActions").lastChild.click();
     });
   }
+  /* ---------- Give titre cadeau : texte libre + couleur ---------- */
+  function openGiveTitleModal(p) {
+    openModal({
+      title: `Titre cadeau — ${p.pseudo}`,
+      sub: "Texte affiché sous le pseudo (< … >), visible par tous. Description côté joueur : « Cadeau de l'admin ».",
+      bodyHTML: `<input id="titleName" type="text" placeholder="Texte du titre…" maxlength="32" autocomplete="off" style="width:100%;height:34px;margin-bottom:8px;">` +
+        `<div style="display:flex;align-items:center;gap:10px;"><input id="titleColor" type="color" value="#ffd166" style="width:52px;height:34px;padding:2px;"><span id="titlePreview" style="font-weight:800;"></span></div>`,
+      actions: [
+        { label: "Annuler", onClick: closeModal },
+        { label: "Donner", onClick: async () => {
+          const name = ($("titleName").value || "").replace(/\s+/g, " ").trim().slice(0, 32);
+          const color = $("titleColor").value || "#ffffff";
+          if (!name) { modalError("Texte vide."); return; }
+          try {
+            const out = await call("/api/admin/give-title", { method: "POST", body: JSON.stringify({ pseudo: p.pseudo, name, color }) });
+            if (!out || out.ok !== true) throw new Error(out?.error || "Échec.");
+            closeModal();
+            toast(`${out.pseudo} : titre « ${out.title?.name} » donné.`, "ok");
+          } catch (e) { modalError(e?.message || "Erreur."); return; }
+          refresh();
+        } },
+      ],
+    });
+    const prev = () => {
+      const el = $("titlePreview");
+      if (!el) return;
+      const name = ($("titleName").value || "").replace(/\s+/g, " ").trim().slice(0, 32) || "Aperçu";
+      el.textContent = `< ${name} >`;
+      el.style.color = $("titleColor").value || "#ffffff";
+    };
+    $("titleName").addEventListener("input", prev);
+    $("titleColor").addEventListener("input", prev);
+    prev();
+    $("titleName").addEventListener("keydown", (e) => {
+      if (e.key === "Enter") $("modalActions").lastChild.click();
+    });
+  }
   /* ---------- Ban : boutons rapides de durée + motif ---------- */
   const BAN_DURATIONS = [
     { label: "1 jour", ms: 86400000 },
@@ -392,6 +429,9 @@
       const giveHonor = mkBtn("Honneur");
       giveHonor.onclick = () => openGiveModal("honor", p);
       add(giveHonor);
+      const giveTitle = mkBtn("Titre");
+      giveTitle.onclick = () => openGiveTitleModal(p);
+      add(giveTitle);
       const del = mkBtn("Supprimer", true);
       del.onclick = () => openDeleteModal(p);
       add(del);

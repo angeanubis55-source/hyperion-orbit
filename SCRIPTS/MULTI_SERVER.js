@@ -23,7 +23,7 @@ const {
 } = AC;
 import { tickLowRaid, getLowRaidState } from "./LOW_RAID.js";
 import { damagePlayerLayers } from "../COMBAT/COMBAT_RULES.js";
-import { handleAccountApi, getAccountGameplayData, verifyWsToken, recordPvpKill, recordPvpPetKill, awardNpcKill, listFriends, friendFollowers, findUserByPseudo, hasFriendRequest, clanIdOfUser, clanTagOfUser, clanMemberUserIds, recordClanWarKill, adminGiveCredits, adminGiveExperience, adminGiveHonor, adminGiveModule, adminListAccounts, adminDeleteAccount, adminResetGalaxyGate, adminGiveGalaxyGate, adminDroneDesigns, adminGiveDroneDesign, adminShipFamilies } from "./ACCOUNT_SERVER.js";
+import { handleAccountApi, getAccountGameplayData, verifyWsToken, recordPvpKill, recordPvpPetKill, awardNpcKill, listFriends, friendFollowers, findUserByPseudo, hasFriendRequest, clanIdOfUser, clanTagOfUser, clanMemberUserIds, recordClanWarKill, adminGiveCredits, adminGiveExperience, adminGiveHonor, adminGiveModule, adminGiveTitle, adminListAccounts, adminDeleteAccount, adminResetGalaxyGate, adminGiveGalaxyGate, adminDroneDesigns, adminGiveDroneDesign, adminShipFamilies } from "./ACCOUNT_SERVER.js";
 import { combatProfile, validateCombatHit } from "./COMBAT_PROFILE.js";
 import { profileAbilityCooldown } from "../DRONE/DRONE_DESIGNS.js";
 import { selectNpcSnapshot } from "./NPC_SNAPSHOT.js";
@@ -893,7 +893,7 @@ function handleAdminApi(request, response, pathname) {
     adminJson(response, 200, { ok: true, accounts: out, guests, onlineCount, total: out.length });
     return true;
   }
-  if ((pathname === "/api/admin/broadcast" || pathname === "/api/admin/kick" || pathname === "/api/admin/mute" || pathname === "/api/admin/give" || pathname === "/api/admin/give-exp" || pathname === "/api/admin/give-honor" || pathname === "/api/admin/give-module" || pathname === "/api/admin/reset-gg" || pathname === "/api/admin/give-gg" || pathname === "/api/admin/give-drone-design" || pathname === "/api/admin/ban" || pathname === "/api/admin/unban" || pathname === "/api/admin/delete" || pathname === "/api/admin/cheat-hold") && request.method === "POST") {
+  if ((pathname === "/api/admin/broadcast" || pathname === "/api/admin/kick" || pathname === "/api/admin/mute" || pathname === "/api/admin/give" || pathname === "/api/admin/give-exp" || pathname === "/api/admin/give-honor" || pathname === "/api/admin/give-module" || pathname === "/api/admin/give-title" || pathname === "/api/admin/reset-gg" || pathname === "/api/admin/give-gg" || pathname === "/api/admin/give-drone-design" || pathname === "/api/admin/ban" || pathname === "/api/admin/unban" || pathname === "/api/admin/delete" || pathname === "/api/admin/cheat-hold") && request.method === "POST") {
     readJsonBody(request).then((body) => {
       try {
         if (pathname === "/api/admin/delete") {
@@ -1034,8 +1034,25 @@ function handleAdminApi(request, response, pathname) {
           adminJson(response, 200, res);
           return;
         }
-        if (pathname === "/api/admin/give-gg") {
-          // Ajoute la completion d'une Galaxy Gate (pseudo + gate ou "all").
+        if (pathname === "/api/admin/give-title") {
+          // Give un titre cadeau : pseudo + texte libre + couleur hexa.
+          // Le joueur le voit débloqué dans sa fenêtre Titre à sa synchro.
+          const res = adminGiveTitle(String(body?.pseudo || ""), String(body?.name || ""), String(body?.color || ""));
+          if (!res || res.ok !== true) {
+            adminJson(response, res?.error === "Compte introuvable." ? 404 : 400, res || { ok: false, error: "Paramètres invalides." });
+            return;
+          }
+          try {
+            const peer = findPeerByPseudo(res.pseudo);
+            if (peer) {
+              const txt = `L'admin t'a donné le titre « ${res.title?.name} » (fenêtre Titres).`;
+              sendToPeer(peer.id, { t: "chatMsg", from: "[ADMIN]", text: txt, at: Date.now(), by: "admin" });
+            }
+          } catch {}
+          adminJson(response, 200, res);
+          return;
+        }
+        if (pathname === "/api/admin/give-gg") {          // Ajoute la completion d'une Galaxy Gate (pseudo + gate ou "all").
           // L'anneau doré apparaît à la prochaine synchro du joueur.
           const res = adminGiveGalaxyGate(String(body?.pseudo || ""), String(body?.gate || ""));
           if (!res || res.ok !== true) {
@@ -3328,6 +3345,12 @@ wss.on("connection", (ws) => {
       if (Number.isFinite(Number(msg.shots))) state.shots = Math.max(0, Math.floor(Number(msg.shots)));
       if (typeof msg.rank === "string" && msg.rank) state.rank = String(msg.rank).slice(0, 64);
       if (typeof msg.firm === "string" && msg.firm) state.firm = String(msg.firm).slice(0, 16);
+      // Titre affichable : id validé côté affichage, jamais de HTML (slice + whitelist UI).
+      if (typeof msg.title === "string") state.title = String(msg.title).slice(0, 32);
+      if (typeof msg.showTitle === "boolean") state.showTitle = msg.showTitle === true;
+      // Texte/couleur transmis (cadeaux admin) : texte brut, couleur hexadécimale.
+      if (typeof msg.titleT === "string") state.titleT = String(msg.titleT).slice(0, 32);
+      if (typeof msg.titleC === "string") state.titleC = /^#[0-9a-fA-F]{6}$/.test(msg.titleC.trim()) ? msg.titleC.trim().toLowerCase() : "";
       if (typeof msg.dind === "string" && msg.dind) state.dind = String(msg.dind).slice(0, 256);
       if (typeof msg.ficon === "string" && msg.ficon) state.ficon = String(msg.ficon).slice(0, 128);
       if (typeof msg.mind === "string" && msg.mind) state.mind = String(msg.mind).slice(0, 128);
@@ -3770,7 +3793,7 @@ setInterval(() => {
           delete s._abilityFx[skill];
         }
       }
-      players.push({ id: s.id, pseudo: s.pseudo, clan: String(s.clanTag || "").slice(0, 5), shipId: s.shipId, hswap: Math.max(0, Math.min(3, Number(s.hswap) || 0)), x: Math.round(s.x), y: Math.round(s.y), vx: Math.round((Number(s.vx) || 0) * 100) / 100, vy: Math.round((Number(s.vy) || 0) * 100) / 100, moving: s.moving === true, motionBlocked: s.motionBlocked === true, teleportSeq: Number(s.teleportSeq) || 0, mx: Math.round(Number(s.mx) || 0), my: Math.round(Number(s.my) || 0), cloakCpu: s.cloakCpu === true, cloaked: s.cloaked === true, vmax: Math.max(50, Math.min(7500, Math.round(Number(s.vmax) || 400))), angle: Number(s.angle) || 0, dead: s.dead === true, hpPct: s.hpPct ?? 1, shPct: s.shPct ?? 1, collectUid: String(s.collectUid || "").slice(0, 64), collectPet: s.collectPet === true, bg: s.bg === true, atk: s.atk === true, tx: Math.round(Number(s.tx) || 0), ty: Math.round(Number(s.ty) || 0), ammo: String(s.ammo || "x1").slice(0, 16), drones: Number(s.drones) || 0, dform: String(s.dform || "standard").slice(0, 32), fint: Number(s.fint) || 0.25, bspd: Math.round(Number(s.bspd) || 4000), dslots: String(s.dslots || ""), gg: Math.max(0, Math.min(127, Math.floor(Number(s.gg) || 0))), alt: s.alt === true, shots: Math.max(0, Math.floor(Number(s.shots) || 0)), rank: String(s.rank || ""), firm: String(s.firm || ""), dind: String(s.dind || ""), ficon: String(s.ficon || ""), mind: String(s.mind || ""), rseq: Math.max(0, Math.floor(Number(s.rseq) || 0)), rkind: String(s.rkind || "r310").slice(0, 16), rspd: Math.round(Number(s.rspd) || 1500),
+      players.push({ id: s.id, pseudo: s.pseudo, clan: String(s.clanTag || "").slice(0, 5), shipId: s.shipId, hswap: Math.max(0, Math.min(3, Number(s.hswap) || 0)), x: Math.round(s.x), y: Math.round(s.y), vx: Math.round((Number(s.vx) || 0) * 100) / 100, vy: Math.round((Number(s.vy) || 0) * 100) / 100, moving: s.moving === true, motionBlocked: s.motionBlocked === true, teleportSeq: Number(s.teleportSeq) || 0, mx: Math.round(Number(s.mx) || 0), my: Math.round(Number(s.my) || 0), cloakCpu: s.cloakCpu === true, cloaked: s.cloaked === true, vmax: Math.max(50, Math.min(7500, Math.round(Number(s.vmax) || 400))), angle: Number(s.angle) || 0, dead: s.dead === true, hpPct: s.hpPct ?? 1, shPct: s.shPct ?? 1, collectUid: String(s.collectUid || "").slice(0, 64), collectPet: s.collectPet === true, bg: s.bg === true, atk: s.atk === true, tx: Math.round(Number(s.tx) || 0), ty: Math.round(Number(s.ty) || 0), ammo: String(s.ammo || "x1").slice(0, 16), drones: Number(s.drones) || 0, dform: String(s.dform || "standard").slice(0, 32), fint: Number(s.fint) || 0.25, bspd: Math.round(Number(s.bspd) || 4000), dslots: String(s.dslots || ""), gg: Math.max(0, Math.min(127, Math.floor(Number(s.gg) || 0))), alt: s.alt === true, shots: Math.max(0, Math.floor(Number(s.shots) || 0)), rank: String(s.rank || ""), firm: String(s.firm || ""), title: String(s.title || "").slice(0, 32), showTitle: s.showTitle === true, titleT: String(s.titleT || "").slice(0, 32), titleC: String(s.titleC || "").slice(0, 32), dind: String(s.dind || ""), ficon: String(s.ficon || ""), mind: String(s.mind || ""), rseq: Math.max(0, Math.floor(Number(s.rseq) || 0)), rkind: String(s.rkind || "r310").slice(0, 16), rspd: Math.round(Number(s.rspd) || 1500),
         // PvP : PV autoritaires + date du dernier coup recu + attaquant (anneau Ship_damage).
         pvpAt: Number(s.pvpAt) || 0, pvpFrom: s.pvpFrom != null ? String(s.pvpFrom) : null, pvpHp: Math.max(0, Math.round(Number(s.hp) || 0)), pvpSh: Math.max(0, Math.round(Number(s.sh) || 0)),
         npcAt: Number(s.npcAt) || 0, npcSeq: Math.max(0, Math.floor(Number(s.npcSeq) || 0)), npcFrom: s.npcFrom != null ? String(s.npcFrom) : null,
@@ -3843,7 +3866,7 @@ setInterval(() => {
       output.hpPct = Math.max(0, Math.min(1, Number(s.hp) / Math.max(1, Number(s.hpMax) || 1)));
       output.shPct = s.shMax > 0 ? Math.max(0, Math.min(1, Number(s.sh) / Number(s.shMax))) : 0;
       const staticSignature = [output.pseudo, output.clan, output.shipId, output.drones, output.dform, output.dslots, output.gg,
-        output.rank, output.firm, output.dind, output.ficon, output.mind, output.petl, output.petn, output.petf].join("|");
+        output.rank, output.firm, output.title, output.showTitle, output.titleT, output.titleC, output.dind, output.ficon, output.mind, output.petl, output.petn, output.petf].join("|");
       output._staticChanged = staticSignature !== s._lastStaticSignature;
       output._staticSignature = staticSignature;
     }
@@ -3878,6 +3901,10 @@ setInterval(() => {
         delete entry.gg;
         delete entry.rank;
         delete entry.firm;
+        delete entry.title;
+        delete entry.showTitle;
+        delete entry.titleT;
+        delete entry.titleC;
         delete entry.dind;
         delete entry.ficon;
         delete entry.mind;

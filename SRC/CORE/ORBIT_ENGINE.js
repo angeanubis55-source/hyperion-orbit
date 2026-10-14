@@ -82,6 +82,8 @@ import {
   saveUser,
   activateCurrentUserBooster,
   tickCurrentUserAuction,
+  unlockCurrentUserTitle,
+  refreshCurrentUserTitles,
 } from "./ACCOUNT.js";
 import { pumpSharedAuction } from "./AUCTION_NET.js";
 import { flushNetUser, netActive, netList, noteNetConsumption, noteNetCreditGain, noteNetPetFuelConsumed, noteNetPurchase, noteNetResourceGain, noteNetServerReward, noteNetUpgradeConsumed } from "./ACCOUNT_NET.js";
@@ -182,6 +184,8 @@ import { initClanUI } from "../../UI/UI_CLAN.js";
 import { initRankingsUI } from "../../UI/UI_RANKINGS.js";
 import { initPilotSkillsUI, renderPilotSkillsWindow, tickPilotSkillsDisplay } from "../../UI/UI_PILOT_SKILLS.js";
 import { initTdmUI } from "../../UI/UI_TDM.js";
+import { initTitlesUI } from "../../UI/UI_TITLES.js";
+import { visibleTitleOf, getTitleById, sanitizeTitleColor } from "../DATA/TITLES.js";
 import { appendGameLog, readGameLogs } from "./GAME_LOG_STORE.js";
 import { canUseFactionModule, getFaction, getFactionBaseSpawn, getFactionHomeMap, getFactionRespawnMap, getFactionUpperBaseMap, normalizeFactionId, resolveBaseCenter } from "./FACTIONS.js";
 import { checkMapAccess, getMapRequiredLevel } from "./MAP_ACCESS.js";
@@ -9348,6 +9352,7 @@ function registerHudWindows() {
   reg("botWindow", "BOT", menuIcon("payload_escort"), false);
   reg("wikiWindow", "Wiki / Aide", menuIcon("help"), false);
   reg("tdmWindow", "Inventaire", menuIcon("monthly_deluxe"), false);
+  reg("titleWindow", "Titres", menuIcon("wargame_event"), false);
   wireSettingsWindow();
 wireWikiWindow();
 initChatUI();
@@ -9356,6 +9361,7 @@ initFriendsUI();
 initClanUI();
 initRankingsUI();
 initTdmUI();
+initTitlesUI();
 initSkylabUI({
   getUser: () => account.user,
   afterAction: () => {
@@ -16062,6 +16068,20 @@ function claimQuestReward(questId) {
   const gainedXp = awardExperience(experience)?.gained ?? experience;
   const gainedHonor = awardHonor(honor)?.gained ?? honor;
   if (account.user?.stats) account.user.stats.rankPoints = calculateRankPoints(account.user.stats);
+  // Titres offerts par la quête : déblocage + notification.
+  const titleMessages = [];
+  try {
+    const titleIds = Array.isArray(reward.titles) ? reward.titles.map(String) : [];
+    for (const tid of titleIds) {
+      const res = unlockCurrentUserTitle(tid);
+      if (res?.ok) {
+        account.user = res.user;
+        titleMessages.push(`Titre débloqué : ${res.title?.name || tid}`);
+      }
+    }
+    // Rattrapage auto (kills / quêtes) après chaque récompense.
+    try { const r = refreshCurrentUserTitles(); if (r?.ok && r.user) account.user = r.user; } catch {}
+  } catch {}
   markProgressDirty();
   saveProgressNow();
   const galaxyEnergy = Math.max(0, Math.floor(Number(reward.galaxyEnergy) * questMult || 0));
@@ -16075,7 +16095,7 @@ function claimQuestReward(questId) {
   const AMMO_REWARD_NAMES = { x6: "RSB-75", rcb: "RCB-140", cbo: "CBO-100", job: "JOB-100", rb: "RB-214", pib: "PIB-100", idb: "IDB-125", vb: "VB-142", emaa: "EMAA-20", sbl: "SBL-100", abl: "A-BL", tent: "TENT-100", ice: "ICE-100", sab: "SAB-50", x2: "MCB-25", x3: "MCB-50", x4: "UCB-100", x1: "LCB-10" };
   const ammoMessages = ammoGained.map(([type, gained]) => `Vous avez reçu ${formatInteger(gained)} munitions ${AMMO_REWARD_NAMES[type] || String(type).toUpperCase()}`);
   const energyMessage = galaxyEnergy > 0 ? `Vous avez reçu ${formatInteger(galaxyEnergy)} énergies pour les portails intergalactiques (GG)` : "";
-  addGameLog(`Mission ${quest?.title || questId} · +${formatInteger(creditsGained)} crédits · +${formatInteger(gainedXp)} XP · +${formatInteger(gainedHonor)} honneur${ammoMessages.length ? ` · ${ammoMessages.join(" · ")}` : ""}${laserMessages.length ? ` · ${laserMessages.join(" · ")}` : ""}${resourceMessages.length ? ` · ${resourceMessages.join(" · ")}` : ""}${energyMessage ? ` · ${energyMessage}` : ""}`, "reward");
+  addGameLog(`Mission ${quest?.title || questId} · +${formatInteger(creditsGained)} crédits · +${formatInteger(gainedXp)} XP · +${formatInteger(gainedHonor)} honneur${ammoMessages.length ? ` · ${ammoMessages.join(" · ")}` : ""}${laserMessages.length ? ` · ${laserMessages.join(" · ")}` : ""}${resourceMessages.length ? ` · ${resourceMessages.join(" · ")}` : ""}${energyMessage ? ` · ${energyMessage}` : ""}${titleMessages.length ? ` · ${titleMessages.join(" · ")}` : ""}`, "reward");
   showNotificationGroup([
     `Vous avez reçu ${formatInteger(creditsGained)} crédits`,
     `Vous avez gagné ${formatInteger(gainedXp)} XP`,
@@ -16084,7 +16104,9 @@ function claimQuestReward(questId) {
     ...laserMessages,
     ...resourceMessages,
     ...(energyMessage ? [energyMessage] : []),
+    ...titleMessages,
   ]);
+  try { window.dispatchEvent(new CustomEvent("orbit:titles-updated")); } catch {}
   return true;
 }
 
@@ -32860,7 +32882,8 @@ function drawRemoteAbilityFx(r, shipFx) {
       drawPlayerStatus(ctx, { hp: 1, hpMax: 1, sh: 1, shMax: 1, r: 18 },
         (r.clan ? `[${r.clan}] ` : "") + String(r.pseudo || "Pilote"), 0, -swayBob,
         getCachedImage(r.rank || ""), getCachedImage(getFaction(r.firm)?.imagePath || ""),
-        r.droneIndicators || [], getCachedImage(r.ficon || ""), r.moduleIndicators || [], false, true, undefined, undefined, Math.max(0, Math.floor(Number(r.gg) || 0)), renderSmoothingOn());
+        r.droneIndicators || [], getCachedImage(r.ficon || ""), r.moduleIndicators || [], false, true, undefined, undefined, Math.max(0, Math.floor(Number(r.gg) || 0)), renderSmoothingOn(),
+        (() => { try { if (r.showTitle !== true) return null; const t = getTitleById(r.title); if (t) return { text: t.name, color: t.color }; const tt = String(r.titleT || "").slice(0, 32); if (!tt) return null; const tc = String(r.titleC || ""); return { text: tt, color: /^#[0-9a-fA-F]{6}$/.test(tc.trim()) ? tc.trim().toLowerCase() : "#ffffff" }; } catch { return null; } })());
       ctx.restore();
     }
   };
@@ -33932,6 +33955,7 @@ function drawNetplayRemotes(ox, oy) {
         remoteColors.tag,
         Math.max(0, Math.floor(Number(r.gg) || 0)),
         renderSmoothingOn(),
+        (() => { try { if (r.showTitle !== true) return null; const t = getTitleById(r.title); if (t) return { text: t.name, color: t.color }; const tt = String(r.titleT || "").slice(0, 32); if (!tt) return null; const tc = String(r.titleC || ""); return { text: tt, color: /^#[0-9a-fA-F]{6}$/.test(tc.trim()) ? tc.trim().toLowerCase() : "#ffffff" }; } catch { return null; } })(),
       );
     } catch {}
     ctx.restore();
@@ -35473,6 +35497,7 @@ function drawPlayerBars(px, py) {
   };
   const moduleIndicators = equippedModules.map(module => moduleColorByType[module.type]).filter(Boolean);
   const myClanTag = (() => { try { return String(getMyClanTag() || ""); } catch { return ""; } })();
+  const myTitle = (() => { try { const v = visibleTitleOf(account.user); return v ? { text: v.name, color: v.color } : null; } catch { return null; } })();
   drawPlayerStatus(
     ctx,
     player,
@@ -35490,6 +35515,7 @@ function drawPlayerBars(px, py) {
     undefined,
     galaxyGateRingMaskOfUser(account.user),
     renderSmoothingOn(),
+    myTitle,
   );
 }
 
@@ -40799,6 +40825,12 @@ function frame(t) {
         dform: dformId,
         dslots: dslotsNow,
         gg: galaxyGateRingMaskOfUser(account.user),
+        // Titre affichable (fenêtre Titre) : visible par tous si show !== false.
+        title: (() => { try { const v = visibleTitleOf(account.user); return v ? String(v.id).slice(0, 32) : ""; } catch { return ""; } })(),
+        showTitle: (() => { try { return visibleTitleOf(account.user) != null; } catch { return false; } })(),
+        // Texte/couleur résolus (titres cadeaux admin inconnus du catalogue distant).
+        titleT: (() => { try { const v = visibleTitleOf(account.user); return v ? String(v.name).slice(0, 32) : ""; } catch { return ""; } })(),
+        titleC: (() => { try { const v = visibleTitleOf(account.user); return v ? sanitizeTitleColor(v.color) : ""; } catch { return ""; } })(),
         safe: netSafe,
         rank: rankPathNow.slice(0, 64),
         firm: firmNow.slice(0, 16),

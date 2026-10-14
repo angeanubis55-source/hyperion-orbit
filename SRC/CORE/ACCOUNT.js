@@ -59,6 +59,7 @@ import { createDrone, DRONE_FORMATIONS, DRONE_LEVEL_XP, DRONE_MAX_LEVEL, DRONE_T
 import { createPet, emptyPetFit, getPetHullPrice, getPetLevel, getPetSlots, normalizePetMode, normalizePetPseudo, PET_DEFAULT_PSEUDO, PET_FUEL_MAX, PET_HULL_MAX_BUYS, PET_SLOTS } from "../../PET/PET_TYPES.js";
 import { activeBoosterMults, getBooster, normalizeBoostersState } from "../DATA/BOOSTERS.js";
 import { getPetVitalLimits } from "../../PET/PET_VITALS.js";
+import { normalizeTitlesState, getTitleById } from "../DATA/TITLES.js";
 import { computeHangarStats } from "../../SHIP/SHIP_HANGARS.js";
 import { getDroneDesign, getDroneFitForHangar } from "../../DRONE/DRONE_DESIGNS.js";
 import { GALAXY_GATE_DRONE_DESIGN_DROPS, rollGalaxyGateDroneDesignReward } from "./GALAXY_GATES.js";
@@ -977,6 +978,8 @@ function ensureUserShape(u) {
   }
 
   u.quests = normalizeQuestState(u.quests);
+  // Titres affichables (fenêtre Titre, visibles par tous en multi).
+  try { u.titles = normalizeTitlesState(u.titles, u); } catch { u.titles = { unlocked: ["recrue"], activeId: "recrue", show: true }; }
   // Rattrapage du reequilibrage 2026 : les quetes terminees avant la mise a jour
   // n'ont verse que les anciens montants. On verse la difference positive, une
   // seule fois. Les differences negatives ne sont JAMAIS retirees (pas de
@@ -1562,6 +1565,48 @@ export function getCurrentUserForMutation() {
   // joué, même si l'autosave de combat n'a pas encore eu lieu.
   prepareCurrentUserMutation();
   return getCurrentUserFull();
+}
+
+// --- Titres affichables (fenêtre Titre) ---
+export function unlockCurrentUserTitle(titleId) {
+  const u = getCurrentUserForMutation();
+  if (!u) return { ok: false, error: "Aucun utilisateur connecté." };
+  const def = getTitleById(titleId);
+  if (!def) return { ok: false, error: "Titre inconnu." };
+  u.titles = normalizeTitlesState(u.titles, u);
+  if (!u.titles.unlocked.includes(def.id)) u.titles.unlocked.push(def.id);
+  u.titles = normalizeTitlesState(u.titles, u);
+  saveUser(u);
+  return { ok: true, user: u, title: def };
+}
+
+export function setCurrentUserTitle(titleId) {
+  const u = getCurrentUserForMutation();
+  if (!u) return { ok: false, error: "Aucun utilisateur connecté." };
+  u.titles = normalizeTitlesState(u.titles, u);
+  if (!u.titles.unlocked.includes(String(titleId))) return { ok: false, error: "Titre non débloqué." };
+  u.titles.activeId = String(titleId);
+  u.titles = normalizeTitlesState(u.titles, u);
+  saveUser(u);
+  return { ok: true, user: u };
+}
+
+export function setCurrentUserTitleVisible(show) {
+  const u = getCurrentUserForMutation();
+  if (!u) return { ok: false, error: "Aucun utilisateur connecté." };
+  u.titles = normalizeTitlesState(u.titles, u);
+  u.titles.show = show !== false;
+  saveUser(u);
+  return { ok: true, user: u };
+}
+
+export function refreshCurrentUserTitles() {
+  const u = getCurrentUserForMutation();
+  if (!u) return { ok: false };
+  const before = Array.isArray(u.titles?.unlocked) ? u.titles.unlocked.length : 0;
+  u.titles = normalizeTitlesState(u.titles, u);
+  if (u.titles.unlocked.length !== before) saveUser(u);
+  return { ok: true, user: u };
 }
 
 export function updateCurrentUserProgress(patch = {}) {

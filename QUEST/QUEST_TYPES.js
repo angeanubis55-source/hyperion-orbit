@@ -659,7 +659,58 @@ const FINAL_QUEST = {
   requiresAll: QUEST_CATALOG.map(quest => quest.id),
 };
 
-export const QUEST_DEFINITIONS = Object.freeze([...QUEST_CATALOG, FINAL_QUEST]);
+// Titres offerts en récompense de quête (débloqués à la validation).
+// La condition req.quest reste le garde-fou (re-déblocage auto au chargement).
+const QUEST_TITLE_REWARDS = Object.freeze({
+  cadet_contact: ["bleu"],
+  cadet_saimon: ["cadet"],
+  cadet_devolarium: ["sergent"],
+  hard_streuner: ["nettoyeur"],
+  low_mix: ["pisteur"],
+  low_bosses: ["decapiteur"],
+  collector_route: ["convoyeur"],
+  upper_tour: ["cartographe"],
+  pirate_entry: ["flibustier"],
+  pirate_elite: ["nemesis_pirate"],
+  blighted_sample: ["echantillonneur"],
+  blighted_epidemic: ["endigueur"],
+  boss_extermination: ["chasseur_couronnes"],
+  emperor_protocol: ["regicide"],
+  extreme_streuner: ["raz_de_maree"],
+  pirate_battleray_25: ["chasseur_pirates"],
+  boxes_hard: ["roi_boites"],
+  gate_kappa: ["all_star"],
+  gate_lambda: ["big_boss"],
+  elite_cube_3500: ["tueur_cubikons"],
+  pirate_saboteur_17500: ["destructeur_saboteurs"],
+  elite_annihilator_10500: ["pourfendeur_annihilators"],
+  extreme_crystal: ["cristal_cendres"],
+  extreme_cube: ["briseur_mondes"],
+  cubikon_siege: ["briseur_cubikon"],
+  uber_ice: ["fleau_uber"],
+  cursed_legend: ["maudit"],
+  legend_million_npcs: ["mythe"],
+  gate_alpha: ["porte_alpha"],
+  gate_beta: ["porte_beta"],
+  gate_gamma: ["porte_gamma"],
+  gate_delta: ["porte_delta"],
+  gate_couronne: ["seigneur_9_galaxies"],
+  galactic_legend: ["legende"],
+  ultimate_all_missions: ["derniere_marche"],
+  bl_01: ["initie_bl"],
+  bl_10: ["explorateur_bl"],
+  bl_25: ["tueur_mindfire"],
+  bl_35: ["seigneur_bl"],
+  bl_60: ["zenith_bl"],
+});
+
+function withTitleRewards(quest) {
+  const titles = QUEST_TITLE_REWARDS[quest?.id];
+  if (!titles) return quest;
+  return { ...quest, reward: { ...(quest.reward || {}), titles: [...titles] } };
+}
+
+export const QUEST_DEFINITIONS = Object.freeze([...QUEST_CATALOG.map(withTitleRewards), withTitleRewards(FINAL_QUEST)]);
 
 export function getQuestRewardValue(quest) {
   const ammoValues = { x2: 50, x3: 150, x4: 500, x6: 1500, sab: 250 };
