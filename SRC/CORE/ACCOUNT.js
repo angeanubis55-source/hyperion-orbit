@@ -468,6 +468,7 @@ function petFitSlotError(itemId, group, petLevel) {
   const it = findCatalogItem(itemId);
   if (!it) return "Objet introuvable.";
   if (group === "lasers" && it?.module?.type !== "laser") return "Emplacement laser : laser uniquement.";
+  if (group === "lasers" && it?.noPet === true) return "Ce laser ne peut pas être équipé sur le P.E.T.";
   if (group === "generators" && it?.module?.type !== "shield") return "Emplacement générateur : bouclier uniquement.";
   if (group === "gears") {
     if (!it?.petGear) return "Emplacement gear : gear P.E.T uniquement.";
@@ -496,7 +497,9 @@ function normalizePetFitValue(value, level = 0) {
   if (Array.isArray(value?.equipment) && !Array.isArray(value?.lasers) && !Array.isArray(value?.generators)) {
     for (const id of value.equipment) {
       if (!id) continue;
-      const t = findCatalogItem(id)?.module?.type;
+      const fit = findCatalogItem(id);
+      if (fit?.noPet === true) continue;
+      const t = fit?.module?.type;
       if (t === "laser" && raw.lasers.includes(null)) raw.lasers[raw.lasers.indexOf(null)] = id;
       else if (t === "shield" && raw.generators.includes(null)) raw.generators[raw.generators.indexOf(null)] = id;
     }
@@ -510,6 +513,12 @@ function normalizePetFitValue(value, level = 0) {
       const idx = raw.protocols.indexOf(id);
       if (idx >= 0) raw.protocols[idx] = null;
     }
+  }
+  // Xénocide interdit sur le P.E.T : purge des anciennes sauvegardes
+  // et blocage de la migration legacy.
+  for (const id of [...raw.lasers]) {
+    if (!id) continue;
+    if (findCatalogItem(id)?.noPet === true) raw.lasers[raw.lasers.indexOf(id)] = null;
   }
   // Comme le vaisseau : aucun trou, tout poussé en haut à gauche dans chaque groupe.
   return compactPetFit(raw, slots);

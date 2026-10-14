@@ -4170,7 +4170,7 @@ function petProtocolStatLabel(key) {
 
 function petItemGroup(itemId) {
   const it = itemId ? findCatalogItem(itemId) : null;
-  if (!it) return null;
+  if (!it || it.noPet === true) return null;
   if (it?.module?.type === "laser") return "lasers";
   if (it?.module?.type === "shield") return "generators";
   if (it?.petGear) return "gears";
