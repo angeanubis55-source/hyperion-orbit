@@ -16431,10 +16431,10 @@ function applyCurrentConfigStats(keepRatios = true, restoreShieldConfigNo = null
   player.laserMods = Array.isArray(stats.laserMods) ? stats.laserMods : [];
   // Drones : bonus par canon aussi (overdrive/vs/instable x nombre équipé).
   player.droneLaserMods = Array.isArray(stats.droneLaserMods) ? stats.droneLaserMods : [];
-  // OS-L Odysseus : 5 % de base + 3 % de critique par canon, plafond 30 %, dégâts ×2.
+  // OS-L Odysseus : 5 % de base + 3 % de critique par canon, plafond 50 %, dégâts ×2.
   let oslCount = 0;
   for (const m of player.laserMods) if (Number(m?.critPct || 0) > 0) oslCount += 1;
-  player.critChance = oslCount > 0 ? Math.min(0.30, 0.05 + (3 * oslCount) / 100) : 0.05;
+  player.critChance = oslCount > 0 ? Math.min(0.50, 0.05 + (3 * oslCount) / 100) : 0.05;
   player.critMult = oslCount > 0 ? 2.0 : 1.5;
 
   if (!player.dead) {
@@ -19290,7 +19290,7 @@ function resetPlayerToBase() {
   player.droneLaserMods = Array.isArray(stats.droneLaserMods) ? stats.droneLaserMods : [];
   let oslCount = 0;
   for (const m of player.laserMods) if (Number(m?.critPct || 0) > 0) oslCount += 1;
-  player.critChance = oslCount > 0 ? 0.05 + (3 * oslCount) / 100 : 0.05;
+  player.critChance = oslCount > 0 ? Math.min(0.50, 0.05 + (3 * oslCount) / 100) : 0.05;
   player.critMult = oslCount > 0 ? 2.0 : 1.5;
 
   player.baseDamage = Math.max(1, Math.floor(stats.totalLaserDamage || 1));

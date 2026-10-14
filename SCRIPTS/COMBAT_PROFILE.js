@@ -70,7 +70,7 @@ export function combatProfile(user, mapId, configNo = null, groupBoosters = {}) 
     abilityCooldownMult: droneDesignCooldown(1, stats.bonusAbilityCooldownPct),
     laserHitBonusPct: stats.bonusLaserHitPct,
     rocketHitBonusPct: stats.bonusRocketHitPct,
-    critChance: osl ? Math.min(0.30, 0.05 + (3 * osl) / 100) : 0.05,
+    critChance: osl ? Math.min(0.50, 0.05 + (3 * osl) / 100) : 0.05,
     critMult: osl ? 2 : 1.5,
     maxDamage: clamp(Math.max(laser * 8 * 4, rocket * 10, petDamage * 8 * 4,
       // SMB + impacts des aptitudes : enveloppe compatible avec les coques.
