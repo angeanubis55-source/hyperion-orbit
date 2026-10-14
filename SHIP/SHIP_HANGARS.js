@@ -168,8 +168,8 @@ const fit =
   bonusSpeedPct += Number(formationEffects.speedPct || 0);
   // LF-4 Hyperplasmoid : +0,5 % de coque max par canon monté.
   bonusHPPct += hpBonusPct;
-  // LF-5 Mortifier : +1 % de dégâts globaux par canon monté, sans limite.
-  bonusDamagePct += mfCount;
+  // LF-5 Mortifier : +0,5 % de dégâts globaux par canon monté, plafond 10 %.
+  bonusDamagePct += Math.min(10, mfCount * 0.5);
   bonusPenetrationPct += Number(formationEffects.penetrationPct || 0);
   bonusHonorPct += Number(formationEffects.honorPct || 0);
   bonusExpPct += Number(formationEffects.npcXpPct || 0);
