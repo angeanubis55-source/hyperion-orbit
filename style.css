@@ -14431,6 +14431,11 @@ body #profileOverlay .shopRow img.formationShopRowImage {
   line-height: 1.5 !important;
   pointer-events: none !important;
 }
+#fitCard .invCell .shipOnlyBadge {
+  border-color: rgba(255, 105, 180, .6) !important;
+  color: #ff8fc0 !important;
+  background: rgba(40, 8, 25, .9) !important;
+}
 #fitOverlay #fitCard #fitSlotsLasers .slotCell.selected, #fitOverlay #fitCard #fitSlotsGens .slotCell.selected, #fitOverlay #fitCard #fitSlotsExtras .slotCell.selected, #fitOverlay #fitCard #fitSlotsShipMods .slotCell.selected, #fitOverlay #fitCard #fitDroneWorkspace .droneFitSlot.selected, #fitOverlay #fitCard #fitDroneWorkspace .droneDesignSlot.selected, #fitOverlay #fitCard #fitPetWorkspace .petFitSlot.selected {
   border-color: #70e7fa !important;
   background: radial-gradient(circle, rgba(33, 157, 184, .25), #09212c 75%) !important;

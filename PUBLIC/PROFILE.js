@@ -2244,6 +2244,13 @@ function renderShopMeasured(user) {
       title.appendChild(document.createTextNode(" "));
       title.appendChild(badge);
     }
+    if (it?.noPet) {
+      const badge = document.createElement("span");
+      badge.className = "shopPetBadge shopShipBadge";
+      badge.textContent = "SHIP";
+      title.appendChild(document.createTextNode(" "));
+      title.appendChild(badge);
+    }
     // (Badges ROQUETTE / L-ROQUETTES retirés : pas de badge dans la liste.)
     // Onglet Générateurs fusionné : pas de badge dans la liste
     // (VITESSE / BOUCLIER retirés).
@@ -3150,6 +3157,8 @@ if (isShipLike) {
     // la mention inline est retirée de la description.
     let laserDesc = escapeHtml(it.desc);
     if (it?.petOnly) laserDesc = laserDesc.replace(/,?\s*montable uniquement sur le P\.E\.T\.?/i, "").trim();
+    // Xénocide : « supplémentaire » souligné dans la boutique.
+    if (it?.id === "laser_lf6") laserDesc = laserDesc.replace("supplémentaire", "<u>supplémentaire</u>");
     statLine += `<p class="shopItemStat ammoDesc">${laserDesc ? `${highlightShopDescNumbers(laserDesc).replace(/\n/g, "<br>")}<br>` : ""}${it?.petOnly ? "P.E.T uniquement" : ""}</p>`;
   } else if (it?.petOnly) {
     statLine += `<p class="shopItemStat ammoDesc">P.E.T uniquement</p>`;
@@ -5277,8 +5286,14 @@ function renderInventoryPalette() {
         badge.textContent = "P.E.T";
         cell.appendChild(badge);
       }
+      if (e.it?.noPet) {
+        const badge = document.createElement("span");
+        badge.className = "petOnlyBadge shipOnlyBadge";
+        badge.textContent = "SHIP";
+        cell.appendChild(badge);
+      }
 
-      cell.title = `${e.it?.name || e.itemId} · ${rarity.name} (${i + 1}/${e.cnt})${isPetOnlyItem(e.it) ? " · P.E.T uniquement" : ""}`;
+      cell.title = `${e.it?.name || e.itemId} · ${rarity.name} (${i + 1}/${e.cnt})${isPetOnlyItem(e.it) ? " · P.E.T uniquement" : ""}${e.it?.noPet ? " · Non montable sur le P.E.T" : ""}`;
 
       cell.addEventListener("click", (event) => {
         if (cell.classList.contains("disabled")) {

@@ -52,7 +52,7 @@ const fit =
         vsMatch: it.module.vsMatch, vsMult: it.module.vsMult,
         overdrive: it.module.overdrive, critPct: it.module.critPct,
         unstable: it.module.unstable, mf: it.module.mf,
-        blMult: it.module.blMult,
+        blMult: it.module.blMult, ggBonus: it.module.ggBonus,
       });
       if (it.module.mf) mfCount += 1;
       hpBonusPct += Number(it.module.hpPct || 0);
@@ -100,7 +100,7 @@ const fit =
           vsMatch: item.module.vsMatch, vsMult: item.module.vsMult,
           overdrive: Number(item.module.overdrive || 0) * mult,
           unstable: item.module.unstable,
-          blMult: item.module.blMult,
+          blMult: item.module.blMult, ggBonus: item.module.ggBonus,
         });
       }
       if (item?.module?.type === "shield") baseShield += Number(item.module.bonusShield || 0) * levelMultiplier;

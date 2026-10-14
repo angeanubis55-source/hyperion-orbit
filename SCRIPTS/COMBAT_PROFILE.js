@@ -43,7 +43,8 @@ export function combatProfile(user, mapId, configNo = null, groupBoosters = {}) 
   // côté client ; ce plafond ne remplace pas une simulation des tirs.
   const conditional = [...stats.laserMods, ...stats.droneLaserMods].reduce((sum, m) =>
     sum + Math.max(0, Number(m.damage) || 0) * Math.max(0, (Number(m.vsMult) || 1) - 1)
-      + Math.max(0, Number(m.overdrive) || 0), 0);
+      + Math.max(0, Number(m.overdrive) || 0)
+      + Math.max(0, Number(m.ggBonus?.damage) || 0), 0);
   const laser = (stats.totalLaserDamage + conditional * pct(stats.droneDesignEffects?.damagePct)) * boost.dmg * pct(pilot.alienDmgPct) * upgrade("laser");
   const rocketIds = Object.keys(ROCKET_TYPES).filter(key => Number(user.rockets?.[key]) > 0);
   const rocket = rocketIds.reduce((max, key) => Math.max(max, Number(ROCKET_TYPES[key].damage) || 0,

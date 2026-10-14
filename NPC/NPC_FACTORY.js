@@ -8,13 +8,14 @@ function cloneConfig(value) {
 
 const between = (random, min, max) => min + random() * (max - min);
 
-export function createNpcEntity({ id, type, x, y, config, wave = 1, random = Math.random }) {
+export function createNpcEntity({ id, type, x, y, config, wave = 1, random = Math.random, bonusHp = 0 }) {
   if (!config) return null;
+  const flatBonusHp = Math.max(0, Math.floor(Number(bonusHp) || 0));
   const entity = {
     id, type, name: config.name || type,
     spritePlay: !!config.playSprite, spriteFps: Number(config.spriteSpeed ?? 12), spriteAcc: 0, spriteIdx: 0,
     empT: 0, x, y, vx: 0, vy: 0, wobble: between(random, 0, 999), r: config.r ?? 18,
-    hpMax: Math.floor(config.hp ?? 50), hp: 0,
+    hpMax: Math.floor(config.hp ?? 50) + flatBonusHp, hp: 0,
     shMax: Math.floor(config.shield ?? 0), sh: 0,
     // La vitesse est une statistique de gameplay officielle : ne pas lui
     // appliquer de variation aléatoire à chaque apparition.

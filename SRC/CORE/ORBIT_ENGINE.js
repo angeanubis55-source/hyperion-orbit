@@ -21439,6 +21439,10 @@ function petVolleyDamage(pet, user, target) {
       if (Number(item.module.blMult) > 0 && Number(item.module.blMult) !== 1 && isBlacklightTargetType(targetType)) {
         base += d * mult * (Number(item.module.blMult) - 1);
       }
+      // Xénocide : +510 par canon dans la GG Awakened.
+      if (item.module.ggBonus && String(currentMapId()).toLowerCase() === String(item.module.ggBonus.gate || "").toLowerCase()) {
+        base += Math.max(0, Number(item.module.ggBonus.damage) || 0);
+      }
     }
   }
   for (const itemId of fit?.protocols || []) {
@@ -26302,6 +26306,10 @@ function laserFitVsExtra(laserMods, target, droneLaserMods = null) {
     let extra = d * (mult - 1);
     const blMult = Number(m?.blMult);
     if (bl && blMult > 0 && blMult !== 1) extra += d * mult * (blMult - 1);
+    // Bonus de gate (Xénocide +510/canon dans la GG Awakened).
+    if (m?.ggBonus && String(currentMapId()).toLowerCase() === String(m.ggBonus.gate || "").toLowerCase()) {
+      extra += Math.max(0, Number(m.ggBonus.damage) || 0);
+    }
     return extra;
   };
   let extra = 0;
@@ -29500,7 +29508,7 @@ consumeUpgradeStock("laser", countPlayerLasers());
 // Bonus par canon x nombre équipé : vaisseau + drones.
 // 1x PR-L = +200, 2x = +400, 35x = +7000 tous les 5 tirs.
 // Idem vsMatch (LF-3, Magmadrill, Paritydrill, AA-1/AAP-1 Mimesis, PR-L Blacklight, Xénocide...) et U-LF4 instable.
-// Xénocide : 175 dégâts contre les NPC Blacklight (inclus dans laserFitVsExtra).
+// Xénocide : +510/canon dans la GG Awakened (inclus dans laserFitVsExtra).
 const droneLaserDamageMult = 1 + Math.max(0, Number(player.droneDamageBonusPct) || 0) / 100;
 let laserBase = player.baseDamage + laserFitVsExtra(player.laserMods, t, player.droneLaserMods) * droneLaserDamageMult;
 laserBase += laserFitUnstableDelta(player.laserMods, player.droneLaserMods) * droneLaserDamageMult;
