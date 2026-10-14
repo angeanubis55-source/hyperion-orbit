@@ -21430,11 +21430,14 @@ function petVolleyDamage(pet, user, target) {
     const item = itemId ? findCatalogItem(itemId) : null;
     if (item?.module?.type === "laser") {
       const d = Number(item.module.damage || 0);
-      base += d;
-      lasers.push(itemId);
       // Bonus conditionnels P.E.T (AAP-1 vs Mimesis...).
-      if (Array.isArray(item.module.vsMatch) && item.module.vsMatch.some((re) => re?.test?.(targetType))) {
-        base += d * (Number(item.module.vsMult || 1) - 1);
+      let mult = 1;
+      if (Array.isArray(item.module.vsMatch) && item.module.vsMatch.some((re) => re?.test?.(targetType))) mult = Number(item.module.vsMult || 1);
+      base += d * mult;
+      lasers.push(itemId);
+      // Xénocide : 175 dégâts contre les NPC Blacklight.
+      if (Number(item.module.blMult) > 0 && Number(item.module.blMult) !== 1 && isBlacklightTargetType(targetType)) {
+        base += d * mult * (Number(item.module.blMult) - 1);
       }
     }
   }
@@ -26284,23 +26287,26 @@ function resolveAmmoMult(ammoKey, target) {
 // s'ajoutent à la puissance de base, par canon monté.
 // 1 laser = +bonus, 2 lasers = +2x bonus, 35 lasers = 35x bonus.
 // Vaisseau + drones cumulés (P.E.T = dégâts propres, exclus).
+// blMult (Xénocide) : malus multiplicatif contre les NPC Blacklight.
+function isBlacklightTargetType(targetType) {
+  return /Impulse|Attend|Invoke|Mindfire/.test(String(targetType || ""));
+}
 function laserFitVsExtra(laserMods, target, droneLaserMods = null) {
   const targetType = String(target?.type || "");
+  const bl = isBlacklightTargetType(targetType);
+  const cannonExtra = (m) => {
+    const d = Number(m?.damage || 0);
+    if (!(d > 0)) return 0;
+    let mult = 1;
+    if (Array.isArray(m?.vsMatch) && m.vsMatch.some((re) => re?.test?.(targetType))) mult = Number(m?.vsMult || 1);
+    let extra = d * (mult - 1);
+    const blMult = Number(m?.blMult);
+    if (bl && blMult > 0 && blMult !== 1) extra += d * mult * (blMult - 1);
+    return extra;
+  };
   let extra = 0;
-  for (const m of laserMods || []) {
-    const d = Number(m?.damage || 0);
-    if (!(d > 0)) continue;
-    if (Array.isArray(m?.vsMatch) && m.vsMatch.some((re) => re?.test?.(targetType))) {
-      extra += d * (Number(m?.vsMult || 1) - 1);
-    }
-  }
-  for (const m of droneLaserMods || []) {
-    const d = Number(m?.damage || 0);
-    if (!(d > 0)) continue;
-    if (Array.isArray(m?.vsMatch) && m.vsMatch.some((re) => re?.test?.(targetType))) {
-      extra += d * (Number(m?.vsMult || 1) - 1);
-    }
-  }
+  for (const m of laserMods || []) extra += cannonExtra(m);
+  for (const m of droneLaserMods || []) extra += cannonExtra(m);
   return extra;
 }
 
@@ -29493,7 +29499,8 @@ player.volleyCount = (player.volleyCount || 0) + 1;
 consumeUpgradeStock("laser", countPlayerLasers());
 // Bonus par canon x nombre équipé : vaisseau + drones.
 // 1x PR-L = +200, 2x = +400, 35x = +7000 tous les 5 tirs.
-// Idem vsMatch (LF-3, Magmadrill, Paritydrill, AA-1/AAP-1 Mimesis, PR-L Blacklight...) et U-LF4 instable.
+// Idem vsMatch (LF-3, Magmadrill, Paritydrill, AA-1/AAP-1 Mimesis, PR-L Blacklight, Xénocide...) et U-LF4 instable.
+// Xénocide : 175 dégâts contre les NPC Blacklight (inclus dans laserFitVsExtra).
 const droneLaserDamageMult = 1 + Math.max(0, Number(player.droneDamageBonusPct) || 0) / 100;
 let laserBase = player.baseDamage + laserFitVsExtra(player.laserMods, t, player.droneLaserMods) * droneLaserDamageMult;
 laserBase += laserFitUnstableDelta(player.laserMods, player.droneLaserMods) * droneLaserDamageMult;

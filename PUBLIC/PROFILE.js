@@ -684,6 +684,7 @@ const ITEM_ICONS = {
   laser_lf5: LASER_ICON_BASE + "lf_5_100x100.png",
   laser_lf5al: LASER_ICON_BASE + "lf_5_al_100x100.png",
   laser_lf5mf: LASER_ICON_BASE + "lf_5_mf_100x100.png",
+  laser_lf6: LASER_ICON_BASE + "lf_6_100x100.png",
   laser_lfp01: LASER_ICON_BASE + "lf_p01_100x100.png",
   laser_lfpx01: LASER_ICON_BASE + "lf_px01_100x100.png",
   laser_aap1: LASER_ICON_BASE + "aap_1_100x100.png",

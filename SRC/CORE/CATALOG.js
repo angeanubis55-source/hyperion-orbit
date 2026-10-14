@@ -172,7 +172,7 @@ export const CATALOG = {
 
   // Canons laser officiels (prix existants conservés).
   // Bonus appliqués par le moteur, TOUS x nombre équipé (vaisseau + drones) :
-  // vsMatch (AA-1, LF-3, Magmadrill, Paritydrill, AAP-1, PR-L),
+  // vsMatch (AA-1, LF-3, Magmadrill, Paritydrill, AAP-1, PR-L, LF-6),
   // overdrive tous les 5 tirs : PR-L +200/canon, Caucasus +100/canon
   // (ex : 1 PR-L = +200, 2 = +400, 35 = +7000 sur le 5e tir),
   // critique OS-L (+3 %/canon, plafond 50 %, dégâts ×2), coque LF-4-HP (+0,5 %/canon), set
@@ -198,7 +198,8 @@ export const CATALOG = {
     { id: "laser_lf5al", name: "laser LF-5 Anchorlock", price: 72000000, shopHidden: true, icon: "/ASSETS/LASERS/lf_5_al_100x100.png", module: { type: "laser", damage: 265 }, desc: "265 dégâts." },
     { id: "laser_prl", name: "laser PR-L Prometheus", price: 150000000, shopHidden: true, icon: "/ASSETS/LASERS/pr_l_100x100.png", module: { type: "laser", damage: 210, vsMatch: [/Impulse/, /Attend/, /Invoke/, /Mindfire/], vsMult: 3.5, vsLabel: "NPC Blacklight", overdrive: 200 }, desc: "210 dégâts,\n+200 tous les 5 tirs,\n×3,5 contre Impulse, Attend, Invoke et Mindfire. Quêtes et assemblage uniquement." },
     { id: "laser_osl", name: "laser OS-L Odysseus", price: 380000000, icon: "/ASSETS/LASERS/os_l_100x100.png", module: { type: "laser", damage: 220, critPct: 3 }, desc: "220 dégâts,\nPeut causer un coup critique à 200 %,\nchaque laser monté offre 3 % supplémentaire (plafond 50 %)." },
-    { id: "laser_lf5mf", name: "laser LF-5 Mortifier", price: 850000000, icon: "/ASSETS/LASERS/lf_5_mf_100x100.png", module: { type: "laser", damage: 315, mf: true }, desc: "315 dégâts,\nChaque laser équipé offre 1 % de dégâts supplémentaire total (plafond 22 %)." },
+    { id: "laser_lf5mf", name: "laser LF-5 Mortifier", price: 850000000, icon: "/ASSETS/LASERS/lf_5_mf_100x100.png", module: { type: "laser", damage: 275, mf: true }, desc: "275 dégâts,\nChaque laser équipé offre 1 % de dégâts supplémentaire total (plafond 22 %)." },
+    { id: "laser_lf6", name: "laser Xénocide", price: 1500000000, icon: "/ASSETS/LASERS/lf_6_100x100.png", module: { type: "laser", damage: 220, vsMatch: [/^npc_/], vsMult: 420 / 220, vsLabel: "NPC", blMult: 175 / 420 }, desc: "220 dégâts contre les JOUEURS,\n420 dégâts contre les NPC,\n175 dégâts contre les NPC Blacklight (Impulse, Attend, Invoke, Mindfire)." },
     ],
 
   extras: [

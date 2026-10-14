@@ -204,11 +204,12 @@ export function buildHourlyLots(catalog, filters = {}, nowMs = Date.now(), rng =
   pushCatalog("shd_sg3nb02");
   pushCatalog("spd_g3n7900");
 
-  // 7-10. Lasers LF-2 / LF-3 / LF-4 / LF-5.
+  // 7-10. Lasers LF-2 / LF-3 / LF-4 / LF-5 / LF-6.
   pushCatalog("laser_lf2");
   pushCatalog("laser_lf3");
   pushCatalog("laser_lf4");
   pushCatalog("laser_lf5");
+  pushCatalog("laser_lf6");
 
   // 11. Iris (masqué si 8 possédés).
   if (irisOwned < 8) {
