@@ -9367,7 +9367,9 @@ function registerHudWindows() {
   };
 
   // Icônes officielles DarkOrbit (extraites de featuresMenu_texture).
-  const menuIcon = (name) => `<img class="menuIconImg" src="ASSETS/UI/MENU/${name}.png" alt="" draggable="false">`;
+  // Version en query (?v=) : les navigateurs rechargent les PNG après
+  // chaque mise à jour au lieu de resservir un cache périmé.
+  const menuIcon = (name) => `<img class="menuIconImg" src="ASSETS/UI/MENU/${name}.png?v=${encodeURIComponent(String(GAME_VERSION || "0"))}" alt="" draggable="false">`;
 
   reg("boxMeta", "Stats joueur", menuIcon("pilotSheet"));
   reg("boxVitals", "État du vaisseau", menuIcon("ship"));

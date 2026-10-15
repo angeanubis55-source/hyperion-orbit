@@ -264,14 +264,22 @@ function ensureWindowBar(card, title, icon, minimizable = true) {
     const key = variant ? `${name}_${variant}` : name;
     if (img.dataset.iconState === key) return;
     img.dataset.iconState = key;
+    // Conserve le query de version (?v=) éventuel pour ne pas resservir
+    // un cache périmé après une mise à jour des PNG.
+    let versionSuffix = "";
+    try {
+      const current = String(img.getAttribute("src") || "");
+      const qi = current.indexOf("?");
+      if (qi >= 0) versionSuffix = current.slice(qi);
+    } catch {}
     const base = "ASSETS/UI/MENU/";
     img.onerror = () => {
       // Pas de variante officielle (ex : booster) : on reste sur idle.
       img.onerror = null;
       img.dataset.iconState = name;
-      img.src = base + name + ".png";
+      img.src = base + name + ".png" + versionSuffix;
     };
-    img.src = base + key + ".png";
+    img.src = base + key + ".png" + versionSuffix;
   }
 
   function refreshDockIcon(btn) {
@@ -292,9 +300,15 @@ function ensureWindowBar(card, title, icon, minimizable = true) {
     const name = dockMenuIconName(btn);
     if (name) {
       // Précharge les 3 états pour un survol sans flash.
+      let versionSuffix = "";
+      try {
+        const current = String(btn.querySelector("span img")?.getAttribute("src") || "");
+        const qi = current.indexOf("?");
+        if (qi >= 0) versionSuffix = current.slice(qi);
+      } catch {}
       for (const suffix of ["", "_hover", "_select"]) {
         const pre = new Image();
-        pre.src = `ASSETS/UI/MENU/${name}${suffix}.png`;
+        pre.src = `ASSETS/UI/MENU/${name}${suffix}.png${versionSuffix}`;
       }
     }
     btn.addEventListener("mouseenter", () => refreshDockIcon(btn));

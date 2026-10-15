@@ -759,7 +759,7 @@ body:has(> #phoneControls:not([hidden])) #ammoBar .actionPalette nav button {
 }
 /* --- Fenêtre DPS --- */
 .dpsPanel {
-  min-width:min(420px,calc(100vw - 24px));
+  min-width:min(300px,calc(100vw - 24px));
   background:linear-gradient(180deg, rgba(17,22,34,.97), rgba(9,12,20,.97));
   border:1px solid rgba(255,255,255,.12);
   border-radius:12px;
@@ -7381,7 +7381,10 @@ html body #profileOverlay .profileHeaderTop .profileTitle, html body #profileOve
   box-shadow:
     0 10px 22px rgba(0,0,0,.42),
     0 0 14px rgba(0,217,255,.10) !important;
-  transition:transform .15s ease, border-color .15s ease, box-shadow .15s ease;
+  transition:border-color .15s ease, box-shadow .15s ease;
+}
+#gameWindowDock .gameDockIcon:active {
+  transform:none !important;
 }
 #gameWindowDock .gameDockIcon:hover:not(.dockIconActive) {
   border-color:rgba(124,240,255,.82) !important;
@@ -7400,16 +7403,30 @@ html body #profileOverlay .profileHeaderTop .profileTitle, html body #profileOve
   pointer-events:none;
   display:grid !important;
   place-items:center !important;
+  align-content:center !important;
+  justify-content:center !important;
+  width:34px !important;
+  height:34px !important;
+  flex:none !important;
   line-height:0 !important;
 }
 #gameWindowDock .gameDockIcon img {
   width:34px !important;
   height:34px !important;
   object-fit:contain !important;
+  object-position:center center !important;
   display:block !important;
-  margin:auto !important;
+  margin:0 !important;
+  padding:0 !important;
+  flex:none !important;
   pointer-events:none !important;
-  transform:translateX(-1px) !important;
+  transform:none !important;
+}
+#gameWindowDock .gameDockIcon:hover img,
+#gameWindowDock .gameDockIcon:active img,
+#gameWindowDock .gameDockIcon:focus img,
+#gameWindowDock .gameDockIcon.dockIconActive img {
+  transform:none !important;
 }
 #ammoBar {
   left:50%;
