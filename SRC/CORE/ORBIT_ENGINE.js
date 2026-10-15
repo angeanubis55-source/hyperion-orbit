@@ -127,6 +127,7 @@ import { spawnNpcEntity } from "../../NPC/NPC_SPAWNER.js";
 import { addProjectile, advanceProjectile, blendVelocityDirection, guidedChaseSpeed, guideLauncherRocketVelocity, launcherRocketLaunchAngle, removeProjectile } from "../../COMBAT/PROJECTILES.js";
 import { createWaveSpawnState, remainingWaveSpawns } from "./WAVES.js";
 import { shouldShowNpcBars, updateProgressHud, updateResourceHud, updateWaveHud } from "../../UI/UI_HUD.js";
+import { resetDpsHudCache, updateDpsHud } from "../../UI/UI_DPS.js";
 import { createPerformanceMonitor } from "./PERFORMANCE_MONITOR.js";
 import { COLLECTABLE_PICKUP_HOLD_SEC } from "./COLLECTION_TIMING.js";
 import { computeNpcCombatMove as computeNpcCombatMovement, computeNpcSteering, setNpcVelocity, NPC_DIRECT_SPEED_FACTOR } from "../../NPC/NPC_AI.js";
@@ -9403,6 +9404,13 @@ function registerHudWindows() {
   reg("wikiWindow", "Wiki / Aide", menuIcon("help"), false);
   reg("tdmWindow", "Inventaire", menuIcon("monthly_deluxe"), false);
   reg("titleWindow", "Titres", menuIcon("wargame_event"), false);
+  reg("dpsWindow", "DPS", menuIcon("infiltration"), false);
+  try {
+    document.getElementById("dpsResetBtn")?.addEventListener("click", () => {
+      try { resetDpsLog(); } catch {}
+      try { resetDpsHudCache(); } catch {}
+    });
+  } catch {}
   wireSettingsWindow();
 wireWikiWindow();
 initChatUI();
@@ -15635,6 +15643,7 @@ function awardHonor(amount) {
 
 let selectedQuestId = null;
 let lastQuestTerminalAccess = null;
+let lastDpsHudAt = 0;
 
 function hasQuestTerminalAccess() {
   return (zoneSafe?.modules || []).some(module =>
@@ -26445,6 +26454,7 @@ function drainShieldFromEnemy(e, amount, recipient = player, transferPct) {
         recipient.sh = Math.min(recipient.shMax, recipient.sh + gain);
       }
     }
+    try { recordDps({ total: stolen }, { sab: true }); } catch {}
     return {
       total: stolen,
       sh: stolen,
@@ -26467,6 +26477,7 @@ function drainShieldFromEnemy(e, amount, recipient = player, transferPct) {
         recipient.sh = Math.min(recipient.shMax, recipient.sh + gain);
       }
     }
+    try { recordDps({ total: stolen }, { sab: true }); } catch {}
     return {
       total: stolen,
       sh: stolen,
@@ -26543,6 +26554,7 @@ function drainShieldFromEnemy(e, amount, recipient = player, transferPct) {
     try { sendNetHit({ uid: e._netUid, kind: "sab", dmg: raw }); } catch {}
   }
 
+  try { recordDps({ total: stolen }, { sab: true }); } catch {}
   return {
     total: stolen,
     sh: stolen,
@@ -26598,6 +26610,7 @@ function damageEnemy(e, dmg, shieldPenetration, crit, opts = {}) {
       sendPvpHit({ target: e._netPlayer, dmg: amount, pen: shieldPenetration, critChance: crit?.chance, critMult: crit?.mult,
         slowPct: opts.slowPct, slowSec: opts.slowSec, freezeSec: opts.freezeSec, rocket: opts.rocket, ability: opts.ability });
     } catch {}
+    try { recordDps({ total: amount }, opts); } catch {}
     return { total: amount, sh: 0, hp: amount, bypass: 0, isCrit: false, rawDamage: amount };
   }
 
@@ -26608,6 +26621,7 @@ function damageEnemy(e, dmg, shieldPenetration, crit, opts = {}) {
     try {
       sendPvpPetHit({ target: e._netPet, dmg: amount, pen: shieldPenetration, critChance: crit?.chance, critMult: crit?.mult, rocket: opts.rocket });
     } catch {}
+    try { recordDps({ total: amount }, opts); } catch {}
     return { total: amount, sh: 0, hp: amount, bypass: 0, isCrit: false, rawDamage: amount };
   }
 
@@ -26746,7 +26760,139 @@ e._pendingSpawn = Math.max(1, Math.floor(Number(e.cubikonMinions?.refill) || 20)
     } catch {}
   }
 
+  try { recordDps(result, opts); } catch {}
   return result;
+}
+
+// --- Compteur DPS (fenêtre dédiée) : tous les dégâts infligés passent
+// par damageEnemy (lasers, roquettes, aptitudes, redirections). On
+// enregistre le montant final + la famille, horodaté pour le DPS live.
+const DPS_LOG_MAX = 2400;
+// Regroupement salve : les impacts d'une même action atterrissent à moins
+// de 0,5 s d'intervalle (une salve laser tient en ~0,1 s).
+const DPS_SALVE_GAP = 0.5;
+const dpsLog = [];
+// Compteurs persistants (le log glissant est écrêté, pas eux) : seul le
+// bouton Reset les remet à zéro.
+let dpsTotalAll = 0;
+let dpsHitsAll = 0;
+let dpsMaxSalve = 0;
+let dpsSalveCur = 0;
+let dpsSalveLastT = -10;
+const dpsByKindAll = { lasers: 0, rockets: 0, abilities: 0 };
+function recordDps(out, opts = {}) {
+  // Dégâts bruts (avant écrêtage aux PV restants) : un coup à 53k sur un
+  // NPC à 1200 PV compte 53k, comme le chiffre affiché en jeu.
+  const amount = Math.max(0, Math.round(Number(out?.rawDamage ?? out?.total) || 0));
+  if (!(amount > 0)) return;
+  const kind = opts?.rocket ? "rockets" : (opts?.ability || opts?.fromRedirect) ? "abilities" : "lasers";
+  const t = performance.now() / 1000;
+  try {
+    dpsLog.push({ t, amount, kind });
+    if (dpsLog.length > DPS_LOG_MAX) dpsLog.splice(0, dpsLog.length - DPS_LOG_MAX);
+  } catch {}
+  dpsTotalAll += amount;
+  dpsHitsAll += 1;
+  if (dpsByKindAll[kind] == null) dpsByKindAll[kind] = 0;
+  dpsByKindAll[kind] += amount;
+  if (t - dpsSalveLastT > DPS_SALVE_GAP) dpsSalveCur = 0;
+  dpsSalveCur += amount;
+  dpsSalveLastT = t;
+  if (dpsSalveCur > dpsMaxSalve) dpsMaxSalve = dpsSalveCur;
+}
+function resetDpsLog() {
+  try { dpsLog.length = 0; } catch {}
+  dpsTotalAll = 0;
+  dpsHitsAll = 0;
+  dpsMaxSalve = 0;
+  dpsSalveCur = 0;
+  dpsSalveLastT = -10;
+  try {
+    dpsByKindAll.lasers = 0;
+    dpsByKindAll.rockets = 0;
+    dpsByKindAll.abilities = 0;
+  } catch {}
+}
+// Fenêtre glissante fixe (5 s) pour le DPS live ; totaux et salves via les
+// compteurs persistants.
+function dpsSnapshot(windowSec = 5) {
+  const now = performance.now() / 1000;
+  const from = now - Math.max(1, Number(windowSec) || 5);
+  let win = 0;
+  try {
+    for (let i = dpsLog.length - 1; i >= 0; i--) {
+      const hit = dpsLog[i];
+      if (!hit) continue;
+      if (hit.t >= from) win += hit.amount;
+      else break;
+    }
+  } catch {}
+  const dps = win / Math.max(1, Number(windowSec) || 5);
+  return { dps, plusGros: dpsMaxSalve, total: dpsTotalAll, byKind: { ...dpsByKindAll }, hits: dpsHitsAll, last: dpsSalveCur };
+}
+// Fiche du calcul laser : base coque + chaque multiplicateur de la
+// formule de tir, affichés en × (jamais de "+-"), avec le produit et
+// l'estimation par salve. La base inclut déjà le laserDamagePct de la
+// formation (hangar) : on le retire pour l'afficher dans sa propre ligne
+// sans double comptage. Les bonus conditionnels (vs joueurs / vs NPC)
+// sont informatifs et exclus du produit.
+function laserDpsBreakdown() {
+  const rows = [];
+  const num = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
+  const fmtMult = (f) => `×${Number(f).toFixed(2).replace(".", ",")}`;
+  const baseFull = Math.max(1, Math.round(num(player?.baseDamage)));
+  let formationName = "Formation", fLaser = 0, fVsPlayers = 0, fVsNpc = 0;
+  try {
+    const formation = getActiveDroneFormation(account?.user);
+    if (formation?.name) formationName = String(formation.name);
+    fLaser = num(formation?.effects?.laserDamagePct);
+    fVsPlayers = num(formation?.effects?.playerLaserDamagePct);
+    fVsNpc = num(formation?.effects?.npcDamagePct);
+  } catch {}
+  const fLaserFactor = Math.max(0, 1 + fLaser / 100);
+  const baseNoFormation = fLaserFactor > 0 ? Math.max(1, Math.round(baseFull / fLaserFactor)) : baseFull;
+  // Base laser brute (canons du vaisseau + drones, avant tout %) et bonus
+  // des modules exprimé en × équivalent : le produit reste exact.
+  let rawLaser = 0;
+  try {
+    for (const m of player?.laserMods || []) rawLaser += Math.max(0, Number(m?.damage) || 0);
+    for (const m of player?.droneLaserMods || []) rawLaser += Math.max(0, Number(m?.damage) || 0);
+  } catch {}
+  rawLaser = Math.max(0, Math.round(rawLaser));
+  const splitBase = rawLaser > 0 && baseNoFormation >= rawLaser;
+  const base = splitBase ? rawLaser : baseNoFormation;
+  let mult = 1;
+  const push = (label, factor, cls) => {
+    const f = Math.max(0, Number(factor) || 0);
+    rows.push({ label, factor: f, detail: fmtMult(f), cls });
+    mult *= f;
+  };
+  if (splitBase) {
+    rows.push({ label: "Base laser", factor: 1, detail: formatInteger(base), cls: "dpsFBase" });
+    push("Modules", baseNoFormation / rawLaser, "dpsF1");
+  } else {
+    rows.push({ label: "Base coque + modules", factor: 1, detail: formatInteger(base), cls: "dpsFBase" });
+  }
+  push("Designs drones", 1 + num(player?.droneDamageBonusPct) / 100, "dpsF2");
+  let booster = 1;
+  try { booster = num(playerBoosterMults()?.dmg) || 1; } catch {}
+  push("Boosters dégâts", booster, "dpsF3");
+  push(formationName, fLaserFactor, "dpsF4");
+  let pilot = 1;
+  try { pilot = num(playerPilotMults()?.alienDmg) || 1; } catch {}
+  push("Arbre pilote", pilot, "dpsF5");
+  let upgrade = 1;
+  try { upgrade = num(playerUpgradeMults()?.laser) || 1; } catch {}
+  push("Améliorations laser", upgrade, "dpsF6");
+  if (fVsPlayers) {
+    const f = Math.max(0, 1 + fVsPlayers / 100);
+    rows.push({ label: "Formation vs joueurs", factor: f, detail: fmtMult(f), conditional: true, cls: "dpsF5" });
+  }
+  if (fVsNpc) {
+    const f = Math.max(0, 1 + fVsNpc / 100);
+    rows.push({ label: "Formation vs NPC", factor: f, detail: fmtMult(f), conditional: true, cls: "dpsF5" });
+  }
+  return { rows, totalMult: mult, perVolley: Math.round(base * mult) };
 }
 
 function applyRocketHit(e, b, recipient = player) {
@@ -40382,6 +40528,14 @@ if (ui.spdTxt && shouldRefreshWindow("boxVitals")) {
 updateConfigButtons();
 
   if (shouldRefreshWindow("boxVitals")) updateResourceHud(ui, player, currentCargo());
+  // Compteur DPS : 4 Hz suffisent (nombres + barres + fiche bonus).
+  if (shouldRefreshWindow("dpsWindow")) {
+    const nowDpsHud = performance.now();
+    if (nowDpsHud - (lastDpsHudAt || 0) > 250) {
+      lastDpsHudAt = nowDpsHud;
+      try { updateDpsHud(dpsSnapshot(5), laserDpsBreakdown()); } catch {}
+    }
+  }
   // Comptoir pirate : la fenêtre se ferme dès qu'on s'éloigne du bouton.
   if (isOreTradeWindowOpen() && !isTradeWindowAnchored()) closeOreTradeWindow();
   // Terminal de quêtes : pareil, uniquement via le bouton monde.

@@ -757,6 +757,106 @@ body:has(> #phoneControls:not([hidden])) #ammoBar .actionPalette nav button {
 .bar.cargo > i {
   background:linear-gradient(90deg, #c77b1e, #ffd36b);
 }
+/* --- Fenêtre DPS --- */
+.dpsPanel {
+  min-width:min(420px,calc(100vw - 24px));
+  background:linear-gradient(180deg, rgba(17,22,34,.97), rgba(9,12,20,.97));
+  border:1px solid rgba(255,255,255,.12);
+  border-radius:12px;
+  box-shadow:0 6px 28px rgba(0,0,0,.55), inset 0 1px 0 rgba(255,255,255,.06);
+  overflow:hidden;
+}
+.dpsTopBar {
+  display:flex;
+  align-items:center;
+  padding:8px 12px 6px;
+}
+.dpsSep {
+  border-top:1px solid rgba(255,255,255,.12);
+  margin:2px 14px;
+}
+.dpsHeadRows .row,
+.dpsCalcRows .row,
+.dpsTotalRow {
+  display:flex;
+  justify-content:space-between;
+  align-items:baseline;
+  gap:14px;
+}
+.dpsHeadRows .row .v,
+.dpsCalcRows .row .v,
+.dpsTotalRow .v,
+.dpsKind > span {
+  margin-right:10px;
+}
+.dpsTopBar > button {
+  font-size:11px;
+  font-weight:800;
+  padding:5px 14px;
+  border-radius:8px;
+  border:1px solid rgba(124,240,255,.38);
+  background:linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34));
+  color:#eaffff;
+  font-family:ui-sans-serif,system-ui;
+  white-space:nowrap;
+  cursor:pointer;
+  transition:border-color .15s ease, background .15s ease;
+}
+.dpsTopBar > button:hover {
+  border-color:rgba(124,240,255,.62);
+  background:rgba(0,140,185,.3);
+}
+.dpsHeadRows {
+  display:grid;
+  gap:3px;
+  padding:10px 14px 8px;
+}
+.dpsHeadRows .row .k {
+  color:#fff;
+}
+.dpsHeadRows .row .v {
+  font-variant-numeric:tabular-nums;
+  font-weight:700;
+}
+.dpsHeadRows .row .v.dpsLiveValue {
+  color:#ffd76b;
+  text-shadow:0 0 10px rgba(255,180,60,.4);
+}
+.dpsCalcRows {
+  padding:10px 14px 0;
+}
+.dpsCalcRows .row {
+  padding:1px 0;
+}
+.dpsCalcRows .row .k {
+  max-width:60%;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  opacity:1;
+}
+.dpsCalcRows .row .v {
+  font-variant-numeric:tabular-nums;
+  font-weight:700;
+}
+.dpsCalcRows .row .v.dpsFBase, .dpsCalcRows .row .k.dpsFBase { color:#9aa3b2; }
+.dpsCalcRows .row .v.dpsF1, .dpsCalcRows .row .k.dpsF1 { color:#7ec8ff; }
+.dpsCalcRows .row .v.dpsF2, .dpsCalcRows .row .k.dpsF2 { color:#ff9a5c; }
+.dpsCalcRows .row .v.dpsF3, .dpsCalcRows .row .k.dpsF3 { color:#c99aff; }
+.dpsCalcRows .row .v.dpsF4, .dpsCalcRows .row .k.dpsF4 { color:#57ff8a; }
+.dpsCalcRows .row .v.dpsF5, .dpsCalcRows .row .k.dpsF5 { color:#ff6b9d; }
+.dpsCalcRows .row .v.dpsF6, .dpsCalcRows .row .k.dpsF6 { color:#ff5252; }
+.dpsTotalRow {
+  padding:1px 14px;
+  font-weight:700;
+}
+.dpsTotalRow:last-child {
+  padding-bottom:12px;
+}
+.dpsTotalRow .v {
+  color:#ffd76b;
+  text-shadow:0 0 10px rgba(255,180,60,.4);
+}
 .oreTradePanel {
   width:max-content;
   max-width:min(640px,calc(100vw - 24px));

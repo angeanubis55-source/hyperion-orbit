@@ -961,6 +961,21 @@
       <div id="gameLogResizeHandle" class="gameLogResizeHandle" title="Redimensionner" data-no-drag></div>
     </div>
 
+    <div id="dpsWindow" class="panel dpsPanel">
+      <div class="dpsTopBar"><button id="dpsResetBtn" type="button" title="Remettre les compteurs à zéro">Reset</button></div>
+      <div class="dpsSep"></div>
+      <div class="dpsHeadRows">
+        <div class="row"><span class="k">DPS</span><span class="v dpsLiveValue" id="dpsLiveTxt">0</span></div>
+        <div class="row"><span class="k">Plus gros</span><span class="v" id="dpsMaxTxt">0</span></div>
+        <div class="row"><span class="k">Total</span><span class="v" id="dpsTotalTxt">0</span></div>
+        <div class="row"><span class="k">Dernier</span><span class="v" id="dpsLastTxt">0</span></div>
+      </div>
+      <div class="dpsSep"></div>
+      <div id="dpsCalcRows" class="dpsCalcRows"></div>
+      <div class="row dpsTotalRow"><span class="k">Bonus total</span><span class="v" id="dpsTotalMultTxt">×1,00</span></div>
+      <div class="row dpsTotalRow"><span class="k">Estimation</span><span class="v" id="dpsPerVolleyTxt">0</span></div>
+    </div>
+
     <div id="chatWindow" class="panel chatPanel">
       <div id="chatStatus" class="chatStatus">Connexion…</div>
       <div id="chatEntries" class="chatEntries"><div class="chatEmpty">Aucun message. Dis bonjour !</div></div>
