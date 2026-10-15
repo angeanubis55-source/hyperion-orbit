@@ -45,6 +45,9 @@ export function abilityDamage(state, amount, penetration, now, context, secondar
     const before = state.hp;
     state.hp = Math.min(state.hpMax, state.hp + damage * 0.8);
     const gain = Math.max(0, Math.round(state.hp - before));
+    // Conversion subie (+X verts victime) : la victime n'adopte que les
+    // baisses serveur, ce flux lui remonte le soin (voir ohAt/ohAmt).
+    try { state.orcusHealAt = now; state.orcusHealAmt = gain; } catch {}
     context.emit?.({ t: "skillFx", skill: assimilate, phase: "heal", by: state.id,
       target: state.id, amount: gain, shield: false, at: now, until: now });
     damage *= 0.2;

@@ -2494,7 +2494,14 @@ wss.on("connection", (ws) => {
         const skill = String(msg.skill || "").toLowerCase();
         if (skill === "ability_paladin_last-stand") return; // Déclenchement dans le calcul des dégâts, jamais au clic.
         // Les annulations restent permises ; toutes les activations sont bloquées.
-        if (Date.now() < Number(state._jamUntil || 0) && msg.enabled !== false && msg.phase !== "unlink") return;
+        // Refus explicite (pas silencieux) : le client annule son effet local
+        // au lieu d'afficher une aptitude qui ne convertira rien côté serveur.
+        if (Date.now() < Number(state._jamUntil || 0) && msg.enabled !== false && msg.phase !== "unlink") {
+          try {
+            if (ws.readyState === 1) ws.send(JSON.stringify({ t: "skillDenied", skill }));
+          } catch {}
+          return;
+        }
         if (skill === "ability_tempest_volt-backup") {
           const now = Date.now();
           refreshCombatProfile(state, accountId, mapId);

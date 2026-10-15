@@ -166,6 +166,7 @@ test("une mort NPC recue apres des paquets manques est adoptee une seule fois", 
   assert.ok(from > 0 && to > from);
   const context = vm.createContext({ self: { dead: true, npcAt: 20000, npcSeq: 20, npcHpDamage: 10, npcShDamage: 0 },
     player: { hp: 800, sh: 0, hpMax: 1000, shMax: 0, dead: false }, lastNpcDamageAdoptSeq: 1, lastNpcDamageAdoptAt: 10000,
+    netHealAdopted: false,
     REPAIR: { cooldown: 10 }, enemies: [], die: () => { context.player.dead = true; },
     onPlayerPreparationDamage: (hp, shield) => damageEvents.push([hp, shield]),
   });
@@ -174,6 +175,23 @@ test("une mort NPC recue apres des paquets manques est adoptee une seule fois", 
   context.player.dead = false; context.player.hp = 100;
   adopt(); assert.equal(context.player.hp, 100, "le meme paquet ne tue pas de nouveau apres reparation");
   assert.deepEqual(damageEvents, [[800, 0]], "la preparation n est notifiee qu une fois des degats serveur");
+});
+
+test("un soin absolu adopte sur le meme tick n est pas re-soustrait en differentiel NPC", () => {
+  const from = engine.indexOf("    const npcDamageSeq =");
+  const to = engine.indexOf("  } catch {}\n  // Multi PvP : pool PET", from);
+  assert.ok(from > 0 && to > from);
+  const damageEvents = [];
+  const context = vm.createContext({ self: { npcAt: 20000, npcSeq: 20, npcHpDamage: 2000, npcShDamage: 0, npcDamage: 2000 },
+    player: { hp: 106000, sh: 0, hpMax: 1000000, shMax: 0, dead: false, attackedT: 0 },
+    lastNpcDamageAdoptSeq: 1, lastNpcDamageAdoptAt: 10000, netHealAdopted: true,
+    REPAIR: { cooldown: 10 }, enemies: [], die: () => { context.player.dead = true; },
+    resetRepairCooldown: () => {},
+    onPlayerPreparationDamage: (hp, shield) => damageEvents.push([hp, shield]),
+  });
+  vm.runInContext(`(() => {${engine.slice(from, to)}})()`, context);
+  assert.equal(context.player.hp, 106000, "PV absolus serveur conserves (Orcus 20 %, pas 40 %)");
+  assert.equal(context.player.attackedT, 10, "le statut combat suit quand meme");
 });
 
 test("un coup PvP sur le bouclier notifie la preparation une seule fois", () => {

@@ -3808,6 +3808,12 @@ function cancelMark() {
 // +10 % pendant 15 s, ralenti 10 % pendant 10 s.
 function activateMark(abilityId = "ability_spearhead_target-marker") {
   if (player.dead || !started) return;
+  // Miroir du serveur : un cast sous brouillage est refusé (recharge
+  // préservée au lieu d'un marquage local sans effet).
+  if ((player.jamT || 0) > 0) {
+    showNotification("Marqueur impossible : modules brouillés (JAM)", 2, "error");
+    return;
+  }
   const cd = Number(player.markCd || 0);
   if (cd > 0) {
     showNotification(`Marqueur : recharge ${formatAbilityCd(cd)}`, 2, "info");
@@ -4755,6 +4761,12 @@ function activeOrcusDuration() {
 }
 function activateOrcus() {
   if (player.dead || !started) return;
+  // Miroir du serveur (MULTI_SERVER) : un cast sous brouillage est refusé.
+  // Sans ce garde, l'effet tournerait 20 s en local sans aucune conversion.
+  if ((player.jamT || 0) > 0) {
+    showNotification("Assimilation impossible : modules brouillés (JAM)", 2, "error");
+    return;
+  }
   const cd = Number(player.orcusCd || 0);
   if (cd > 0) {
     showNotification(`Assimilation : recharge ${formatAbilityCd(cd)}`, 2, "info");
@@ -32950,9 +32962,13 @@ function drawRemoteAbilityFx(r, shipFx) {
     if (tp.kind === "npc" && tp.npc) {
       try {
         const cfg = (typeof NPC_TYPES !== "undefined" && NPC_TYPES[tp.npc.type]) || {};
+        const frame = getEnemySpriteFrame(tp.npc, cfg, cfg.sprite);
         ctx.save();
         ctx.translate(ox, oy);
-        drawEnemyContour(tp.npc, cfg, getEnemySpriteFrame(tp.npc, cfg, cfg.sprite), color, alpha);
+        drawEnemyContour(tp.npc, cfg, frame, color, alpha);
+        // Coque redessinée par-dessus (comme en local) : sans ça la
+        // silhouette teintée recouvre tout le NPC au lieu d'un contour.
+        drawEnemyBody(tp.npc, frame);
         ctx.restore();
       } catch {}
       return;
@@ -37245,6 +37261,7 @@ if (movementLocked) {
     const self = getNetSelf();
     syncLocalDisarrayShield(self);
     syncLocalTempestBackup(self);
+    let netHealAdopted = false;
     if (self) {
       if (self.shieldBuffSeq !== player._netShieldBuffSeq) {
         player._netShieldBuffSeq = self.shieldBuffSeq;
@@ -37253,10 +37270,15 @@ if (movementLocked) {
       }
       const stockCharges = Number(self.stockCharges) || 0;
       if (player.stockCharges !== stockCharges) { player.stockCharges = stockCharges; stockUpdateRange(); }
+      // Soin serveur adopté en absolu (PV/bouclier finaux, dégâts déjà
+      // déduits) : la soustraction différentielle NPC ci-dessous ne doit
+      // pas repasser sur le même tick (ex : Orcus = 40 % subis au lieu
+      // de 20 %). Le reste (visuels, mort, réparation) suit normalement.
       if (Number(self.abilityHealSeq) > Number(player._netAbilityHealSeq || 0)) {
         player._netAbilityHealSeq = self.abilityHealSeq;
         player.hp = Math.min(player.hpMax, Number(self.hp) || 0);
         player.sh = Math.min(player.shMax, Number(self.sh) || 0);
+        netHealAdopted = true;
       }
       if (isPaladinHull()) {
         player.lastStandCd = Number(self.lastStandCd) || 0;
@@ -37375,8 +37397,12 @@ if (movementLocked) {
       const npcShDamage = Math.max(0, Number(self.npcShDamage) || 0);
       const beforeHp = player.hp, beforeSh = player.sh;
       if (npcHpDamage > 0 || npcShDamage > 0) {
-        player.hp = Math.max(0, player.hp - npcHpDamage);
-        player.sh = Math.max(0, player.sh - npcShDamage);
+        // Soin absolu déjà adopté sur ce tick : les PV/bouclier serveur
+        // sont finaux (le différentiel est déjà dedans).
+        if (!netHealAdopted) {
+          player.hp = Math.max(0, player.hp - npcHpDamage);
+          player.sh = Math.max(0, player.sh - npcShDamage);
+        }
       } else {
         // Compatibilite avec un serveur plus ancien, sans detail des couches.
         if (player.hpMax > 0 && Number.isFinite(Number(self.hp))) {

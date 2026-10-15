@@ -245,9 +245,12 @@ test("Orcus / Plus : 80 % convertis en PV et 20 % subis, soin reel plafonne", ()
     assert.equal(abilityDamage(state, 10000, 0, NOW, { emit: e => events.push(e) }).total, 2000);
     assert.equal(events[0].skill, skill, "le soin conserve la variante active");
     assert.equal(events[0].amount, 8000); assert.equal(state.hp, 907600);
+    assert.equal(state.orcusHealAt, NOW, "flux victime ohAt alimenté");
+    assert.equal(state.orcusHealAmt, 8000, "flux victime ohAmt alimenté");
     state.hp = state.hpMax;
     abilityDamage(state, 10000, 0, NOW, { emit: e => events.push(e) });
     assert.equal(events.at(-1).amount, 0);
+    assert.equal(state.orcusHealAmt, 0, "plafond : aucun gain remonté");
   }
 });
 
