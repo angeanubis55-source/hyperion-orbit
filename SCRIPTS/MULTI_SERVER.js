@@ -51,6 +51,10 @@ const ABILITY_CLOAK_SILENT = new Set([
   "ability_spearhead_ultimate-cloak",
   "ability_spearhead-plus_ultimate-cloak",
 ]);
+// Camouflage interdit par carte : GG + QZ + Low + Maudite. Le client grise
+// les boutons, le serveur tranche en autorité (anti-contournement).
+const NO_CLOAK_MAPS = new Set(["alpha", "beta", "gamma", "delta", "epsilon",
+  "zeta", "kappa", "lambda", "kronos", "awakened", "qz", "low", "maudite"]);
 function ownsAbility(profile, skill) {
   // Source unique : MOVEMENT_RULES.shipOwnsAbility (Police + designs).
   try { return shipOwnsAbility(profile?.shipId, skill); } catch { return false; }
@@ -3298,12 +3302,15 @@ wss.on("connection", (ws) => {
       // CPU CL04K-XL : vaisseau masqué aux autres (point minimap conservé).
       // CPU natif : son coût en crédits sera validé lors de la migration
       // économique, comme les coûts IEM/ISH/SMB existants.
-      if (typeof msg.cloakCpu === "boolean") state.cloakCpu = msg.cloakCpu;
+      // Carte à camouflage interdit : toute activation est ignorée.
+      const cloakDeniedMap = NO_CLOAK_MAPS.has(String(mapId || "").toLowerCase());
+      if (typeof msg.cloakCpu === "boolean") state.cloakCpu = cloakDeniedMap ? false : msg.cloakCpu;
       // Camouflage d'aptitude : masque aussi le point sur la mini-carte.
       // Le CPU reste distinct ; les NPC reçoivent l'union des deux états.
       if (typeof msg.cloaked === "boolean") {
         const nowCloak = Date.now();
-        if (msg.cloaked && !state.cloaked && profile.cloakSkill && nowCloak >= Number(state._jamUntil || 0) && nowCloak >= Number(state._cloakCdUntil || 0)) {
+        if (cloakDeniedMap) state._cloakUntil = 0;
+        else if (msg.cloaked && !state.cloaked && profile.cloakSkill && nowCloak >= Number(state._jamUntil || 0) && nowCloak >= Number(state._cloakCdUntil || 0)) {
           state._cloakUntil = nowCloak + (Number(profile.cloakSkill.durationSec) || 30) * 1000;
           state._cloakCdUntil = nowCloak + profileAbilityCooldown(Number(profile.cloakSkill.cooldownSec) || 240, profile) * 1000;
         }

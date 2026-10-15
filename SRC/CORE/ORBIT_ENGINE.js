@@ -7131,6 +7131,35 @@ function breakCpuCloak(reason) {
 // ✅ Galaxy Gates : le camouflage ne suit pas dans la gate. Suspendu à
 // l'entrée (sans cooldown ni coût), restauré après la récompense ou
 // l'échec — uniquement si on est entré camouflé.
+// Camouflage interdit par carte : GG + QZ + Low + Maudite. Boutons grisés
+// et activations refusées sur place (le serveur tranche en autorité).
+const NO_CLOAK_MAPS = new Set(["alpha", "beta", "gamma", "delta", "epsilon",
+  "zeta", "kappa", "lambda", "kronos", "awakened", "qz", "low", "maudite"]);
+function cloakBlockedOnMap(mapId = null) {
+  try {
+    const id = String(mapId ?? window.__CURRENT_MAP_ID__ ?? currentMapId() ?? "").toLowerCase();
+    return NO_CLOAK_MAPS.has(id);
+  } catch { return false; }
+}
+// Arrivée Low/Maudite/QZ : camouflage coupé net (recharges démarrent,
+// comme à la mort). Les GG gardent leur suspension temporaire + restauration.
+function stripCloakForNoCloakMap() {
+  if (!cloakBlockedOnMap() || gateCloakSuspended) return;
+  let cut = false;
+  if ((player.cloakT || 0) > 0) {
+    player.cloakT = 0;
+    try { startPoliceCloakCooldown(); } catch {}
+    cut = true;
+  }
+  if (player.cpuCloak === true) {
+    player.cpuCloak = false;
+    try { persistCpuCloak(); } catch {}
+    cut = true;
+  }
+  if (cut) {
+    try { showToast("Camouflage désactivé sur cette carte", 1.6); } catch {}
+  }
+}
 let gateCloakSuspended = null;
 function suspendCloakForGate() {
   if (gateCloakSuspended) return;
@@ -7182,6 +7211,11 @@ function toggleCpuCloak() {
     try { updateSkillUI(); } catch {}
     return;
   }
+  // Camouflage interdit par carte : la sortie reste toujours possible.
+  if (cloakBlockedOnMap()) {
+    showNotification("Camouflage interdit sur cette carte", 2, "error");
+    return;
+  }
   if (player.credits < CPU_CLOAK_COST) {
     showNotification("Pas assez de crédits (CL04K-XL)", 1.2);
     return;
@@ -7213,6 +7247,10 @@ function toggleCpuCloak() {
 }
 function activatePoliceCloak() {
   if (player.dead || !started) return;
+  if (cloakBlockedOnMap()) {
+    showNotification("Camouflage interdit sur cette carte", 2, "error");
+    return;
+  }
   const cd = Number(player.cloakCd || 0);
   if (cd > 0) {
     showNotification(`Camouflage ultime : recharge ${Math.ceil(cd)} s`, 2, "info");
@@ -20017,19 +20055,21 @@ function syncActionDockState() {
       }
       button.dataset.cloakCooling = cloakCooling ? "1" : "0";
       const cloakActive = isPlayerCpuCloaked();
+      // Carte à camouflage interdit : bouton grisé (la sortie reste possible).
+      const cloakDenied = !cloakActive && cloakBlockedOnMap();
       // Pendant l'effet : voile noir plein (comme si le CD venait de
       // s'armer) ; il ne se balaye qu'à la sortie (ACTIF -> PRET).
       applyDockField(button, "feedback", cloakCooling || cloakActive,
         (v) => button.classList.toggle("skillFeedback", v));
       applyDockField(button, "progress", (cloakActive ? 1 : cloakProgress).toFixed(3),
         (v) => button.style.setProperty("--skill-feedback", v));
-      applyDockField(button, "disabled", (!cloakCanUse && !cloakActive) || cloakCooling,
+      applyDockField(button, "disabled", (!cloakCanUse && !cloakActive) || cloakCooling || cloakDenied,
         (v) => button.classList.toggle("disabled", v));
-      applyDockField(button, "ready", (cloakCanUse || cloakActive) && !cloakCooling,
+      applyDockField(button, "ready", (cloakCanUse || cloakActive) && !cloakCooling && !cloakDenied,
         (v) => button.classList.toggle("ready", v));
       applyDockField(button, "active", cloakActive,
         (v) => button.classList.toggle("active", v));
-      applyDockField(button, "main", cloakCooling ? `${cloakCd.toFixed(1)}s` : (cloakActive ? "ACTIF" : "PRET"),
+      applyDockField(button, "main", cloakCooling ? `${cloakCd.toFixed(1)}s` : (cloakActive ? "ACTIF" : (cloakDenied ? "OFF" : "PRET")),
         (v) => { if (small[0]) small[0].textContent = v; });
       applyDockField(button, "cd", cloakCooling ? "" : "30k",
         (v) => { if (small[1]) small[1].textContent = v; });
@@ -41081,6 +41121,9 @@ async function switchMapConfig(nextConfig, { mapId, spawnId = null } = {}) {
   history.replaceState({ mapId }, "", url);
 
   resetRun({ preparedZoneCamps, preparedZonePortals });
+  // Low / Maudite / QZ : pas de camouflage à l'intérieur (les GG gardent
+  // leur suspension temporaire + restauration dédiée).
+  try { stripCloakForNoCloakMap(); } catch {}
   collectablesWorldMap = currentMapId();
   try { initCollectableWorld(collectablesWorldMap); } catch {}
   player.iFrames = 0;
@@ -42685,6 +42728,8 @@ if (rules?.mode === "gate" && GALAXY_GATE_DEFINITIONS[currentGateMapId] && cur.g
     return;
   }
 }
+// Démarrage direct (URL/refresh) sur Low, Maudite ou QZ : pas de camouflage.
+try { stripCloakForNoCloakMap(); } catch {}
 
 const pack = getShipPackByIdData(cur.ship) || SHIP_PACKS[0];
 ACTIVE_SHIP = pack;
