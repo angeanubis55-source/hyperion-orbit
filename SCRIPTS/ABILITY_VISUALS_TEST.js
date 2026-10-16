@@ -698,7 +698,7 @@ ${extraFixture}
     const pos = { t: "pos", map: "1-1", ...position, hpPct: 1, shPct: 0, dead: false, config: 1 };
     send(pos);
     await wait(message => message.t === "snapshot" && message.players.some(player => player.id === welcome.id));
-    return { id: welcome.id, messages, send, wait, pos };
+    return { id: welcome.id, messages, send, wait, pos, readUser: async () => (await api("/api/me", account.token)).user };
   };
   return { connect, pause };
 }
@@ -1056,4 +1056,111 @@ ZoneNpcSim.create = async function(...args) {
     assert.equal(projectiles.length, before, "aucun faux tir ajoute aux eclairs emis par le nouveau serveur");
   }
   await observer.wait(e => e !== shot && e.t === "shot" && e.by === shot.by);
+});
+
+
+test("credit JPC WebSocket : dernier coup NPC, recompense persistee et quete creditee une seule fois", { timeout: 12000 }, async t => {
+  const { connect, pause } = await visualServer(t, `
+const originalCreate = ZoneNpcSim.create;
+ZoneNpcSim.create = async function(...args) {
+  const sim = await originalCreate.apply(this, args);
+  if (sim?.mapId !== "1-1") return sim;
+  const bot = [...sim.entries.values()].find(e => e.jpc);
+  sim.camps = []; sim.entries.clear(); sim.safe = []; sim.walls = [];
+  Object.assign(bot, { x: 1500, y: 1500, hp: 100000, hpMax: 100000, sh: 0, shMax: 0,
+    canShoot: false, jpcIshAt: Infinity, jpcRocketAt: Infinity });
+  sim.entries.set(bot.uid, bot);
+  sim.jpcMove = () => ({ mx: 0, my: 0, spd: 0 });
+  const tick = sim.tick.bind(sim);
+  let armed = false;
+  sim.tick = function(dt) {
+    if (!armed && this.players.size >= 2) {
+      armed = true;
+      const [first, helper] = [...this.players.keys()];
+      this.applyHit(first, { uid: bot.uid, dmg: 1000 });
+      this.applyHit(helper, { uid: bot.uid, dmg: 1000 });
+      this.entries.set("fatal-npc", { uid: "fatal-npc", type: "npc_Streuner", x: 1800, y: 1500,
+        hp: 1000000, hpMax: 1000000, sh: 0, shMax: 0, speed: 0, r: 18, spread: .8, seq: 1,
+        canShoot: true, shootRate: 1, shootRange: 1000, shootCd: 0, bulletDmg: 100000000,
+        jpcAggroUid: bot.uid, jpcAggroUntil: Date.now() + 60000 });
+    }
+    return tick(dt);
+  };
+  return sim;
+};`);
+  const hunter = await connect("jpc-kill-owner", "goliath");
+  const before = await hunter.readUser();
+  const helper = await connect("jpc-kill-helper", "goliath");
+  const reward = await hunter.wait(m => m.t === "npcReward" && m.uid?.includes("#jpc"));
+  assert.equal(reward.killer, hunter.id);
+  assert.equal(reward.ownsKill, true);
+  assert.equal(reward.type, "npc_Jpc_T0");
+  assert.equal(reward.credits, 5000);
+  assert.equal(reward.baseExp, 2000);
+  assert.equal(reward.baseHonor, 10);
+  const deathSnapshot = await hunter.wait(m => m.t === "snapshot"
+    && m.npc?.deaths?.some(d => d.uid === reward.uid && d.killer === hunter.id));
+  const death = deathSnapshot.npc.deaths.find(d => d.uid === reward.uid);
+  await pause(300); // Plusieurs snapshots du meme journal ne doivent pas recompter le kill.
+  const after = await hunter.readUser();
+  assert.equal(after.credits - before.credits, reward.credits);
+  assert.equal(after.stats.lifetimeKills - (before.stats?.lifetimeKills || 0), 1);
+  assert.equal(after.stats.npcKills.npc_Jpc_T0 - (before.stats?.npcKills?.npc_Jpc_T0 || 0), 1);
+  assert.equal(hunter.messages.filter(m => m.t === "npcReward" && m.uid === reward.uid).length, 1);
+  assert.equal(helper.messages.some(m => m.t === "npcReward" && m.uid === reward.uid), false);
+
+  // Le vrai chemin client adopte le verdict, puis declenche le credit PvP des quetes.
+  const target = { id: 1, _netUid: reward.uid, _netSeq: death.seq, hp: 100000,
+    type: "npc_Jpc_liberator", isJpcBot: true, _deathFxPlayed: true, _netReward: reward };
+  const quests = [], credited = [];
+  const noop = () => {};
+  const context = vm.createContext({ enemies: [target], rules: { mode: "zone" }, window: { __CURRENT_MAP_ID__: "1-1" },
+    getNetDeaths: () => new Map([[death.uid, death]]), netMyId: () => hunter.id, getNetGroup: () => null,
+    netBoomSelfDamage: noop, playNpcDeathFxOnce: noop, botQueueCloakAfterKill: noop,
+    Target: { get: () => target, clear: noop }, COLLECTABLE_DEFS: {}, spawnCollectableAt: noop,
+    rollNpcAssemblyBox: () => null, rollNpcAssemblyDirect: () => [],
+    measureGameTask: (_, callback) => callback(), advanceQuestProgress: (...args) => quests.push(args),
+    killRewards: entity => credited.push(entity._netReward) });
+  vm.runInContext(section(engine, "  // Journal des kills serveur D'ABORD", "  // Index uid -> entite"), context);
+  assert.equal(target._netKiller, true);
+  assert.equal(target._netLootOwner, true);
+  vm.runInContext(section(engine, "function processDeathsMeasured()", "let gateCompletionPending"), context);
+  context.processDeathsMeasured();
+  context.processDeathsMeasured();
+  assert.deepEqual(quests, [["kill", target.type], ["pvp", "pvp"]]);
+  assert.deepEqual(credited, [reward]);
+});
+
+test("lock multi WebSocket : JPC gris puis rouge apres mort, selection conservee", { timeout: 12000 }, async t => {
+  const { connect } = await visualServer(t, `
+const create = ZoneNpcSim.create;
+ZoneNpcSim.create = async function(...args) {
+  const sim = await create.apply(this, args);
+  if (sim?.mapId !== "1-1") return sim;
+  const bot = [...sim.entries.values()].find(e => e.jpc);
+  sim.camps = []; sim.entries.clear(); sim.safe = []; sim.walls = [];
+  Object.assign(bot, { x: 1500, y: 1500, jpcPreyUid: "lock-prey", jpcShootT: Infinity, jpcRocketAt: Infinity });
+  const prey = { uid: "lock-prey", type: "npc_Streuner", x: 1900, y: 1500,
+    hp: 10000000, hpMax: 10000000, sh: 0, shMax: 0, speed: 0, r: 18, spread: .8,
+    canShoot: false, seq: 1 };
+  sim.entries.set(bot.uid, bot); sim.entries.set(prey.uid, prey);
+  ZoneNpcSim.lockHit(prey, bot.uid, Date.now(), true);
+  const tick = sim.tick.bind(sim);
+  let deathAt = null;
+  sim.tick = function(dt) {
+    if (this.players.size && deathAt == null) deathAt = Date.now() + 1500;
+    tick(dt);
+    if (deathAt != null && Date.now() >= deathAt && bot.hp > 0) this.jpcKillBot(bot, Date.now());
+  };
+  return sim;
+};`);
+  const observer = await connect("jpc-lock-owner", "goliath");
+  const grey = await observer.wait(m => m.t === "snapshot" && m.npc?.list?.some(e => e.uid === "lock-prey" && e.jpcBy));
+  const prey = grey.npc.list.find(e => e.uid === "lock-prey");
+  assert.equal(prey.lock, prey.jpcBy);
+  const selectedAt = observer.messages.length;
+  observer.send({ ...observer.pos, lockedTarget: "lock-prey" });
+  await observer.wait(m => m.t === "snapshot" && m.npc?.list?.some(e => e.uid === "lock-prey" && e.lock === prey.lock), selectedAt);
+  const red = await observer.wait(m => m.t === "snapshot" && m.npc?.list?.some(e => e.uid === "lock-prey" && e.lock == null && e.jpcBy == null), selectedAt, 8500);
+  assert.equal(red.npc.list.find(e => e.uid === "lock-prey").lock, null);
 });

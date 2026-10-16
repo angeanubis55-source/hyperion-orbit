@@ -341,11 +341,12 @@ export function jpcRocketFlight(from, to, rocketId, { salvoIndex = 0, salvoTotal
   };
 }
 
-// Bot JPC à l'abri (portail/base) : comme un joueur en ZNA, impossible à
-// verrouiller. Utilisé par netPvpBlocked + Target (refus + rupture de lock).
+// Bot JPC à l'abri (portail/base) : sélection conservée comme un joueur,
+// mais attaque refusée. En multi, la protection vient du serveur.
 export function isJpcBotSheltered(e, isSafeFn) {
   try {
     if (!e || e.isJpcBot !== true) return false;
+    if (typeof e._netSafe === "boolean") return e._netSafe;
     if (typeof isSafeFn !== "function") return false;
     return !!isSafeFn(e);
   } catch { return false; }
@@ -1027,7 +1028,9 @@ function tickBot(dt, ctx, e, now) {
   // Dernier dégât subi (toute source) : temps simulé (pause-safe).
   if (total < Number(e.jpcLastTotal || 0)) e.jpcCalmT = 0;
   else e.jpcCalmT = Math.min(999, (Number(e.jpcCalmT) || 0) + dt);
-  e.jpcRiposteT = Math.min(999, (Number(e.jpcRiposteT) ?? 999) + dt);
+  // L'IEM coupe le verrou, sans consommer la fenetre de riposte du duel.
+  const ripostePaused = e.empT > 0 && e.jpcRiposte === true;
+  e.jpcRiposteT = Math.min(999, (Number(e.jpcRiposteT) ?? 999) + (ripostePaused ? 0 : dt));
   // Regen façon joueur : coque +5 %/s ET bouclier +5 %/s après 10 s sans
   // dégât (REPAIR). Sous le feu : rien ne remonte, même au portail.
   tickJpcRepair(e, dt, e.jpcCalmT);

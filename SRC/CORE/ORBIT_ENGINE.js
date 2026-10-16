@@ -22834,7 +22834,7 @@ function updatePet(dt) {
     if (foe && foe.hp > 0 && petTargetStillValid(foe)) target = foe;
   }
   // Multi PvP : pas de tir REX en zone de non-agression (parité avec le joueur).
-  if (target && target._netPlayer != null) {
+  if (target && (target._netPlayer != null || target._netPet != null || target.isJpcBot === true)) {
     try { if (netPvpBlocked(target)) target = null; } catch {}
   }
   if (target && (!(target.hp > 0) || !petTargetStillValid(target)
@@ -22849,7 +22849,7 @@ function updatePet(dt) {
   target = chooseStablePetTarget(petState, target, performance.now() / 1000, current => {
     if (!petTargetStillValid(current) || !(current.hp > 0)
         || Math.hypot(current.x - player.x, current.y - player.y) > leash) return false;
-    if (current._netPlayer != null && netPvpBlocked(current)) return false;
+    if ((current._netPlayer != null || current._netPet != null || current.isJpcBot === true) && netPvpBlocked(current)) return false;
     return true;
   });
   // ZNA : cessez-le-feu du REX quand le joueur est à l'abri. Sans ça sa
@@ -29419,7 +29419,7 @@ function spawnScheduledSalvo(entry) {
 function spawnSalvoDecoy(e) {
   // ✅ la salve s'arrête si la cible n'existe plus (NPC mort)
   const t2 = getEnemyById(e.targetId);
-  if (!t2) return;
+  if (!t2 || netPvpBlocked(t2)) return;
   const key = e.forceKey || e.key || "x1";
   // ✅ SAB/CBO inversé : les faux tirs partent eux aussi de la cible vers le vaisseau.
   if (e.sabReverse && (key === "sab" || key === "cbo")) {
@@ -29623,6 +29623,7 @@ function spawnEscortSalvoDecoy(e) {
     ? player.tbrClones?.find(c => c.id === e.escortId) : getEscortById(e.escortId);
   const t2 = getEnemyById(e.targetId);
   if (!escort || (isPet ? account.user?.pet?.hp <= 0 : escort.hp <= 0) || !t2 || t2.hp <= 0) return;
+  if ((isPet || isTbr) && netPvpBlocked(t2)) return;
   if (isTbr && dist2(escort.x, escort.y, t2.x, t2.y) > 305 * 305) return;
   // Multi : faux tirs du PET et de ses clones depuis leur propre position.
   // Jamais MISS, meme volley (deduplique l'affichage MISS distant).
@@ -30035,41 +30036,46 @@ function getCurrentZoneMapId() {
   return String(window.__CURRENT_MAP_ID__ || rules?.mapLabel || "").trim().toLowerCase();
 }
 
-function portalProvidesSafety(portal) {
+function portalProvidesSafety(portal, forJpc = false) {
   const mapId = getCurrentZoneMapId();
   if (/^4-[123]$/.test(mapId) || mapId === "4-4" || mapId === "4-5") return false;
   const sectorMatch = mapId.match(/^([123])-/);
   const playerSector = getFaction((account.user || getCurrentUserFull())?.faction).sector;
-  if (sectorMatch && sectorMatch[1] !== playerSector) return false;
+  if (!forJpc && sectorMatch && sectorMatch[1] !== playerSector) return false;
   const destination = String(portal?.toMap || "").trim().toLowerCase();
   return !["alpha", "beta", "gamma", "delta", "epsilon", "zeta", "kappa", "lambda", "kronos", "awakened"].includes(destination);
 }
 
-function baseProvidesSafety() {
+function baseProvidesSafety(forJpc = false) {
   const center = zoneSafe?.modules?.find(module => String(module?.id || "").startsWith("CENTRE_"));
   if (!center) return false;
+  if (forJpc) return true;
   const owner = String(center.id).slice("CENTRE_".length).toLowerCase();
   if (owner === "pirates" || owner === "pirate") return true;
   return owner === getFaction((account.user || getCurrentUserFull())?.faction).id;
 }
 
 // Les contr?leurs prot?gent uniquement les joueurs de leur firme.
-function getSafeModuleAt(x, y) {
+function getSafeModuleAt(x, y, forJpc = false) {
   if (!isZoneMap) return null;
   for (const module of zoneSafe?.modules || []) {
     const radius = Number(module?.safeRadius || 0);
-    if (!(radius > 0) || !canUseStation(module)) continue;
+    if (!(radius > 0) || (!forJpc && !canUseStation(module))) continue;
     if (dist2(x, y, module.x, module.y) <= radius * radius) return module;
   }
   return null;
 }
 
 function npcIsInSafeZone(e) {
+  const forJpc = e?.isJpcBot === true;
+  // La protection d'un JPC appartient à sa zone, pas à la firme de
+  // l'observateur. Le serveur tranche avant le repli géométrique solo.
+  if (forJpc && typeof e._netSafe === "boolean") return e._netSafe;
   if (!isZoneMap) return false;
   
   if (zonePortals && zonePortals.length) {
     for (const p of getInteractivePortals()) {
-      if (!portalProvidesSafety(p)) continue;
+      if (!portalProvidesSafety(p, forJpc)) continue;
       const rr = DEFAULT_PORTAL_RADIUS + SAFE_ZONE_MARGIN;
       if (dist2(e.x, e.y, p.x, p.y) <= rr * rr) {
         return true;
@@ -30077,7 +30083,7 @@ function npcIsInSafeZone(e) {
     }
   }
 
-  if (baseProvidesSafety() && zoneSafe?.zone?.kind === "circle") {
+  if (baseProvidesSafety(forJpc) && zoneSafe?.zone?.kind === "circle") {
     const z = zoneSafe.zone;
     const rr = (z.r || 0) + SAFE_ZONE_MARGIN;
     if (dist2(e.x, e.y, z.x, z.y) <= rr * rr) {
@@ -30085,7 +30091,7 @@ function npcIsInSafeZone(e) {
     }
   }
 
-  if (getSafeModuleAt(e.x, e.y)) return true;
+  if (getSafeModuleAt(e.x, e.y, forJpc)) return true;
 
   return false;
 }
@@ -30810,6 +30816,7 @@ function syncNetNpcs(dt) {
     }
     const dx = snapX - e.x, dy = snapY - e.y;
     if (e.isJpcBot === true) {
+      e._netSafe = typeof s.jpSafe === "boolean" ? s.jpSafe : null;
       // Le réseau borne déjà les pas : éviter un deuxième freinage ici.
       e.x = snapX; e.y = snapY;
       e.vx = Number(s.vx) || 0; e.vy = Number(s.vy) || 0;

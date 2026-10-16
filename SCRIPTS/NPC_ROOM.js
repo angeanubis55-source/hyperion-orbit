@@ -370,6 +370,7 @@ export class ZoneNpcSim {
     if (!e || pid == null) return false;
     const p = this.players.get(String(pid));
     if (!p || p.dead || p.safe !== true) return false;
+    if (Number(nowMs || Date.now()) < Number(p.untargetableUntil || 0)) return false;
     if (String(e.lastHitBy || "") !== String(pid)) return false;
     return Number(nowMs || Date.now()) < Number(e.aggroUntil || 0);
   }
@@ -388,7 +389,20 @@ export class ZoneNpcSim {
     const p = this.players.get(pid);
     if (p) p.untargetableUntil = Math.max(Number(p.untargetableUntil || 0), Number(untilMs) || 0);
     for (const e of this.entries.values()) {
-      if (String(e.aggroBy || "") === pid) {
+      const fightingJpc = e.jpc === true && e.hp > 0 && p && !p.dead
+        && e.jpcMode !== "flee" && e.jpcMode !== "repair"
+        && (String(e.aggroBy || "") === pid || String(e.chaseId || "") === pid);
+      if (fightingJpc) {
+        const nowMs = Date.now();
+        const pauseUntil = Math.max(nowMs, Number(untilMs) || 0);
+        // Perdre le verrou ne termine pas le duel. Manoeuvre autour de la
+        // derniere position connue, sans reacquisition ni farm pendant l'IEM.
+        e.jpcIemPause = { id: pid, x: p.x, y: p.y, until: pauseUntil };
+        e.aggroBy = pid;
+        e.aggroUntil = pauseUntil + Math.max(1, Number(e.aggroUntil || 0) - nowMs);
+        e.jpcPreyUid = null;
+        e.jpcVisualParts = [];
+      } else if (String(e.aggroBy || "") === pid) {
         e.aggroBy = null;
         e.aggroUntil = 0;
       }
@@ -672,17 +686,12 @@ export class ZoneNpcSim {
     }
   }
 
-  // Proie revendiquée par un JPC vivant (il la farme) : pas de récompense
-  // partagée — tuer le bot libère la proie (rouge + récompenses normales).
+  // Même propriétaire pour la couleur et les récompenses, jusqu'à la
+  // libération du verrou (délai commun aux joueurs et aux JPC).
   jpcPreyClaimed(uid) {
-    try {
-      const key = String(uid || "");
-      if (!key) return false;
-      for (const o of this.entries.values()) {
-        if (o && o.jpc === true && o.hp > 0 && o.jpcMode === "farm" && String(o.jpcPreyUid) === key) return true;
-      }
-    } catch {}
-    return false;
+    const prey = this.entries.get(String(uid || ""));
+    return prey?.lockBy != null
+      && (prey.lockJpc === true || this.entries.get(String(prey.lockBy))?.jpc === true);
   }
 
   // Position de (re)spawn JPC : aléatoire hors zones sûres et murs.
@@ -805,6 +814,7 @@ export class ZoneNpcSim {
     try {
       const cur = e && e.jpcPreyUid != null ? this.entries.get(String(e.jpcPreyUid)) : null;
       if (!cur || !isJpcFarmable(cur)) return false;
+      if (cur.lockBy != null && String(cur.lockBy) !== String(e.uid)) return false;
       if (Math.hypot(Number(cur.x) - e.x, Number(cur.y) - e.y) > 3400) return false;
       if (this.jpcNpcInWall(cur)) return false;
       if (cur.uid != null && this.jpcWallBanActive(e, cur.uid)) return false;
@@ -864,18 +874,19 @@ export class ZoneNpcSim {
       killer: "", cause: "gun", seq: prey.seq || 0, at: nowMs });
   }
 
-  // Mort d'un JPC (tué par un NPC) : respawn programmé dans 90 s
-  // (anti-farm en boucle), nouvelle incarnation.
+  // Mort d'un JPC : le dernier coup (joueur ou NPC) ne vole pas le crédit
+  // au premier attaquant. Sans participation joueur, aucune récompense.
   jpcKillBot(e, nowMs) {
-    if (!e) return;
+    if (!e || e.killer != null) return;
+    const credited = e.firstBy != null && this.players.has(e.firstBy) ? e.firstBy : e.lastHitBy;
     e.hp = 0; e.sh = 0;
     e.deadAt = nowMs;
-    e.killer = "";
+    e.killer = String(credited || "");
     e.cause = "gun";
     e.jpcRespawnAt = nowMs + JPC_RESPAWN_DELAY_S * 1000;
-    this.deaths.push({ uid: e.uid, type: e.type,
+    this.deaths.push({ uid: e.uid, type: `npc_Jpc_T${Number(e.jpcTier ?? 1)}`,
       x: Math.round(e.x), y: Math.round(e.y),
-      killer: "", cause: "gun", seq: e.seq || 0, at: nowMs });
+      killer: e.killer, cause: "gun", seq: e.seq || 0, at: nowMs });
   }
 
   // IEM claquant par les bots JPC : { playerId, npcUid, x, y }.
@@ -929,6 +940,12 @@ export class ZoneNpcSim {
         riposte = { id: String(chase.id), x: Number(p.x) || 0, y: Number(p.y) || 0 };
       }
     }
+    const pause = e.jpcIemPause;
+    const pausedPlayer = pause ? this.players.get(pause.id) : null;
+    const paused = pause && nowMs < pause.until && pausedPlayer && !pausedPlayer.dead
+      && !pausedPlayer.safe && !pausedPlayer.cloaked && String(e.aggroBy || "") === pause.id;
+    if (!paused) e.jpcIemPause = null;
+    const combat = riposte || (paused ? pause : null);
     const maxTotal = Math.max(1, (Number(e.hpMax) || 1) + (Number(e.shMax) || 0));
     const total = Math.max(0, Number(e.hp) || 0) + Math.max(0, Number(e.sh) || 0);
     const frac = total / maxTotal;
@@ -981,7 +998,7 @@ export class ZoneNpcSim {
     if (!ishing && e.jpcDrones) {
       try {
         let formation = null;
-        if (riposte) formation = jpcRiposteFormation(e, this.jpcFoeShieldFrac(riposte.id));
+        if (combat) formation = jpcRiposteFormation(e, this.jpcFoeShieldFrac(combat.id));
         else if (e.jpcMode === "flee") formation = jpcRoleFormation(e, "flee");
         else if (e.jpcMode !== "repair") formation = jpcRoleFormation(e, "travel");
         if (formation) e.jpcDrones.formation = formation;
@@ -998,7 +1015,7 @@ export class ZoneNpcSim {
     // Seuil variable (courage du bot + surnombre) : on tente parfois à 10 %
     // seul, on fuit à 60 %+ quand ça sent le surnombre, comme un vrai joueur.
     const fleeAt = jpcFleeThreshold(e, this.jpcFoeCount(e));
-    if (e.jpcMode !== "repair" && e.jpcMode !== "flee" && (frac < fleeAt || hpFrac < fleeAt) && !ishing && !riposte) {
+    if (e.jpcMode !== "repair" && e.jpcMode !== "flee" && (frac < fleeAt || hpFrac < fleeAt) && !ishing && !combat) {
       e.jpcMode = "flee";
       e.jpcPreyUid = null;
       e.jpcVisualParts = [];
@@ -1053,11 +1070,11 @@ export class ZoneNpcSim {
     // scan post-kill 1.5 s comme le vrai bot.
     // Riposte agressive : orbit resserrée (on colle à 450 m) à vitesse de
     // poursuite (+25 %, comme un changement de config rapide).
-    if (riposte) {
+    if (combat) {
       e.jpcPreyUid = null;
       const keepSpd = e.speed;
       e.speed = Math.min((Number(keepSpd) || 300) * 1.25, 450);
-      const mv = this.jpcOrbit(e, riposte.x, riposte.y, 0, dt, Math.min(jpcCombatDistance(e, riposte), 450));
+      const mv = this.jpcOrbit(e, combat.x, combat.y, 0, dt, Math.min(jpcCombatDistance(e, combat), 450));
       e.speed = keepSpd;
       return mv;
     }
@@ -1111,6 +1128,7 @@ export class ZoneNpcSim {
           try {
             damageEnemyLayers(prey, dmg, { shieldPenetration: 0.15, shieldSpread: prey.spread ?? 0.8,
               variance: 0.1, critChance: 0.05, critMultiplier: 1.5, random: Math.random });
+            ZoneNpcSim.lockHit(prey, e.uid, nowMs, true);
             // Feed dégâts : les chiffres s'affichent pour qui locke la proie.
             try {
               const key = `${prey.uid}|${e.uid}`;
@@ -1191,6 +1209,7 @@ export class ZoneNpcSim {
         try {
           damageEnemyLayers(target, dmg, { shieldPenetration: 0.15, shieldSpread: target.spread ?? 0.8,
             variance: 0.1, critChance: 0.05, critMultiplier: 1.5, random: Math.random });
+          ZoneNpcSim.lockHit(target, e.uid, nowMs, true);
           try {
             const key = `${target.uid}|${e.uid}`;
             this.feed.set(key, { uid: target.uid, by: e.uid, total: Math.round((this.feed.get(key)?.total || 0) + dmg) });
@@ -1303,15 +1322,53 @@ drainPlayerHits() {
     while (h.length > ZoneNpcSim.LOCK_HISTORY_MAX) h.shift();
   }
 
-  // Prétendant au transfert : attaquant le plus récent (hit ≤ 5 s, connecté),
-  // hors détenteur sortant. null = personne : le lock devient libre.
-  static lockContender(entry, excludeId, nowMs, players) {
+  // Joueurs et JPC partagent la prise et le renouvellement du verrou.
+  static lockHit(entry, attackerId, nowMs, jpc = false) {
+    const id = String(attackerId);
+    if (entry.firstBy == null) entry.firstBy = id;
+    ZoneNpcSim.lockNoteHit(entry, id, nowMs);
+    if (entry.lockBy == null || String(entry.lockBy) === id || !Number(entry.lockHitAt)) {
+      entry.lockBy = id;
+      entry.lockJpc = jpc;
+      entry.firstBy = id;
+      entry.lockHitAt = nowMs;
+      entry.lockReleaseAt = 0;
+    }
+  }
+
+  tickNpcLock(entry, nowMs) {
+    if (entry.lockBy == null) return;
+    const id = String(entry.lockBy);
+    const bot = this.entries.get(id);
+    const holder = this.players.get(id) || (bot?.jpc === true ? bot : null);
+    const idle = nowMs - Number(entry.lockHitAt || 0) > ZoneNpcSim.LOCK_IDLE_MS;
+    const out = !holder || holder.dead === true || (holder.jpc === true && !(holder.hp > 0))
+      || (holder.safe === true && idle);
+    if (out || idle) {
+      if (!entry.lockReleaseAt) entry.lockReleaseAt = nowMs + ZoneNpcSim.LOCK_GRACE_MS;
+      else if (nowMs >= Number(entry.lockReleaseAt)) {
+        const next = ZoneNpcSim.lockContender(entry, id, nowMs, this.players, this.entries);
+        entry.lockBy = next;
+        entry.lockJpc = next != null && this.entries.get(String(next))?.jpc === true;
+        entry.firstBy = next;
+        entry.lockHitAt = 0;
+        entry.lockReleaseAt = 0;
+      }
+    } else {
+      entry.lockReleaseAt = 0;
+    }
+  }
+
+  // Prétendant vivant, impact récent, hors détenteur sortant.
+  static lockContender(entry, excludeId, nowMs, players, entries = null) {
     const h = Array.isArray(entry.hitHist) ? entry.hitHist : [];
     for (let i = h.length - 1; i >= 0; i--) {
       const c = h[i];
       if (!c || String(c.id) === String(excludeId)) continue;
       if (nowMs - Number(c.at || 0) > ZoneNpcSim.LOCK_IDLE_MS) continue;
-      if (!players.has(String(c.id))) continue;
+      const player = players.get(String(c.id));
+      const bot = entries?.get(String(c.id));
+      if (!(player && !player.dead) && !(bot?.jpc === true && bot.hp > 0)) continue;
       return String(c.id);
     }
     return null;
@@ -1628,20 +1685,7 @@ drainPlayerHits() {
     // Détenteur non confirmé (transfert auto, jamais tapé depuis) : le hit
     // vole le lock instantanément — ex : l'ancien qui re-tape repasse rouge
     // et l'autre gris, sans avoir à attendre.
-    ZoneNpcSim.lockNoteHit(entry, clientId, nowMs);
-    if (entry.lockBy == null) {
-      entry.lockBy = String(clientId);
-      entry.lockHitAt = nowMs;
-      entry.lockReleaseAt = 0;
-    } else if (String(entry.lockBy) === String(clientId)) {
-      entry.lockHitAt = nowMs;
-      entry.lockReleaseAt = 0;
-    } else if (!Number(entry.lockHitAt)) {
-      entry.lockBy = String(clientId);
-      entry.firstBy = String(clientId);
-      entry.lockHitAt = nowMs;
-      entry.lockReleaseAt = 0;
-    }
+    ZoneNpcSim.lockHit(entry, clientId, nowMs);
     const slowPct = clamp(Number(hit?.slowPct) || 0, 0, 95);
     const slowSec = clamp(Number(hit?.slowSec) || 0, 0, 30);
     const freezeSec = clamp(Number(hit?.freezeSec) || 0, 0, 5);
@@ -1743,6 +1787,10 @@ drainPlayerHits() {
       try { this.spawnInvokeImpulse(entry, nowMs); } catch {}
     }
     if (!(entry.hp > 0)) {
+      if (entry.jpc === true) {
+        this.jpcKillBot(entry, nowMs);
+        return applied;
+      }
       entry.hp = 0;
       entry.sh = 0;
       // Credit au premier attaquant (repli : dernier si parti).
@@ -1753,19 +1801,13 @@ drainPlayerHits() {
       entry.killer = claimedByJpc ? "" : String(kb || clientId);
       entry.cause = "gun";
       entry.cube = null;
-      // JPC tué : respawn programmé dans 90 s (1ter, anti-farm en boucle),
-      // pas de slot univers.
-      if (entry.jpc === true) entry.jpcRespawnAt = nowMs + JPC_RESPAWN_DELAY_S * 1000;
       if (!entry.campId) entry.deadAt = nowMs;
       if (entry.type === "npc_Cubikon") {
         try { this.releaseCubikonMinions(entry, nowMs); } catch {}
       }
       try { this.spawnOnKillWave(entry, nowMs); } catch {}
-      // Les JPC n'ont pas de slot d'univers (respawn propre, pas persistant).
-      try { if (!entry.jpc) markDead(this.universe, this.mapId, uid, Date.now()); } catch {}
-      // Mort d'un JPC tué par un joueur : type récompense par tier de map
-      // (l'entité garde son type coque pour le rendu client).
-      const death = { uid, type: entry.jpc === true ? `npc_Jpc_T${Number(entry.jpcTier) || 1}` : entry.type, x: Math.round(entry.x), y: Math.round(entry.y), killer: entry.killer, cause: "gun", seq: entry.seq || 0, at: Date.now() };
+      try { markDead(this.universe, this.mapId, uid, Date.now()); } catch {}
+      const death = { uid, type: entry.type, x: Math.round(entry.x), y: Math.round(entry.y), killer: entry.killer, cause: "gun", seq: entry.seq || 0, at: Date.now() };
       // Invoke / Mindfire : classement dégâts pour les soleils (top 10) et
       // la récompense de destruction proportionnelle (tous les tapeurs).
       if (entry.type === "npc_Invoke_XVI" || entry.type === "npc_Mindfire_Behemoth") {
@@ -1857,6 +1899,7 @@ drainPlayerHits() {
       e.dmgBy = null; e.dmgSeq = 0;
       e.aggroBy = null; e.aggroUntil = 0; e.chaseId = null;
       e.jpcPreyUid = null; e.jpcMode = "farm"; e.jpcSafeX = null;
+      e.jpcIemPause = null;
       e.jpcIshUntil = 0; e.shootCd = 1;
       e.jpcVisualParts = []; e.jpcRepairTick = 0; e.vx = 0; e.vy = 0;
       e.jpcNavigation = {}; e.jpcCombatState = {};
@@ -1956,26 +1999,7 @@ drainPlayerHits() {
       // l'annule, voir applyHit), puis TRANSFERT AUTO au prétendant le plus
       // récent (pas besoin de taper pour passer rouge) ; personne → libre.
       // firstBy suit pour que la récompense aille au nouveau rouge.
-      if (e.lockBy != null) {
-        const holder = this.players.get(String(e.lockBy));
-        const holderIdle = nowMs - Number(e.lockHitAt || 0) > ZoneNpcSim.LOCK_IDLE_MS;
-        // En ZNA, le détenteur qui tape encore garde son lock (c'est lui
-        // que le NPC riposte). Il ne le perd qu'en restant passif.
-        const holderOut = !holder || holder.dead === true || (holder.safe === true && holderIdle);
-        if (holderOut || holderIdle) {
-          if (!e.lockReleaseAt) e.lockReleaseAt = nowMs + ZoneNpcSim.LOCK_GRACE_MS;
-          else if (nowMs >= Number(e.lockReleaseAt) || 0) {
-            const ex = String(e.lockBy);
-            const next = ZoneNpcSim.lockContender(e, ex, nowMs, this.players);
-            e.lockBy = next;
-            e.firstBy = next;
-            e.lockHitAt = 0; // non confirmé : doit taper pour confirmer
-            e.lockReleaseAt = 0;
-          }
-        } else {
-          e.lockReleaseAt = 0;
-        }
-      }
+      this.tickNpcLock(e, nowMs);
       // Minion orphelin (Cubikon mort) : perd 5 % de sa vie max par seconde
       // jusqu'a la mort, meme sous le feu ennemi. Fuite en ligne droite
       // pendant 3 s, puis errance + agro comme les autres NPC (tirs inclus).
@@ -2428,16 +2452,7 @@ drainPlayerHits() {
       }
     } catch {}
     this.healFeed.clear();
-    // Claims JPC (lock gris) : uid du bot qui farme chaque proie. Une seule
-    // passe : les clients affichent gris tant que le bot est dessus.
-    const jpcClaims = new Map();
-    try {
-      for (const o of this.entries.values()) {
-        if (o && o.jpc === true && o.hp > 0 && o.jpcPreyUid != null && o.jpcMode === "farm") {
-          jpcClaims.set(String(o.jpcPreyUid), String(o.uid));
-        }
-      }
-    } catch {}
+    // Le verrou JPC suit les impacts réels, comme celui d'un joueur.
     const list = [];
     for (const e of this.entries.values()) {
       if (e.hp > 0) {
@@ -2467,11 +2482,12 @@ drainPlayerHits() {
           lock: e.lockBy != null ? String(e.lockBy) : null,
           // Proie farmée par un JPC (visuel gris comme un vrai joueur) : uid
           // du bot, null sinon (le client retombe sur rouge / libre).
-          jpcBy: e.jpc === true ? null : (jpcClaims.get(String(e.uid)) ?? null),
+          jpcBy: e.jpc !== true && this.jpcPreyClaimed(e.uid) ? String(e.lockBy) : null,
           // Bots JPC natifs : présentation faux-joueur pour tous les écrans
           // (pseudo, drones, formation, bulle ISH).
           ...(e.jpc === true ? {
             jpc: 1,
+            jpSafe: this.inSafe(e.x, e.y),
             jpVx: Number(e.vx) || 0, jpVy: Number(e.vy) || 0, jpSpeed: e.speed,
             jpMode: e.jpcMode,
             jpPseudo: String(e.jpcPseudo || "JPC"),

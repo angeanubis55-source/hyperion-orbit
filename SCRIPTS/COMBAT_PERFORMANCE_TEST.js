@@ -17,6 +17,7 @@ import { LOGDISK_PACK, LOGDISK_PRICE, normalizePilotSkills } from "../SRC/DATA/P
 import { createDefaultSkylabState, normalizeSkylabState, tickSkylabState } from "../SRC/DATA/SKYLAB.js";
 import { CATALOG, findCatalogItem } from "../SRC/CORE/CATALOG.js";
 import { AMMO } from "../COMBAT/AMMO_TYPES.js";
+import { isJpcBotSheltered } from "../NPC/JPC_BOTS.js";
 import { HYPERION_QA_DAMAGE, HYPERION_QA_BURST_SEC, HYPERION_QA_SALVOS } from "../SHIP/SHIP_ABILITIES.js";
 
 // Exerce les fonctions livrées sans démarrer une session ou un serveur réel.
@@ -110,6 +111,43 @@ function salvoHarness({ ammo = 'x4', stock = 100, pair = false } = {}) {
       : engineFunction(name)).join('\n'), context);
   return { context, target, packets, consumption };
 }
+
+test('JPC protege : aucun laser, faux tir ou roquette, et arret immediat au portail', () => {
+  const { context: c, target, packets, consumption } = salvoHarness();
+  Object.assign(target, { isJpcBot: true, _netSafe: true });
+  Object.assign(c, { isJpcBotSheltered, npcIsInSafeZone: () => false,
+    performance: { now: () => 10000 }, lastPvpSafeToastAt: 0, showToast: () => {},
+    isOwnPetTarget: () => false, netplayNpcActive: () => true,
+    activeRocket: () => ({ id: 'r310', manual: true }), rocketCount: () => 100,
+    rocketCooldownLeft: () => 0, getRocketType: () => ({ manual: false }), launcherLitNow: () => 5 });
+  vm.runInContext(['isBlacklightTargetType', 'netPvpBlocked', 'tickAutoAttack', 'tryFireRocket', 'tryFireSalvo']
+    .map(name => engineFunction(name)).join('\n'), c);
+  c.startAttack();
+  assert.equal(c.attackActive, false, 'attaque refusee avant activation');
+  assert.equal(c.tryFireOnce(), false);
+  assert.equal(c.tryFireRocket(), false);
+  assert.equal(c.tryFireSalvo(), false);
+  c.spawnSalvoDecoy({ targetId: target.id });
+  assert.equal(c.bullets.length, 0);
+  assert.equal(packets.length, 0);
+  assert.equal(consumption.length, 0, 'aucune munition consommee');
+  assert.equal(c.fireCooldown, 0, 'aucun cooldown declenche');
+
+  target._netSafe = false;
+  c.startAttack();
+  assert.equal(c.attackActive, true, 'attaque possible dehors');
+  assert.ok(c.bullets.length > 0);
+  assert.ok(c.pendingSalvo.length > 0);
+  const before = { bullets: c.bullets.length, consumption: consumption.length, packets: packets.length };
+  target._netSafe = true;
+  c.tickAutoAttack(0.016);
+  c.tickPendingSalvo(1);
+  assert.equal(c.attackActive, false, 'entree ZNA coupe le combat sans effacer la selection');
+  assert.equal(c.Target.get(), target);
+  assert.equal(c.bullets.length, before.bullets);
+  assert.equal(consumption.length, before.consumption);
+  assert.equal(packets.length, before.packets);
+});
 
 for (const burst of ['x6', 'rcb']) {
   for (const pair of [false, true]) {

@@ -1747,6 +1747,7 @@ export function ensureNetplayConnection() {
             vx: n.alive === false ? 0 : n.jpc ? Number(n.jpVx) || 0 : (positionChanged ? velocity.vx : Number(prev?.vx || 0)),
             vy: n.alive === false ? 0 : n.jpc ? Number(n.jpVy) || 0 : (positionChanged ? velocity.vy : Number(prev?.vy || 0)),
             jpc: n.jpc === 1,
+            jpSafe: typeof n.jpSafe === "boolean" ? n.jpSafe : null,
             jpPseudo: String(n.jpPseudo || "").slice(0, 32),
             jpDrones: Math.max(0, Math.min(12, Number(n.jpDrones) || 0)),
             jpForm: String(n.jpForm || "standard").slice(0, 32),
@@ -1767,6 +1768,7 @@ export function ensureNetplayConnection() {
             aggro: n.aggro != null ? String(n.aggro) : null,
             // Lock premier attaquant (visuel rouge / gris) : id du détenteur.
             lock: n.lock != null ? String(n.lock) : null,
+            jpcBy: n.jpcBy != null ? String(n.jpcBy) : null,
             // Animation d'ouverture du Cubikon (vague partagee) : phase +
             // temps restant, miroir dans ORBIT_ENGINE (syncNetNpcs).
             cube: (n.cube === "delay" || n.cube === "open" || n.cube === "hold") ? String(n.cube) : null,

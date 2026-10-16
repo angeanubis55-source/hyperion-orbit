@@ -5,6 +5,7 @@ import vm from "node:vm";
 import { NETWORK_TIMING_GRACE_SEC } from "../SRC/CORE/NETWORK_TIMING.js";
 import { sanitizeAbilityFxList } from "../SRC/CORE/ABILITY_FX.js";
 import { NPC_TYPES } from "../NPC/NPC_TYPES.js";
+import { isJpcBotSheltered } from "../NPC/JPC_BOTS.js";
 
 // Execute les vrais handlers du client avec sockets et horloge controles.
 const source = readFileSync(new URL("../SRC/CORE/NETPLAY.js", import.meta.url), "utf8").replace(/^export /gm, "").replace(/^import .*NETWORK_TIMING.*\r?\n/gm, "").replace(/^import .*ABILITY_FX.*\r?\n/gm, "");
@@ -35,6 +36,85 @@ function client() {
   sockets[0].open();
   return { api: context, sockets, intervals, timeouts, advance: ms => { now += ms; } };
 }
+
+test("JPC : protection portail/base transmise, attaque refusee puis autorisee a la sortie", () => {
+  const c = client(), socket = c.sockets[0];
+  const target = { id: "bot", isJpcBot: true, x: 100, y: 100 };
+  const context = vm.createContext({ e: target, isJpcBotSheltered,
+    npcIsInSafeZone: () => false, // Joueur d'une autre firme.
+    performance: { now: () => 10000 }, lastPvpSafeToastAt: 0, showToast: () => {},
+    isOwnPetTarget: () => false, netplayNpcActive: () => true });
+  const start = engine.indexOf("function netPvpBlocked(");
+  const end = engine.indexOf("// Propre REX (", start);
+  vm.runInContext(engine.slice(start, end), context);
+  const adoptFrom = engine.indexOf("      e._netSafe = typeof s.jpSafe");
+  const adoptTo = engine.indexOf("\n", adoptFrom);
+  for (const safe of [true, false, true]) {
+    socket.receive({ t: "snapshot", at: 10000, players: [], npc: { list: [{
+      uid: "bot", type: "npc_Jpc_goliath", jpc: 1, jpSafe: safe, x: 100, y: 100, hp: 100,
+    }] } });
+    context.s = c.api.getNetNpcs().get("bot");
+    assert.equal(context.s.jpSafe, safe);
+    vm.runInContext(engine.slice(adoptFrom, adoptTo), context);
+    assert.equal(context.netPvpBlocked(target), safe);
+    assert.equal(context.netPvpBlocked({ _netPlayer: "other", _netSafe: safe }), safe, "meme regle joueur/JPC");
+  }
+  socket.receive({ t: "snapshot", at: 10050, players: [], npc: { list: [{ uid: "bot", jpc: 1 }] } });
+  assert.equal(c.api.getNetNpcs().get("bot").jpSafe, null, "ancien serveur : repli geometrique");
+});
+
+test("JPC : ZNA locale de leur portail/base independante de la firme de l'observateur", () => {
+  const context = vm.createContext({ isZoneMap: true, window: { __CURRENT_MAP_ID__: "1-1" },
+    rules: {}, account: { user: { faction: "eic" } }, getFaction: () => ({ sector: "2", id: "eic" }),
+    zonePortals: [{ x: 1000, y: 1000, toMap: "1-2" }],
+    zoneSafe: { modules: [{ id: "CENTRE_mmo" }], zone: { kind: "circle", x: 3000, y: 3000, r: 600 } },
+    DEFAULT_PORTAL_RADIUS: 450, SAFE_ZONE_MARGIN: 50,
+    canUseStation: () => false,
+    dist2: (x, y, tx, ty) => (x - tx) ** 2 + (y - ty) ** 2 });
+  context.getInteractivePortals = () => context.zonePortals;
+  vm.runInContext(engine.slice(engine.indexOf("function getCurrentZoneMapId("), engine.indexOf("// Wave system")), context);
+  for (const [x, y] of [[1000, 1000], [3000, 3000]]) {
+    assert.equal(context.npcIsInSafeZone({ isJpcBot: true, x, y }), true);
+    assert.equal(context.npcIsInSafeZone({ x, y }), false, "regle de firme des autres entites conservee");
+  }
+  assert.equal(context.npcIsInSafeZone({ isJpcBot: true, x: 6000, y: 6000 }), false);
+  context.zonePortals[0].toMap = "alpha";
+  assert.equal(context.npcIsInSafeZone({ isJpcBot: true, x: 1000, y: 1000 }), false, "Galaxy Gate sans ZNA");
+  context.zoneSafe = { modules: [{ id: "CONTROLEUR_mmo", x: 5000, y: 5000, safeRadius: 200 }] };
+  assert.equal(context.npcIsInSafeZone({ isJpcBot: true, x: 5000, y: 5000 }), true);
+  assert.equal(context.npcIsInSafeZone({ isJpcBot: true, _netSafe: true, x: 6000, y: 6000 }), true);
+  assert.equal(context.npcIsInSafeZone({ isJpcBot: true, _netSafe: false, x: 5000, y: 5000 }), false);
+});
+
+test("lock multi : gris JPC transmis puis rouge apres liberation sans changer de selection", () => {
+  const c = client(), socket = c.sockets[0];
+  const botUid = "1-1#jpc0";
+  const render = vm.createContext({ LOCK_SPR: { src: "red" }, LOCK_GREY_SPR: { src: "grey" },
+    netMyId: () => "me", getNetGroup: () => null, rules: { mode: "zone" },
+    window: { __CURRENT_MAP_ID__: "1-1" }, jpcPreyClaimedByLiveBot: () => false });
+  const start = engine.indexOf("function targetLockSprite("), end = engine.indexOf("function drawLaserBeam(", start);
+  vm.runInContext(engine.slice(start, end), render);
+  const target = { _netUid: "prey" };
+  let at = 10000;
+  const adopt = (lock, jpcBy) => {
+    socket.receive({ t: "snapshot", at: at += 50, players: [], npc: { list: [{
+      uid: "prey", type: "npc_Streuner", x: 100, y: 100, hp: 100, hpMax: 100, lock, jpcBy,
+    }] } });
+    const npc = c.api.getNetNpcs().get("prey");
+    // Exercer l'adoption des champs telle qu'elle est livree dans syncNetNpcs.
+    const from = engine.indexOf("    e._netLockBy = s.lock");
+    const to = engine.indexOf("    // Bots JPC natifs", from);
+    render.e = target; render.s = npc;
+    vm.runInContext(engine.slice(from, to), render);
+    return render.targetLockSprite(target).src;
+  };
+  assert.equal(adopt(botUid, botUid), "grey");
+  assert.equal(target._netJpcBy, botUid);
+  assert.equal(adopt(null, null), "red");
+  assert.equal(target._netJpcBy, null);
+  assert.equal(adopt("me", null), "red");
+  assert.equal(adopt("other-player", null), "grey");
+});
 
 test("JPC : pseudo, drones et arret survivent au protocole, reprise sans dash", () => {
   const c = client(), socket = c.sockets[0];

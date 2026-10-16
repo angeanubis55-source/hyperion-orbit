@@ -91,6 +91,106 @@ function controlledSim() {
   return { sim, bots, prey };
 }
 
+test("lock multi : le premier impact JPC prend le gris, selection et aide ne le volent pas", t => {
+  t.mock.method(Math, "random", () => .99);
+  const { sim, bots: [bot, other], prey } = controlledSim();
+  other.hp = 0;
+  bot.jpcPreyUid = prey.uid;
+  bot.jpcRocketAt = Infinity;
+  assert.equal(sim.snapshot().list.find(e => e.uid === prey.uid).jpcBy, null, "approcher sans tirer ne reserve pas le NPC");
+  sim.jpcMove(bot, null, .05, Date.now());
+  assert.equal(prey.lockBy, bot.uid);
+  assert.equal(prey.firstBy, bot.uid);
+  sim.setPlayer("u_helper", 1500, 3000, { lockedTarget: prey.uid });
+  sim.applyHit("u_helper", { uid: prey.uid, dmg: 1 });
+  assert.equal(prey.lockBy, bot.uid);
+  assert.equal(prey.firstBy, bot.uid);
+  assert.equal(sim.jpcPreyValid(bot), true);
+  const snapshot = sim.snapshot().list.find(e => e.uid === prey.uid);
+  assert.equal(snapshot.lock, bot.uid);
+  assert.equal(snapshot.jpcBy, bot.uid);
+});
+
+test("lock multi : une roquette JPC prend le lock, les MISS ne le prennent pas", t => {
+  let random = 0;
+  t.mock.method(Math, "random", () => random);
+  const { sim, bots: [bot, other], prey } = controlledSim();
+  other.hp = 0; bot.jpcPreyUid = prey.uid;
+  sim.jpcFireRocket(bot, prey, false, 100000);
+  assert.equal(prey.lockBy ?? null, null);
+  random = .99;
+  sim.jpcFireRocket(bot, prey, false, 101000);
+  assert.equal(prey.lockBy, bot.uid);
+  assert.equal(prey.lockHitAt, 101000);
+});
+
+for (const jpc of [false, true]) test(`lock multi : ${jpc ? "JPC" : "joueur"} arrete, meme delai puis rouge`, () => {
+  const { sim, bots: [bot], prey } = controlledSim();
+  const holder = jpc ? bot.uid : "u_holder";
+  if (!jpc) sim.setPlayer(holder, 1000, 3000);
+  bot.jpcPreyUid = prey.uid; // Une vieille cible ne doit pas bloquer le rouge.
+  ZoneNpcSim.lockHit(prey, holder, 100000);
+  sim.tickNpcLock(prey, 105000);
+  assert.equal(prey.lockReleaseAt, 0);
+  sim.tickNpcLock(prey, 105001);
+  assert.equal(prey.lockReleaseAt, 110001);
+  sim.tickNpcLock(prey, 110000);
+  assert.equal(prey.lockBy, holder);
+  sim.tickNpcLock(prey, 110001);
+  assert.equal(prey.lockBy, null);
+  assert.equal(prey.firstBy, null);
+  assert.equal(sim.snapshot().list.find(e => e.uid === prey.uid).jpcBy, null);
+});
+
+for (const cause of ["mort", "depart"]) test(`lock multi : ${cause} du JPC libere apres la grace des joueurs`, () => {
+  const { sim, bots: [bot], prey } = controlledSim();
+  ZoneNpcSim.lockHit(prey, bot.uid, 100000);
+  if (cause === "mort") sim.jpcKillBot(bot, 100100);
+  else sim.entries.delete(bot.uid);
+  sim.tickNpcLock(prey, 100100);
+  assert.equal(prey.lockReleaseAt, 105100);
+  sim.tickNpcLock(prey, 105099);
+  assert.equal(prey.lockBy, bot.uid);
+  sim.tickNpcLock(prey, 105100);
+  assert.equal(prey.lockBy, null);
+});
+
+test("lock multi : reprise JPC annule la liberation, transfert joueur rend les recompenses", t => {
+  const { sim, bots: [bot], prey } = controlledSim();
+  bot.jpcPreyUid = prey.uid;
+  ZoneNpcSim.lockHit(prey, bot.uid, 100000);
+  sim.tickNpcLock(prey, 105001);
+  ZoneNpcSim.lockHit(prey, bot.uid, 108000);
+  assert.equal(prey.lockReleaseAt, 0);
+  sim.tickNpcLock(prey, 113001);
+  sim.setPlayer("u_helper", 1500, 3000);
+  ZoneNpcSim.lockHit(prey, "u_helper", 117000);
+  sim.tickNpcLock(prey, 118001);
+  assert.equal(prey.lockBy, "u_helper");
+  assert.equal(prey.firstBy, "u_helper");
+  assert.equal(sim.jpcPreyClaimed(prey.uid), false);
+  assert.equal(sim.jpcPreyValid(bot), false, "le JPC ne reprend pas la cible devenue rouge pour le joueur");
+  t.mock.method(Date, "now", () => 118002);
+  sim.applyHit("u_helper", { uid: prey.uid, dmg: 5e7 });
+  assert.equal(prey.killer, "u_helper");
+});
+
+test("lock multi : le JPC confirme un transfert et un candidat mort ne recoit rien", () => {
+  const { sim, bots: [a, b], prey } = controlledSim();
+  sim.setPlayer("u_holder", 1000, 3000);
+  ZoneNpcSim.lockHit(prey, "u_holder", 100000);
+  sim.tickNpcLock(prey, 105001);
+  ZoneNpcSim.lockHit(prey, a.uid, 109000);
+  ZoneNpcSim.lockHit(prey, b.uid, 109001);
+  b.hp = 0;
+  sim.tickNpcLock(prey, 110001);
+  assert.equal(prey.lockBy, a.uid);
+  assert.equal(prey.lockHitAt, 0);
+  ZoneNpcSim.lockHit(prey, a.uid, 110002);
+  ZoneNpcSim.lockHit(prey, "u_holder", 110003);
+  assert.equal(prey.lockBy, a.uid);
+});
+
 test("serveur : nouvelles cibles évitées au lock joueur, cible en cours gardée (gris)", () => {
   const { sim, bots: [a, b], prey } = controlledSim();
   sim.setPlayer("spectator", 1500, 3000, { lockedTarget: prey.uid });
@@ -237,6 +337,7 @@ test("serveur : JPC à l'abri = intouchable comme un joueur (ZNA portail/base)",
   const bot = bots.find((e) => e.hp > 0);
   // Le bot se répare au centre de sa ZNA : dégâts + claims refusés.
   sim.safe = [{ x: bot.x, y: bot.y, r: 500 }];
+  assert.equal(sim.snapshot().list.find(e => e.uid === bot.uid).jpSafe, true, "protection transmise au client");
   sim.setPlayer("u_camp", bot.x + 200, bot.y, { dead: false, safe: false });
   const hpBefore = bot.hp;
   sim.applyHit("u_camp", { uid: bot.uid, dmg: 50000, pen: 0 });
@@ -247,9 +348,170 @@ test("serveur : JPC à l'abri = intouchable comme un joueur (ZNA portail/base)",
   assert.equal((bot.hitHist || []).length, 0, "pas d'historique à l'abri");
   // Hors zone : les tirs repassent normalement (le garde est bien la cause).
   sim.safe = [];
+  assert.equal(sim.snapshot().list.find(e => e.uid === bot.uid).jpSafe, false, "sortie de zone transmise");
   sim.applyHit("u_camp", { uid: bot.uid, dmg: 1000, pen: 0 });
   assert.ok(!(bot.hp >= hpBefore), "dégâts hors zone");
   assert.equal(String(bot.lockBy), "u_camp", "lock hors zone");
+});
+
+for (const finalBlow of ["NPC", "joueur"]) test(`credit JPC : premier attaquant recompense, dernier coup ${finalBlow}`, t => {
+  t.mock.method(Math, "random", () => 0.99);
+  const { sim, bots: [bot, other], prey } = controlledSim();
+  other.hp = 0; other.jpcRespawnAt = Infinity;
+  sim.jpcMove = () => ({ mx: 0, my: 0, spd: 0 });
+  sim.setPlayer("u_first", bot.x + 100, bot.y);
+  sim.setPlayer("u_helper", bot.x + 200, bot.y);
+  sim.applyHit("u_first", { uid: bot.uid, dmg: 1000 });
+  sim.applyHit("u_helper", { uid: bot.uid, dmg: 1000 });
+  assert.equal(bot.firstBy, "u_first");
+  assert.equal(bot.lastHitBy, "u_helper");
+  assert.ok(bot.hp > 0);
+  if (finalBlow === "NPC") {
+    Object.assign(prey, { canShoot: true, shootRate: 1, shootRange: 1000, shootCd: 0,
+      bulletDmg: 1e8, jpcAggroUid: bot.uid, jpcAggroUntil: Date.now() + 60000 });
+    sim.tick(0.05); // Vrai tir NPC fatal, sans appeler directement le traitement de mort.
+  } else sim.applyHit("u_helper", { uid: bot.uid, dmg: 1e8 });
+  assert.equal(bot.hp, 0);
+  assert.equal(bot.killer, "u_first", "le NPC ou l'aide ne vole pas le kill");
+  const deaths = sim.snapshot().deaths.filter(e => e.uid === bot.uid);
+  assert.equal(deaths.length, 1);
+  assert.equal(deaths[0].killer, "u_first");
+  assert.equal(deaths[0].type, `npc_Jpc_T${bot.jpcTier}`, "meme recompense par tier que le coup fatal joueur");
+  assert.equal(deaths[0].seq, bot.seq);
+  assert.ok(bot.jpcRespawnAt >= deaths[0].at + 90000);
+  assert.equal(sim.snapshot().list.find(e => e.uid === bot.uid).killer, "u_first");
+  sim.jpcKillBot(bot, Date.now());
+  assert.equal(sim.deaths.filter(e => e.uid === bot.uid).length, 1, "aucun double credit");
+});
+
+test("credit JPC : un NPC seul ne donne aucun kill, le respawn oublie l'ancien beneficiaire", () => {
+  const { sim, bots: [bot, other], prey } = controlledSim();
+  sim.entries.delete(prey.uid); sim.entries.delete(other.uid);
+  sim.jpcMove = () => ({ mx: 0, my: 0, spd: 0 });
+  sim.setPlayer("u_first", bot.x + 100, bot.y);
+  sim.applyHit("u_first", { uid: bot.uid, dmg: 1000 });
+  sim.jpcKillBot(bot, Date.now());
+  const seq = bot.seq;
+  bot.jpcRespawnAt = Date.now() - 1;
+  sim.tick(0.05);
+  assert.equal(bot.seq, seq + 1);
+  assert.equal(bot.firstBy, null);
+  assert.equal(bot.lastHitBy, null);
+  sim.jpcKillBot(bot, Date.now());
+  assert.equal(bot.killer, "", "aucun credit a l'ancien attaquant");
+  assert.equal(sim.deaths.at(-1).killer, "");
+});
+
+test("credit JPC : transfert du verrou et depart du premier attaquant suivent les regles existantes", () => {
+  for (const departed of [false, true]) {
+    const { sim, bots: [bot] } = controlledSim();
+    sim.setPlayer("u_first", bot.x + 100, bot.y);
+    sim.setPlayer("u_next", bot.x + 200, bot.y);
+    sim.applyHit("u_first", { uid: bot.uid, dmg: 1000 });
+    sim.applyHit("u_next", { uid: bot.uid, dmg: 1000 });
+    if (departed) sim.players.delete("u_first");
+    else {
+      const now = Date.now();
+      bot.lockHitAt = now - ZoneNpcSim.LOCK_IDLE_MS - 1;
+      sim.tickNpcLock(bot, now);
+      ZoneNpcSim.lockNoteHit(bot, "u_next", now + ZoneNpcSim.LOCK_GRACE_MS);
+      sim.tickNpcLock(bot, now + ZoneNpcSim.LOCK_GRACE_MS);
+      assert.equal(bot.firstBy, "u_next");
+    }
+    sim.jpcKillBot(bot, Date.now());
+    assert.equal(bot.killer, "u_next");
+  }
+});
+
+for (const lowHp of [false, true]) test(`IEM joueur : JPC reste au duel sans farm ni fuite parasite (coque critique=${lowHp})`, t => {
+  let now = Date.now();
+  t.mock.method(Date, "now", () => now);
+  t.mock.method(Math, "random", () => .99);
+  const { sim, bots: [bot, other], prey } = controlledSim();
+  other.hp = 0; other.jpcRespawnAt = Infinity;
+  bot.jpcIemAt = Infinity;
+  if (lowHp) { bot.hp = bot.hpMax * .2; bot.sh = 0; }
+  sim.setPlayer("u_duel", bot.x + 200, bot.y);
+  sim.applyHit("u_duel", { uid: bot.uid, dmg: 100 });
+  sim.tick(.05);
+  assert.equal(bot.chaseId, "u_duel");
+  const remaining = bot.aggroUntil - now;
+  const until = now + 3000;
+  const npcHp = prey.hp;
+  sim.breakPlayerLocks("u_duel", until);
+  sim.drainPlayerHits(); sim.drainShotFx(); sim.drainRocketFx();
+  assert.equal(bot.chaseId, null, "verrou casse immediatement");
+  assert.equal(bot.jpcVisualParts.length, 0);
+  assert.equal(bot.aggroUntil, until + remaining, "fenetre de riposte suspendue pendant l'IEM");
+  for (let i = 0; i < 60; i++) {
+    sim.tick(.05);
+    assert.equal(bot.chaseId, null, "aucun relock pendant les trois secondes");
+    assert.equal(bot.jpcPreyUid, null, "aucun farm opportuniste");
+    assert.equal(bot.jpcMode, "farm", "aucune fuite declenchee par la seule perte du lock");
+    assert.equal(sim.drainPlayerHits().length, 0);
+    assert.equal(sim.drainShotFx().some(e => e.by === bot.uid), false);
+    assert.equal(sim.drainRocketFx().some(e => e.by === bot.uid), false);
+    now += 50;
+  }
+  assert.equal(prey.hp, npcHp, "la proie n'a pas ete touchee pendant l'IEM");
+  sim.tick(.05);
+  assert.equal(bot.chaseId, "u_duel", "reprise de la meme riposte apres expiration");
+  assert.equal(bot.jpcPreyUid, null);
+  assert.equal(bot.jpcIemPause, null);
+});
+
+test("IEM joueur : mort, camouflage, ZNA ou depart annulent la reprise du duel", t => {
+  const now = Date.now();
+  t.mock.method(Date, "now", () => now);
+  for (const end of ["mort", "camouflage", "ZNA", "depart"]) {
+    const { sim, bots: [bot] } = controlledSim();
+    bot.jpcIemAt = Infinity;
+    sim.setPlayer("u_duel", bot.x + 100, bot.y);
+    sim.applyHit("u_duel", { uid: bot.uid, dmg: 100 });
+    sim.breakPlayerLocks("u_duel", now + 3000);
+    if (end === "depart") sim.removePlayer("u_duel");
+    else sim.setPlayer("u_duel", bot.x + 100, bot.y, {
+      dead: end === "mort", cloaked: end === "camouflage", safe: end === "ZNA", untargetableUntil: now + 3000,
+    });
+    sim.jpcMove(bot, null, .05, now + 50);
+    assert.equal(bot.jpcIemPause, null, end);
+  }
+});
+
+test("IEM joueur : un repli deja engage reste un repli et les NPC ordinaires perdent leur aggro", () => {
+  const { sim, bots: [bot], prey } = controlledSim();
+  sim.setPlayer("u_duel", bot.x + 100, bot.y);
+  for (const e of [bot, prey]) { e.aggroBy = "u_duel"; e.chaseId = "u_duel"; e.aggroUntil = Date.now() + 5000; }
+  bot.jpcMode = "flee"; bot.hp = bot.hpMax * .2; bot.sh = 0;
+  sim.breakPlayerLocks("u_duel", Date.now() + 3000);
+  assert.equal(prey.aggroBy, null);
+  assert.equal(prey.chaseId, null);
+  sim.jpcMove(bot, null, .05, Date.now());
+  assert.equal(bot.jpcMode, "flee");
+  assert.equal(bot.jpcIemPause, null);
+});
+
+test("solo IEM : la perte de verrou ne consomme pas la riposte restante", () => {
+  const { ctx, enemies } = makeCtx("1-2", { withNpcs: false });
+  let bot;
+  for (let i = 0; i < 1200 && !bot; i++) {
+    tickJpcSystem(1 / 60, ctx);
+    bot = enemies.find(e => e.isJpcBot && e.hp > 0);
+  }
+  assert.ok(bot);
+  bot.jpcIemCd = 9999; bot.jpcIshCd = 9999;
+  bot.hp -= 100; bot._damagedByPlayer = true;
+  tickJpcSystem(.05, ctx);
+  assert.equal(bot.jpcRiposte, true);
+  bot.empT = 3;
+  const remaining = bot.jpcRiposteT;
+  for (let i = 0; i < 60; i++) tickJpcSystem(.05, ctx);
+  assert.equal(bot.jpcRiposteT, remaining);
+  assert.equal(bot.jpcFarmId, null);
+  bot.empT = 0;
+  tickJpcSystem(.05, ctx);
+  assert.ok(bot.jpcRiposteT > remaining);
+  assert.equal(bot.jpcRiposte, true);
 });
 
 test("serveur : un JPC qui a tué oublie le joueur mort (pas de rancune)", () => {
@@ -522,7 +784,7 @@ test("serveur : feed heal du snapshot pour la réparation JPC", () => {
   assert.equal((sim.snapshot().heal || []).length, 0, "feed vidé après envoi");
 });
 
-test("ZNA : JPC à l'abri inattaquable/inverrouillable, comme un joueur", () => {
+test("ZNA : JPC à l'abri inattaquable, selection conservee comme un joueur", () => {
   const safe = (e) => Number(e.x) > 9000;
   assert.equal(isJpcBotSheltered({ isJpcBot: true, x: 9500 }, safe), true, "JPC à l'abri");
   assert.equal(isJpcBotSheltered({ isJpcBot: true, x: 1000 }, safe), false, "JPC dehors");
@@ -530,6 +792,8 @@ test("ZNA : JPC à l'abri inattaquable/inverrouillable, comme un joueur", () => 
   assert.equal(isJpcBotSheltered({ type: "npc_Streuner", x: 9500 }, safe), false, "NPC normaux inchangés");
   assert.equal(isJpcBotSheltered(null, safe), false, "null");
   assert.equal(isJpcBotSheltered({ isJpcBot: true, x: 9500 }, null), false, "sans fonction de zone");
+  assert.equal(isJpcBotSheltered({ isJpcBot: true, _netSafe: true }, () => false), true, "protection serveur prioritaire sur la firme locale");
+  assert.equal(isJpcBotSheltered({ isJpcBot: true, _netSafe: false }, () => true), false, "sortie serveur prioritaire sur l'interpolation");
 });
 
 test("solo : dégâts JPC visibles sur le NPC locké (lasers + roquettes)", () => {
@@ -708,6 +972,7 @@ test("serveur : proie d'un JPC vivant = pas de récompense, libérée à sa mort
   // Le JPC farme la proie : revendiquée (grise, pas de récompense partagée).
   bot.jpcPreyUid = prey.uid;
   bot.jpcMode = "farm";
+  ZoneNpcSim.lockHit(prey, bot.uid, Date.now());
   assert.equal(sim.jpcPreyClaimed(prey.uid), true, "proie revendiquée");
   assert.equal(sim.jpcPreyClaimed("nope"), false, "inconnue = libre");
   // Le joueur la tue pendant le farm : tueur vide = mort silencieuse.
@@ -718,6 +983,8 @@ test("serveur : proie d'un JPC vivant = pas de récompense, libérée à sa mort
   assert.equal(sim.deaths[sim.deaths.length - 1].killer, "", "journal sans tueur");
   // Le joueur tue le JPC : la suivante est rouge (récompense normale).
   sim.jpcKillBot(bot, Date.now());
+  sim.tickNpcLock(prey, Date.now());
+  sim.tickNpcLock(prey, Date.now() + ZoneNpcSim.LOCK_GRACE_MS);
   assert.equal(sim.jpcPreyClaimed(prey.uid), false, "proie libérée");
   const prey2Uid = "prey2";
   sim.entries.set(prey2Uid, { uid: prey2Uid, type: "npc_Streuner", x: 1400, y: 3000,
@@ -1602,7 +1869,7 @@ test("progression par carte : 1-1 très faible … 1-8 fort", () => {
   assert.ok(counts[7] > counts[0], "plus de drones en 1-8 qu'en 1-1");
   // Extrêmes : 1-1 petits vaisseaux + x1, 1-8 gros + x4/x6.
   const ships11 = new Set(buildJpcRoster("1-1", world, [], []).map((d) => jpcBaseHull(d.shipId)));
-  assert.ok([...ships11].every((s) => ["liberator", "piranha"].includes(s)), `1-1 petites coques (${[...ships11]})`);
+  assert.ok([...ships11].every((s) => ["liberator", "piranha", "nostromo"].includes(s)), `1-1 petites coques (${[...ships11]})`);
   const ammo11 = new Set(buildJpcRoster("1-1", world, [], []).map((d) => d.ammo));
   assert.ok(!ammo11.has("x6") && !ammo11.has("x4") && !ammo11.has("x3"), `1-1 munitions faibles (${[...ammo11]})`);
   const ammo18 = new Set(buildJpcRoster("1-8", world, [], []).map((d) => d.ammo));
