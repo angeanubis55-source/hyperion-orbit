@@ -7,7 +7,7 @@
 //   4. munition x6 (pack 2 500)
 //   5. bouclier SG3N-B02
 //   6. générateur G3N-7900
-//   7-10. lasers LF-2 / LF-3 / LF-4 / LF-5
+//   7-10. lasers LF-2 / LF-3 / LF-4 / LF-5 (pas de Xénocide)
 //   11. drone Iris (masqué si 8 possédés)
 //   12-13. roquettes PLT-3030 / PLT-2021 (x1 000 chacune)
 //   14-17. boosters B01 x10 (10 h) : Expérience / Dégâts / Coque / Bouclier
@@ -69,7 +69,8 @@ export function parisHourSeed(nowMs = Date.now()) {
 // Version du cycle : bumpée à chaque changement de la liste fixe.
 // Les sauvegardes avec une autre version voient leurs lots purgés
 // (avec remboursement des mises réservées) puis reconstruits en fixe.
-export const AUCTION_CYCLE_VERSION = 9;
+// v10 : retrait du laser Xénocide (LF-6) des enchères.
+export const AUCTION_CYCLE_VERSION = 10;
 
 // Prix de départ : -70 % (30 % du prix).
 export const AUCTION_START_RATIO = 0.3;
@@ -204,12 +205,11 @@ export function buildHourlyLots(catalog, filters = {}, nowMs = Date.now(), rng =
   pushCatalog("shd_sg3nb02");
   pushCatalog("spd_g3n7900");
 
-  // 7-10. Lasers LF-2 / LF-3 / LF-4 / LF-5 / LF-6.
+  // 7-10. Lasers LF-2 / LF-3 / LF-4 / LF-5 (pas de Xénocide LF-6).
   pushCatalog("laser_lf2");
   pushCatalog("laser_lf3");
   pushCatalog("laser_lf4");
   pushCatalog("laser_lf5");
-  pushCatalog("laser_lf6");
 
   // 11. Iris (masqué si 8 possédés).
   if (irisOwned < 8) {

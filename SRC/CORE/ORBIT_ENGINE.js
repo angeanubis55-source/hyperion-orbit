@@ -1152,6 +1152,8 @@ const ui = {
 
   lvlTxt: document.getElementById("lvlTxt"),
   playerIdTxt: document.getElementById("playerIdTxt"),
+  playtimeTxt: document.getElementById("playtimeTxt"),
+  regDateTxt: document.getElementById("regDateTxt"),
   cfg1Btn: document.getElementById("cfg1Btn"),
   cfg2Btn: document.getElementById("cfg2Btn"),
   cfgToggleBtn: document.getElementById("cfgToggleBtn"),
@@ -15509,6 +15511,8 @@ function tickZonePortalJumps(dt) {
 // ============================================================
 let started = false;
 let betweenWaves = false;
+// Compteur de sauvegarde du temps joué (toutes les 60 s de jeu).
+let playtimeSaveAcc = 0;
 
 // ✅ Idle sway (balancement à l'arrêt)
 let idleSway = 0;
@@ -23988,6 +23992,35 @@ const DMG_FMT = (() => {
   catch { return { format: (n) => String(n) }; }
 })();
 
+// Temps joué : compact 1 lettre ("2a, 3M, 4j, 5h, 6m, 7s" — M = mois,
+// m = minute), unités nulles masquées. Zéro total = "0s".
+// (année 365 j, mois 30 j.)
+function formatPlaytime(totalSeconds) {
+  let s = Math.max(0, Math.floor(Number(totalSeconds) || 0));
+  const years = Math.floor(s / 31536000); s -= years * 31536000;
+  const months = Math.floor(s / 2592000); s -= months * 2592000;
+  const days = Math.floor(s / 86400); s -= days * 86400;
+  const hours = Math.floor(s / 3600); s -= hours * 3600;
+  const minutes = Math.floor(s / 60); s -= minutes * 60;
+  const parts = [];
+  if (years > 0) parts.push(`${years}a`);
+  if (months > 0) parts.push(`${months}M`);
+  if (days > 0) parts.push(`${days}j`);
+  if (hours > 0) parts.push(`${hours}h`);
+  if (minutes > 0) parts.push(`${minutes}m`);
+  if (s > 0 || parts.length === 0) parts.push(`${s}s`);
+  return parts.join(", ");
+}
+
+// Date d'inscription : "20/09/2026" (vide = "—").
+function formatRegDate(createdAt) {
+  try {
+    const t = Number(createdAt) || 0;
+    if (!(t > 0)) return "—";
+    return new Intl.DateTimeFormat("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric" }).format(new Date(t));
+  } catch { return "—"; }
+}
+
 function floatOptsForDamage(n) {
   const size = 18;
   const pop = 0.3;
@@ -26050,20 +26083,10 @@ const Target = (() => {
         return;
       }
     }
-    // ✅ Bot JPC à l'abri (portail/base) : comme un joueur en ZNA, impossible
-    // à verrouiller. Le clear reste possible.
-    if (e) {
-      try {
-        if (typeof isJpcBotSheltered === "function" && typeof npcIsInSafeZone === "function"
-          && isJpcBotSheltered(e, npcIsInSafeZone)) {
-          if (cur && cur.id === e.id) {
-            breakLocalRepairLinks();
-            cur = null;
-          }
-          return;
-        }
-      } catch {}
-    }
+    // ✅ Bot JPC à l'abri (portail/base) : verrouillable quand même (pas
+    // de refus comme un joueur en ZNA). Seule l'attaque est coupée et les
+    // dégâts/SAB restent bloqués : on peut suivre le bot qui répare, pas
+    // le tuer au portail. Le clear reste possible.
     let next = e && e.hp > 0 ? e : null;
     if (next !== cur) breakLocalRepairLinks();
     // IEM distant : apres la rupture du lock, le joueur reste impossible a
@@ -26125,17 +26148,10 @@ const Target = (() => {
       }
       return cur;
     }
-    // Bot JPC entré à l'abri en plein lock : rupture comme pour un joueur
-    // en ZNA (l'attaque en cours est coupée par tickAutoAttack via netPvpBlocked).
-    if (cur && cur.isJpcBot === true) {
-      try {
-        if (typeof isJpcBotSheltered === "function" && typeof npcIsInSafeZone === "function"
-          && isJpcBotSheltered(cur, npcIsInSafeZone)) {
-          clear();
-          return null;
-        }
-      } catch {}
-    }
+    // Bot JPC entré à l'abri en plein lock : le verrou est GARDÉ (pas de
+    // rupture). Seule l'attaque est coupée (tickAutoAttack via
+    // netPvpBlocked) et les dégâts/SAB restent bloqués par la ZNA : on
+    // garde la piste du fuyard, on ne peut juste plus le toucher dedans.
     const present = enemies.includes(cur);
     if (!present || cur.hp <= 0) {      // Zero PV predit n'est pas une mort serveur. D'autres impacts et
       // effets relisent le lock AVANT processDeaths, qui remet alors 1 PV
@@ -26654,6 +26670,20 @@ function npcIemBlast(e, cfg = {}) {
   try { showNotification(`IEM du ${NPC_TYPES[e.type]?.name || "Saimon"} !`, 2, "info"); } catch {}
 }
 
+// Proie revendiquée par un JPC vivant (solo) : même règle qu'en multi —
+// pas de récompense partagée tant que le bot est dessus ; le tuer libère
+// la proie (rouge + récompenses normales).
+function jpcPreyClaimedByLiveBot(e) {
+  try {
+    if (!e || e._netUid || e.isJpcBot === true || e._jpcFarmed !== true || e._jpcAggroBy == null) return false;
+    const list = typeof enemies !== "undefined" ? enemies : [];
+    for (const o of list) {
+      if (o && o.isJpcBot === true && o.hp > 0 && o.id === e._jpcAggroBy && o.jpcFarmId === e.id) return true;
+    }
+  } catch {}
+  return false;
+}
+
 function damageEnemy(e, dmg, shieldPenetration, crit, opts = {}) {
   if (!e || e.hp <= 0) return { total: 0, sh: 0, hp: 0, bypass: 0, isCrit: false, rawDamage: 0 };
   // Bots JPC : bulle ISH (invulnérable, ne tire plus — comme un vrai joueur).
@@ -26663,8 +26693,10 @@ function damageEnemy(e, dmg, shieldPenetration, crit, opts = {}) {
   if (e.isJpcBot === true) {
     try { if (npcIsInSafeZone(e)) return emptyEnemyDamageResult(); } catch {}
   }
-  // Un joueur qui se joint au farm JPC rouvre les récompenses du NPC.
-  if (opts.fromJpc !== true && e._jpcFarmed === true) e.noRewards = false;
+  // Un joueur qui se joint au farm JPC rouvre les récompenses du NPC —
+  // sauf si un JPC vivant est toujours dessus (pas de récompense partagée :
+  // tuer le bot libère la proie, comme en multi).
+  if (opts.fromJpc !== true && e._jpcFarmed === true && !jpcPreyClaimedByLiveBot(e)) e.noRewards = false;
   if (opts.ability && hyperionTargetBlocked(e, false)) return emptyEnemyDamageResult();
   if (e._bossEncounter?.invulnerable) return emptyEnemyDamageResult();
   const fixedBaseDamage = opts.fixedDamage ? Math.max(0, Number(dmg) || 0) : null;
@@ -31164,6 +31196,13 @@ for (let i = collectables.length - 1; i >= 0; i--) {
           addFloatText(target.x + (Math.random() - 0.5) * 60, target.y - 90 - Math.random() * 20,
             dmg, "rgba(255,235,170,0.96)",
             { text: `${DMG_FMT.format(dmg)}`, size: 19, pop: 0.3, shake: 0.6, life: 1, glow: 1, weight: 900, impact: true });
+        } catch {}
+      },
+      // MISS du bot sur notre cible lockée : écrit comme un MISS allié.
+      npcJpcMissFloat: (target) => {
+        try {
+          if (!(target && target.hp > 0)) return;
+          addMissText(target.x + (Math.random() - 0.5) * 50, target.y - 85 - Math.random() * 20);
         } catch {}
       },
     });
@@ -36005,20 +36044,15 @@ function targetLockSprite(e) {
         }
       }
     }
-    // Multi : NPC farmé par un JPC et pas (encore) locké par nous → gris.
+    // Multi : NPC farmé par un JPC vivant → gris pour tout le monde, même
+    // en le lockant soi-même (c'est sa cible : pas de récompense partagée,
+    // tuer le bot libère la proie).
     if (e && e._netUid && !e._netPlayer && !e._netPet && e._netJpcBy != null) {
-      if (String(e._netLockBy ?? "") !== String(netMyId())) {
-        return LOCK_GREY_SPR || { ...LOCK_SPR, src: "ASSETS/UI/LOCK_DEJAPRIS.png" };
-      }
+      return LOCK_GREY_SPR || { ...LOCK_SPR, src: "ASSETS/UI/LOCK_DEJAPRIS.png" };
     }
     // Solo : NPC farmé par un JPC vivant qui est toujours dessus → gris.
-    if (e && !e._netUid && !e.isJpcBot && e._jpcFarmed === true && e._jpcAggroBy != null) {
-      try {
-        const bot = (typeof enemies !== "undefined" ? enemies : []).find(
-          (o) => o && o.isJpcBot === true && o.hp > 0 && o.id === e._jpcAggroBy && o.jpcFarmId === e.id
-        );
-        if (bot) return LOCK_GREY_SPR || { ...LOCK_SPR, src: "ASSETS/UI/LOCK_DEJAPRIS.png" };
-      } catch {}
+    if (jpcPreyClaimedByLiveBot(e)) {
+      return LOCK_GREY_SPR || { ...LOCK_SPR, src: "ASSETS/UI/LOCK_DEJAPRIS.png" };
     }
   } catch {}
   return LOCK_SPR;
@@ -41213,6 +41247,8 @@ st.rankPoints = calculateRankPoints(st);
 if (shouldRefreshWindow("boxMeta")) {
   updateProgressHud(ui, st, lvl);
   setHudText(ui.playerIdTxt, publicPlayerId(u?.id));
+  setHudText(ui.playtimeTxt, formatPlaytime(st.playtimeSec));
+  setHudText(ui.regDateTxt, formatRegDate(u?.createdAt));
 }
 
 if (ui.spdTxt && shouldRefreshWindow("boxVitals")) {
@@ -41628,6 +41664,21 @@ function frame(t) {
     fpsAcc = 0;
     fpsFrames = 0;
   }
+
+  // Temps joué : cumulé tant que la partie tourne (plafond 5 s/frame pour
+  // ne pas compter un onglet masqué au retour). Sauvegarde toutes les
+  // 60 s de jeu via le circuit habituel.
+  try {
+    if (started && !linkDead && account.user) {
+      const st = account.user.stats ||= {};
+      st.playtimeSec = Math.max(0, Number(st.playtimeSec) || 0) + Math.min(Math.max(0, realDt), 5);
+      playtimeSaveAcc = (Number(playtimeSaveAcc) || 0) + realDt;
+      if (playtimeSaveAcc >= 60) {
+        playtimeSaveAcc = 0;
+        markProgressDirty();
+      }
+    }
+  } catch {}
 
   try {
     // Liaison morte : simulation gelée (on ne peut ni bouger ni mourir),

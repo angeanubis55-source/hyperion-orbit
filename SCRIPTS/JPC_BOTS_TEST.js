@@ -700,6 +700,98 @@ test("rotation horaire : le nombre de JPC change toutes les heures", () => {
   );
 });
 
+test("serveur : proie d'un JPC vivant = pas de récompense, libérée à sa mort", () => {
+  const { sim, bots, prey } = controlledSim();
+  const [bot, other] = bots;
+  other.hp = 0; // bot isolé.
+  sim.setPlayer("hunter", 1400, 3000);
+  // Le JPC farme la proie : revendiquée (grise, pas de récompense partagée).
+  bot.jpcPreyUid = prey.uid;
+  bot.jpcMode = "farm";
+  assert.equal(sim.jpcPreyClaimed(prey.uid), true, "proie revendiquée");
+  assert.equal(sim.jpcPreyClaimed("nope"), false, "inconnue = libre");
+  // Le joueur la tue pendant le farm : tueur vide = mort silencieuse.
+  sim.applyHit("hunter", { uid: prey.uid, dmg: 5e7 });
+  const dead = sim.entries.get(prey.uid);
+  assert.ok(!(dead.hp > 0), "proie tuée");
+  assert.equal(dead.killer, "", "pas de tueur (pas de récompense partagée)");
+  assert.equal(sim.deaths[sim.deaths.length - 1].killer, "", "journal sans tueur");
+  // Le joueur tue le JPC : la suivante est rouge (récompense normale).
+  sim.jpcKillBot(bot, Date.now());
+  assert.equal(sim.jpcPreyClaimed(prey.uid), false, "proie libérée");
+  const prey2Uid = "prey2";
+  sim.entries.set(prey2Uid, { uid: prey2Uid, type: "npc_Streuner", x: 1400, y: 3000,
+    hp: 1000000, sh: 0, hpMax: 1000000, shMax: 0, speed: 0, spread: 0.8, canShoot: false, r: 18,
+    aggroHoldMs: 3500, firstBy: null, lastHitBy: null, lockBy: null, lockHitAt: 0, lockReleaseAt: 0, seq: 1 });
+  sim.applyHit("hunter", { uid: prey2Uid, dmg: 5e7 });
+  assert.equal(sim.entries.get(prey2Uid).killer, "hunter", "tueur normal après libération");
+});
+
+test("solo : MISS du JPC écrit sur le NPC locké (pas de MISS sans lock)", () => {
+  const { ctx, enemies } = makeCtx("1-1", { withNpcs: false });
+  const dt = 1 / 60;
+  let bot = null;
+  for (let f = 0; f < 60 * 20 && !bot; f++) {
+    tickJpcSystem(dt, ctx);
+    bot = enemies.find((e) => e?.isJpcBot && e.hp > 0);
+  }
+  assert.ok(bot, "bot spawné");
+  const prey = { id: nextId++, type: "npc_Streuner", x: bot.x + 300, y: bot.y, hp: 1e6, hpMax: 1e6 };
+  enemies.push(prey);
+  let farmer = null;
+  for (let f = 0; f < 60 && !farmer; f++) {
+    tickJpcSystem(dt, ctx);
+    farmer = enemies.find((e) => e?.isJpcBot && e.hp > 0 && e.jpcFarmId === prey.id);
+  }
+  assert.ok(farmer, "cible acquise par un bot");
+  bot = farmer;
+  bot.jpcIshCd = 9999;
+  const misses = [];
+  ctx.npcJpcMissFloat = (t) => { misses.push(t.id); };
+  // Pas locké : aucun MISS écrit (comme les chiffres de dégâts).
+  for (let f = 0; f < 5; f++) {
+    prey.x = bot.x + 300; prey.y = bot.y;
+    bot.jpcShootT = 0; bot.jpcRocketCd = 0;
+    tickJpcSystem(dt, ctx);
+  }
+  assert.equal(misses.length, 0, "pas de MISS sans lock");
+  // Locké : les ratés s'écrivent (maladresse 30 % en 1-1, lasers + roquettes).
+  ctx.lockedId = prey.id;
+  for (let f = 0; f < 60 && misses.length === 0; f++) {
+    prey.x = bot.x + 300; prey.y = bot.y;
+    bot.jpcShootT = 0; bot.jpcRocketCd = 0;
+    tickJpcSystem(dt, ctx);
+  }
+  assert.ok(misses.length > 0, "MISS écrit sur le NPC locké");
+  assert.ok(misses.every((id) => id === prey.id), "que sur la cible lockée");
+});
+
+test("serveur : MISS farm transmis aux visuels (locké = MISS écrit)", () => {
+  const { sim, bots, prey } = controlledSim();
+  const [bot, other] = bots;
+  other.hp = 0;
+  sim.setPlayer("spectator", 1500, 3000);
+  bot.jpcPreyUid = prey.uid;
+  bot.jpcMode = "farm";
+  // Lasers : volée ratée → shotFx avec miss (canal des tirs alliés).
+  sim.jpcStartVolley(bot, prey.uid, false, 100000, "x1", true);
+  sim.jpcTickVisuals(bot, 100000 + 2000);
+  const fx = sim.drainShotFx();
+  assert.ok(fx.length > 0, "visuels émis");
+  assert.ok(fx.every((s) => s.miss === true), "MISS transmis aux visuels lasers");
+  // Volée normale : pas de MISS (comportement inchangé).
+  sim.jpcStartVolley(bot, prey.uid, false, 200000);
+  sim.jpcTickVisuals(bot, 200000 + 2000);
+  assert.ok(sim.drainShotFx().every((s) => s.miss !== true), "pas de MISS sans raté");
+  // Roquettes : le raté finit dans le rshot (maladresse ~28 % en 1-2).
+  let sawMiss = false;
+  for (let i = 0; i < 60 && !sawMiss && prey.hp > 0; i++) {
+    sim.jpcFireRocket(bot, prey, false, Date.now());
+    sawMiss = sim.drainRocketFx().some((r) => r.miss === true);
+  }
+  assert.ok(sawMiss, "MISS transmis au rshot farm");
+});
+
 test("serveur : nouvelle heure = renforts si ça monte, pas de respawn si ça baisse", () => {
   const { sim } = controlledSim(); // 2 bots, cible suivra.
   const aliveCount = () => [...sim.entries.values()].filter((e) => e?.jpc === true && e.hp > 0).length;

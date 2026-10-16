@@ -672,6 +672,19 @@ export class ZoneNpcSim {
     }
   }
 
+  // Proie revendiquée par un JPC vivant (il la farme) : pas de récompense
+  // partagée — tuer le bot libère la proie (rouge + récompenses normales).
+  jpcPreyClaimed(uid) {
+    try {
+      const key = String(uid || "");
+      if (!key) return false;
+      for (const o of this.entries.values()) {
+        if (o && o.jpc === true && o.hp > 0 && o.jpcMode === "farm" && String(o.jpcPreyUid) === key) return true;
+      }
+    } catch {}
+    return false;
+  }
+
   // Position de (re)spawn JPC : aléatoire hors zones sûres et murs.
   jpcSpawnPos() {
     for (let i = 0; i < 40; i++) {
@@ -883,7 +896,8 @@ export class ZoneNpcSim {
   }
 
   // Visuel de tir JPC<->NPC : seulement si un joueur peut le voir (2600).
-  pushNpcShotFx(fromX, fromY, toX, toY, by, key, n, npc, tuid = null) {
+  // miss : le MISS se voit sur la cible lockée (comme les tirs alliés).
+  pushNpcShotFx(fromX, fromY, toX, toY, by, key, n, npc, tuid = null, miss = false) {
     try {
       for (const [, p] of this.players) {
         if (!p || p.dead) continue;
@@ -894,6 +908,7 @@ export class ZoneNpcSim {
           tx: Math.round(toX), ty: Math.round(toY),
           key: String(key || "x4").slice(0, 16), n: Math.max(1, Math.min(2, Number(n) || 1)),
           npc: npc === true, tuid: tuid != null ? String(tuid) : null,
+          miss: miss === true,
           jpcPart: npc !== true ? true : undefined,
           npcType: npc === true ? String(this.entries.get(String(by))?.type || "") : undefined });
         return;
@@ -1108,8 +1123,9 @@ export class ZoneNpcSim {
           prey.jpcAggroUid = e.uid;
           prey.jpcAggroUntil = nowMs + 6000;
           // Visuel bleu façon joueur, TOUJOURS en x1 (canal des tirs alliés).
+          // Le MISS suit pour s'écrire sur la cible lockée (comme en solo).
           try {
-            this.jpcStartVolley(e, prey.uid, false, nowMs);
+            this.jpcStartVolley(e, prey.uid, false, nowMs, "x1", missed);
           } catch {}
         } catch {}
         if (!(prey.hp > 0)) { this.jpcKillPrey(prey, nowMs); e.jpcPreyUid = null; e.jpcBreatherUntil = nowMs + rollJpcBreather() * 1000; }
@@ -1187,7 +1203,7 @@ export class ZoneNpcSim {
       } catch {}
       if (!(target.hp > 0)) { this.jpcKillPrey(target, nowMs); e.jpcPreyUid = null; e.jpcBreatherUntil = nowMs + rollJpcBreather() * 1000; return; }
     }
-    try { this.jpcPushRocketFx(e, target, rocketId, toPlayer && missed); } catch {}
+    try { this.jpcPushRocketFx(e, target, rocketId, missed); } catch {}
   }
 
   jpcPushRocketFx(e, target, rocketId, miss) {
@@ -1207,13 +1223,14 @@ export class ZoneNpcSim {
     });
   }
 
-  jpcStartVolley(e, targetId, playerTarget, nowMs, key = "x1") {
+  jpcStartVolley(e, targetId, playerTarget, nowMs, key = "x1", miss = false) {
     const pair = e.jpcAltShot === true;
     e.jpcAltShot = !pair;
     const ammo = String(key || "x1").toLowerCase();
     e.jpcVisualParts = [...(e.jpcVisualParts || []), ...jpcVolleyParts(pair).map(part => ({
       at: nowMs + part.delay * 1000, n: part.offsets.length,
       targetId: String(targetId), playerTarget, seq: e.seq, key: ammo,
+      miss: miss === true,
     }))];
   }
 
@@ -1228,7 +1245,7 @@ export class ZoneNpcSim {
       // La munition suit le tir réel (x1 farm, x4/x6 riposte).
       if (!part.playerTarget && (e.jpcPreyUid !== part.targetId || e.jpcMode !== "farm")) return false;
       if (part.playerTarget && String(e.chaseId || "") !== part.targetId) return false;
-      this.pushNpcShotFx(e.x, e.y, target.x, target.y, e.uid, part.key || "x1", part.n, false, part.targetId);
+      this.pushNpcShotFx(e.x, e.y, target.x, target.y, e.uid, part.key || "x1", part.n, false, part.targetId, part.miss === true);
       return false;
     });
   }
@@ -1729,8 +1746,11 @@ drainPlayerHits() {
       entry.hp = 0;
       entry.sh = 0;
       // Credit au premier attaquant (repli : dernier si parti).
-      const kb = entry.firstBy != null && this.players.has(entry.firstBy) ? entry.firstBy : entry.lastHitBy;
-      entry.killer = String(kb || clientId);
+      // Proie d'un JPC vivant : pas de récompense partagée (tueur vide,
+      // mort silencieuse côté clients) — tuer le bot libère la proie.
+      const claimedByJpc = entry.jpc !== true && this.jpcPreyClaimed(uid);
+      const kb = claimedByJpc ? "" : (entry.firstBy != null && this.players.has(entry.firstBy) ? entry.firstBy : entry.lastHitBy);
+      entry.killer = claimedByJpc ? "" : String(kb || clientId);
       entry.cause = "gun";
       entry.cube = null;
       // JPC tué : respawn programmé dans 90 s (1ter, anti-farm en boucle),

@@ -927,6 +927,10 @@ function fireJpcRocket(ctx, e, target, rocketId, flightOpts = {}) {
       if (dealt > 0 && ctx.lockedId != null && target.id === ctx.lockedId) {
         ctx.npcJpcDamageFloat?.(target, dealt);
       }
+      // Raté sur notre cible lockée : on voit le MISS, comme en multi.
+      if (missed && ctx.lockedId != null && target.id === ctx.lockedId) {
+        ctx.npcJpcMissFloat?.(target);
+      }
     } catch {}
     try {
       if (!missed && target && !target._damagedByPlayer) target.noRewards = true;
@@ -1234,10 +1238,14 @@ function tickBot(dt, ctx, e, now) {
         }
         // Chiffres façon vrai joueur locké : on voit aussi ce que le bot
         // inflige à notre cible (lasers comme roquettes, multi : feed dmg).
+        // Raté : MISS écrit sur la cible lockée (comme les tirs alliés).
         try {
           const dealt = Math.round(Number(res?.total) || 0);
           if (dealt > 0 && ctx.lockedId != null && target.id === ctx.lockedId) {
             ctx.npcJpcDamageFloat?.(target, dealt);
+          }
+          if (missed && ctx.lockedId != null && target.id === ctx.lockedId) {
+            ctx.npcJpcMissFloat?.(target);
           }
         } catch {}
         try {

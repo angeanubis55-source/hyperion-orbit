@@ -3,6 +3,29 @@ import assert from "node:assert/strict";
 import vm from "node:vm";
 import { readFileSync } from "node:fs";
 import { auctionMinNextBid, normalizeAuctionState, AUCTION_CYCLE_VERSION } from "../SRC/DATA/AUCTION.js";
+import { buildHourlyLots, AUCTION_ACTIVE_LOTS } from "../SRC/DATA/AUCTION.js";
+
+test("lots horaires : 22 lots fixes, sans Xénocide, ticket dernier", () => {
+  const item = (id, price = 1000000) => ({ id, name: id, icon: "", price, give: {} });
+  const catalog = {
+    ammo: [item("ammo_x2"), item("ammo_x3"), item("ammo_x4"), { ...item("ammo_x6"), give: { ammo: { x6: 1000 } } }],
+    shields: [item("shd_sg3nb02")],
+    gens: [item("spd_g3n7900")],
+    lasers: [item("laser_lf2"), item("laser_lf3"), item("laser_lf4"), item("laser_lf5"), item("laser_lf6")],
+    drones: [item("drone_iris")],
+    rockets: [{ ...item("rocket_plt3030"), give: { rockets: { plt3030: 10 } } }, { ...item("rocket_plt2021"), give: { rockets: { plt2021: 10 } } }],
+    boosters: [item("booster_ep"), item("booster_dmg"), item("booster_hp"), item("booster_shd")],
+    ships: [item("ship_goliath"), item("ship_vengeance"), item("ship_leonov")],
+    designs: [{ id: "design_x", name: "Design X", icon: "", price: 1000, design: { id: "design_x" } }],
+    tickets: [item("ticket_module_reroll")],
+  };
+  const lots = buildHourlyLots(catalog, {}, Date.now(), () => 0.5);
+  assert.equal(lots.length, 22, "22 lots fixes");
+  assert.equal(lots.length, AUCTION_ACTIVE_LOTS, "cap = lots réels");
+  assert.ok(lots.every((l) => l.catalogId !== "laser_lf6"), "pas de Xénocide aux enchères");
+  assert.ok(lots.some((l) => l.catalogId === "laser_lf5"), "LF-5 toujours là");
+  assert.equal(lots[lots.length - 1].catalogId, "ticket_module_reroll", "ticket toujours dernier");
+});
 
 const source = readFileSync(new URL("../SRC/CORE/AUCTION_NET.js", import.meta.url), "utf8")
   .replace(/^import [\s\S]*? from .*?;\r?\n/gm, "").replace(/^export /gm, "");

@@ -3776,6 +3776,7 @@ setInterval(() => {
                   tx: Math.round(Number(s.tx) || 0), ty: Math.round(Number(s.ty) || 0),
                   key: String(s.key || "x4").slice(0, 16), n: Math.max(1, Math.min(2, Number(s.n) || 1)),
                   npcShot: s.npc === true, tuid: s.tuid != null ? String(s.tuid) : null,
+                  miss: s.miss === true,
                   jpcPart: s.jpcPart === true ? true : undefined,
                   npcType: s.npc === true ? String(s.npcType || "") : undefined }));
               } catch {}

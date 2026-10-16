@@ -867,6 +867,7 @@ function ensureUserShape(u) {
   u.stats.exp ??= 0;
   u.stats.rankPoints ??= 0;
   u.stats.lifetimeKills ??= 0;
+  u.stats.playtimeSec ??= 0;
   if (!u.stats.npcKills || typeof u.stats.npcKills !== "object" || Array.isArray(u.stats.npcKills)) u.stats.npcKills = {};
   if (Number(u.stats.npcKillBreakdownVersion || 0) < NPC_KILL_BREAKDOWN_VERSION) {
     u.stats.lifetimeKills = 0;
