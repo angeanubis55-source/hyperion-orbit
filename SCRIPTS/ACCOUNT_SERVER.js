@@ -272,7 +272,7 @@ export function awardNpcKill(accountId, npcType, mapId, rewardPercent, ownsKill,
   const key = String(txKey || "").slice(0, 240);
   const reward = resolveNpcReward(type);
   if (!uid || !key || !reward) return null;
-  const pct = Math.max(0, Math.min(100, Math.floor(Number(rewardPercent) || 0)));
+  const pct = Math.max(0, Math.min(100, Number(rewardPercent) || 0));
   if (pct <= 0) return null;
   let inTx = false;
   try {

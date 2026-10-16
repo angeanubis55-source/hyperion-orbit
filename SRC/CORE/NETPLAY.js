@@ -149,7 +149,7 @@ export function suspendNetplay(v) {
     netDmgInbox.length = 0; netHealInbox.length = 0;
     netShotInbox.length = 0;
     netPvpKillInbox.length = 0;
-    netNpcRewardInbox.clear();
+    netNpcRewardReceipts.clear();
     try { netLowRaid = null; } catch {}
     netPvpPetKillInbox.length = 0;
     netPvpLootInbox.length = 0;
@@ -281,7 +281,7 @@ function clearInstanceGameplay() {
     netShotInbox.length = 0;
     netSkillInbox.length = 0;
     netPvpKillInbox.length = 0;
-    netNpcRewardInbox.clear();
+    netNpcRewardReceipts.clear();
     try { netLowRaid = null; } catch {}
     netPvpPetKillInbox.length = 0;
     netPvpLootInbox.length = 0;
@@ -501,18 +501,23 @@ export function consumeNetServerRestart() {
 }
 // Recompenses PvP du serveur : { exp, honneur, mult, victim } a appliquer.
 const netPvpKillInbox = [];
-const netNpcRewardInbox = new Map();
+const netNpcRewardReceipts = new Map();
+const netNpcRewardSeen = new Map();
+let netNpcRewardHandler = null;
+export function setNetNpcRewardHandler(handler) {
+  netNpcRewardHandler = handler;
+}
 export function takeNetNpcReward(mapId, uid, seq) {
   const key = `${String(mapId || "").toLowerCase()}:${String(uid || "")}:${Number(seq) || 0}`;
-  const reward = netNpcRewardInbox.get(key) || null;
-  if (reward) netNpcRewardInbox.delete(key);
+  const reward = netNpcRewardReceipts.get(key) || null;
+  if (reward) netNpcRewardReceipts.delete(key);
   return reward;
 }
 // Raid Low : récompense fixe de fin de run (uid low-raid-cache, seq variable).
 export function takeNetLowRaidReward() {
-  for (const [key, reward] of netNpcRewardInbox) {
+  for (const [key, reward] of netNpcRewardReceipts) {
     if (String(key).includes(":low-raid-cache:")) {
-      netNpcRewardInbox.delete(key);
+      netNpcRewardReceipts.delete(key);
       return reward;
     }
   }
@@ -1196,10 +1201,26 @@ export function ensureNetplayConnection() {
       return;
     }
     if (msg.t === "npcReward") {      const key = `${String(msg.map || "").toLowerCase()}:${String(msg.uid || "")}:${Number(msg.seq) || 0}`;
-      netNpcRewardInbox.set(key, {
+      const transaction = String(msg.txKey || `${netServerRestartAt}:${key}`);
+      const receivedAt = performance.now();
+      for (const [seen, at] of netNpcRewardSeen) {
+        if (receivedAt - at <= 10 * 60_000) break;
+        netNpcRewardSeen.delete(seen);
+      }
+      if (netNpcRewardSeen.has(transaction)) return;
+      netNpcRewardSeen.set(transaction, receivedAt);
+      // Reçus déjà appliqués, conservés pour le visuel du cadavre :
+      // aucune file de traitement ni nombre maximum par frame.
+      for (const [receiptKey, receipt] of netNpcRewardReceipts) {
+        if (receivedAt - receipt._receivedAt <= 10 * 60_000) break;
+        netNpcRewardReceipts.delete(receiptKey);
+      }
+      const reward = {
         map: String(msg.map || "").toLowerCase(),
         uid: String(msg.uid || ""),
         seq: Number(msg.seq) || 0,
+        type: String(msg.type || ""), killer: String(msg.killer || ""),
+        x: Number(msg.x) || 0, y: Number(msg.y) || 0,
         credits: Math.max(0, Math.floor(Number(msg.credits) || 0)),
         exp: Math.max(0, Math.floor(Number(msg.exp) || 0)),
         honor: Math.max(0, Math.floor(Number(msg.honor) || 0)),
@@ -1211,14 +1232,16 @@ export function ensureNetplayConnection() {
         totalExp: Number.isFinite(Number(msg.totalExp)) ? Math.max(0, Math.floor(Number(msg.totalExp))) : null,
         totalHonor: Number.isFinite(Number(msg.totalHonor)) ? Math.floor(Number(msg.totalHonor)) : null,
         ownsKill: msg.ownsKill === true,
-        percent: Math.max(0, Math.min(100, Math.floor(Number(msg.percent) || 0))),
+        percent: Math.max(0, Math.min(100, Number(msg.percent) || 0)),
         // Soleil personnel Invoke / Mindfire (top 10 dégâts).
         sun: msg.sun === true,
         sunType: typeof msg.sunType === "string" ? String(msg.sunType).slice(0, 40) : null,
         sunX: Number.isFinite(Number(msg.sunX)) ? Math.round(Number(msg.sunX)) : 0,
         sunY: Number.isFinite(Number(msg.sunY)) ? Math.round(Number(msg.sunY)) : 0,
-      });
-      if (netNpcRewardInbox.size > 64) netNpcRewardInbox.delete(netNpcRewardInbox.keys().next().value);
+        _receivedAt: receivedAt,
+      };
+      netNpcRewardReceipts.set(key, reward);
+      if (reward.uid !== "low-raid-cache" && netNpcRewardHandler) netNpcRewardHandler(reward);
       return;
     }
     if (msg.t === "npcSun" && msg && typeof msg === "object") {      if (netSunInbox.length > 32) netSunInbox.shift();

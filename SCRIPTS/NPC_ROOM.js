@@ -102,6 +102,11 @@ function statsFor(type) {
 }
 
 export class ZoneNpcSim {
+  recordDeath(death) {
+    this.deaths.push(death);
+    if (typeof this.onDeath === "function") this.onDeath(death);
+  }
+
   constructor(mapId, world, camps, savedUniverse = null) {
     this.mapId = String(mapId).toLowerCase();
     this.world = { w: Number(world?.w) || 11000, h: Number(world?.h) || 7000 };
@@ -941,7 +946,7 @@ export class ZoneNpcSim {
   }
 
   // Mort d'une proie tuée par un JPC : pas de récompense joueur (killer
-  // vide, filtré par queueNpcDeaths), pas de vague onKill.
+    // vide, filtré par awardNpcDeaths), pas de vague onKill.
   jpcKillPrey(prey, nowMs) {
     if (!prey) return;
     prey.hp = 0; prey.sh = 0;
@@ -951,7 +956,7 @@ export class ZoneNpcSim {
     try {
       if (prey.campId) markDead(this.universe, this.mapId, prey.uid, nowMs);
     } catch {}
-    this.deaths.push({ uid: prey.uid, type: prey.type,
+    this.recordDeath({ uid: prey.uid, type: prey.type,
       x: Math.round(prey.x), y: Math.round(prey.y),
       killer: "", cause: "gun", seq: prey.seq || 0, at: nowMs });
   }
@@ -966,7 +971,7 @@ export class ZoneNpcSim {
     e.killer = String(credited || "");
     e.cause = "gun";
     e.jpcRespawnAt = nowMs + JPC_RESPAWN_DELAY_S * 1000;
-    this.deaths.push({ uid: e.uid, type: `npc_Jpc_T${Number(e.jpcTier ?? 1)}`,
+    this.recordDeath({ uid: e.uid, type: `npc_Jpc_T${Number(e.jpcTier ?? 1)}`,
       x: Math.round(e.x), y: Math.round(e.y),
       killer: e.killer, cause: "gun", seq: e.seq || 0, at: nowMs });
   }
@@ -1897,15 +1902,15 @@ drainPlayerHits() {
           const shares = [];
           if (entry.dmgBy && entry.dmgSeq === entry.seq) {
             for (const [pid, total] of entry.dmgBy) {
-              const dmg = Math.max(0, Math.round(Number(total) || 0));
+              const dmg = Math.max(0, Number(total) || 0);
               if (dmg > 0 && String(pid).startsWith("u_")) shares.push([String(pid), dmg]);
             }
           }
           shares.sort((a, b) => b[1] - a[1]);
-          death.shares = shares.slice(0, 24);
+          death.shares = shares;
         } catch {}
       }
-      this.deaths.push(death);
+      this.recordDeath(death);
       try { this.noteHalloweenKill(entry.type, entry.campId); } catch {}
     }
     // Dégâts appliqués par ce coup (audit anticheat côté MULTI_SERVER).
@@ -2105,7 +2110,7 @@ drainPlayerHits() {
             ? e.firstBy : (damagedByPlayer ? (e.masterKiller || e.lastHitBy) : null);
           e.killer = String(kb || "");
           e.cause = "gun";
-          this.deaths.push({ uid: e.uid, type: e.type, x: Math.round(e.x), y: Math.round(e.y), killer: e.killer, cause: "gun", seq: e.seq || 0, at: nowMs });
+          this.recordDeath({ uid: e.uid, type: e.type, x: Math.round(e.x), y: Math.round(e.y), killer: e.killer, cause: "gun", seq: e.seq || 0, at: nowMs });
           continue;
         }
         if (e.decayAge < 3) {
@@ -2173,7 +2178,7 @@ drainPlayerHits() {
           if (!e.campId) e.deadAt = nowMs;
           try { this.spawnOnKillWave(e, nowMs); } catch {}
           try { markDead(this.universe, this.mapId, e.uid, nowMs); } catch {}
-          this.deaths.push({ uid: e.uid, type: e.type, x: Math.round(e.x), y: Math.round(e.y), killer: String(victim), cause: "boom", seq: e.seq || 0, at: nowMs });
+          this.recordDeath({ uid: e.uid, type: e.type, x: Math.round(e.x), y: Math.round(e.y), killer: String(victim), cause: "boom", seq: e.seq || 0, at: nowMs });
           continue;
         }
       }

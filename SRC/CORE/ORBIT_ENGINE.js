@@ -145,7 +145,7 @@ import { renderSpeedGuard } from "./SPEED_GUARD_UI.js";
 import { netServerMessageAge, netSimulationStep, netGameTimeMs, netSpeedGuardActive } from "./NETPLAY.js";
   import { pushNetplayLocal, sendNetplayBackgroundState, netplayLocalUpdateDue, getNetplayRemotes, tickNetplayRemotes, getNetNpcs, getNetDeaths, drainNetGone, getNetBoxes, drainNetBoxInbox, drainNetDmgInbox, drainNetHealInbox, drainNetShotEvents, drainNetSkillInbox, drainNetSkillDenied, clearNetShots, clearNetplayGameplay, sendShotEvent, sendSkillUse, sendHealAlly, sendPvpHit, sendPvpPetHit, getNetSelf, setNetInstanceMode, clearNetBoxes, claimNetBox, requestBoxSync, netBoxSyncAgeMs, netBoxSnapshotReady, netInInstance, sendNetHit, netMyId, netNpcFresh, netplayStatus, sendPing, netLatencyMs, netPongAge, netHelloAckAge, netServerVersion, netConnected, forceNetReconnect, ensureNetplayConnection, drainNetPvpKillInbox, drainNetPvpPetKillInbox, takeNetNpcReward, sendPvpLoot, sendPvpLootTake, drainNetPvpLootInbox,
   drainNetPvpLootTakeInbox, drainNetAdminKickInbox, drainNetAdminBoomInbox, drainNetBannedInbox, drainNetCheatInbox, netDisconnect, drainNetSunInbox, drainNetDecloakInbox, drainNetIemHitInbox,
-  getNetGroup, getNetLowRaid, takeNetLowRaidReward, getNetServerRestartAt, consumeNetServerRestart, getMyClanTag, getClanRelation, requestStarJumpArrival, requestHangarArrival, finishHangarArrival } from "./NETPLAY.js";
+  getNetGroup, getNetLowRaid, takeNetLowRaidReward, setNetNpcRewardHandler, getNetServerRestartAt, consumeNetServerRestart, getMyClanTag, getClanRelation, requestStarJumpArrival, requestHangarArrival, finishHangarArrival } from "./NETPLAY.js";
 import {
   createGatePortalState,
   getGateReturnMap as resolveGateReturnMap,
@@ -11471,7 +11471,32 @@ function botNearestNpc() {
     const bpr = best ? botNpcPrio(best.type) : -1;
     if (!best || pr > bpr || (pr === bpr && d2 < bestD2)) { bestD2 = d2; best = e; }
   }
+  // Event Halloween : aucun NPC visible mais un boss coché est en vie —
+  // position connue (minimap permanente) : le bot le rejoint.
+  if (!best) {
+    const fb = botHalloweenBossFallback();
+    if (fb) return fb;
+  }
   return best ? { npc: best, d2: bestD2 } : null;
+}
+
+// Event Halloween : boss coché encore en vie, rallié même hors radar
+// (position connue en permanence). Uniquement s'il n'y a rien d'autre.
+function botHalloweenBossFallback() {
+  try {
+    let best = null;
+    let bestD2 = Infinity;
+    for (const e of enemies) {
+      if (!e || Number(e.hp) <= 0 || e.isPetTarget) continue;
+      if (!isHalloweenBossVariant(e.type)) continue;
+      if (!Bot.npcAllow.has(String(e.type))) continue;
+      if (botNpcInWall(e)) continue;
+      try { if (e.id != null && botNpcWallBanActive(e.id)) continue; } catch {}
+      const d2 = dist2(player.x, player.y, e.x, e.y);
+      if (d2 < bestD2) { bestD2 = d2; best = e; }
+    }
+    return best ? { npc: best, d2: bestD2 } : null;
+  } catch { return null; }
 }
 
 // Distance pure pour le choix mixte "Le plus proche". Les priorites par
@@ -11481,7 +11506,9 @@ function botNearestNpcByDistance() {
     && Number(e.hp) > 0 && !e.isPetTarget && Bot.npcAllow.has(String(e.type))
     && botNpcVisible(e) && !botNpcInWall(e)
     && !(e.id != null && botNpcWallBanActive(e.id)));
-  return found ? { npc: found.item, d2: found.d2 } : null;
+  if (found) return { npc: found.item, d2: found.d2 };
+  // Event Halloween : repli boss (voir botNearestNpc).
+  return botHalloweenBossFallback();
 }
 
 // La portee d'engagement est toujours notre portee laser reelle.
@@ -16082,9 +16109,9 @@ for (const node of [ui.questWindow, ui.questOfferWindow]) {
   });
 }
 
-function advanceQuestProgress(kind, type, amount = 1) {
+function advanceQuestProgress(kind, type, amount = 1, context = null) {
   const advanced = recordQuestProgress(questState, kind, type, amount, {
-    map: String(window.__CURRENT_MAP_ID__ || "").toLowerCase(),
+    map: String(context?.map ?? window.__CURRENT_MAP_ID__ ?? "").toLowerCase(),
   });
   // Passe de combat Halloween : mêmes événements, paliers séparés.
   // AVANT le return anticipé : le passe compte même sans quête active.
@@ -27858,6 +27885,28 @@ function processDeaths() {
   return measureGameTask("processDeaths", processDeathsMeasured);
 }
 
+function applyNetNpcReward(reward) {
+  if (reward._progressApplied === true) return;
+  const currentMap = String(window.__CURRENT_MAP_ID__ || "").toLowerCase();
+  const existing = reward.map === currentMap ? enemies.find(e => e?._netUid === reward.uid
+    && (Number(e._netSeq) || 0) === (Number(reward.seq) || 0)) : null;
+  const e = existing || {
+    type: reward.type, x: reward.x, y: reward.y,
+    _netUid: reward.uid, _netSeq: reward.seq,
+    _netKillerId: reward.killer, _netLootOwner: reward.ownsKill === true,
+    isJpcBot: /^npc_Jpc_/i.test(reward.type),
+  };
+  e._netReward = reward;
+  if (!e.type) return;
+  measureGameTask("npcDeath.quests", () => advanceQuestProgress("kill", e.type, 1, { map: reward.map }));
+  if (e.isJpcBot === true) advanceQuestProgress("pvp", "pvp", 1, { map: reward.map });
+  measureGameTask("npcDeath.rewards", () => killRewards(e));
+  reward._progressApplied = true;
+  try { onStockpileNpcKill(); } catch {}
+  // La phase Halloween multijoueur est comptée par le serveur.
+}
+setNetNpcRewardHandler(applyNetNpcReward);
+
 function playNpcDeathFxOnce(enemy) {
   if (!enemy || enemy._deathFxPlayed === true || enemy.suppressDeathExplosion) return;
   enemy._deathFxPlayed = true;
@@ -27884,11 +27933,8 @@ function processDeathsMeasured() {
       if (e._netKiller === true && !e._netReward) {
         e._netReward = takeNetNpcReward(window.__CURRENT_MAP_ID__, e._netUid, e._netSeq);
         if (!e._netReward) {
-          // La recompense est deja commitee en base par le serveur. Si son
-          // message temps reel se perd, ne garde pas eternnellement le cadavre
-          // (il bloquerait aussi le respawn de la nouvelle incarnation).
-          e._netRewardWaitAt ||= performance.now();
-          if (performance.now() - e._netRewardWaitAt < 5000) { e.hp = 0; continue; }
+          // Le visuel n'attend pas le réseau. Le reçu applique lui-même
+          // les gains et les quêtes, même si le cadavre a déjà disparu.
           e._netSilent = true;
         }
       }
@@ -28085,7 +28131,7 @@ if ((e.type === "npc_Cubikon" || e.cubikonMinions) && e.cubikonMinions?.fleeOnDe
    //   }
    // }
 
-    if (!e.noRewards) {
+    if (!e.noRewards && e._netReward?._progressApplied !== true) {
       measureGameTask("npcDeath.quests", () => advanceQuestProgress("kill", e.type));
       // Bots JPC : ce sont des pilotes (plaque joueur, pseudo, grade BOT) —
       // leur destruction compte aussi pour les quêtes "tuer des joueurs".
@@ -28094,6 +28140,7 @@ if ((e.type === "npc_Cubikon" || e.cubikonMinions) && e.cubikonMinions?.fleeOnDe
         measureGameTask("npcDeath.questsJpc", () => advanceQuestProgress("pvp", "pvp"));
       }
       measureGameTask("npcDeath.rewards", () => killRewards(e));
+      if (e._netReward) e._netReward._progressApplied = true;
       try { onStockpileNpcKill(); } catch {}
       try { onHalloweenNpcKilled(e); } catch {}
     }
@@ -31079,7 +31126,6 @@ function syncNetNpcs(dt) {
       e._netWaiting = false;
       e._netSilent = false;
       e._netReward = null;
-      e._netRewardWaitAt = 0;
       e._deathFxPlayed = false;
     }
     e._netAggro = s.aggro != null ? String(s.aggro) : null;

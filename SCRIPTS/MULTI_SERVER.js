@@ -1843,6 +1843,7 @@ function ensureNpcSim(mapId) {
   const key = String(mapId || "1-1").toLowerCase();
   if (npcSims.has(key)) return npcSims.get(key);
   const pending = ZoneNpcSim.create(key, savedNpcRespawns[key] || null).then((sim) => {
+    if (sim) sim.onDeath = death => awardNpcDeaths(key, [death]);
     if (sim) sim.redirectShieldDamage = (victim, result, sourceId, at) => {
       const room = rooms.get(key);
       if (!room || !(result.sh > 0)) return;
@@ -1936,7 +1937,7 @@ function sunTopIds(death) {
 function npcRewardShares(killerId, mapId, death) {
   // Invoke XVI / Mindfire Behemoth / Boss Halloween : pas de partage de groupe.
   // - Destruction (credits/EXP/honneur) : TOUS les tapeurs présents sur la
-  //   map, au prorata des dégâts (floor + reste au top dégâts).
+  //   map, au prorata exact des dégâts, y compris une part inférieure à 1 %.
   // - Box perso : top 10 dégâts (même s'ils ont quitté la map), même contenu.
   if ((death?.type === "npc_Invoke_XVI" || death?.type === "npc_Mindfire_Behemoth" || isHalloweenBossVariant(death?.type))
     && Array.isArray(death?.shares) && death.shares.length) {
@@ -1944,8 +1945,7 @@ function npcRewardShares(killerId, mapId, death) {
       const ranked = death.shares
         .filter((s) => Array.isArray(s) && String(s[0]).startsWith("u_") && Number(s[1]) > 0)
         .map((s) => [String(s[0]), Math.max(0, Number(s[1]) || 0)])
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 24);
+        .sort((a, b) => b[1] - a[1]);
       if (ranked.length) {
         const sunIds = new Set(ranked.slice(0, 10).map((s) => s[0]));
         let room = null;
@@ -1953,10 +1953,7 @@ function npcRewardShares(killerId, mapId, death) {
         const present = ranked.filter(([pid]) => { try { return !!room && room.has(pid); } catch { return false; } });
         const eligible = present.length ? present : [[String(killerId), 1]];
         const total = eligible.reduce((s, [, d]) => s + d, 0) || 1;
-        const floors = eligible.map(([, d]) => Math.max(0, Math.floor(d * 100 / total)));
-        const acc = floors.reduce((s, v) => s + v, 0);
-        floors[0] = Math.max(0, floors[0] + (100 - acc));
-        return eligible.map(([pid], i) => ({ pid, percent: floors[i], sun: sunIds.has(pid) }));
+        return eligible.map(([pid, damage]) => ({ pid, percent: damage / total * 100, sun: sunIds.has(pid) }));
       }
     } catch {}
   }
@@ -1985,116 +1982,67 @@ function npcRewardShares(killerId, mapId, death) {
   }));
 }
 
-// Recompenses NPC : ~8 ms de SQLite synchrone PAR PART. Execute dans la
-// boucle 50 ms, quelques kills simultanes bloquaient l'event loop des
-// dizaines de ms -> pong en retard -> pics de ping pour tout le monde.
-// Les morts sont donc filees ici et traitees par lot hors boucle chaude
-// (le client attend la recompense avant d'afficher le gain, delai invisible).
-const pendingNpcRewards = []; // { mapId, death }
-const queuedNpcRewardKeys = new Set();
+// Récompenses NPC immédiates : chaque mort est traitée entièrement,
+// sans file, budget de temps, minuterie ni plafond de kills.
+const announcedNpcSuns = new Map();
 function npcDeathKey(mapId, death) {
   return `${String(mapId).toLowerCase()}:${String(death?.uid || "")}:${Number(death?.seq) || 0}`;
 }
-function queueNpcDeaths(mapId, deaths) {
+function awardNpcDeaths(mapId, deaths) {
   if (!Array.isArray(deaths) || !deaths.length) return;
+  const now = Date.now();
+  // Historique de déduplication uniquement : aucune récompense n'attend ici.
+  for (const history of [rewardedNpcDeaths, announcedNpcSuns]) {
+    for (const [key, at] of history) if (now - at > 10 * 60_000) history.delete(key);
+  }
   for (const death of deaths) {
     if (!death || typeof death !== "object") continue;
     const killerId = String(death.killer || "");
     if (!killerId.startsWith("u_") || death.cause !== "gun") continue;
     const deathKey = npcDeathKey(mapId, death);
-    if (rewardedNpcDeaths.has(deathKey) || queuedNpcRewardKeys.has(deathKey)) continue;
-    if (pendingNpcRewards.length >= 500) {
-      const dropped = pendingNpcRewards.shift();
-      if (dropped) queuedNpcRewardKeys.delete(dropped.deathKey);
+    if (rewardedNpcDeaths.has(deathKey)) continue;
+    const isSunBoss = death.type === "npc_Invoke_XVI" || death.type === "npc_Mindfire_Behemoth" || isHalloweenBossVariant(death.type);
+    const sunType = death.type === "npc_Mindfire_Behemoth" ? "Mindfire_Sun_Box"
+      : death.type === "npc_Invoke_XVI" ? "Sun_Box"
+      : isHalloweenBossVariant(death.type) ? "Boss_Cucurbitor_Box" : null;
+    if (isSunBoss && !announcedNpcSuns.has(deathKey)) {
+      announcedNpcSuns.set(deathKey, now);
+      const sunMsg = { t: "npcSun", map: String(mapId), uid: String(death.uid), seq: Number(death.seq) || 0,
+        sunType, x: Math.round(Number(death.x) || 0), y: Math.round(Number(death.y) || 0) };
+      for (const pid of sunTopIds(death)) sendToPeer(pid, sunMsg);
     }
-    queuedNpcRewardKeys.add(deathKey);
-    pendingNpcRewards.push({ mapId: String(mapId), death, deathKey });
-  }
-}
-function awardNpcDeaths(mapId, deaths) {
-  queueNpcDeaths(mapId, deaths);
-}
-function pumpNpcRewards(budgetMs = 12) {
-  const start = Date.now();
-  const now = Date.now();
-  for (const [key, at] of rewardedNpcDeaths) if (now - at > 10 * 60_000) rewardedNpcDeaths.delete(key);
-  while (pendingNpcRewards.length && Date.now() - start < budgetMs) {
-    const item = pendingNpcRewards.shift();
-    if (!item) continue;
-    const { mapId, death } = item;
-    const killerId = String(death?.killer || "");
-    const deathKey = item.deathKey || npcDeathKey(mapId, death);
-    if (!killerId.startsWith("u_") || death?.cause !== "gun") { queuedNpcRewardKeys.delete(deathKey); continue; }
-    if (rewardedNpcDeaths.has(deathKey)) { queuedNpcRewardKeys.delete(deathKey); continue; }
     let complete = true;
-    const isSunBoss = death?.type === "npc_Invoke_XVI" || death?.type === "npc_Mindfire_Behemoth" || isHalloweenBossVariant(death?.type);
-    const sunType = death?.type === "npc_Mindfire_Behemoth" ? "Mindfire_Sun_Box"
-      : death?.type === "npc_Invoke_XVI" ? "Sun_Box"
-      : isHalloweenBossVariant(death?.type) ? "Boss_Cucurbitor_Box" : null;
-    // Soleils : annoncés à TOUS les top 10 (présents ou partis) via un
-    // message dédié ; le client déduplique (un joueur présent reçoit aussi
-    // son npcReward avec sun:true). Une seule annonce par mort.
-    if (isSunBoss && item.sunSent !== true) {
-      item.sunSent = true;
-      try {
-        const sunMsg = {
-          t: "npcSun", map: String(mapId),
-          uid: String(death.uid), seq: Number(death.seq) || 0,
-          sunType, x: Math.round(Number(death?.x) || 0), y: Math.round(Number(death?.y) || 0),
-        };
-        for (const pid of sunTopIds(death)) {
-          try { sendToPeer(pid, sunMsg); } catch {}
-        }
-      } catch {}
-    }
     for (const share of npcRewardShares(killerId, mapId, death)) {
+      if (!(share.percent > 0)) continue;
       const accountId = share.pid.slice(2);
       const txKey = `npc:${serverRunId}:${deathKey}:${accountId}`;
       const rewardState = findPeerState(share.pid);
       const passivesEnabled = !(Number(death.at) >= Number(rewardState?._jamAt || Infinity)
         && Number(death.at) < Number(rewardState?._jamUntil || 0));
-      const reward = awardNpcKill(accountId, death.type, mapId, share.percent, share.pid === killerId, txKey, passivesEnabled);
-      if (!reward) { complete = false; continue; }
+      let reward = null;
+      try { reward = awardNpcKill(accountId, death.type, mapId, share.percent, share.pid === killerId, txKey, passivesEnabled); } catch {}
+      if (!reward) {
+        complete = false;
+        console.error(`[multi:npc] échec attribution ${deathKey} à ${share.pid}`);
+        continue;
+      }
       if (reward.duplicate) continue;
-      // Audit anticheat : kill crédité au tueur (strictement serveur).
       if (share.pid === killerId) {
-        recordAbilityNpcKill(rewardState, Number(death.at) || Date.now());
-        try {
-          const ps = findPeerState(share.pid);
-          if (ps) audOf(ps).kills += 1;
-        } catch {}
+        recordAbilityNpcKill(rewardState, Number(death.at) || now);
+        try { if (rewardState) audOf(rewardState).kills += 1; } catch {}
       }
       sendToPeer(share.pid, {
         t: "npcReward", map: String(mapId), uid: String(death.uid), seq: Number(death.seq) || 0,
         killer: killerId, percent: share.percent, ...reward,
-        // Soleil personnel (top 10 dégâts, même parti de la map).
-        sun: isSunBoss && share.sun === true,
-        sunType,
-        sunX: isSunBoss ? Math.round(Number(death?.x) || 0) : 0,
-        sunY: isSunBoss ? Math.round(Number(death?.y) || 0) : 0,
+        x: Math.round(Number(death.x) || 0), y: Math.round(Number(death.y) || 0),
+        sun: isSunBoss && share.sun === true, sunType,
+        sunX: isSunBoss ? Math.round(Number(death.x) || 0) : 0,
+        sunY: isSunBoss ? Math.round(Number(death.y) || 0) : 0,
       });
-      // Une part SQLite (~8 ms) peut deja depasser le budget : on sort pour
-      // laisser respirer l'event loop, la suite passe au prochain tour.
-      if (Date.now() - start >= budgetMs) { complete = false; break; }
     }
-    // Une erreur SQLite transitoire sera retentee au tour suivant (en fin de
-    // file pour ne pas bloquer les autres). Les parts deja commitees sont
-    // protegees par npc_reward_tx et ignorees via duplicate.
-    if (complete) {
-      queuedNpcRewardKeys.delete(deathKey);
-      rewardedNpcDeaths.set(deathKey, now);
-    } else pendingNpcRewards.push({ mapId, death, deathKey });
-  }
-  if (pendingNpcRewards.length > 400) {
-    try { console.log(`[multi:npc] file recompenses saturee (${pendingNpcRewards.length}), delestage des plus anciennes`); } catch {}
-    const dropped = pendingNpcRewards.splice(0, pendingNpcRewards.length - 400);
-    for (const item of dropped) queuedNpcRewardKeys.delete(item?.deathKey);
+    if (complete) rewardedNpcDeaths.set(deathKey, now);
   }
 }
-setInterval(() => {
-  try { pumpNpcRewards(12); } catch {}
-}, 100);
-
 // --- Audit anticheat périodique (10 s) + sanction (kick + gel, JAMAIS de
 // ban auto : l'admin tranche après inspection). Voir ANTICHEAT.js.
 const CHEAT_KICK_MESSAGE = "Vous avez triché. La modération étudie actuellement votre cas. Si cela est avéré, vous serez définitivement banni.";
@@ -3775,8 +3723,8 @@ setInterval(() => {
             }
           } catch {}
         }
-        // Recompenses filees hors boucle chaude (SQLite ~8 ms/part) : le
-        // client attend le gain avant d'afficher l'explosion, delai invisible.
+        // Déduplication du journal ; l'attribution normale a déjà eu lieu
+        // dans onDeath, au moment exact de la mort.
         awardNpcDeaths(key, npc.deaths);
         // IEM des bots JPC : delock + anti-relock 3 s sur la victime
         // (miroir solo de npcIemBlast).

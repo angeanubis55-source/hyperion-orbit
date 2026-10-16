@@ -37,6 +37,39 @@ function client() {
   return { api: context, sockets, intervals, timeouts, advance: ms => { now += ms; } };
 }
 
+test("1000 récompenses : appliquées dans chaque réception, sans attendre de frame", () => {
+  const c = client(), socket = c.sockets[0];
+  const received = [];
+  c.api.setNetNpcRewardHandler(reward => { received.push(reward); reward._progressApplied = true; });
+  for (let i = 0; i < 1000; i++) {
+    socket.receive({ t: "npcReward", map: "1-3", uid: `npc#${i}`,
+    seq: 1, type: "npc_Streuner", txKey: `run:${i}`, credits: 10, ownsKill: true });
+    assert.equal(received.length, i + 1);
+  }
+  socket.receive({ t: "npcReward", map: "low", uid: "low-raid-cache", seq: 1, credits: 100 });
+  assert.equal(received.length, 1000);
+  assert.equal(c.api.takeNetLowRaidReward().credits, 100);
+  socket.receive({ t: "npcReward", map: "1-3", uid: "npc#0", seq: 1,
+    type: "npc_Streuner", txKey: "run:0", credits: 10 });
+  assert.equal(received.length, 1000);
+  socket.receive({ t: "npcReward", map: "1-3", uid: "npc#0", seq: 2,
+    type: "npc_Streuner", txKey: "run:new", credits: 10 });
+  assert.equal(c.api.takeNetNpcReward("1-3", "npc#0", 2).credits, 10);
+  assert.equal(received.length, 1001);
+});
+
+test("Boss Cucurbitor : la part de 0.5 % d'un second attaquant est transmise sans arrondi", () => {
+  const c = client();
+  let received = null;
+  c.api.setNetNpcRewardHandler(reward => { received = reward; });
+  c.sockets[0].receive({ t: "npcReward", map: "1-3", uid: "boss", seq: 1,
+    type: "npc_Boss_Curcubitor_1_3", killer: "first", ownsKill: false,
+    percent: .5, credits: 16384, exp: 2048, honor: 6 });
+  assert.equal(received.percent, .5);
+  assert.equal(received.ownsKill, false);
+  assert.equal(received.credits, 16384);
+});
+
 test("JPC : protection portail/base transmise, attaque refusee puis autorisee a la sortie", () => {
   const c = client(), socket = c.sockets[0];
   const target = { id: "bot", isJpcBot: true, x: 100, y: 100 };
