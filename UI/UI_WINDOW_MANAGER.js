@@ -732,7 +732,11 @@ if (barIcon && minimizable !== false) {
       });
 
       const savedOpen = loadWindowOpenState(id);
-      const shouldOpen = minimizable === false ? true : (savedOpen === null ? !!defaultOpen : savedOpen);
+      let shouldOpen = minimizable === false ? true : (savedOpen === null ? !!defaultOpen : savedOpen);
+      // Garde d'ouverture (ex : passe de combat hors event) : reste fermée.
+      try {
+        if (typeof window.__windowOpenGuard === "function" && window.__windowOpenGuard(id) === false) shouldOpen = false;
+      } catch {}
       if (shouldOpen) {
         root.classList.remove("gameWinMinimized");
         card.classList.remove("gameWinMinimized");
@@ -833,6 +837,10 @@ minimize(id) {
 restore(id) {
   const w = windows.get(id);
   if (!w) return;
+  // Garde d'ouverture (ex : passe de combat hors event) : refus silencieux.
+  try {
+    if (typeof window.__windowOpenGuard === "function" && window.__windowOpenGuard(id) === false) return;
+  } catch {}
   // Lire le dock avant de rendre la fenetre visible : aucune mesure apres
   // les ecritures de position qui declencherait une nouvelle mise en page.
   const dockBtn = getDock().querySelector(`[data-window-id="${id}"]`);

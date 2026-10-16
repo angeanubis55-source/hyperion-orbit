@@ -483,7 +483,7 @@ import { handleSocialMessage, socialPeerGone, socialPeerChanged, socialDescribeG
 import { getAuctionSync, handleAuctionBid, pollAuctionCycle, auctionRoomStatus } from "./AUCTION_ROOM.js";
 import { GAME_VERSION } from "../SRC/DATA/VERSION.js";
 import { COLLECTABLE_TYPES } from "../SRC/DATA/COLLECTABLES.js";
-import { isHalloweenBossVariant, isHalloweenEventActive } from "../NPC/NPC_HALLOWEEN.js";
+import { HALLOWEEN_END, HALLOWEEN_START, isHalloweenBossVariant, isHalloweenEventActive } from "../NPC/NPC_HALLOWEEN.js";
 import { GROUP_BOOSTER_BONUS } from "../SRC/DATA/BOOSTERS.js";
 import { STARMAP_JUMP_REUSE_SEC } from "../SRC/DATA/STARMAP.js";
 
@@ -4041,6 +4041,12 @@ setInterval(() => {
 
 server.listen(PORT, "0.0.0.0", () => {
   console.log(`[multi] HTTP+WS sur http://0.0.0.0:${PORT}/  (WS: /ws)`);
+  try {
+    const hwActive = isHalloweenEventActive();
+    const p2 = (v) => String(v).padStart(2, "0");
+    console.log(`[multi:halloween] event ${hwActive ? "ACTIF" : "inactif"} `
+      + `(16/10 ${p2(HALLOWEEN_START.hour)}h${p2(HALLOWEEN_START.minute)} -> 01/11 ${p2(HALLOWEEN_END.hour)}h${p2(HALLOWEEN_END.minute)}).`);
+  } catch {}
   try {
     getAuctionSync();
     const st = auctionRoomStatus();

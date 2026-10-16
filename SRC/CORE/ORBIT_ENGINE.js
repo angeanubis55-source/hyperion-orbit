@@ -9360,6 +9360,14 @@ function registerHudWindows() {
     return;
   }
 
+  // Garde d'ouverture des fenêtres (ex : passe de combat hors event Halloween).
+  try {
+    window.__windowOpenGuard = (id) => {
+      if (String(id || "") !== "passWindow") return true;
+      try { return isHalloweenEventActive(); } catch { return false; }
+    };
+  } catch {}
+
   const reg = (id, title, icon, defaultOpen = true, options = {}) => {
     const el = document.getElementById(id);
     if (!el) {

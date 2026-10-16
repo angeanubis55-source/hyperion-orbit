@@ -170,6 +170,13 @@ export function initBattlepassUI() {
       if (btn) btn.style.display = active ? "" : "none";
     } catch {}
     if (!active) {
+      try {
+        const card = document.getElementById("passWindow");
+        if (card) {
+          card.classList.add("gameWinMinimized");
+          card.style.display = "none";
+        }
+      } catch {}
       try { window.GameWindowManager?.minimize?.("passWindow"); } catch {}
     }
   }
