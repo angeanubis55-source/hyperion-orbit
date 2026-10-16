@@ -180,7 +180,8 @@ export function tickAbilityStates(room, sim, now, emit, groupOf) {
           target._drawFireUntil = fx.until;
         }
         for (const npc of sim?.entries?.values() || []) {
-          if (!alive(npc) || sim.inSafe(npc.x, npc.y) || Math.hypot(npc.x - state.x, npc.y - state.y) > 600) continue;
+          // Bots JPC : faux joueurs — jamais forcés d'aggro (riposte aux dégâts uniquement).
+          if (!alive(npc) || npc.jpc === true || sim.inSafe(npc.x, npc.y) || Math.hypot(npc.x - state.x, npc.y - state.y) > 600) continue;
           npc._drawFireBy = state.id;
           npc._drawFireUntil = fx.until;
         }

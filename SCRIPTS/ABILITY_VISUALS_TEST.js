@@ -630,12 +630,13 @@ test("serveur : les auras ciblant un NPC vivant passent le filtre du snapshot", 
   assert.deepEqual(Array.from(context.filtered, entry => entry[4]), ["npc_alive", "peer"]);
 });
 
-async function visualServer(t) {
+async function visualServer(t, extraFixture = "") {
   const temporary = await mkdtemp(join(tmpdir(), "orbit-ability-visuals-"));
   // Les dégâts aléatoires des NPC ne doivent pas perturber les assertions de soin.
   const fixture = join(temporary, "visual-fixture.mjs");
   await writeFile(fixture, `import { ZoneNpcSim } from ${JSON.stringify(new URL("./NPC_ROOM.js", import.meta.url).href)};
 ZoneNpcSim.prototype.drainPlayerHits = function() { this.playerHits.length = 0; return []; };
+${extraFixture}
 `);
   const reserve = createServer(); reserve.listen(0, "127.0.0.1"); await once(reserve, "listening");
   const port = reserve.address().port; await new Promise(done => reserve.close(done));
@@ -981,4 +982,78 @@ test("pod Aegis WebSocket : groupe seul, rayon fixe, gains réels et sortie du g
   caster.send({ t: "heal", target: ally2.id, ability: skill, amt: 18000 });
   await pause(150);
   assert.equal(caster.messages.slice(inactive).some(message => message.t === "skillFx" && message.phase === "heal"), false, "aucun soin sans pod actif");
+});
+
+
+for (const legacyJpcPackets of [false, true]) test(`JPC WebSocket : tir serveur dessine (${legacyJpcPackets ? "ancien format sans tuid" : "format avec UID"})`, { timeout: 12000 }, async t => {
+  const { connect, pause } = await visualServer(t, `
+const originalCreate = ZoneNpcSim.create;
+ZoneNpcSim.create = async function(...args) {
+  const sim = await originalCreate.apply(this, args);
+  if (sim?.mapId === "1-1") {
+    const bot = [...sim.entries.values()].find(e => e.jpc);
+    sim.camps = []; sim.entries.clear(); sim.safe = []; sim.walls = [];
+    if (${legacyJpcPackets}) {
+      const pushShot = sim.pushNpcShotFx.bind(sim);
+      sim.pushNpcShotFx = function(...args) {
+        pushShot(...args);
+        for (const shot of this.shotFx) if (!shot.npc) { shot.tuid = null; delete shot.jpcPart; }
+      };
+      sim.jpcStartVolley = function(e, targetId, playerTarget) {
+        const target = playerTarget ? this.players.get(targetId) : this.entries.get(targetId);
+        this.pushNpcShotFx(e.x, e.y, target.x, target.y, e.uid, "x1", 2, false);
+      };
+    }
+    Object.assign(bot, { x: 1500, y: 1500, hp: 100000, hpMax: 100000, sh: 100000, shMax: 100000, jpcPreyUid: "pipeline-prey" });
+    sim.entries.set(bot.uid, bot);
+    sim.entries.set("pipeline-prey", { uid: "pipeline-prey", type: "npc_Streuner", x: 1900, y: 1500,
+      hp: 10000000, hpMax: 10000000, sh: 0, shMax: 0, speed: 0, r: 18, spread: .8,
+      canShoot: true, shootRate: 1, shootRange: 700, bulletDmg: 1, burst: 1, seq: 1 });
+  }
+  return sim;
+};`);
+  const observer = await connect("jpc-pipeline", "goliath");
+  const shot = await observer.wait(e => e.t === "shot" && e.by?.includes("#jpc") && e.npcShot === false);
+  const snapshot = await observer.wait(e => e.t === "snapshot" && e.npc?.list?.some(n => n.uid === shot.by));
+  assert.equal(shot.key, "x1");
+  assert.equal(shot.tuid, legacyJpcPackets ? null : "pipeline-prey");
+  const v = visuals(), projectiles = [];
+  Object.assign(v.api, { enemyBullets: projectiles, PLAYER_BULLET_SPRITES: { x1: { src: "COMBAT/MUNITIONS/X1.png", w: 52, h: 18 } },
+    ENTITY_LIMITS: { enemyBullets: 900 }, SIDE_OFFSET: 30, addCappedProjectile: (list, bullet) => list.push(bullet) });
+  v.api.enemies.push(...snapshot.npc.list.filter(n => n.alive !== false).map((n, i) => ({ ...n,
+    id: i + 1, _netUid: n.uid, isJpcBot: n.jpc === 1, r: 20 })));
+  v.api.getEnemyById = id => v.api.enemies.find(e => e.id === id && e.hp > 0);
+  vm.runInContext(section(engine, "const pendingNpcFaux = [];", "const pendingEscortSalvo = [];")
+    + section(engine, "function netVisualShotOrigin(", "function spawnNetRocketVisual("), v.api);
+  v.api.drainNetShotEvents = () => [shot];
+  v.api.tickNetplayVisuals(.016);
+  assert.deepEqual(v.renderErrors.map(e => e.message), []);
+  assert.ok(projectiles.length > 0, "le vrai paquet doit produire un projectile");
+  vm.runInContext(section(engine, "function drawBulletSprite(", "let ACTIVE_SHIP ="), v.api);
+  const drawStart = engine.indexOf("  for (const b of enemyBullets) {", engine.indexOf("  // Raygun"));
+  const drawEnd = engine.indexOf("  for (const s of sparks)", drawStart);
+  Object.assign(v.api, { ox: 0, oy: 0, innerWidth: 11000, innerHeight: 7000,
+    displayNpcShotsOn: () => true, isBeyondSensorRadius: () => false });
+  vm.runInContext("function drawJpcTestShots() {\n" + engine.slice(drawStart, drawEnd) + "\n}", v.api);
+  v.api.drawJpcTestShots();
+  assert.ok(v.draws.some(d => d.img?.path === "COMBAT/MUNITIONS/X1.png"), "X1 doit etre dessine sur le Canvas");
+  if (legacyJpcPackets) {
+    const counts = [projectiles.length];
+    for (let i = 1; i < 6; i++) {
+      const before = projectiles.length;
+      v.api.tickPendingNpcFaux(.2);
+      counts.push(projectiles.length - before);
+      const drawnBefore = v.draws.length;
+      v.api.drawJpcTestShots();
+      assert.ok(v.draws.slice(drawnBefore).some(d => d.img?.path === "COMBAT/MUNITIONS/X1.png"));
+    }
+    assert.deepEqual(counts, [1, 2, 1, 2, 1, 2], "un seul paquet ancien produit toute la salve alternee");
+    assert.ok(projectiles.every(p => p.dmg === 0));
+  } else {
+    assert.equal(shot.jpcPart, true);
+    const before = projectiles.length;
+    v.api.tickPendingNpcFaux(1);
+    assert.equal(projectiles.length, before, "aucun faux tir ajoute aux eclairs emis par le nouveau serveur");
+  }
+  await observer.wait(e => e !== shot && e.t === "shot" && e.by === shot.by);
 });

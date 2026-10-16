@@ -3650,7 +3650,7 @@ setInterval(() => {
             const serverSafe = typeof sim.inSafe === "function" ? sim.inSafe(s.x, s.y) : false;
             s.serverSafe = serverSafe && s.safe === true;
             const serverDead = s.pvpDead === true || !(Number(s.hp) > 0);
-            sim.setPlayer(pid, s.x, s.y, { dead: serverDead, safe: s.serverSafe, untargetableUntil: Number(s.iemUntil) || 0, cloaked: s.cloaked === true || s.cloakCpu === true, shipId: s.shipId });
+            sim.setPlayer(pid, s.x, s.y, { dead: serverDead, safe: s.serverSafe, untargetableUntil: Number(s.iemUntil) || 0, cloaked: s.cloaked === true || s.cloakCpu === true, shipId: s.shipId, lockedTarget: s.lockedTarget, shPct: s.shPct });
           }
         }
         if (typeof sim.prunePlayers === "function") {
@@ -3732,6 +3732,56 @@ setInterval(() => {
         // Recompenses filees hors boucle chaude (SQLite ~8 ms/part) : le
         // client attend le gain avant d'afficher l'explosion, delai invisible.
         awardNpcDeaths(key, npc.deaths);
+        // IEM des bots JPC : delock + anti-relock 3 s sur la victime
+        // (miroir solo de npcIemBlast).
+        if (typeof sim.drainIemBursts === "function") {
+          try {
+            for (const b of sim.drainIemBursts()) {
+              if (!b || !String(b.playerId || "").startsWith("u_")) continue;
+              const vst = room.get(String(b.playerId))?.state;
+              if (!vst || vst.pvpDead === true || !(Number(vst.hp) > 0)) continue;
+              const until = Date.now() + 3000;
+              try { sim.breakPlayerLocks?.(String(b.playerId), until); } catch {}
+              try {
+                sendToPeer(String(b.playerId), { t: "iemHit", by: String(b.npcUid || ""),
+                  x: Math.round(Number(b.x) || 0), y: Math.round(Number(b.y) || 0), until });
+              } catch {}
+            }
+          } catch {}
+        }
+        // Visuels roquettes JPC (arcs + fumée) : joués en rshot comme les
+        // roquettes des joueurs (même rendu client).
+        if (typeof sim.drainRocketFx === "function") {
+          try {
+            for (const r of sim.drainRocketFx()) {
+              if (!r) continue;
+              try {
+                broadcastRoom(room, JSON.stringify({ t: "rshot", map: key, kind: String(r.kind || "r310").slice(0, 16),
+                  by: String(r.by || ""), x: r.x, y: r.y, ang: r.ang, tx: r.tx, ty: r.ty, spd: r.spd,
+                  arcDir: r.arcDir, arcScale: r.arcScale, arcBoost: r.arcBoost, prange: r.prange,
+                  miss: r.miss === true, v: r.v }));
+              } catch {}
+            }
+          } catch {}
+        }
+        // Visuels de tir des fights JPC (JPC<->NPC) : le serveur n'a pas de
+        // projectiles, on rejoue des streaks via le canal des tirs alliés.
+        if (typeof sim.drainShotFx === "function") {
+          try {
+            for (const s of sim.drainShotFx()) {
+              if (!s) continue;
+              try {
+                broadcastRoom(room, JSON.stringify({ t: "shot", map: key, by: String(s.by || ""),
+                  x: Math.round(Number(s.x) || 0), y: Math.round(Number(s.y) || 0),
+                  tx: Math.round(Number(s.tx) || 0), ty: Math.round(Number(s.ty) || 0),
+                  key: String(s.key || "x4").slice(0, 16), n: Math.max(1, Math.min(2, Number(s.n) || 1)),
+                  npcShot: s.npc === true, tuid: s.tuid != null ? String(s.tuid) : null,
+                  jpcPart: s.jpcPart === true ? true : undefined,
+                  npcType: s.npc === true ? String(s.npcType || "") : undefined }));
+              } catch {}
+            }
+          } catch {}
+        }
       } else if (sim === undefined) {
         ensureNpcSim(key);
       } else if (sim === null) {

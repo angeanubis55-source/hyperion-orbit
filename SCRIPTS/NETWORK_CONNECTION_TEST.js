@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import vm from "node:vm";
 import { NETWORK_TIMING_GRACE_SEC } from "../SRC/CORE/NETWORK_TIMING.js";
 import { sanitizeAbilityFxList } from "../SRC/CORE/ABILITY_FX.js";
+import { NPC_TYPES } from "../NPC/NPC_TYPES.js";
 
 // Execute les vrais handlers du client avec sockets et horloge controles.
 const source = readFileSync(new URL("../SRC/CORE/NETPLAY.js", import.meta.url), "utf8").replace(/^export /gm, "").replace(/^import .*NETWORK_TIMING.*\r?\n/gm, "").replace(/^import .*ABILITY_FX.*\r?\n/gm, "");
@@ -34,6 +35,165 @@ function client() {
   sockets[0].open();
   return { api: context, sockets, intervals, timeouts, advance: ms => { now += ms; } };
 }
+
+test("JPC : pseudo, drones et arret survivent au protocole, reprise sans dash", () => {
+  const c = client(), socket = c.sockets[0];
+  let serverAt = 10000;
+  const snap = (x, vx) => {
+    serverAt += 50;
+    socket.receive({ t: "snapshot", at: serverAt, players: [], npc: { list: [{
+      uid: "1-1#jpc0", type: "npc_Jpc_goliath", jpc: 1, seq: 1,
+      x, y: 100, hp: 800, sh: 400, hpMax: 1000, shMax: 500,
+      jpPseudo: "Orion_FR", jpDrones: 8, jpForm: "heart", jpLvl: 6,
+      jpDes: ["havoc", "hercules"], jpIsh: 1,
+      jpVx: vx, jpVy: 0, jpSpeed: 300, jpMode: vx ? "farm" : "repair",
+    }] } });
+  };
+  snap(100, 300);
+  const bot = c.api.getNetNpcs().get("1-1#jpc0");
+  assert.equal(bot.jpPseudo, "Orion_FR");
+  assert.equal(bot.jpDrones, 8);
+  assert.equal(bot.jpForm, "heart");
+  assert.equal(bot.jpLvl, 6);
+  assert.equal(bot.jpDes.join(","), "havoc,hercules");
+  assert.equal(bot.jpIsh, 1);
+  c.advance(50); snap(115, 300);
+  c.advance(50); snap(115, 0);
+  assert.equal(bot.vx, 0);
+  for (let i = 0; i < 600; i++) {
+    c.advance(16);
+    if (i % 3 === 0) snap(115, 0);
+    c.api.tickNetplayRemotes(0.016);
+  }
+  assert.equal(bot.rx, 115);
+  c.advance(50); snap(130, 300);
+  const previous = bot.rx;
+  c.api.tickNetplayRemotes(0.016);
+  assert.ok(bot.rx - previous <= 300 * 0.016 + 1e-8);
+  assert.ok(bot.rx > previous);
+});
+
+test("JPC : les lasers suivent la coque rendue et la cible exacte en x1", () => {
+  const start = engine.indexOf("function spawnNetShotVisual(ev)"), end = engine.indexOf("function netVisualSabHome(", start);
+  const shots = [];
+  const shooter = { id: 1, hp: 100, isJpcBot: true, _netUid: "1-1#jpc0", x: 100, y: 200, r: 20 };
+  const target = { id: 2, hp: 100, _netUid: "prey", x: 500, y: 200 };
+  const context = vm.createContext({ enemies: [shooter, target], player: { hp: 100 },
+    netMyId: () => "me", SIDE_OFFSET: 30, enemyBullets: [], PLAYER_BULLET_SPRITES: { x1: { src: "X1.png" } },
+    ENTITY_LIMITS: { enemyBullets: 900 }, addCappedProjectile: (_, bullet) => shots.push(bullet) });
+  vm.runInContext(engine.slice(start, end), context);
+  context.spawnNetShotVisual({ by: shooter._netUid, tuid: "prey", x: 2000, y: 2000, tx: 0, ty: 0, n: 2, key: "x6" });
+  assert.equal(shots.length, 2);
+  assert.deepEqual(shots.map(s => [s.x, s.y]), [[130, 170], [130, 230]]);
+  assert.ok(shots.every(s => s.key === "x1" && s.dmg === 0 && s.targetId === 2 && s.sprite.src === "X1.png"));
+  shooter.x = 120;
+  context.spawnNetShotVisual({ by: shooter._netUid, tuid: "prey", n: 1, key: "x4" });
+  assert.equal(shots[2].x, 150);
+  assert.equal(shots[2].y, 200);
+});
+
+test("JPC : les paquets du serveur deja lance sans tuid affichent aussi les tirs", () => {
+  const start = engine.indexOf("function spawnNetShotVisual(ev)"), end = engine.indexOf("function netVisualSabHome(", start);
+  const shots = [];
+  const shooter = { id: 1, hp: 100, isJpcBot: true, _netUid: "1-1#jpc0", x: 100, y: 200, r: 20 };
+  const target = { id: 2, hp: 100, _netUid: "prey", x: 500, y: 200 };
+  const player = { hp: 100, x: 1000, y: 200 };
+  const context = vm.createContext({ enemies: [shooter, target], player,
+    netMyId: () => "me", SIDE_OFFSET: 30, enemyBullets: [], PLAYER_BULLET_SPRITES: { x1: { src: "X1.png" } },
+    ENTITY_LIMITS: { enemyBullets: 900 }, addCappedProjectile: (_, bullet) => shots.push(bullet) });
+  context.getEnemyById = id => context.enemies.find(e => e.id === id && e.hp > 0);
+  const queueStart = engine.indexOf("const pendingNpcFaux = [];");
+  const queueEnd = engine.indexOf("const pendingEscortSalvo = [];");
+  vm.runInContext(engine.slice(queueStart, queueEnd) + "\n" + engine.slice(start, end), context);
+  context.spawnNetShotVisual({ t: "shot", by: shooter._netUid, tuid: null, x: 100, y: 200, tx: 500, ty: 200, key: "x1", n: 2, npcShot: false });
+  assert.equal(shots.length, 1, "premier vrai tir central");
+  const counts = [shots.length];
+  for (let i = 1; i < 6; i++) {
+    const before = shots.length;
+    shooter.x += 10;
+    context.tickPendingNpcFaux(.199);
+    assert.equal(shots.length, before, "aucun faux tir avant son echeance");
+    context.tickPendingNpcFaux(.001);
+    const part = shots.slice(before);
+    counts.push(part.length);
+    assert.ok(part.every(s => s.x === shooter.x + 30), "depart depuis la coque actuelle");
+  }
+  assert.deepEqual(counts, [1, 2, 1, 2, 1, 2]);
+  assert.ok(shots.every(s => s.targetId === target.id && s.dmg === 0 && s._jpcShot));
+  shots.length = 0;
+  context.spawnNetShotVisual({ t: "shot", by: shooter._netUid, x: 100, y: 200, tx: 1000, ty: 200, key: "x1", n: 1, npcShot: false });
+  assert.equal(shots.length, 2, "le vrai tir suivant part des deux cotes");
+  assert.equal(shots[0].target, "player");
+  shots.length = 0;
+  context.spawnNetShotVisual({ by: shooter._netUid, tuid: "absent", tx: 500, ty: 200, n: 2 });
+  assert.equal(shots.length, 0, "un UID explicite ne doit jamais etre rattache a une autre cible");
+  context.clearPendingNpcFaux();
+  context.spawnNetShotVisual({ by: shooter._netUid, jpcPart: true, tx: 500, ty: 200, n: 2 });
+  assert.equal(shots.length, 2);
+  context.tickPendingNpcFaux(1);
+  assert.equal(shots.length, 2, "les eclairs deja emis par le serveur ne sont pas doubles");
+});
+
+test("NPC vers JPC : sprite, vitesse et taille natifs, meme avant le snapshot du tireur", () => {
+  const start = engine.indexOf("function spawnNetShotVisual(ev)"), end = engine.indexOf("function netVisualSabHome(", start);
+  const target = { id: 2, hp: 100, _netUid: "jpc", x: 500, y: 200 };
+  const shots = [], loaded = [];
+  const enemies = [target];
+  const context = vm.createContext({ enemies, NPC_TYPES, enemyBullets: [],
+    ENTITY_LIMITS: { enemyBullets: 900 }, addCappedProjectile: (_, shot) => shots.push(shot),
+    loadImage: src => loaded.push(src) });
+  vm.runInContext(engine.slice(start, end), context);
+  for (const type of ["npc_Streuner", "npc_Mordon", "npc_Lordakium", "npc_Kristallin"]) {
+    const cfg = NPC_TYPES[type];
+    assert.ok(cfg?.bulletSprite?.src, type);
+    context.spawnNetShotVisual({ npcShot: true, by: "npc", npcType: type, tuid: "jpc", x: 100, y: 200 });
+    const shot = shots.at(-1);
+    assert.equal(shot.sprite.src, cfg.bulletSprite.src);
+    assert.equal(shot.spd, cfg.bulletSpeed);
+    assert.equal(shot.targetId, target.id);
+    assert.equal(shot.dmg, 0);
+    assert.notEqual(shot._jpcShot, true);
+    assert.ok(loaded.includes(cfg.bulletSprite.src));
+  }
+  enemies.push({ id: 3, hp: 100, _netUid: "npc", type: "npc_Mordon", x: 150, y: 200,
+    r: 18, bulletSpeed: 4321, bulletScale: 2, bulletSprite: NPC_TYPES.npc_Mordon.bulletSprite });
+  context.spawnNetShotVisual({ npcShot: true, by: "npc", tuid: "jpc", x: 999, y: 999 });
+  assert.equal(shots.at(-1).x, 180);
+  assert.equal(shots.at(-1).y, 200);
+  assert.equal(shots.at(-1).spd, 4321);
+  assert.equal(shots.at(-1).scale, 2);
+});
+
+test("rendu : masquer les tirs NPC conserve les lasers x1 des JPC", () => {
+  const start = engine.indexOf("  for (const b of enemyBullets) {", engine.indexOf("  // Raygun"));
+  const end = engine.indexOf("  for (const s of sparks)", start);
+  assert.ok(start > 0 && end > start);
+  const shots = [], drawn = [];
+  const shooter = { id: 1, hp: 100, isJpcBot: true, _netUid: "jpc", x: 100, y: 200, r: 20 };
+  const target = { id: 2, hp: 100, _netUid: "prey", x: 500, y: 200 };
+  let npcShotsOn = false;
+  const context = vm.createContext({ enemies: [shooter, target], enemyBullets: shots,
+    player: { hp: 100 }, netMyId: () => "me", SIDE_OFFSET: 30,
+    PLAYER_BULLET_SPRITES: { x1: { src: "X1.png" } },
+    ENTITY_LIMITS: { enemyBullets: 900 }, addCappedProjectile: (_, shot) => shots.push(shot),
+    displayNpcShotsOn: () => npcShotsOn, isBeyondSensorRadius: () => false,
+    ox: 0, oy: 0, innerWidth: 1000, innerHeight: 800,
+    drawBulletSprite: (...args) => drawn.push(args),
+  });
+  const spawnStart = engine.indexOf("function spawnNetShotVisual(ev)"), spawnEnd = engine.indexOf("function netVisualSabHome(", spawnStart);
+  vm.runInContext(engine.slice(spawnStart, spawnEnd) + "\nfunction drawShots() {\n" + engine.slice(start, end) + "\n}", context);
+  context.spawnNetShotVisual({ by: "jpc", tuid: "prey", n: 2 });
+  shots.push({ x: 100, y: 200, vx: 4000, vy: 0, sprite: NPC_TYPES.npc_Mordon.bulletSprite });
+  context.drawShots();
+  assert.equal(drawn.length, 2);
+  assert.ok(drawn.every(args => args[3] === "x1" && args[4] === "player" && args[5] === 1.6));
+  drawn.length = 0;
+  npcShotsOn = true;
+  context.drawShots();
+  assert.equal(drawn.length, 3);
+  assert.equal(drawn[2][4], "npc");
+  assert.equal(drawn[2][6].src, NPC_TYPES.npc_Mordon.bulletSprite.src);
+});
 
 test("Depart : un hello ancien reste valide avec du trafic recent, mais pas apres coupure", () => {
   const from = engine.indexOf("function netLinkReadyForEntry()"), to = engine.indexOf("function waitNetLink(", from);

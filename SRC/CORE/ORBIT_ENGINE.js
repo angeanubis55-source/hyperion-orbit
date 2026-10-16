@@ -137,13 +137,14 @@ import { NPC_SHOTS as NPC_SHOT_RULES } from "../../NPC/NPC_PROJECTILES.js";
 import { applyNpcSeparation as separateNpcEntities } from "../../NPC/NPC_MOVEMENT.js";
 import { CUBIKON_RESET } from "../../NPC/NPC_SPECIAL_BEHAVIORS.js";
 import { selectNpcCombatTarget } from "../../NPC/NPC_COMBAT.js";
+import { resetJpcState, resetJpcFill, tickJpcSystem, ensureJpcTypes, findJpcPreyForNpc, isJpcBotSheltered } from "../../NPC/JPC_BOTS.js";
 import { getNpcSpriteFrame } from "../../NPC/NPC_RENDERER.js";
 import { pushBounded } from "./BOUNDED_COLLECTION.js";
 import { createRadiationSystem } from "./RADIATION_SYSTEM.js";
 import { renderSpeedGuard } from "./SPEED_GUARD_UI.js";
 import { netServerMessageAge, netSimulationStep, netGameTimeMs, netSpeedGuardActive } from "./NETPLAY.js";
-  import { pushNetplayLocal, sendNetplayBackgroundState, netplayLocalUpdateDue, getNetplayRemotes, tickNetplayRemotes, getNetNpcs, getNetDeaths, drainNetGone, getNetBoxes, drainNetBoxInbox, drainNetDmgInbox, drainNetShotEvents, drainNetSkillInbox, drainNetSkillDenied, clearNetShots, clearNetplayGameplay, sendShotEvent, sendSkillUse, sendHealAlly, sendPvpHit, sendPvpPetHit, getNetSelf, setNetInstanceMode, clearNetBoxes, claimNetBox, requestBoxSync, netBoxSyncAgeMs, netBoxSnapshotReady, netInInstance, sendNetHit, netMyId, netNpcFresh, netplayStatus, sendPing, netLatencyMs, netPongAge, netHelloAckAge, netServerVersion, netConnected, forceNetReconnect, ensureNetplayConnection, drainNetPvpKillInbox, drainNetPvpPetKillInbox, takeNetNpcReward, sendPvpLoot, sendPvpLootTake, drainNetPvpLootInbox,
-  drainNetPvpLootTakeInbox, drainNetAdminKickInbox, drainNetAdminBoomInbox, drainNetBannedInbox, drainNetCheatInbox, netDisconnect, drainNetSunInbox, drainNetDecloakInbox,
+  import { pushNetplayLocal, sendNetplayBackgroundState, netplayLocalUpdateDue, getNetplayRemotes, tickNetplayRemotes, getNetNpcs, getNetDeaths, drainNetGone, getNetBoxes, drainNetBoxInbox, drainNetDmgInbox, drainNetHealInbox, drainNetShotEvents, drainNetSkillInbox, drainNetSkillDenied, clearNetShots, clearNetplayGameplay, sendShotEvent, sendSkillUse, sendHealAlly, sendPvpHit, sendPvpPetHit, getNetSelf, setNetInstanceMode, clearNetBoxes, claimNetBox, requestBoxSync, netBoxSyncAgeMs, netBoxSnapshotReady, netInInstance, sendNetHit, netMyId, netNpcFresh, netplayStatus, sendPing, netLatencyMs, netPongAge, netHelloAckAge, netServerVersion, netConnected, forceNetReconnect, ensureNetplayConnection, drainNetPvpKillInbox, drainNetPvpPetKillInbox, takeNetNpcReward, sendPvpLoot, sendPvpLootTake, drainNetPvpLootInbox,
+  drainNetPvpLootTakeInbox, drainNetAdminKickInbox, drainNetAdminBoomInbox, drainNetBannedInbox, drainNetCheatInbox, netDisconnect, drainNetSunInbox, drainNetDecloakInbox, drainNetIemHitInbox,
   getNetGroup, getNetLowRaid, takeNetLowRaidReward, getNetServerRestartAt, consumeNetServerRestart, getMyClanTag, getClanRelation, requestStarJumpArrival, requestHangarArrival, finishHangarArrival } from "./NETPLAY.js";
 import {
   createGatePortalState,
@@ -2908,6 +2909,8 @@ function drawFireRescan() {
   try {
     for (const e of enemies) {
       if (!e || !(e.hp > 0)) continue;
+      // Bots JPC : faux joueurs — jamais forcés d'aggro (riposte au dégât uniquement).
+      if (e.isJpcBot === true) continue;
       if (dist2(e.x, e.y, player.x, player.y) <= r2) {
         if (!e.drawFireLock) {
           e.drawFireLock = true;
@@ -11634,7 +11637,10 @@ function botConcurrentNpc(engageMax, locked) {
   };
   try {
     if (Bot.mode !== "both") return null;
-    if (locked && Bot.npcAllow.has(String(locked.type)) && okTarget(locked)) return locked;
+    // Bots JPC : adversaires à part entière (plaque joueur) — un lock manuel
+    // sur eux tient toujours, même si leur type dynamique n'est pas coché
+    // dans la liste du bot. Sinon le bot relockait un autre NPC aussitôt.
+    if (locked && (Bot.npcAllow.has(String(locked.type)) || locked.isJpcBot === true) && okTarget(locked)) return locked;
     return botNearestNpcInRange(engageMax);
   } catch { return null; }
 }
@@ -12698,8 +12704,10 @@ function tickBot(dt) {
       // visuel courant ne peut donc pas imposer un autre NPC au milieu d'un
       // groupe (clic, snapshot reseau ou doublon temporaire).
       const cur = Bot.combatTargetId == null ? Target.get() : botLocked;
+      // Bots JPC : un lock manuel sur eux tient toujours (type dynamique
+      // pas forcément coché dans la liste du bot).
       if (cur && !cur.isPetTarget && Number(cur.hp) > 0 && enemies.includes(cur)
-        && Bot.npcAllow.has(String(cur.type))) {
+        && (Bot.npcAllow.has(String(cur.type)) || cur.isJpcBot === true)) {
         // NPC rentré/coincé dans un mur : on casse le lock au lieu de
         // glitcher contre le mur en attendant qu'il ressorte. Ban court
         // pour ne pas le re-locker aussitôt.
@@ -23503,6 +23511,22 @@ function tickEngineTrails(dt) {
   if (GAME_SETTINGS.npcEngineEffects) {
     for (const enemy of enemies) {
       if (enemy?.hp <= 0) continue;
+      // Bots JPC : réacteur + fumée façon joueur (coque SHIP_PACKS).
+      if (enemy.isJpcBot === true) {
+        const pack = enemy._jpcPack || (enemy._jpcPack = getShipPackByIdData(enemy.jpcShip) || null);
+        const smokeOn = !!(pack && GAME_SETTINGS.shipSmoke !== false);
+        try { if (pack) shipEngine.update(enemy, pack, dt, smokeOn); } catch {}
+        if (!pack || !smokeOn || !shouldDetectNpc(player, enemy, NPC_SENSOR_RANGES.visibility, lockedNpc)) {
+          enemy._trailAcc = 0;
+          try { npcEngine.update(enemy, dt, false); } catch {}
+          continue;
+        }
+        const frames = Math.max(1, Number(pack.frames) || 32);
+        const idx = angleToFrameIndex(Number(enemy.angle || 0) + (pack.angleOffset || 0), frames);
+        emitEngineTrail(enemy, pack, dt, enemy.id, "ship", idx);
+        try { npcEngine.update(enemy, dt, false); } catch {}
+        continue;
+      }
       npcEngine.update(enemy, dt, true);
       if (!shouldDetectNpc(player, enemy, NPC_SENSOR_RANGES.visibility, lockedNpc)) {
         enemy._trailAcc = 0;
@@ -26026,6 +26050,20 @@ const Target = (() => {
         return;
       }
     }
+    // ✅ Bot JPC à l'abri (portail/base) : comme un joueur en ZNA, impossible
+    // à verrouiller. Le clear reste possible.
+    if (e) {
+      try {
+        if (typeof isJpcBotSheltered === "function" && typeof npcIsInSafeZone === "function"
+          && isJpcBotSheltered(e, npcIsInSafeZone)) {
+          if (cur && cur.id === e.id) {
+            breakLocalRepairLinks();
+            cur = null;
+          }
+          return;
+        }
+      } catch {}
+    }
     let next = e && e.hp > 0 ? e : null;
     if (next !== cur) breakLocalRepairLinks();
     // IEM distant : apres la rupture du lock, le joueur reste impossible a
@@ -26087,9 +26125,19 @@ const Target = (() => {
       }
       return cur;
     }
+    // Bot JPC entré à l'abri en plein lock : rupture comme pour un joueur
+    // en ZNA (l'attaque en cours est coupée par tickAutoAttack via netPvpBlocked).
+    if (cur && cur.isJpcBot === true) {
+      try {
+        if (typeof isJpcBotSheltered === "function" && typeof npcIsInSafeZone === "function"
+          && isJpcBotSheltered(cur, npcIsInSafeZone)) {
+          clear();
+          return null;
+        }
+      } catch {}
+    }
     const present = enemies.includes(cur);
-    if (!present || cur.hp <= 0) {
-      // Zero PV predit n'est pas une mort serveur. D'autres impacts et
+    if (!present || cur.hp <= 0) {      // Zero PV predit n'est pas une mort serveur. D'autres impacts et
       // effets relisent le lock AVANT processDeaths, qui remet alors 1 PV
       // en attendant le verdict. Ne pas effacer cur dans cet intervalle.
       if (present && cur._netUid != null && cur._netKiller == null) return cur;
@@ -26437,6 +26485,14 @@ function drainShieldFromEnemy(e, amount, recipient = player, transferPct) {
   if (!e || e.hp <= 0 || e._bossEncounter?.invulnerable) {
     return { total: 0, sh: 0, hp: 0, bypass: 0, isCrit: false, rawDamage: 0, sab: true };
   }
+  // Bots JPC : même protection ZNA que les joueurs — pas de vol de bouclier à l'abri.
+  if (e.isJpcBot === true) {
+    try {
+      if (typeof npcIsInSafeZone === "function" && npcIsInSafeZone(e)) {
+        return { total: 0, sh: 0, hp: 0, bypass: 0, isCrit: false, rawDamage: 0, sab: true };
+      }
+    } catch {}
+  }
 
   // Blacklight : drain x1.25 comme les dégâts de joueur.
   // Strokelight Barrage : insensible (NPC normal en map BL).
@@ -26600,6 +26656,15 @@ function npcIemBlast(e, cfg = {}) {
 
 function damageEnemy(e, dmg, shieldPenetration, crit, opts = {}) {
   if (!e || e.hp <= 0) return { total: 0, sh: 0, hp: 0, bypass: 0, isCrit: false, rawDamage: 0 };
+  // Bots JPC : bulle ISH (invulnérable, ne tire plus — comme un vrai joueur).
+  if (e.isJpcBot === true && (e.ishT || 0) > 0) return emptyEnemyDamageResult();
+  // Bots JPC : même protection ZNA que les joueurs (portail/base). Un bot à
+  // l'abri ne prend rien — pas de vol de kill au portail pendant sa réparation.
+  if (e.isJpcBot === true) {
+    try { if (npcIsInSafeZone(e)) return emptyEnemyDamageResult(); } catch {}
+  }
+  // Un joueur qui se joint au farm JPC rouvre les récompenses du NPC.
+  if (opts.fromJpc !== true && e._jpcFarmed === true) e.noRewards = false;
   if (opts.ability && hyperionTargetBlocked(e, false)) return emptyEnemyDamageResult();
   if (e._bossEncounter?.invulnerable) return emptyEnemyDamageResult();
   const fixedBaseDamage = opts.fixedDamage ? Math.max(0, Number(dmg) || 0) : null;
@@ -26657,7 +26722,7 @@ function damageEnemy(e, dmg, shieldPenetration, crit, opts = {}) {
   // Lien de bouclier (Berserker, officiel) : les dégâts infligés AU BOUCLIER
   // de la cible liée sont encaissés par nous à la place (dégâts classiques :
   // notre distribution + blocage regen, mort possible). La cible ne perd rien.
-  if (!(e._netUid && netplayNpcActive()) && (player.shlT || 0) > 0 && player.linkTarget === e && result.sh > 0 && !player.dead) {
+  if (!(e._netUid && netplayNpcActive()) && (player.shlT || 0) > 0 && player.linkTarget === e && result.sh > 0 && !player.dead && opts.fromJpc !== true) {
     const shared = Math.round(result.sh);
     e.sh = Math.min(Number(e.shMax || 0), Number(e.sh || 0) + shared);
     result.sh = 0;
@@ -26673,13 +26738,15 @@ function damageEnemy(e, dmg, shieldPenetration, crit, opts = {}) {
       }
     } catch {}
   }
-  if (result.total > 0) {
+  if (result.total > 0 && opts.fromJpc !== true) {
     e._damagedByPlayer = true;
+    // Dernier dégât joueur (priorité d'aggro façon MMO : celui qui tape).
+    try { e._playerHitT = performance.now(); } catch {}
     refreshCubikonFromMinionHit(e);
     if (e._cubikonDeathFlee) e.noRewards = false;
   }
   // Reallocate (Hammerclaw Plus) : 20 % de nos dégâts alimentent le pot commun.
-  if ((player.reallocT || 0) > 0 && result.total > 0) {
+  if ((player.reallocT || 0) > 0 && result.total > 0 && opts.fromJpc !== true) {
     try { player.reallocPool = Number(player.reallocPool || 0) + result.total * REALLOC_SHARE; } catch {}
   }
   const shD = result.sh;
@@ -26697,7 +26764,7 @@ function damageEnemy(e, dmg, shieldPenetration, crit, opts = {}) {
   }
   triggerBossEncounterPhase(e, result.total);
 
-  if (rules?.mode === "zone") {
+  if (rules?.mode === "zone" && opts.fromJpc !== true) {
     if (e.passiveNative) e._provoked = true;
     e._aggroT = e.aggroHold ?? 3.5;
     e._aggro = true;
@@ -27520,6 +27587,31 @@ function processDeaths() {
       try { stripCloakByMindfire(); } catch {}
     }
   } catch {}
+  // IEM d'un bot JPC (multi) : miroir de npcIemBlast — delock + anti-relock.
+  try {
+    let hits = null;
+    try { hits = drainNetIemHitInbox(); } catch { hits = null; }
+    if (hits && hits.length && !player.dead) {
+      for (const h of hits) {
+        try {
+          const foe = enemies.find((x) => x && String(x._netUid || "") === String(h.by || "") && x.hp > 0) || null;
+          if (foe && Target.get() === foe) {
+            try { stopAttack(); } catch {}
+            try { Target.clear(); } catch {}
+          }
+          const now = performance.now();
+          const list = Array.isArray(player.iemNoLockIds) ? player.iemNoLockIds : [];
+          const foeId = foe ? foe.id : String(h.by || "");
+          player.iemNoLockIds = list
+            .filter((entry) => entry && entry.until > now && entry.id !== foeId)
+            .concat([{ id: foeId, until: now + 3000 }])
+            .slice(-12);
+          try { showNotification(`IEM du ${foe?.jpcPseudo || "JPC"} !`, 2, "info"); } catch {}
+          try { if (foe) spawnPulseFx(foe.x, foe.y, 1, false, foe.id); } catch {}
+        } catch {}
+      }
+    }
+  } catch {}
   return measureGameTask("processDeaths", processDeathsMeasured);
 }
 
@@ -27738,6 +27830,12 @@ if ((e.type === "npc_Cubikon" || e.cubikonMinions) && e.cubikonMinions?.fleeOnDe
 
     if (!e.noRewards) {
       measureGameTask("npcDeath.quests", () => advanceQuestProgress("kill", e.type));
+      // Bots JPC : ce sont des pilotes (plaque joueur, pseudo, grade BOT) —
+      // leur destruction compte aussi pour les quêtes "tuer des joueurs".
+      // Solo comme multi (les kills réseau du joueur passent par ce bloc).
+      if (e.isJpcBot === true) {
+        measureGameTask("npcDeath.questsJpc", () => advanceQuestProgress("pvp", "pvp"));
+      }
       measureGameTask("npcDeath.rewards", () => killRewards(e));
       try { onStockpileNpcKill(); } catch {}
     }
@@ -29411,35 +29509,43 @@ function spawnPendingNpcFaux(entry) {
   try {
     const npc = enemies.find(x => x?.id === entry.npcId && x.hp > 0);
     if (!npc) return;
+    if (entry.jpcVolley != null && (npc._netJpcVolley !== entry.jpcVolley
+      || npc.ishT > 0 || npc.empT > 0 || npc.freezeT > 0 || npc.redirectSilenceT > 0)) return;
     const target = entry.target === "player" ? player
+      : (entry.target === "jpc" || entry.target === "npc") ? getEnemyById(entry.targetId)
       : (entry.targetId != null ? getEscortById(entry.targetId) : null);
     if (!target || !(target.hp > 0)) return;
     // ✅ position de départ recalculée depuis le NPC au moment du tir.
     const ang = Math.atan2(target.y - npc.y, target.x - npc.x);
     const fx = Math.cos(ang), fy = Math.sin(ang);
     const px = -fy, py = fx;
-    const muzzle = (npc.r || 18) + 12;
+    const muzzle = (npc.r || 18) + (npc.isJpcBot ? 10 : 12);
     const sx = npc.x + fx * muzzle + px * entry.off;
     const sy = npc.y + fy * muzzle + py * entry.off;
     const dx = target.x - sx, dy = target.y - sy;
     const len = Math.hypot(dx, dy) || 1;
     const spd = entry.spd;
-    // ✅ les faux portent leurs dégâts (1000) comme les vrais : MISS comme un tir normal.
-    const willMiss = Math.random() < Math.min(1, NPC_SHOT_RULES.missChance + npcLaserAccuracyPenalty(npc));
+    // Visuels JPC purs (dégâts déjà appliqués au tir réel) : dmg 0,
+    // téléguidés, sans collision. Sinon comportement police classique.
+    const visualOnly = entry.visualOnly === true;
+    const willMiss = visualOnly ? false
+      : Math.random() < Math.min(1, NPC_SHOT_RULES.missChance + npcLaserAccuracyPenalty(npc));
     addCappedProjectile(enemyBullets, {
       x: sx, y: sy,
       vx: dx / len * spd, vy: dy / len * spd,
       spd,
       r: entry.bulletR ?? 7,
-      life: Math.max(entry.life, 2.5),
-      dmg: Math.max(1, Math.floor(Number(entry.dmg) || 0)), key: entry.key,
+      life: visualOnly ? Math.max(0.25, len / Math.max(120, spd) + 0.08) : Math.max(entry.life, 2.5),
+      dmg: visualOnly ? 0 : Math.max(1, Math.floor(Number(entry.dmg) || 0)), key: entry.key,
       scale: entry.scale ?? 1.5,
       sprite: entry.sprite || null,
       target: entry.target,
-      targetId: entry.target === "player" ? null : entry.targetId,
-      homing: entry.homing,
+      targetId: (entry.target === "player" || entry.target == null) ? null : entry.targetId,
+      homing: visualOnly ? true : entry.homing,
       ownerId: npc.id,
-      miss: willMiss, visual: false,
+      miss: willMiss, visual: visualOnly,
+      _jpcVisual: visualOnly,
+      _jpcShot: npc.isJpcBot === true,
       hitRadiusBonus: entry.hitRadiusBonus,
     }, ENTITY_LIMITS.enemyBullets);
   } catch {}
@@ -29450,7 +29556,7 @@ function tickPendingNpcFaux(dt) {
   for (let i = pendingNpcFaux.length - 1; i >= 0; i--) {
     const item = pendingNpcFaux[i];
     item.t -= dt;
-    if (item.t <= 0) {
+    if (item.t <= 1e-9) {
       pendingNpcFaux.splice(i, 1);
       spawnPendingNpcFaux(item.entry);
     }
@@ -30167,6 +30273,20 @@ function netSelfSafe() {
 }
 function netPvpBlocked(t) {
   if (!t) return false;
+  // Bots JPC à l'abri (portail/base) : même règle que les joueurs en ZNA —
+  // cible intouchable, l'attaque ne part pas (toast comme pour les joueurs).
+  try {
+    if (typeof isJpcBotSheltered === "function" && isJpcBotSheltered(t, npcIsInSafeZone)) {
+      try {
+        const nowMs = performance.now();
+        if (nowMs - lastPvpSafeToastAt > 3000) {
+          lastPvpSafeToastAt = nowMs;
+          showToast("Zone de non-agression", 1.4);
+        }
+      } catch {}
+      return true;
+    }
+  } catch {}
   // Propre REX : pas d'attaque dessus quand on est en ZNA (ailleurs, inchangé).
   if (isOwnPetTarget(t)) {
     if (!netSelfSafe()) return false;
@@ -30606,6 +30726,23 @@ function syncNetNpcs(dt) {
       if (!e) continue;
       e._netUid = String(s.uid);
       e._netSeq = Number(s.seq) || 0;
+      // Bots JPC natifs : présentation faux-joueur (même plaque qu'en solo).
+      if (typeof s.type === "string" && s.type.indexOf("npc_Jpc_") === 0) {
+        e.isJpcBot = true;
+        e.jpcShip = String(s.type).slice(8).toLowerCase();
+        e.jpcPseudo = String(s.jpPseudo || "JPC");
+        e.name = e.jpcPseudo;
+        e.droneCfg = {
+          count: Math.max(0, Math.min(12, Number(s.jpDrones) || 0)),
+          formation: String(s.jpForm || "standard"),
+          design: "havoc",
+          designs: (Array.isArray(s.jpDes) && s.jpDes.length ? s.jpDes : ["havoc"]).slice(0, 12).map(String),
+          level: Math.max(1, Math.min(6, Number(s.jpLvl) || 1)),
+        };
+        if (e.droneCfg.designs.length && !e.droneCfg.designs.includes(e.droneCfg.design)) {
+          e.droneCfg.design = e.droneCfg.designs[0];
+        }
+      }
       e.wanderMode = true;
       e._previousX = e.x;
       e._previousY = e.y;
@@ -30626,6 +30763,7 @@ function syncNetNpcs(dt) {
       e._netKillerPseudo = "";
       e._netLootOwner = false;
       e._netLockBy = null;
+      e._netJpcBy = null;
       e._netWaiting = false;
       e._netSilent = false;
       e._deathFxPlayed = false;
@@ -30639,7 +30777,12 @@ function syncNetNpcs(dt) {
       e._previousY = e.y;
     }
     const dx = snapX - e.x, dy = snapY - e.y;
-    if (dx * dx + dy * dy > 2000 * 2000) { e.x = snapX; e.y = snapY; e.vx = 0; e.vy = 0; }
+    if (e.isJpcBot === true) {
+      // Le réseau borne déjà les pas : éviter un deuxième freinage ici.
+      e.x = snapX; e.y = snapY;
+      e.vx = Number(s.vx) || 0; e.vy = Number(s.vy) || 0;
+    }
+    else if (dx * dx + dy * dy > 2000 * 2000) { e.x = snapX; e.y = snapY; e.vx = 0; e.vy = 0; }
     else {
       e.x += dx * k; e.y += dy * k;
       // Vitesse reconstituée : flammes reacteurs + trainees du NPC.
@@ -30675,6 +30818,18 @@ function syncNetNpcs(dt) {
     }
     e._netAggro = s.aggro != null ? String(s.aggro) : null;
     e._netLockBy = s.lock != null ? String(s.lock) : null;
+    e._netJpcBy = s.jpcBy != null ? String(s.jpcBy) : null;
+    // Bots JPC natifs : pseudo + formation + ISH suivent le snapshot.
+    if (e.isJpcBot === true) {
+      if (s.jpPseudo) { e.jpcPseudo = String(s.jpPseudo); e.name = e.jpcPseudo; }
+      if (e.droneCfg) {
+        e.droneCfg.count = Math.max(0, Math.min(12, Number(s.jpDrones) || 0));
+        e.droneCfg.formation = String(s.jpForm || "standard");
+        e.droneCfg.level = Math.max(1, Math.min(6, Number(s.jpLvl) || 1));
+        e.droneCfg.designs = Array.isArray(s.jpDes) && s.jpDes.length ? s.jpDes : ["havoc"];
+      }
+      e.ishT = Number(s.jpIsh) > 0 ? 1 : 0;
+    }
     e.rocketSlowPct = Number(s.rocketSlowPct) || 0;
     e.rocketSlowT = Number(s.rocketSlowT) || 0;
     e.keresSprT = Number(s.keresSprT) || 0;
@@ -30759,6 +30914,28 @@ function syncNetNpcs(dt) {
       const e = netUidToEnemy.get(f.uid) || null;
       if (!e || !(e.hp > 0)) continue;
       queueVolleyFloat(e, { total: f.total, sh: 0, hp: f.total, rawDamage: f.total }, `netdmg${(Math.random() * 1e9) | 0}`, 1, VOLLEY_FLOAT_TIMEOUT);
+    }
+  } catch {}
+  // Réparation JPC : chiffres +x (vert coque, bleu bouclier) sur le bot
+  // locké uniquement, comme les dégâts alliés et les soins distants.
+  try {
+    const heals = drainNetHealInbox();
+    const lockedUid = Target.get()?._netUid || null;
+    for (const h of heals) {
+      if (!h || !(Number(h.hp) > 0 || Number(h.sh) > 0)) continue;
+      if (!lockedUid || String(h.uid) !== String(lockedUid)) continue;
+      const e = netUidToEnemy.get(h.uid) || null;
+      if (!e || !(e.hp > 0)) continue;
+      if (Math.round(Number(h.hp) || 0) > 0) {
+        addFloatText(e.x + (Math.random() - 0.5) * 60, e.y - 90 - Math.random() * 20,
+          h.hp, "rgba(80,255,125,0.98)",
+          { text: `+${DMG_FMT.format(Math.round(Number(h.hp) || 0))}`, size: 21, pop: 0.3, shake: 0.6, life: 1, glow: 1, weight: 900, impact: true });
+      }
+      if (Math.round(Number(h.sh) || 0) > 0) {
+        addFloatText(e.x + (Math.random() - 0.5) * 60, e.y - 110 - Math.random() * 20,
+          h.sh, "rgba(70,180,255,0.98)",
+          { text: `+${DMG_FMT.format(Math.round(Number(h.sh) || 0))}`, size: 21, pop: 0.3, shake: 0.6, life: 1, glow: 1, weight: 900, impact: true });
+      }
     }
   } catch {}
   // Recompenses PvP (serveur) : xp + honneur du kill, tueur uniquement.
@@ -30950,6 +31127,47 @@ for (let i = collectables.length - 1; i >= 0; i--) {
 
     camp.t = camp.respawn ?? 1.5;
   }
+
+  // Bots JPC d'Hyperion Orbit : faux joueurs qui farment la map (solo uniquement,
+  // zoneController est déjà coupé en multi : le serveur possède les NPC).
+  try {
+    let jpcLockedId = null;
+    try { jpcLockedId = Target.get()?.id ?? null; } catch {}
+    tickJpcSystem(dt, {
+      enemies, makeEnemy, WORLD, zoneWalls, zonePortals, zoneCamps,
+      player, damageEnemy, enemyShoot, npcIemBlast,
+      addCappedProjectile, enemyBullets, bulletLimit: ENTITY_LIMITS.enemyBullets,
+      bulletLifeForRange, currentMapId, npcIsInSafeZone,
+      lockedId: jpcLockedId,
+      // Chiffres +x de réparation du bot locké (vert coque, bleu bouclier).
+      npcRepairFloat: (bot, hpGain, shGain) => {
+        try {
+          if (!(bot && bot.hp > 0)) return;
+          if (Math.round(Number(hpGain) || 0) > 0) {
+            addFloatText(bot.x + (Math.random() - 0.5) * 60, bot.y - 90 - Math.random() * 20,
+              hpGain, "rgba(80,255,125,0.98)",
+              { text: `+${DMG_FMT.format(Math.round(Number(hpGain) || 0))}`, size: 21, pop: 0.3, shake: 0.6, life: 1, glow: 1, weight: 900, impact: true });
+          }
+          if (Math.round(Number(shGain) || 0) > 0) {
+            addFloatText(bot.x + (Math.random() - 0.5) * 60, bot.y - 110 - Math.random() * 20,
+              shGain, "rgba(70,180,255,0.98)",
+              { text: `+${DMG_FMT.format(Math.round(Number(shGain) || 0))}`, size: 21, pop: 0.3, shake: 0.6, life: 1, glow: 1, weight: 900, impact: true });
+          }
+        } catch {}
+      },
+      // Dégâts du bot sur notre cible lockée (lasers + roquettes) : on voit
+      // aussi ce qu'il inflige, comme les dégâts alliés en multi.
+      npcJpcDamageFloat: (target, amount) => {
+        try {
+          const dmg = Math.max(1, Math.round(Number(amount) || 0));
+          if (!(target && target.hp > 0)) return;
+          addFloatText(target.x + (Math.random() - 0.5) * 60, target.y - 90 - Math.random() * 20,
+            dmg, "rgba(255,235,170,0.96)",
+            { text: `${DMG_FMT.format(dmg)}`, size: 19, pop: 0.3, shake: 0.6, life: 1, glow: 1, weight: 900, impact: true });
+        } catch {}
+      },
+    });
+  } catch {}
 }
 
 // ============================================================
@@ -30982,6 +31200,11 @@ clearPendingEscortSalvo();
 clearPendingNpcFaux();
 shipDamages.length = 0;
 enemies.length = 0;
+try { resetJpcState(String(window.__CURRENT_MAP_ID__ || "1-1")); } catch {}
+try { resetJpcFill(); } catch {}
+// Types JPC enregistrés au chargement de chaque map (multi natif : les
+// entités partagées arrivent via snapshot, sans tick local).
+try { ensureJpcTypes(); } catch {}
 escortShips.length = 0;
 pickups.length = 0;
 collectables.length = 0;
@@ -32050,6 +32273,88 @@ function drawMinimap() {
 // ============================================================
 // Labels / colors
 // ============================================================
+// Bots JPC d'Hyperion Orbit : même plaque que les joueurs classiques —
+// barres HP/bouclier, pastilles drones, icône formation, pseudo JPC_XY,
+// grade BOT à gauche, firme BOT à droite, titre violet dessous.
+function drawJpcBotPlate(e, showBars) {
+  try {
+    if (!e || e.hp <= 0) return;
+    const pseudo = String(e.jpcPseudo || e.name || "JPC");
+    const count = Math.max(0, Math.min(12, Math.floor(Number(e.droneCfg?.count) || 0)));
+    const designs = Array.isArray(e.droneCfg?.designs) && e.droneCfg.designs.length
+      ? e.droneCfg.designs
+      : (e.droneCfg?.design ? [e.droneCfg.design] : []);
+    const dind = [];
+    for (let i = 0; i < count; i++) {
+      try {
+        dind.push(droneIndicatorColor({ type: "iris", fit: { ability: designs.length ? designs[i % designs.length] : null } }));
+      } catch { dind.push("rgb(255,255,255)"); }
+    }
+    let ficon = null;
+    try {
+      const icon = formationDockIcon(e.droneCfg?.formation || "standard");
+      if (icon) {
+        const im = getCachedImage(icon);
+        if (isImgReady(im)) ficon = im;
+        else loadImage(icon, { priority: true });
+      }
+    } catch {}
+    // Grade BOT + firme BOT : vraies images, comme les joueurs classiques.
+    let rankImg = null, factImg = null;
+    try {
+      const ri = getCachedImage("ASSETS/RANKS/BOT.png");
+      if (isImgReady(ri)) rankImg = ri;
+      else loadImage("ASSETS/RANKS/BOT.png", { priority: true });
+      const fi = getCachedImage("ASSETS/FACTIONS/BOT.png");
+      if (isImgReady(fi)) factImg = fi;
+      else loadImage("ASSETS/FACTIONS/BOT.png", { priority: true });
+    } catch {}
+    drawPlayerStatus(
+      ctx,
+      { hp: Number(e.hp) || 0, hpMax: Math.max(1, Number(e.hpMax) || 1),
+        sh: Number(e.sh) || 0, shMax: Math.max(0, Number(e.shMax) || 0),
+        r: 20, dead: false },
+      pseudo, 0, 0, rankImg, factImg, dind, ficon, [],
+      // Comme les joueurs distants : plaque complète (barres + pastilles +
+      // formation) seulement quand locké, sinon pseudo + grade/firme + titre.
+      false, showBars === true,
+      "rgba(255,255,255,0.95)", null, 0, renderSmoothingOn(),
+      { text: "Bot JPC d'Hyperion Orbit", color: "#c77dff" },
+    );
+    // Bulle ISH : même animation de bouclier instantané que les joueurs
+    // (locaux comme distants : sprite INSTANT_SHIELD 64 frames, 3 s), jouée
+    // en boucle sur la durée de la bulle JPC (6 s). Plus de rond bleu.
+    if ((e.ishT || 0) > 0) {
+      try {
+        if (!instaShieldReady) { try { ensureInstaShieldLoaded(); } catch {} }
+        if (instaShieldReady && instaShieldImgs?.length) {
+          let idx = 0;
+          if (e._netUid) {
+            // Multi : le snapshot ne donne qu'un booléen → horloge locale bouclée.
+            const nowMs = (typeof performance !== "undefined" && performance.now ? performance.now() : Date.now());
+            if (!Number.isFinite(Number(e._jpcIshAnimT0))) e._jpcIshAnimT0 = nowMs;
+            const el = Math.max(0, (nowMs - Number(e._jpcIshAnimT0)) / 1000);
+            idx = Math.floor(el / ISH_DURATION * instaShieldImgs.length) % instaShieldImgs.length;
+          } else {
+            // Solo : ishT compte 6 → 0 → deux boucles d'anim à vitesse normale.
+            const el = Math.max(0, 6 - Number(e.ishT || 0));
+            idx = Math.floor(el / ISH_DURATION * instaShieldImgs.length) % instaShieldImgs.length;
+          }
+          const img = instaShieldImgs[Math.min(instaShieldImgs.length - 1, idx)];
+          if (isImgReady(img)) {
+            ctx.save();
+            ctx.imageSmoothingEnabled = false;
+            ctx.drawImage(img, -INSTA_SHIELD_PACK.w / 2, -INSTA_SHIELD_PACK.h / 2, INSTA_SHIELD_PACK.w, INSTA_SHIELD_PACK.h);
+            ctx.restore();
+          }
+        }
+      } catch {}
+    } else {
+      try { e._jpcIshAnimT0 = null; } catch {}
+    }
+  } catch {}
+}
+
 function npcLabelFor(e) {
   // ✅ Awakened : nom brouillé (code 25 caractères lettres/chiffres/?),
   // régénéré toutes les 0,05 s, différent par NPC.
@@ -32409,6 +32714,8 @@ function netVisualTarget(tx, ty, range, ev = null) {
 function netVisualShotOrigin(ev) {
   const fallback = { x: Number(ev?.x), y: Number(ev?.y) };
   try {
+    const npc = enemies.find(e => e?.hp > 0 && e._netUid === String(ev?.by || ""));
+    if (npc) return { x: npc.x, y: npc.y };
     const remote = getNetplayRemotes().get(String(ev?.by || ""));
     if (!remote) return fallback;
     if (ev?.petClone === 0 || ev?.petClone === 1) {
@@ -32448,6 +32755,96 @@ function shouldPlayNetVolleySound(ev) {
 }
 
 function spawnNetShotVisual(ev) {
+  // Tir NPC<->JPC partagé : streak rouge téléguidé (aucune collision).
+  if (ev && ev.npcShot === true) {
+    const from = enemies.find(e => e?.hp > 0 && e._netUid === String(ev.by || ""));
+    const target = enemies.find(e => e?.hp > 0 && e._netUid === String(ev.tuid || ""));
+    if (!target) return;
+    const cfg = NPC_TYPES[from?.type || ev.npcType] || {};
+    const sx0 = Number(from?.x ?? ev.x), sy0 = Number(from?.y ?? ev.y);
+    if (![sx0, sy0, target.x, target.y].every(Number.isFinite)) return;
+    const angle = Math.atan2(target.y - sy0, target.x - sx0);
+    const fx = Math.cos(angle), fy = Math.sin(angle);
+    const spd = Math.max(120, Number(from?.bulletSpeed ?? cfg.bulletSpeed) || 900);
+    const muzzle = (Number(from?.r ?? cfg.r) || 18) + 12;
+    const sprite = from?.bulletSprite || cfg.bulletSprite || null;
+    if (sprite?.src) loadImage(sprite.src, { priority: true });
+    for (const off of Number(ev.n) === 2 ? [-14, 14] : [0]) {
+      const sx = sx0 + fx * muzzle - fy * off;
+      const sy = sy0 + fy * muzzle + fx * off;
+      const dx = target.x - sx, dy = target.y - sy, distance = Math.hypot(dx, dy) || 1;
+      addCappedProjectile(enemyBullets, {
+        x: sx, y: sy, vx: dx / distance * spd, vy: dy / distance * spd, spd,
+        r: from?.bulletR ?? cfg.bulletR ?? 7, life: distance / spd + 0.3,
+        dmg: 0, key: from?.ammoKey || cfg.ammoKey || "x1",
+        scale: from?.bulletScale ?? cfg.bulletScale ?? 1.5, sprite,
+        target: "jpc", targetId: target.id, homing: true,
+        ownerId: from?.id ?? null, miss: false, visual: true, _jpcVisual: true,
+      }, ENTITY_LIMITS.enemyBullets);
+    }
+    return;
+  }
+  const jpcShooter = enemies.find(e => e?.isJpcBot && e.hp > 0 && e._netUid === String(ev?.by || ""));
+  if (jpcShooter) {
+    const targetUid = String(ev.tuid || "");
+    let target = targetUid
+      ? enemies.find(e => e?.hp > 0 && (e._netUid === targetUid || e._netPlayer === targetUid))
+        || (targetUid === String(netMyId()) ? player : null)
+      : null;
+    // Le serveur deja en cours peut encore emettre l'ancien format sans
+    // tuid. Ces evenements portent le point vise, comme les tirs allies.
+    // Le repli est visuel uniquement; un UID explicite garde la priorite.
+    if (!targetUid && Number.isFinite(Number(ev.tx)) && Number.isFinite(Number(ev.ty))) {
+      let bestD2 = 400 * 400;
+      for (const candidate of [...enemies, player]) {
+        if (!candidate || candidate === jpcShooter || !(candidate.hp > 0) || candidate.dead) continue;
+        const d2 = (candidate.x - Number(ev.tx)) ** 2 + (candidate.y - Number(ev.ty)) ** 2;
+        if (d2 < bestD2) { bestD2 = d2; target = candidate; }
+      }
+    }
+    if (!target || !(target.hp > 0)) return;
+    const legacyVolley = !targetUid && ev.jpcPart !== true;
+    const isPair = legacyVolley ? jpcShooter._netJpcPair === true : Number(ev.n) === 2;
+    if (legacyVolley) jpcShooter._netJpcPair = !isPair;
+    // Munition réelle du tireur (x4 / salves x6 en riposte, x1 en farm).
+    const evKey = String(ev.key || "x1").toLowerCase();
+    const jpcAmmo = (typeof PLAYER_BULLET_SPRITES !== "undefined" && PLAYER_BULLET_SPRITES[evKey]) ? evKey : "x1";
+    const jpcSprite = (typeof PLAYER_BULLET_SPRITES !== "undefined" && PLAYER_BULLET_SPRITES[jpcAmmo]) || PLAYER_BULLET_SPRITES.x1;
+    const angle = Math.atan2(target.y - jpcShooter.y, target.x - jpcShooter.x);
+    const fx = Math.cos(angle), fy = Math.sin(angle);
+    const spd = 4000 + Math.hypot(target.x - jpcShooter.x, target.y - jpcShooter.y);
+    for (const off of isPair ? [-SIDE_OFFSET, SIDE_OFFSET] : [0]) {
+      const sx = jpcShooter.x + fx * ((jpcShooter.r || 20) + 10) - fy * off;
+      const sy = jpcShooter.y + fy * ((jpcShooter.r || 20) + 10) + fx * off;
+      const dx = target.x - sx, dy = target.y - sy, distance = Math.hypot(dx, dy) || 1;
+      addCappedProjectile(enemyBullets, {
+        x: sx, y: sy, vx: dx / distance * spd, vy: dy / distance * spd, spd,
+        r: 6, life: distance / spd + 0.3, dmg: 0, key: jpcAmmo, scale: 1,
+        sprite: jpcSprite,
+        target: target === player ? "player" : "npc", targetId: target.id,
+        homing: true, ownerId: jpcShooter.id, miss: false, visual: true, _jpcVisual: true, _jpcShot: true,
+      }, ENTITY_LIMITS.enemyBullets);
+    }
+    if (legacyVolley) {
+      // L'ancien serveur n'envoie que le vrai tir. Completer la salve
+      // ici; les serveurs recents signalent chaque eclair par jpcPart.
+      const volley = (Number(jpcShooter._netJpcVolley) || 0) + 1;
+      jpcShooter._netJpcVolley = volley;
+      for (let i = 1; i < 6; i++) {
+        const pair = (i % 2 === 0) === isPair;
+        for (const off of pair ? [-SIDE_OFFSET, SIDE_OFFSET] : [0]) {
+          scheduleNpcFaux(i * 0.2, {
+            npcId: jpcShooter.id, jpcVolley: volley, off, dmg: 0,
+            spd, life: Math.hypot(target.x - jpcShooter.x, target.y - jpcShooter.y) / spd + 0.3,
+            key: jpcAmmo, scale: 1, sprite: jpcSprite, bulletR: 6,
+            target: target === player ? "player" : "npc", targetId: target.id,
+            homing: true, visualOnly: true,
+          });
+        }
+      }
+    }
+    return;
+  }
   const tx = Number(ev.tx), ty = Number(ev.ty);
   const origin = netVisualShotOrigin(ev);
   const sx0 = Number(origin.x), sy0 = Number(origin.y);
@@ -32498,6 +32895,9 @@ function spawnNetShotVisual(ev) {
         sabHomeBy: sab ? String(ev.by || "") : "",
         volleyId: netVolley, volleySize: starts.length,
         miss: netMiss, _netVisual: true,
+        // Tir d'un bot JPC (uid map#jpcN) : exempté du cull capteur comme
+        // les streaks rouges (le farm a lieu loin du joueur).
+        _jpcVisual: /#jpc\d*$/i.test(String(ev.by || "")),
       }, ENTITY_LIMITS.playerBullets);
     } catch { break; }
   }
@@ -32561,6 +32961,9 @@ function spawnNetRocketVisual(ev) {
       arcKick0: arcDir * arcScale * spd * Math.tan((70 + arcBoost - Math.min(1, dist / prange) * 25) * Math.PI / 180),
       smokeT: 0, smokeHue: Math.floor(Math.random() * 360),
       _netVisual: true,
+      // Tir d'un bot JPC (uid map#jpcN) : exempté du cull capteur comme
+      // les streaks (le farm a lieu loin du joueur).
+      _jpcVisual: /#jpc\d*$/i.test(String(ev.by || "")),
     }, ENTITY_LIMITS.playerBullets);
   } catch {}
 }
@@ -34872,7 +35275,11 @@ function drawNpcDrones(e) {
     const cfg = e.droneCfg || NPC_TYPES[e.type]?.drones;
     const count = Math.max(0, Math.min(12, Math.floor(Number(cfg?.count) || 0)));
     if (!count) return;
-    const design = getDroneDesign(cfg.design)?.id || null;
+    const singleDesign = getDroneDesign(cfg.design)?.id || null;
+    // Bots JPC : mix havoc/hercules possible (un design par drone).
+    const mixedDesigns = Array.isArray(cfg.designs) && cfg.designs.length
+      ? cfg.designs.map((d) => getDroneDesign(d)?.id || null)
+      : null;
     const level = Math.max(1, Math.min(DRONE_MAX_LEVEL || 6, Math.floor(Number(cfg.level) || 6)));
     const offsets = getDroneFormationOffsets(count, cfg.formation || "standard");
     if (!offsets?.length) return;
@@ -34901,7 +35308,8 @@ function drawNpcDrones(e) {
       st.y += (target.y - st.y) * follow;
       const rx = st.x * ca - st.y * sa;
       const ry = st.x * sa + st.y * ca;
-      const src = getDroneSpritePath({ type: "iris", level }, frame, design);
+      const useDesign = mixedDesigns?.length ? (mixedDesigns[i % mixedDesigns.length] || singleDesign) : singleDesign;
+      const src = getDroneSpritePath({ type: "iris", level }, frame, useDesign);
       const image = getCachedImage(src);
       let renderImage = image;
       if (!isImgReady(image)) {
@@ -35579,8 +35987,9 @@ function drawTargetMarker(e, ox, oy, time) {
 }
 
 // Lock partagé : gris si le NPC est revendiqué par un autre joueur hors
-// groupe (pas de récompense pour nous), rouge sinon — premier attaquant,
-// NPC libre, membre du groupe, ou solo (pas de _netUid).
+// groupe (pas de récompense pour nous), ou par un bot JPC qui le farme déjà
+// (comme un vrai joueur : il garde sa cible, on voit gris), rouge sinon —
+// premier attaquant, NPC libre, membre du groupe, ou solo (pas de _netUid).
 function targetLockSprite(e) {
   try {
     if (e && e._netUid && !e._netPlayer && !e._netPet && e._netLockBy != null) {
@@ -35595,6 +36004,21 @@ function targetLockSprite(e) {
           return LOCK_GREY_SPR || { ...LOCK_SPR, src: "ASSETS/UI/LOCK_DEJAPRIS.png" };
         }
       }
+    }
+    // Multi : NPC farmé par un JPC et pas (encore) locké par nous → gris.
+    if (e && e._netUid && !e._netPlayer && !e._netPet && e._netJpcBy != null) {
+      if (String(e._netLockBy ?? "") !== String(netMyId())) {
+        return LOCK_GREY_SPR || { ...LOCK_SPR, src: "ASSETS/UI/LOCK_DEJAPRIS.png" };
+      }
+    }
+    // Solo : NPC farmé par un JPC vivant qui est toujours dessus → gris.
+    if (e && !e._netUid && !e.isJpcBot && e._jpcFarmed === true && e._jpcAggroBy != null) {
+      try {
+        const bot = (typeof enemies !== "undefined" ? enemies : []).find(
+          (o) => o && o.isJpcBot === true && o.hp > 0 && o.id === e._jpcAggroBy && o.jpcFarmId === e.id
+        );
+        if (bot) return LOCK_GREY_SPR || { ...LOCK_SPR, src: "ASSETS/UI/LOCK_DEJAPRIS.png" };
+      } catch {}
     }
   } catch {}
   return LOCK_SPR;
@@ -35770,8 +36194,113 @@ function playerIsInSafeZone() {
   return false;
 }
 
+// Tirs NPC vers un bot JPC : visuels avec LES MUNITIONS DU NPC (comme vers
+// un joueur), téléguidés (ils s'arrêtent sur le bot) + dégâts directs.
+// Les enemyBullets ne collisionnent qu'avec joueur/escorte : inutile de les
+// armer en dégâts ici.
+function spawnJpcFightShots(from, to, ammoKey = "x1", count = 3) {
+  try {
+    const ang = Math.atan2(Number(to.y) - from.y, Number(to.x) - from.x);
+    const fx = Math.cos(ang), fy = Math.sin(ang);
+    const px = -fy, py = fx;
+    const muzzle = (from.r || 18) + 12;
+    from._altShot = !from._altShot;
+    const offs = from._altShot ? [-14, 14] : [0];
+    const all = [...offs];
+    for (let i = 0; all.length < Math.max(1, count); i++) {
+      all.push((i % 2 ? 14 : -14) + i * 2);
+    }
+    const spd = Math.max(120, from.bulletSpeed || 900);
+    const dist = Math.hypot(Number(to.x) - from.x, Number(to.y) - from.y) || 1;
+    for (const off of all.slice(0, Math.max(1, count))) {
+      const sx = from.x + fx * muzzle + px * off;
+      const sy = from.y + fy * muzzle + py * off;
+      const dx = Number(to.x) - sx, dy = Number(to.y) - sy;
+      const len = Math.hypot(dx, dy) || 1;
+      addCappedProjectile(enemyBullets, {
+        x: sx, y: sy,
+        vx: dx / len * spd, vy: dy / len * spd,
+        spd, r: 7,
+        life: Math.max(0.25, dist / spd + 0.08),
+        dmg: 0, key: ammoKey,
+        scale: 1.5, sprite: from.bulletSprite || null,
+        target: "jpc", targetId: to.id,
+        homing: true,
+        ownerId: from.id,
+        miss: false, visual: true, _jpcVisual: true,
+      }, ENTITY_LIMITS.enemyBullets);
+    }
+  } catch {}
+}
+
+// NPC qui tire sur un bot JPC (solo). Miroir des règles joueur : cadence,
+// portée, passifs, abri — mais dégâts directs au bot (fromJpc = pas le joueur).
+function enemyShootAtJpc(e, dt, jpc) {
+  if (!jpc || !(jpc.hp > 0)) { e.shootCd = 0.5 + Math.random() * 0.6; return; }
+  if ((e.empT || 0) > 0 || (e.redirectSilenceT || 0) > 0) return;
+  if (e.canShoot === false || (e.shootRange ?? -1) <= 0 || (e.shootRate ?? 0) <= 0) return;
+  if (rules?.mode === "zone" && e.passiveNative && !e._provoked && e._jpcAggro !== true) return;
+  // À l'abri (portail/base) : seul le NPC provoqué par CE bot riposte.
+  if (npcIsInSafeZone(jpc) && e._jpcAggroBy !== jpc.id) {
+    e.shootCd = 0.5 + Math.random() * 0.6;
+    return;
+  }
+  e.shootCd = (e.shootCd ?? 0) - dt;
+  if (e.shootCd > 0) return;
+  const r = e.shootRange || 0;
+  if (dist2(e.x, e.y, jpc.x, jpc.y) > r * r) {
+    e.shootCd = 0.12 + Math.random() * 0.18;
+    return;
+  }
+  e.shootCd = (1 / Math.max(0.001, e.shootRate || 1)) * (0.85 + Math.random() * 0.3);
+  const dmg = Math.max(1, Math.round(Number(e.bulletDmg ?? 10) * (0.95 + Math.random() * 0.1)));
+  try { damageEnemy(jpc, dmg, undefined, undefined, { fromJpc: true, fixedDamage: true }); } catch {}
+  // Chiffres de dégâts subis façon vrai joueur locké : affichés quand on
+  // locke ce bot (comme les dégâts alliés sur cible verrouillée en multi).
+  try {
+    if (Target.get() === jpc && Number(dmg) > 0) {
+      addFloatText(jpc.x + (Math.random() - 0.5) * 60, jpc.y - 90 - Math.random() * 20,
+        dmg, "rgba(255,235,170,0.96)",
+        { text: `${DMG_FMT.format(Math.round(Number(dmg) || 0))}`, size: 19, pop: 0.3, shake: 0.6, life: 1, glow: 1, weight: 900, impact: true });
+    }
+  } catch {}
+  // Salve réelle (paire/centre en alternance, munitions du NPC) + faux tirs
+  // étalés façon joueur (0,2 s), tous téléguidés vers le bot.
+  const ammo = e.ammoKey || "x1";
+  const spd = Math.max(120, e.bulletSpeed || 900);
+  const life = bulletLifeForRange(e.shootRange, spd);
+  spawnJpcFightShots(e, jpc, ammo, 2);
+  const fauxTotal = Math.max(3, Math.floor(Number(e.fauxLasers) || 0));
+  const isPair = e._altShot === true;
+  for (let i = 1; i <= fauxTotal; i++) {
+    const fakeIsPair = ((i % 2) === 0) === isPair;
+    const offs = fakeIsPair ? [-14, 14] : [0];
+    for (const off of offs) {
+      scheduleNpcFaux(i * 0.2, {
+        npcId: e.id, off, dmg: 0,
+        spd, life, key: ammo,
+        scale: e.bulletScale ?? 1.5,
+        sprite: e.bulletSprite || null,
+        bulletR: e.bulletR ?? 7,
+        target: "jpc", targetId: jpc.id,
+        homing: true,
+        visualOnly: true,
+        hitRadiusBonus: NPC_SHOT_RULES.hitRadiusBonus,
+      });
+    }
+  }
+}
+
 function enemyShoot(e, dt, combatTarget = player) {
   if (!e || e.hp <= 0) return;
+  // Bots JPC : pris pour cible comme un vrai joueur — visuels rouges +
+  // dégâts directs (les enemyBullets ne touchent que joueur/escorte).
+  if (combatTarget && combatTarget.isJpcBot === true) {
+    // Multi : le serveur tranche (dégâts + visuels via shotFx).
+    if (e._netUid && netplayNpcActive()) return;
+    enemyShootAtJpc(e, dt, combatTarget);
+    return;
+  }
   // Vers un joueur, les dégâts des NPC partagés arrivent du serveur.
   // Si tirs ET impacts sont coupés, aucune trajectoire invisible à simuler.
   // Les escortes locales et les NPC solo gardent leurs vrais projectiles.
@@ -35865,7 +36394,7 @@ function enemyShoot(e, dt, combatTarget = player) {
   }
 
   const baseCd = 1 / Math.max(0.001, e.shootRate || 1);
-  e.shootCd = baseCd * (0.85 + Math.random() * 0.3);
+  e.shootCd = e.isJpcBot === true ? 1 : baseCd * (0.85 + Math.random() * 0.3);
 
   const ang0 = Math.atan2(combatTarget.y - e.y, combatTarget.x - e.x);
   // ✅ Pattern de tir joueur (ex. police Awakened) : volée réelle en paire
@@ -35875,8 +36404,8 @@ function enemyShoot(e, dt, combatTarget = player) {
   if (e.altShot === true) {
     const isPair = e._altShot === true;
     const ammo = e.ammoKey || "x1";
-    const spd = Math.max(120, e.bulletSpeed || 900);
-    const muzzleBase = (e.r || 18) + 12;
+    const spd = e.isJpcBot ? 4000 + Math.sqrt(d2p) : Math.max(120, e.bulletSpeed || 900);
+    const muzzleBase = (e.r || 18) + (e.isJpcBot ? 10 : 12);
     const fx = Math.cos(ang0), fy = Math.sin(ang0);
     const px = -fy, py = fx;
     const life = bulletLifeForRange(e.shootRange, spd);
@@ -35901,14 +36430,16 @@ function enemyShoot(e, dt, combatTarget = player) {
         targetId: combatTarget === player ? null : combatTarget.id,
         homing: NPC_SHOT_RULES.homing,
         ownerId: e.id,
-        miss: visual ? false : (Math.random() < Math.min(1, NPC_SHOT_RULES.missChance + npcLaserAccuracyPenalty(e))),
+        _jpcShot: e.isJpcBot === true,
+        // Maladresse JPC (0 en 1-8/BL, +15 % en 1-1) par-dessus les 15 % de base.
+        miss: visual ? false : (Math.random() < Math.min(1, NPC_SHOT_RULES.missChance + npcLaserAccuracyPenalty(e) + (e.isJpcBot === true ? (Number(e.jpcMissBonus) || 0) : 0))),
         visual: visual === true,
         hitRadiusBonus: NPC_SHOT_RULES.hitRadiusBonus,
       }, ENTITY_LIMITS.enemyBullets);
     };
     if (isPair) {
-      spawnShot(-SIDE_OFFSET, dmgBase, false);
-      spawnShot(SIDE_OFFSET, dmgBase, false);
+      spawnShot(-SIDE_OFFSET, e.isJpcBot ? dmgBase / 2 : dmgBase, false);
+      spawnShot(SIDE_OFFSET, e.isJpcBot ? dmgBase / 2 : dmgBase, false);
     } else {
       spawnShot(0, dmgBase, false);
     }
@@ -35923,12 +36454,13 @@ function enemyShoot(e, dt, combatTarget = player) {
       const offs = fakeIsPair ? [-SIDE_OFFSET, SIDE_OFFSET] : [0];
       for (const off of offs) {
         scheduleNpcFaux(i * 0.2, {
-          npcId: e.id, off, dmg: dmgBase,
+          npcId: e.id, off, dmg: e.isJpcBot ? 0 : dmgBase,
           spd, life, key: ammo,
           scale: e.bulletScale ?? 1.5,
           sprite: e.bulletSprite || null,
           bulletR: e.bulletR ?? 7,
           target: fauxTarget, targetId: fauxTargetId,
+          visualOnly: e.isJpcBot === true,
           homing: NPC_SHOT_RULES.homing,
           hitRadiusBonus: NPC_SHOT_RULES.hitRadiusBonus,
         });
@@ -38318,9 +38850,13 @@ for (let i = enemyBullets.length - 1; i >= 0; i--) {
       continue;
     }
   }
-  const bulletTarget = b.target === "escort" ? getEscortById(b.targetId) : player;
+  const bulletTarget = b.target === "escort" ? getEscortById(b.targetId)
+    // Visuels JPC<->NPC : téléguidés vers l'entité (aucune collision réelle,
+    // dégâts déjà appliqués au moment du tir).
+    : (b.target === "jpc" || b.target === "npc") ? getEnemyById(b.targetId)
+    : player;
 
-  // Le tir NPC recalcule sa direction vers le joueur.
+  // Le tir NPC recalcule sa direction vers sa cible.
   // Donc visuellement, il ne passe plus à côté.
   if (bulletTarget?.hp > 0 && b.homing) {
     const dx = bulletTarget.x - b.x;
@@ -38331,6 +38867,54 @@ for (let i = enemyBullets.length - 1; i >= 0; i--) {
 
     b.vx = (dx / d) * spd;
     b.vy = (dy / d) * spd;
+  }
+
+  // Visuels JPC (lasers de farm + roquettes) : ils meurent avec leur cible.
+  // Sinon les traînées continuent à partir dans le vide quand le NPC meurt
+  // ou que le bot décroche (les roquettes vivent 6 s+). Les vrais tirs NPC
+  // gardent leur comportement historique.
+  if ((b.visual === true || (b.isRocket === true && b._jpcShot === true)) && !(bulletTarget?.hp > 0)) {
+    removeProjectile(enemyBullets, i);
+    continue;
+  }
+
+  // Roquettes JPC : même vol en arc + fumée que les roquettes joueur
+  // (mêmes champs). Tiré uniquement pour isRocket : aucun effet sinon.
+  if (b.isRocket === true) {
+    const chaseSpd = Math.max(120, b.spd || Math.hypot(b.vx, b.vy) || 900);
+    b.arcT = (b.arcT || 0) + dt;
+    const tdx = (bulletTarget?.x ?? b.x) - b.x, tdy = (bulletTarget?.y ?? b.y) - b.y;
+    const distR = Math.hypot(tdx, tdy) || 1;
+    const fadeR = Math.min(1, distR / Math.max(1, b.arcDist0 || 1));
+    const kickR = (b.arcKick0 || 0) * Math.pow(0.5, b.arcT * chaseSpd / 1500) * fadeR * fadeR;
+    const dd = Math.hypot(b.vx, b.vy) || 1;
+    const nvx = b.vx / dd, nvy = b.vy / dd;
+    b.vx += -nvy * kickR;
+    b.vy += nvx * kickR;
+    const sp2 = Math.hypot(b.vx, b.vy) || 1;
+    b.vx = b.vx / sp2 * chaseSpd;
+    b.vy = b.vy / sp2 * chaseSpd;
+    // Fumée arc-en-ciel + filet (gris pour le lance-roquettes), comme les
+    // roquettes joueur. Coupé par la même option roquettes.
+    let jpcRocketFxOn = true;
+    try { jpcRocketFxOn = GAME_SETTINGS.rocketSmoke !== false; } catch {}
+    const lastPt = b.trail?.length ? b.trail[b.trail.length - 1] : null;
+    const stepMoved = lastPt ? Math.hypot(b.x - lastPt.x, b.y - lastPt.y) : 99;
+    b.smokeDist = (b.smokeDist || 0) + stepMoved;
+    if (jpcRocketFxOn && fxDensityMult() > 0 && b.smokeDist >= 12 / fxDensityMult()) {
+      b.smokeDist = 0;
+      b.smokeHue = ((b.smokeHue || 0) + 8) % 360;
+      const smokeColor = b.isLauncherRocket
+        ? "rgba(190,200,205,0.82)"
+        : `hsla(${b.smokeHue},100%,65%,0.9)`;
+      pushBounded(sparks, { x: b.x, y: b.y, t: 0, big: false, smoke: true, color: smokeColor }, fxDensityCap(ENTITY_LIMITS.sparks));
+      b.trail ??= [];
+      b.trail.push({ x: b.x, y: b.y, hue: b.smokeHue || 0, color: b.isLauncherRocket ? "rgba(205,215,220,0.9)" : null });
+      if (b.trail.length > 110) b.trail.shift();
+    }
+    if (!b.trail?.length && jpcRocketFxOn) {
+      b.trail = [{ x: b.x, y: b.y, hue: b.smokeHue || 0, color: b.isRocket ? "rgba(205,215,220,0.9)" : null }];
+    }
   }
 
   const expired = advanceProjectile(b, dt);
@@ -38350,7 +38934,9 @@ for (let i = enemyBullets.length - 1; i >= 0; i--) {
 
     if (segCircleHit(b._oldX, b._oldY, b.x, b.y, bulletTarget.x, bulletTarget.y, rr)) {
       removeProjectile(enemyBullets, i);
-
+      // Visuels JPC<->NPC : l'étincelle s'éteint sur la cible, dégâts déjà
+      // appliqués au tir (jamais de collision réelle ici).
+      if (bulletTarget.isJpcBot === true || b.target === "npc" || (b.visual === true && b.dmg === 0)) continue;
       const formationEvasion = bulletTarget === player
         ? Math.max(0, Number(getActiveDroneFormation(account.user).effects?.evasionPct || 0)) / 100
         : 0;
@@ -38724,12 +39310,16 @@ if ((e.type === "npc_Cubikon" || e.cubikonMinions) && e._animPhase) {
     const frozen = e.freezeT > 0;
 
     let combatTarget = getNpcCombatTarget(e);
+    // Bots JPC locaux (solo) : logique propre, jamais l'IA NPC standard.
+    // Bots JPC partagés (multi natif) : pipeline visuel standard (tirs
+    // vers la cible serveur), positions Owned par le serveur.
+    if (e.isJpcBot === true && !e._netUid) continue;
     // Multi : NPC partage — cible imposee par le serveur (meme echange de
     // tirs sur les 2 ecrans). Sans cible partagee : pas de tir (le calme
     // serveur s'applique). Vers le copain : tirs purement visuels.
     if (e._netUid) {
       try { combatTarget = netNpcCombatTarget(e); } catch { combatTarget = null; }
-      if (combatTarget && !frozen) {
+      if (combatTarget && !frozen && e.isJpcBot !== true) {
         const beforeVisual = enemyBullets.length;
         enemyShoot(e, dt, combatTarget);
         // Tirs vers le copain : marques visuels (impact client, zero degat).
@@ -38753,12 +39343,13 @@ if ((e.type === "npc_Cubikon" || e.cubikonMinions) && e._animPhase) {
       continue;
     }
 
-    const dx = combatTarget.x - e.x;
-    const dy = combatTarget.y - e.y;
-    const d = Math.hypot(dx, dy);
+    const dx0 = combatTarget.x - e.x;
+    const dy0 = combatTarget.y - e.y;
+    let dx = dx0, dy = dy0;
+    let d = Math.hypot(dx, dy);
     // ✅ chevauchement exact (ex. NPC à la même vitesse que le joueur collé à lui) :
     // direction (0,0) interdite (vecteur nul + frame NaN) → on garde le cap.
-    const nx = d > 0.01 ? dx / d : Math.cos(e.angle || 0), ny = d > 0.01 ? dy / d : Math.sin(e.angle || 0);
+    let nx = d > 0.01 ? dx / d : Math.cos(e.angle || 0), ny = d > 0.01 ? dy / d : Math.sin(e.angle || 0);
 
     const zoneMode = rules?.mode === "zone";
 
@@ -38923,7 +39514,9 @@ if ((e.type === "npc_Cubikon" || e.cubikonMinions) && e._animPhase) {
             // le NPC locké vient, les autres font leur vie même s'ils étaient
             // déjà engagés / provoqués avant).
             // Maps doublées (BL / 4-5) : portée x2.
-            if (d <= aggroRange * aggroRangeMult() && !isPlayerCloaked() && player.cpuCloak !== true && !npcPortalCalm(e) && !(playerProtectedSpot() && !npcShelterKeepsAggro(e))) {
+            // NOTE : distance joueur explicite (d peut viser un bot JPC).
+            const dp = Math.hypot(player.x - e.x, player.y - e.y);
+            if (dp <= aggroRange * aggroRangeMult() && !isPlayerCloaked() && player.cpuCloak !== true && !npcPortalCalm(e) && !(playerProtectedSpot() && !npcShelterKeepsAggro(e))) {
               e._aggro = true;
               e._aggroT = aggroHold;
             }
@@ -38938,10 +39531,77 @@ if ((e.type === "npc_Cubikon" || e.cubikonMinions) && e._animPhase) {
           }
         }
 
+        // Bots JPC : les NPC les prennent pour cible comme un vrai joueur
+        // (proximité + provocation). Le joueur déjà engagé garde la priorité
+        // (pas de vol de fight) ; sinon provocation JPC, sinon le plus proche.
+        // En multi le serveur tranche : pas d'aggro JPC locale.
+        e._jpcAggroT = Math.max(0, (Number(e._jpcAggroT) || 0) - dt);
+        let jpcT = null;
+        if (!e._netUid && !netplayNpcActive() && !(combatTarget && combatTarget.isJpcBot === true && e._jpcAggro === true)) {
+          try {
+            const cfgJ = NPC_TYPES[e.type] || {};
+            const provId = e._jpcAggroBy;
+            const provoked = provId != null && e._jpcAggroT > 0;
+            // Provoqué : on riposte sur l'agresseur (pas le plus proche).
+            if (provoked) {
+              const p = enemies.find((x) => x && x.id === provId && x.isJpcBot === true && x.hp > 0);
+              if (p && !npcIsInSafeZone(p)
+                && dist2(e.x, e.y, p.x, p.y) <= (aggroRange * aggroRangeMult() + 400) ** 2) jpcT = p;
+              else { e._jpcAggroBy = null; e._jpcAggroT = 0; }
+            }
+            if (!jpcT && !npcPortalCalm(e) && (!cfgJ.passiveNative || e._provoked)) {
+              jpcT = findJpcPreyForNpc(e, enemies, aggroRange * aggroRangeMult(), (j) => npcIsInSafeZone(j));
+            }
+          } catch {}
+        } else if (combatTarget && combatTarget.isJpcBot === true && e._jpcAggro === true) {
+          jpcT = (combatTarget.hp > 0 && !npcIsInSafeZone(combatTarget)) ? combatTarget : null;
+        }
+        // Priorité façon MMO : celui qui TAPE (joueur ou bot), pas celui qui
+        // passe. Sinon, le plus proche. Ça permet d'observer un fight de bot
+        // de près sans le voler — comme entre deux vrais joueurs.
+        let pickJpc = false;
+        if (jpcT) {
+          const pDmgFresh = performance.now() - Number(e._playerHitT || 0) < 4000;
+          const pCanFight = !player.dead && !playerInSZ && !isPlayerCloaked() && player.cpuCloak !== true;
+          if (pDmgFresh && pCanFight) {
+            // Duel : avantage à celui qui tient déjà la cible (anti vol de
+            // fight), sinon le plus proche (comme entre deux vrais joueurs).
+            const dj = Math.hypot(jpcT.x - e.x, jpcT.y - e.y);
+            const dp2 = Math.hypot(player.x - e.x, player.y - e.y);
+            const iAmOnPlayer = combatTarget === player;
+            const iAmOnJpc = combatTarget && combatTarget.isJpcBot === true && e._jpcAggro === true;
+            if (iAmOnPlayer && !iAmOnJpc) pickJpc = (dj < dp2 * 0.7);
+            else if (iAmOnJpc) pickJpc = (dj <= dp2 * 1.15);
+            else pickJpc = (dj < dp2);
+          } else {
+            pickJpc = true;
+          }
+        }
+        if (pickJpc) {
+          combatTarget = jpcT;
+          e._jpcAggro = true;
+          dx = combatTarget.x - e.x; dy = combatTarget.y - e.y;
+          d = Math.hypot(dx, dy);
+          if (d > 0.01) { nx = dx / d; ny = dy / d; }
+          else { nx = Math.cos(e.angle || 0); ny = Math.sin(e.angle || 0); }
+        } else {
+          e._jpcAggro = false;
+          if (combatTarget && combatTarget.isJpcBot === true) {
+            combatTarget = getNpcCombatTarget(e);
+            if (combatTarget) {
+              dx = combatTarget.x - e.x; dy = combatTarget.y - e.y;
+              d = Math.hypot(dx, dy);
+              if (d > 0.01) { nx = dx / d; ny = dy / d; }
+              else { nx = Math.cos(e.angle || 0); ny = Math.sin(e.angle || 0); }
+            }
+          }
+        }
+
         let mxv = 0, myv = 0;
 
         // Camouflage ultime / CPU CL04K-XL : le NPC ne poursuit plus le joueur invisible.
-        if (!playerInSZ && !isPlayerCloaked() && player.cpuCloak !== true && e._aggro) {
+        const jpcChase = combatTarget && combatTarget.isJpcBot === true && e._jpcAggro === true;
+        if ((jpcChase || (!playerInSZ && !isPlayerCloaked() && player.cpuCloak !== true && e._aggro))) {
           e.aiZ.state = "aggro";
 
                   if (isKamikaze) {
@@ -38997,7 +39657,9 @@ if ((e.type === "npc_Cubikon" || e.cubikonMinions) && e._animPhase) {
         
 
         const spd2N = e.vx * e.vx + e.vy * e.vy;
-        if (e._aggro && !isPlayerUntargetable()) {
+        if (jpcChase) {
+          e.angle = Math.atan2(combatTarget.y - e.y, combatTarget.x - e.x);
+        } else if (e._aggro && !isPlayerUntargetable()) {
           e.angle = Math.atan2(player.y - e.y, player.x - e.x);
         } else if (spd2N > 25) {
           e.angle = Math.atan2(e.vy, e.vx);
@@ -39281,8 +39943,10 @@ function drawBotMinimalScene(ox, oy) {
   // Projectiles : traits courts, aucune trainee ni frame animee.
   const drawShot = (shot, color) => {
     // Tirs distants (NPC + visuels alliés) : même règle capteurs 1800 que les
-    // NPC. Nos propres tirs restent à plein régime.
-    if (shot !== null && typeof shot === "object" && (shot._netVisual === true || shot._netFriend != null || shot.side !== "player")) {
+    // NPC. Nos propres tirs restent à plein régime. Fights JPC : toujours
+    // dessinés à l'écran (le farm a lieu loin du joueur).
+    if (shot !== null && typeof shot === "object" && shot._jpcVisual !== true
+      && (shot._netVisual === true || shot._netFriend != null || shot.side !== "player")) {
       if (isBeyondSensorRadius(Number(shot.x), Number(shot.y))) return;
     }
     const x = Number(shot?.x) + ox, y = Number(shot?.y) + oy;
@@ -39297,7 +39961,9 @@ function drawBotMinimalScene(ox, oy) {
     ctx.stroke();
   };
   for (const shot of bullets) drawShot(shot, shot?.isRocket ? "#ffcf66" : "#78dfff");
-  for (const shot of enemyBullets) drawShot(shot, "#ff6474");
+  for (const shot of enemyBullets) {
+    if (shot._jpcShot === true || displayNpcShotsOn()) drawShot(shot, shot._jpcShot === true ? "#78dfff" : "#ff6474");
+  }
 
   // NPC : fleche orientee. La cible verrouillee est jaune et garde ses barres.
   for (const enemy of spatialNpcsInRect(-ox - 50, -oy - 50, -ox + innerWidth + 50, -oy + innerHeight + 50)) {
@@ -39533,7 +40199,9 @@ function draw() {
         }
       } catch {}
       try {
-        drawNpcStatus(
+        // Bots JPC : plaque joueur (pseudo, grade/firme BOT, titre violet).
+        if (e.isJpcBot === true) drawJpcBotPlate(e, shouldShowNpcBars(e, selectedEnemyForBars));
+        else drawNpcStatus(
           ctx,
           e,
           npcLabelFor(e),
@@ -39573,7 +40241,17 @@ function draw() {
     }
     drawNpcDrones(e);
     drawEnemyBody(e, enemySpriteFrame);
-    if (GAME_SETTINGS.npcEngineEffects) npcEngine.draw(ctx, e, enemyConfig, isImgReady, enemySpriteFrame);
+    // Bots JPC : flammes réacteur façon joueur (coque SHIP_PACKS).
+    if (e.isJpcBot === true) {
+      const pack = e._jpcPack || (e._jpcPack = getShipPackByIdData(e.jpcShip) || null);
+      if (pack && GAME_SETTINGS.shipSmoke !== false) {
+        try {
+          const frames = Math.max(1, Number(pack.frames) || 32);
+          const idx = angleToFrameIndex(Number(e.angle || 0) + (pack.angleOffset || 0), frames);
+          shipEngine.draw(ctx, e, pack, isImgReady, idx);
+        } catch {}
+      }
+    } else if (GAME_SETTINGS.npcEngineEffects) npcEngine.draw(ctx, e, enemyConfig, isImgReady, enemySpriteFrame);
     drawRocketDebuffEffect(e);
     // Affaiblissement (Diminisher) : sprite joué par-dessus le vaisseau
     // de la cible verrouillée, en boucle pendant l'effet.
@@ -39763,7 +40441,9 @@ function draw() {
       ctx.restore();
     }
 
-    drawNpcStatus(
+    // Bots JPC : plaque joueur (pseudo, grade/firme BOT, titre violet).
+    if (e.isJpcBot === true) drawJpcBotPlate(e, shouldShowNpcBars(e, selectedEnemyForBars));
+    else drawNpcStatus(
       ctx,
       e,
       npcLabelFor(e),
@@ -39813,8 +40493,8 @@ function draw() {
 
   for (const b of bullets) {
     // Visuels alliés distants : même règle capteurs 1800. Nos propres tirs
-    // restent à plein régime.
-    if (b && b._netVisual === true && isBeyondSensorRadius(b.x, b.y)) continue;
+    // restent à plein régime. Tirs de farm JPC : toujours dessinés à l'écran.
+    if (b && b._netVisual === true && b._jpcVisual !== true && isBeyondSensorRadius(b.x, b.y)) continue;
     const x = b.x + ox, y = b.y + oy;
     if (x < -90 || y < -90 || x > innerWidth + 90 || y > innerHeight + 90) continue;
     // Filet fin derrière les roquettes : gris pour le lanceur, arc-en-ciel
@@ -39841,14 +40521,36 @@ function draw() {
     drawBulletSprite(x, y, ang, b.key || "x1", "player", 1.6);
   }
 
-  for (const b of displayNpcShotsOn() ? enemyBullets : []) {
+  for (const b of enemyBullets) {
+    if (!displayNpcShotsOn() && b._jpcShot !== true) continue;
     // Tirs NPC / visuels distants : même règle capteurs 1800 que les NPC.
-    if (isBeyondSensorRadius(b.x, b.y)) continue;
+    // Fights JPC : toujours dessinés à l'écran (le farm a lieu loin du joueur).
+    if (b._jpcVisual !== true && isBeyondSensorRadius(b.x, b.y)) continue;
     const x = b.x + ox, y = b.y + oy;
     if (x < -120 || y < -120 || x > innerWidth + 120 || y > innerHeight + 120) continue;
+    // Filet des roquettes JPC : gris pour le lanceur, arc-en-ciel sinon
+    // (comme les roquettes joueur, même option roquettes).
+    let jpcTrailOn = true;
+    try { jpcTrailOn = GAME_SETTINGS.rocketSmoke !== false; } catch {}
+    if (jpcTrailOn && b.isRocket === true && b.trail?.length > 1) {
+      ctx.save();
+      ctx.lineWidth = 1;
+      ctx.lineCap = "round";
+      for (let i = 1; i < b.trail.length; i++) {
+        const p0 = b.trail[i - 1], p1 = b.trail[i];
+        ctx.globalAlpha = 0.75 * (i / b.trail.length);
+        ctx.strokeStyle = p1.color || `hsla(${p1.hue || 0},100%,62%,1)`;
+        ctx.beginPath();
+        ctx.moveTo(p0.x + ox, p0.y + oy);
+        ctx.lineTo(p1.x + ox, p1.y + oy);
+        ctx.stroke();
+      }
+      ctx.restore();
+      ctx.globalAlpha = 1;
+    }
     const ang = Math.atan2(b.vy, b.vx);
     const scale = b.scale ?? 1.5;
-    drawBulletSprite(x, y, ang, b.key || "x1", "npc", scale, b.sprite || null);
+    drawBulletSprite(x, y, ang, b.key || "x1", b._jpcShot === true ? "player" : "npc", b._jpcShot === true ? 1.6 : scale, b.sprite || null);
   }
 
   // ✅ impacts roquette/laser = sprites TOUCH_NPC / TOUCH_NPC2 :

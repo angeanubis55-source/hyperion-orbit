@@ -9,6 +9,8 @@ import { pickSpacedSpawnPosition } from "../NPC/NPC_SPAWN_POSITION.js";
 import { createUniverse, deserializeUniverse, ensureMapSlots, markDead, markAlive, getSlot, serializeUniverse, slotUid } from "../SRC/SIM/UNIVERSE_SIM.js";
 import { NPC_TYPES } from "../NPC/NPC_TYPES.js";
 import { damageEnemyLayers } from "../COMBAT/COMBAT_RULES.js";
+import { JPC_LASER, jpcVolleyParts, tickJpcRepair, jpcTravel, jpcCombatMove, jpcCombatDistance, jpcEngageRange } from "../NPC/JPC_BEHAVIOR.js";
+import { buildJpcRoster, ensureJpcTypes, isJpcBotMap, isJpcFarmable, JPC_TIERS, tierForMap, rollJpcFormSet, jpcRoleFormation, jpcSkillForMap, jpcRiposteFormation, jpcRiposteMultForSkill, jpcDroneDmgFactor, JPC_RESPAWN_DELAY_S, jpcFarmDmgMult, rollJpcRockets, jpcRocketDamage, jpcParkingSpot, jpcMissChance, jpcFleeThreshold, rollJpcBreather, jpcHourBucket, jpcRosterCount } from "../NPC/JPC_BOTS.js";
 import { createSpatialPairIndex } from "../SRC/CORE/SPATIAL_INDEX.js";
 import { DDOL_ACCURACY_PENALTY } from "./DISRUPTOR_RULES.js";
 
@@ -109,9 +111,13 @@ export class ZoneNpcSim {
     this.players = new Map(); // clientId -> { x, y, dead, safe, hidden }
     this.safe = []; // cercles de non-agression { x, y, r }
     this.feed = new Map(); // "uid|by" -> { uid, by, total } (degats du tick)
+    this.healFeed = new Map(); // uid -> { uid, hp, sh } (reparation JPC du tick)
     this.recentGone = []; // uids retires sans mort (despawn vague) : purge immediate cote client
     this.playerHits = []; // impacts NPC autoritaires a appliquer par MULTI_SERVER
     this.decloaks = []; // camouflages dissipés par les halos Mindfire
+    this.iemBursts = []; // IEM claquées par les bots JPC : { playerId, npcUid, x, y }
+    this.shotFx = []; // Visuels de tir des fights JPC : { by, x, y, tx, ty, key, n, npc }
+    this.rocketFx = []; // Visuels roquettes JPC (rshot) : { by, kind, x, y, ang, tx, ty, spd, arcDir, arcScale, arcBoost, prange, miss, v }
     this.separationIndex = createSpatialPairIndex(512);
     // Journal des kills (2.5 s) : le respawn instantane des NPC normaux
     // effacerait sinon la mort avant le snapshot — le killer perdrait sa recompense.
@@ -201,6 +207,17 @@ export class ZoneNpcSim {
       // Raid Low : aucune vague active au démarrage (pas de spawn).
       sim.raidWave = 0;
       sim.raidWaveGen = 0;
+      // Bots JPC natifs : roster seedé par map + heure (nouveau roster à
+      // chaque heure sans redémarrer). Le serveur est la seule source.
+      try {
+        ensureJpcTypes();
+        if (isJpcBotMap(id)) {
+          const nowMs = Date.now();
+          sim.spawnJpcRoster(buildJpcRoster(id, world, safe, sim.walls || [], nowMs), nowMs);
+          sim.jpcBucket = jpcHourBucket(nowMs);
+          sim.jpcTarget = sim.jpcAliveCount();
+        }
+      } catch {}
       return sim;
     } catch {
       return null; // pas une map zone (gate, base...) : pas de simu NPC
@@ -219,6 +236,9 @@ export class ZoneNpcSim {
       shipId: String(f.shipId || prev?.shipId || ""),
       untargetableUntil: Math.max(0, Number(f.untargetableUntil) || 0),
       cloaked,
+      lockedTarget: String(f.lockedTarget || "").slice(0, 64),
+      // Bouclier (0..1) pour la formation de riposte JPC (papillon/foreuse).
+      shPct: Number.isFinite(Number(f.shPct)) ? Math.max(0, Math.min(1, Number(f.shPct))) : (Number.isFinite(Number(prev?.shPct)) ? prev.shPct : null),
     });
     // Camouflage (ultime ou CPU) : les NPC perdent la cible sur le front
     // montant, comme en local (pas de poursuite ni de tir sur l'invisible).
@@ -519,6 +539,708 @@ export class ZoneNpcSim {
     return true;
   }
 
+  // ---- Bots JPC natifs (multijoueur) ----
+  // Faux joueurs simulés par le serveur : visibles et identiques pour tous
+  // (positions, PV, farm, fuite, riposte). Même pipeline que le NPC police
+  // Awakened : coque joueur, drones, tir façon joueur.
+  spawnJpcRoster(roster, nowMs) {
+    if (!Array.isArray(roster) || !roster.length) return;
+    // Adresse au combat : 1-1 maladroite (riposte 4 s), 1-8/BL agressive (12 s).
+    const mapSkill = jpcSkillForMap(this.mapId);
+    for (const def of roster) {
+      if (!def || !def.uid) continue;
+      const drones = def.drones || { count: 4, formation: "standard", design: "havoc", designs: ["havoc"], level: 1 };
+      this.entries.set(String(def.uid), {
+        uid: String(def.uid), campId: null, type: String(def.type),
+        x: clamp(Number(def.x) || 0, 80, this.world.w - 80),
+        y: clamp(Number(def.y) || 0, 80, this.world.h - 80),
+        angle: Math.random() * TAU,
+        hp: Math.max(1, Number(def.hpMax) || 50000), sh: Math.max(0, Number(def.shMax) || 0),
+        hpMax: Math.max(1, Number(def.hpMax) || 50000), shMax: Math.max(0, Number(def.shMax) || 0),
+        speed: Math.max(40, Number(def.speed) || 300), dr: 0, spread: 0.8,
+        r: 20,
+        passive: false, kamikaze: false,
+        canShoot: true, shootRange: 700, shootRate: 1,
+        bulletDmg: Math.max(1, Number(def.bulletDmg) || 500), burst: 1, shootCd: 0.5 + Math.random() * 0.5,
+        // Jamais d'aggro de proximité : riposte aux dégâts uniquement.
+        // Tient son agresseur 4 s (1-1) … 12 s (1-8/BL).
+        aggroRange: 0, aggroHoldMs: Math.round(4000 + 8000 * mapSkill),
+        hunter: false,
+        aggroBy: null, aggroUntil: 0,
+        tx: null, ty: null, killer: null, firstBy: null, lastHitBy: null,
+        lockBy: null, lockHitAt: 0, lockReleaseAt: 0, hitHist: [],
+        orbitDir: Math.random() < 0.5 ? -1 : 1, orbitT: 2 + Math.random() * 3,
+        seq: 1,
+        isJpcBot: true, jpc: true,
+        jpcTier: tierForMap(this.mapId),
+        jpcPseudo: String(def.pseudo || "JPC"),
+        jpcDrones: { count: Math.max(2, Math.min(10, Number(drones.count) || 4)),
+          formation: String(drones.formation || "standard"),
+          design: String(drones.design || "havoc"),
+          designs: (Array.isArray(drones.designs) && drones.designs.length ? drones.designs : [String(drones.design || "havoc")]).slice(0, 12).map(String),
+          level: Math.max(1, Math.min(6, Number(drones.level) || 1)) },
+        jpcAmmo: String(def.ammo || "x4"), jpcAmmoBase: String(def.ammo || "x4"),
+        jpcVisualParts: [], jpcRepairTick: 0, jpcLastHit: 0,
+        vx: 0, vy: 0,
+        jpcShootT: 0, jpcNpcDpsAt: 0, jpcPreyUid: null, jpcRetargetAt: 0,
+        // Roquettes façon vrai joueur.
+        jpcRockets: (def.rockets && typeof def.rockets === "object") ? { ...def.rockets } : { standard: "r310" },
+        jpcRocketAt: 0, jpcRocketSeq: 0,
+        // Courage variable + glandouille portail + pause entre kills (comme en solo).
+        jpcFleeAt: Number(def.fleeAt) || 0.35,
+        jpcBreatherUntil: 0,
+        jpcMullUntil: 0, jpcMulling: false,
+        jpcMode: "farm", jpcSafeX: null, jpcSafeY: null,
+        jpcIemAt: 0, jpcIshUntil: 0, jpcIshAt: 0,
+        jpcSkill: mapSkill,
+        jpcX6Until: 0, jpcX6At: 0, jpcRespawnAt: 0,
+        // Formations par rôle (préférences du roster, stables pour ce bot).
+        jpcForms: (def.forms && typeof def.forms === "object") ? { ...def.forms } : (() => {
+          try {
+            const t = JPC_TIERS[Number(tierForMap(this.mapId))] || JPC_TIERS[1];
+            const c = Math.max(2, Math.min(10, Number(drones.count) || 4));
+            return rollJpcFormSet(t.forms, c);
+          } catch { return { farm: "standard", riposte: "standard", flee: "standard", travel: "standard" }; }
+        })(),
+        // Parité bot Kill : poursuite / passif / scan post-kill / ban mur.
+        jpcCloseId: null, jpcChaseId: null, jpcAggroId: null,
+        jpcPostKillAt: 0, jpcWallBan: {},
+      });
+    }
+    // La cible suit le remplissage réel (spawn initial comme renforts
+    // horaires) : les respawns 90 s maintiennent ce nombre, jamais plus.
+    try {
+      this.jpcTarget = Math.max(Number(this.jpcTarget) || 0, this.jpcAliveCount());
+    } catch {}
+  }
+
+  // Nombre de JPC vivants sur la map.
+  jpcAliveCount() {
+    let n = 0;
+    try {
+      for (const e of this.entries.values()) {
+        if (e && e.jpc === true && e.hp > 0) n++;
+      }
+    } catch {}
+    return n;
+  }
+
+  // Rotation horaire : à chaque nouvelle heure le nombre de JPC change
+  // (nouveau roster seedé). Croissance = renforts immédiats (nouveaux bots,
+  // uids uniques) ; décroissance = pas de respawn au-delà de la cible, les
+  // bots en vie finissent leur fight (jamais de disparition en combat).
+  jpcApplyHourBucket(nowMs) {
+    let bucket = null;
+    try { bucket = jpcHourBucket(nowMs); } catch { return; }
+    if (bucket === this.jpcBucket) return;
+    const first = this.jpcBucket == null;
+    this.jpcBucket = bucket;
+    const alive = this.jpcAliveCount();
+    if (first) {
+      // Première observation (sim construite à la main, hors factory) : la
+      // population actuelle devient la référence, sans renforts surprises.
+      try { this.jpcTarget = Math.max(Number(this.jpcTarget) || 0, alive); } catch {}
+      return;
+    }
+    let want = 0;
+    try { want = jpcRosterCount(this.mapId, nowMs); } catch { return; }
+    if (!(want > 0)) return;
+    this.jpcTarget = want;
+    const missing = want - alive;
+    if (missing <= 0) return;
+    // Renforts : bots frais du nouveau roster (jamais d'écrasement d'uid :
+    // suffixe d'heure, les anciens bots gardent les leurs ; pseudos uniques
+    // face aux vivants, chaque JPC reste identifiable).
+    let fresh = [];
+    try {
+      const livePseudos = new Set();
+      for (const o of this.entries.values()) {
+        if (o && o.jpc === true && o.hp > 0 && o.jpcPseudo) livePseudos.add(String(o.jpcPseudo));
+      }
+      fresh = buildJpcRoster(this.mapId, this.world, this.safe || [], this.walls || [], nowMs, livePseudos) || [];
+    } catch {}
+    const gen = (Number(this.jpcGen) || 0) + 1;
+    this.jpcGen = gen;
+    const defs = [];
+    for (let i = 0; i < fresh.length && defs.length < missing; i++) {
+      const def = fresh[i];
+      if (!def) continue;
+      defs.push({ ...def, uid: `${this.mapId}#jpcH${bucket}g${gen}-${i}` });
+    }
+    if (defs.length) {
+      try { this.spawnJpcRoster(defs, nowMs); } catch {}
+    }
+  }
+
+  // Position de (re)spawn JPC : aléatoire hors zones sûres et murs.
+  jpcSpawnPos() {
+    for (let i = 0; i < 40; i++) {
+      const p = this.randomPos(300);
+      if (this.inSafe(p.x, p.y)) continue;
+      if (this.inWall(p.x, p.y, 30)) continue;
+      return p;
+    }
+    return { x: this.world.w / 2, y: this.world.h / 2 };
+  }
+
+  entryAlive(uid) {
+    if (uid == null) return null;
+    const e = this.entries.get(String(uid));
+    return e && e.hp > 0 ? e : null;
+  }
+
+  // Proie toujours valide ? Non si morte, trop loin, lockée par un joueur
+  // ou reprise par un autre JPC (cible collante : on finit sa cible sinon).
+  jpcPlayerOwnsPrey(prey) {
+    if (prey.lockBy != null) return true;
+    for (const p of this.players.values()) {
+      if (!p.dead && p.lockedTarget === String(prey.uid)) return true;
+    }
+    return false;
+  }
+
+  jpcWallBanActive(e, uid) {
+    try {
+      const until = Number(e?.jpcWallBan?.[String(uid)] || 0);
+      if (!(until > Date.now())) {
+        if (until && e?.jpcWallBan) { try { delete e.jpcWallBan[String(uid)]; } catch {} }
+        return false;
+      }
+      return true;
+    } catch { return false; }
+  }
+
+  jpcNpcInWall(n) {
+    try {
+      if (!n) return false;
+      return this.inWall(Number(n.x) || 0, Number(n.y) || 0, Math.max(0, Number(n.r) || 18));
+    } catch { return false; }
+  }
+
+  // Stand façon bot Kill : 250 si passif, 120 si poursuite, sinon hors
+  // portée NPC (jpcCombatDistance).
+  jpcStandD(e, prey) {
+    const fullD = jpcCombatDistance(e, prey);
+    const canShoot = (Number(prey?.shootRange) || 0) > 0;
+    let engaging = false;
+    try {
+      engaging = (prey?.jpcAggroUid === e.uid) || (prey?.aggroBy === e.uid);
+    } catch { engaging = false; }
+    if (engaging) e.jpcAggroId = prey.uid;
+    if (!canShoot && engaging !== true && e.jpcAggroId !== prey.uid && e.jpcChaseId !== prey.uid) {
+      return Math.min(fullD, 250);
+    }
+    const d = Math.hypot(Number(prey.x) - e.x, Number(prey.y) - e.y);
+    if (!canShoot) {
+      if (e.jpcCloseId !== prey.uid && d <= fullD + 60) e.jpcCloseId = prey.uid;
+      let fleeing = false;
+      if (e.jpcCloseId === prey.uid && d > 0.01) {
+        if (d > fullD + 150) fleeing = true;
+        else if (d > fullD + 60) {
+          const rdx = Number(prey.x) - e.x, rdy = Number(prey.y) - e.y;
+          const rvx = (Number(prey.vx) || 0) - (Number(e.vx) || 0);
+          const rvy = (Number(prey.vy) || 0) - (Number(e.vy) || 0);
+          if ((rvx * rdx + rvy * rdy) / Math.max(1, d) > 150) fleeing = true;
+        }
+      }
+      if (fleeing) e.jpcChaseId = prey.uid;
+      else if (e.jpcChaseId === prey.uid && d <= 120) e.jpcChaseId = null;
+      if (e.jpcChaseId === prey.uid) return 120;
+    }
+    return fullD;
+  }
+
+  // Bouclier de l'adversaire (0..1) pour la formation de riposte : papillon
+  // si gros bouclier, foreuse pour finir. null si inconnu (préférence du bot).
+  jpcFoeShieldFrac(pid) {
+    try {
+      const p = this.players.get(String(pid));
+      if (!p) return null;
+      const pct = Number(p.shPct);
+      if (Number.isFinite(pct)) return Math.max(0, Math.min(1, pct));
+      const max = Number(p.shMax);
+      if (!(max > 0)) return null;
+      return Math.max(0, Math.min(1, (Number(p.sh) || 0) / max));
+    } catch { return null; }
+  }
+
+  // Assaillants du bot : NPC au contact en plein combat (provoqué par lui
+  // ou déjà accrochés — ça sent le surnombre, comme un vrai joueur).
+  jpcFoeCount(e, maxD = 1200) {
+    let n = 0;
+    try {
+      const lim2 = Math.max(0, Number(maxD) || 0) ** 2;
+      const nowMs = Date.now();
+      for (const o of this.entries.values()) {
+        if (!o || o === e || !(Number(o.hp) > 0) || o.jpc === true) continue;
+        if (!isJpcFarmable(o)) continue;
+        const dx = Number(o.x) - Number(e.x), dy = Number(o.y) - Number(e.y);
+        if (dx * dx + dy * dy > lim2) continue;
+        if (o.jpcAggroUid === e.uid && nowMs < Number(o.jpcAggroUntil || 0)) { n++; continue; }
+        if (o.chaseId != null || (o.aggroBy != null && nowMs < Number(o.aggroUntil || 0))) n++;
+      }
+    } catch {}
+    return n;
+  }
+
+  jpcPreyValid(e) {
+    // Cible collante façon vrai joueur : le bot garde sa proie même si un
+    // joueur la locke à son tour (lock gris côté joueur, pas d'abandon).
+    // Invalide seulement si morte/infarmable, trop loin, ou reprise par un
+    // autre JPC. Le lock joueur n'est évité que pour les NOUVELLES proies
+    // (jpcPickPrey, politesse anti-vol).
+    try {
+      const cur = e && e.jpcPreyUid != null ? this.entries.get(String(e.jpcPreyUid)) : null;
+      if (!cur || !isJpcFarmable(cur)) return false;
+      if (Math.hypot(Number(cur.x) - e.x, Number(cur.y) - e.y) > 3400) return false;
+      if (this.jpcNpcInWall(cur)) return false;
+      if (cur.uid != null && this.jpcWallBanActive(e, cur.uid)) return false;
+      for (const o of this.entries.values()) {
+        if (o && o !== e && o.hp > 0 && o.jpc === true && String(o.jpcPreyUid || "") === String(cur.uid)) return false;
+      }
+      return true;
+    } catch { return false; }
+  }
+
+  // Proie JPC : NPC classique le plus proche (jamais cubi/emperor/invoke/
+  // mind/strokelight, jamais un autre JPC). Légère prime aux petits PV.
+  // Jamais la cible lockée d'un joueur, jamais la cible d'un autre JPC.
+  // Comme le bot Kill : NPC dans un mur ignoré (pas de glitch).
+  jpcPickPrey(e, maxD = 3400) {
+    const taken = new Set();
+    try {
+      for (const o of this.entries.values()) {
+        if (o && o !== e && o.hp > 0 && o.jpc === true && o.jpcPreyUid) taken.add(String(o.jpcPreyUid));
+      }
+    } catch {}    let best = null, bestScore = Infinity;
+    const cands = [];
+    const lim2 = maxD * maxD;
+    for (const n of this.entries.values()) {
+      if (!n || n === e || !(n.hp > 0) || n.jpc === true) continue;
+      if (!isJpcFarmable(n)) continue;
+      if (this.jpcPlayerOwnsPrey(n)) continue;
+      if (taken.has(n.uid)) continue;
+      if (this.jpcNpcInWall(n)) continue;
+      if (this.jpcWallBanActive(e, n.uid)) continue;
+      const dx = n.x - e.x, dy = n.y - e.y;
+      const d2 = dx * dx + dy * dy;
+      if (d2 > lim2) continue;
+      cands.push({ n, d2 });
+    }
+    cands.sort((a, b) => a.d2 - b.d2);
+    for (const { n, d2 } of cands.slice(0, 4)) {
+      const score = Math.sqrt(d2) + (Number(n.hpMax) || 0) * 0.002 + Math.random() * 400;
+      if (score < bestScore) { bestScore = score; best = n; }
+    }
+    return best ? best.uid : null;
+  }
+
+  // Mort d'une proie tuée par un JPC : pas de récompense joueur (killer
+  // vide, filtré par queueNpcDeaths), pas de vague onKill.
+  jpcKillPrey(prey, nowMs) {
+    if (!prey) return;
+    prey.hp = 0; prey.sh = 0;
+    prey.deadAt = nowMs;
+    prey.killer = "";
+    prey.cause = "gun";
+    try {
+      if (prey.campId) markDead(this.universe, this.mapId, prey.uid, nowMs);
+    } catch {}
+    this.deaths.push({ uid: prey.uid, type: prey.type,
+      x: Math.round(prey.x), y: Math.round(prey.y),
+      killer: "", cause: "gun", seq: prey.seq || 0, at: nowMs });
+  }
+
+  // Mort d'un JPC (tué par un NPC) : respawn programmé dans 90 s
+  // (anti-farm en boucle), nouvelle incarnation.
+  jpcKillBot(e, nowMs) {
+    if (!e) return;
+    e.hp = 0; e.sh = 0;
+    e.deadAt = nowMs;
+    e.killer = "";
+    e.cause = "gun";
+    e.jpcRespawnAt = nowMs + JPC_RESPAWN_DELAY_S * 1000;
+    this.deaths.push({ uid: e.uid, type: e.type,
+      x: Math.round(e.x), y: Math.round(e.y),
+      killer: "", cause: "gun", seq: e.seq || 0, at: nowMs });
+  }
+
+  // IEM claquant par les bots JPC : { playerId, npcUid, x, y }.
+  drainIemBursts() {
+    if (!this.iemBursts.length) return [];
+    return this.iemBursts.splice(0, this.iemBursts.length);
+  }
+
+  drainShotFx() {
+    if (!this.shotFx.length) return [];
+    return this.shotFx.splice(0, this.shotFx.length);
+  }
+
+  // Visuels roquettes JPC (joués en rshot : arcs + fumée côté client).
+  drainRocketFx() {
+    if (!this.rocketFx.length) return [];
+    return this.rocketFx.splice(0, this.rocketFx.length);
+  }
+
+  // Visuel de tir JPC<->NPC : seulement si un joueur peut le voir (2600).
+  pushNpcShotFx(fromX, fromY, toX, toY, by, key, n, npc, tuid = null) {
+    try {
+      for (const [, p] of this.players) {
+        if (!p || p.dead) continue;
+        const dx = Number(p.x) - fromX, dy = Number(p.y) - fromY;
+        if (dx * dx + dy * dy > 2600 * 2600) continue;
+        if (this.shotFx.length > 48) this.shotFx.shift();
+        this.shotFx.push({ by: String(by || ""), x: Math.round(fromX), y: Math.round(fromY),
+          tx: Math.round(toX), ty: Math.round(toY),
+          key: String(key || "x4").slice(0, 16), n: Math.max(1, Math.min(2, Number(n) || 1)),
+          npc: npc === true, tuid: tuid != null ? String(tuid) : null,
+          jpcPart: npc !== true ? true : undefined,
+          npcType: npc === true ? String(this.entries.get(String(by))?.type || "") : undefined });
+        return;
+      }
+    } catch {}
+  }
+
+  // Déplacement + combat JPC (farm/fuite/repair/riposte). Retourne le
+  // vecteur mouvement ; les dégâts aux NPC sont appliqués ici, les tirs
+  // vers les joueurs passent par le pipeline générique (playerHits).
+  // { mx, my, spd, dead }
+  jpcMove(e, chase, dt, nowMs) {
+    const dead = () => ({ mx: 0, my: 0, spd: 0, dead: true });
+    let riposte = null;
+    if (chase) {
+      const p = this.players.get(String(chase.id));
+      if (p && (this.validTarget(p) || this.retaliationOpen(e, chase.id, nowMs))) {
+        riposte = { id: String(chase.id), x: Number(p.x) || 0, y: Number(p.y) || 0 };
+      }
+    }
+    const maxTotal = Math.max(1, (Number(e.hpMax) || 1) + (Number(e.shMax) || 0));
+    const total = Math.max(0, Number(e.hp) || 0) + Math.max(0, Number(e.sh) || 0);
+    const frac = total / maxTotal;
+    const hpFrac = (Number(e.hp) || 0) / Math.max(1, Number(e.hpMax) || 1);
+    // Regen façon joueur : coque +5 %/s ET bouclier +5 %/s après 10 s sans
+    // dégât (REPAIR). Sous le feu : rien ne remonte, même au portail.
+    const lastHit = Number(e.lastHitAt) || 0;
+    if (lastHit !== e.jpcLastHit) { e.jpcRepairTick = 0; e.jpcLastHit = lastHit; }
+    tickJpcRepair(e, dt, (nowMs - lastHit) / 1000);
+    // Chiffres +x de réparation façon vrai joueur (feed heal du snapshot,
+    // affichés sur le bot locké uniquement, comme les dégâts alliés).
+    try {
+      const gainHp = Math.round(Number(e.jpcRepairGainHp) || 0);
+      const gainSh = Math.round(Number(e.jpcRepairGainSh) || 0);
+      if (gainHp > 0 || gainSh > 0) {
+        const prev = this.healFeed.get(String(e.uid)) || { uid: String(e.uid), hp: 0, sh: 0 };
+        prev.hp += gainHp;
+        prev.sh += gainSh;
+        this.healFeed.set(String(e.uid), prev);
+      }
+    } catch {}
+    // Adresse au combat : 1-1 maladroite, 1-8/BL agressive (IEM/ISH/x6).
+    const jSkill = Math.max(0, Math.min(1, Number(e.jpcSkill ?? 0.5)));
+    // ISH de sauvetage sous 25 % (souvent ratée en 1-1, presque sûre en 1-8/BL).
+    if (frac < 0.25 && nowMs >= Number(e.jpcIshUntil || 0) && nowMs >= Number(e.jpcIshAt || 0)) {
+      if (Math.random() < 0.15 + 0.55 * jSkill) {
+        e.jpcIshUntil = nowMs + 6000;
+        if (e.jpcDrones) e.jpcDrones.formation = "turtle";
+      }
+      e.jpcIshAt = nowMs + 150000;
+    }
+    const ishing = nowMs < Number(e.jpcIshUntil || 0);
+    // IEM en riposte : casse le lock du joueur (drainé par MULTI_SERVER).
+    if (riposte && !ishing && nowMs >= Number(e.jpcIemAt || 0)) {
+      const ddx = riposte.x - e.x, ddy = riposte.y - e.y;
+      if (ddx * ddx + ddy * ddy < 1000 * 1000 && Math.random() < 0.2 + 0.5 * jSkill) {
+        this.iemBursts.push({ playerId: riposte.id, npcUid: e.uid, x: Math.round(e.x), y: Math.round(e.y) });
+      }
+      e.jpcIemAt = nowMs + Math.round(150000 - 105000 * jSkill);
+    }
+    // Fenêtre x6 : salves fréquentes en 1-8/BL (~20-30 s), rares en 1-1 (~50-70 s).
+    if (nowMs >= Number(e.jpcX6Until || 0) && nowMs >= Number(e.jpcX6At || 0)) {
+      e.jpcX6Until = nowMs + 6000;
+      e.jpcX6At = nowMs + (50000 - 30000 * jSkill) + Math.random() * (20000 - 10000 * jSkill);
+    }
+    // Formation cohérente façon vrai joueur : fixe par rôle (pas de tirage
+    // aléatoire en plein combat). Farm/voyage affinés plus bas, quand la
+    // proie est connue ; ici on pose fuite / riposte. En réparation on ne
+    // touche à rien (il garde sa formation, pas de switch robotique).
+    if (!ishing && e.jpcDrones) {
+      try {
+        let formation = null;
+        if (riposte) formation = jpcRiposteFormation(e, this.jpcFoeShieldFrac(riposte.id));
+        else if (e.jpcMode === "flee") formation = jpcRoleFormation(e, "flee");
+        else if (e.jpcMode !== "repair") formation = jpcRoleFormation(e, "travel");
+        if (formation) e.jpcDrones.formation = formation;
+      } catch {}
+    }
+    // Fuite / réparation comme un vrai joueur (déclencheur coque).
+    // SAUF en riposte : on se bat jusqu'à la mort, jamais de fuite quand
+    // c'est un joueur qui nous tape (on annule même un repli en cours).
+    if (riposte && (e.jpcMode === "flee" || e.jpcMode === "repair")) {
+      e.jpcMode = "farm";
+      e.jpcSafeX = null; e.jpcSafeY = null;
+      e.jpcVisualParts = [];
+    }
+    // Seuil variable (courage du bot + surnombre) : on tente parfois à 10 %
+    // seul, on fuit à 60 %+ quand ça sent le surnombre, comme un vrai joueur.
+    const fleeAt = jpcFleeThreshold(e, this.jpcFoeCount(e));
+    if (e.jpcMode !== "repair" && e.jpcMode !== "flee" && (frac < fleeAt || hpFrac < fleeAt) && !ishing && !riposte) {
+      e.jpcMode = "flee";
+      e.jpcPreyUid = null;
+      e.jpcVisualParts = [];
+      e.jpcSafeX = null;
+      e.jpcMullUntil = 0; e.jpcMulling = false;
+    }
+    if (e.jpcMode === "flee" || e.jpcMode === "repair") {
+      if (e.jpcSafeX == null) {
+        // Comme le bot du joueur : refuge choisi par son bord (le plus
+        // proche). Place de parking propre sur l'anneau (angle stable par
+        // uid) : fini l'agglutinement au même point.
+        let bx = this.world.w / 2, by = this.world.h / 2, br = 500, bestEdge = Infinity;
+        for (const z of this.safe || []) {
+          const cx = Number(z.x), cy = Number(z.y), r = Number(z.r) || 0;
+          const dx = e.x - cx, dy = e.y - cy;
+          const edge = Math.max(0, Math.hypot(dx, dy) - r);
+          if (edge < bestEdge) { bestEdge = edge; bx = cx; by = cy; br = r || 500; }
+        }
+        const spot = jpcParkingSpot(e, bx, by, br, this.world);
+        e.jpcSafeX = spot.x;
+        e.jpcSafeY = spot.y;
+      }
+      // Comme le bot du joueur : on va jusqu'au point proche du centre
+      // (35 m), on ne s'arrête pas au bord de la zone sûre.
+      if (Math.hypot(e.x - e.jpcSafeX, e.y - e.jpcSafeY) <= 35) e.jpcMode = "repair";
+      if (e.jpcMode === "repair") {
+        if (frac >= 0.999 && hpFrac >= 0.99) {
+          // Réparé : on glandouille encore 5-15 s au portail (comme un vrai
+          // joueur) avant de repartir farmer.
+          if (!e.jpcMulling) {
+            e.jpcMulling = true;
+            e.jpcMullUntil = nowMs + 5000 + Math.random() * 10000;
+          }
+          if (nowMs < Number(e.jpcMullUntil || 0)) {
+            return { mx: 0, my: 0, spd: 0 };
+          }
+          e.jpcMode = "farm";
+          e.jpcSafeX = null;
+          e.jpcPreyUid = null;
+          e.jpcMulling = false; e.jpcMullUntil = 0;
+        } else {
+          // Au portail : on attend la regen façon joueur (globale ci-dessus).
+          e.jpcMulling = false;
+          return { mx: 0, my: 0, spd: 0 };
+        }
+      } else {
+        return this.jpcSeek(e, e.jpcSafeX, e.jpcSafeY, dt, 0.3);
+      }
+    }
+    // Farm façon bot Kill : cible collante, kiting au standD (hors portée
+    // NPC / 250 passif / 120 poursuite), approche silencieuse + tir à portée,
+    // scan post-kill 1.5 s comme le vrai bot.
+    // Riposte agressive : orbit resserrée (on colle à 450 m) à vitesse de
+    // poursuite (+25 %, comme un changement de config rapide).
+    if (riposte) {
+      e.jpcPreyUid = null;
+      const keepSpd = e.speed;
+      e.speed = Math.min((Number(keepSpd) || 300) * 1.25, 450);
+      const mv = this.jpcOrbit(e, riposte.x, riposte.y, 0, dt, Math.min(jpcCombatDistance(e, riposte), 450));
+      e.speed = keepSpd;
+      return mv;
+    }
+    if (!this.jpcPreyValid(e)) {
+      if (e.jpcPreyUid != null) e.jpcPostKillAt = nowMs;
+      e.jpcPreyUid = null;
+    }
+    if (!this.entryAlive(e.jpcPreyUid)) {
+      // Pause entre deux kills (30 % on enchaîne, sinon 1-10 s de balade
+      // comme un vrai joueur) : pendant ce temps on patrouille ci-dessous.
+      if (nowMs >= Number(e.jpcBreatherUntil || 0)) {
+        let picked = null;
+        if (nowMs - Number(e.jpcPostKillAt || 0) < 1500) {
+          picked = this.jpcPickPrey(e, Math.max(2200, jpcEngageRange(e) * 3));
+        }
+        e.jpcPreyUid = picked || this.jpcPickPrey(e);
+      } else {
+        e.jpcPreyUid = null;
+      }
+    }
+    const prey = this.entryAlive(e.jpcPreyUid);
+    let move = null;
+    // Rôle farm (proie) ou voyage (patrouille), sauf bulle ISH (turtle).
+    if (!ishing && e.jpcDrones) {
+      try { e.jpcDrones.formation = jpcRoleFormation(e, prey ? "farm" : "travel"); } catch {}
+    }
+    if (prey) {
+      if (this.jpcNpcInWall(prey)) {
+        e.jpcWallBan ||= {};
+        e.jpcWallBan[String(prey.uid)] = Date.now() + 8000;
+        e.jpcPreyUid = null;
+        return this.jpcSeek(e, e.x, e.y, dt);
+      }
+      const dx = prey.x - e.x, dy = prey.y - e.y;
+      const d = Math.hypot(dx, dy) || 1;
+      const standD = this.jpcStandD(e, prey);
+      // Kiting partout (approche + orbit) : jamais de charge au centre.
+      move = this.jpcOrbit(e, prey.x, prey.y, d, dt, standD);
+      if (d <= Math.min(1400, Math.max(80, jpcEngageRange(e)))) {
+        e.angle = Math.atan2(prey.y - e.y, prey.x - e.x);
+      }
+      // Tir UNIQUEMENT à portée (hors portée = approche silencieuse).
+      // Maladresse : le coup peut rater (le NPC remarque quand même).
+      if (!ishing && nowMs >= Number(e.jpcShootT || 0) && d <= jpcEngageRange(e)
+        && nowMs >= Number(e.freezeUntil || 0) && nowMs >= Number(e._redirectSilenceUntil || 0)) {
+        e.jpcShootT = nowMs + JPC_LASER.interval * 1000;
+        const bursting = nowMs < Number(e.jpcX6Until || 0);
+        const missed = Math.random() < jpcMissChance(e.jpcSkill);
+        const dmg = Math.max(1, Math.round(Number(e.bulletDmg || 500) * (bursting ? 1.5 : 1) * jpcFarmDmgMult(this.mapId) * (0.9 + Math.random() * 0.2)));
+        if (!missed) {
+          try {
+            damageEnemyLayers(prey, dmg, { shieldPenetration: 0.15, shieldSpread: prey.spread ?? 0.8,
+              variance: 0.1, critChance: 0.05, critMultiplier: 1.5, random: Math.random });
+            // Feed dégâts : les chiffres s'affichent pour qui locke la proie.
+            try {
+              const key = `${prey.uid}|${e.uid}`;
+              this.feed.set(key, { uid: prey.uid, by: e.uid, total: Math.round((this.feed.get(key)?.total || 0) + dmg) });
+            } catch {}
+          } catch {}
+        }
+        try {
+          // Provocation : la proie aggro le bot comme un vrai joueur.
+          prey.jpcAggroUid = e.uid;
+          prey.jpcAggroUntil = nowMs + 6000;
+          // Visuel bleu façon joueur, TOUJOURS en x1 (canal des tirs alliés).
+          try {
+            this.jpcStartVolley(e, prey.uid, false, nowMs);
+          } catch {}
+        } catch {}
+        if (!(prey.hp > 0)) { this.jpcKillPrey(prey, nowMs); e.jpcPreyUid = null; e.jpcBreatherUntil = nowMs + rollJpcBreather() * 1000; }
+      }
+      // Roquette standard toutes les secondes, comme les vrais joueurs
+      // (mêmes conditions de tir que les lasers).
+      if (prey.hp > 0 && !ishing && d <= jpcEngageRange(e)
+        && nowMs >= Number(e.freezeUntil || 0) && nowMs >= Number(e._redirectSilenceUntil || 0)
+        && nowMs >= Number(e.jpcRocketAt || 0)) {
+        e.jpcRocketAt = nowMs + 1000;
+        this.jpcFireRocket(e, prey, false, nowMs);
+      }
+      // La défense de la proie passe par sa vraie aggro (pipeline générique
+      // + shotFx rouges) : pas de double dégât scripté ici.
+    } else {
+      // Rien à farmer : patrouille façon vrai joueur — cap lointain
+      // (2500 m min), gardé jusqu'à l'arrivée : grandes lignes droites.
+      if (e.tx == null || Math.hypot(e.tx - e.x, e.ty - e.y) < 100) {
+        e.tx = clamp(120 + Math.random() * Math.max(240, this.world.w - 240), 80, this.world.w - 80);
+        e.ty = clamp(120 + Math.random() * Math.max(240, this.world.h - 240), 80, this.world.h - 80);
+        for (let i = 0; i < 6 && Math.hypot(e.tx - e.x, e.ty - e.y) < 2500; i++) {
+          e.tx = clamp(120 + Math.random() * Math.max(240, this.world.w - 240), 80, this.world.w - 80);
+          e.ty = clamp(120 + Math.random() * Math.max(240, this.world.h - 240), 80, this.world.h - 80);
+        }
+      }
+      move = this.jpcSeek(e, e.tx, e.ty, dt, 1);
+      // Regen : uniquement via la règle globale façon joueur (10 s sans dégât).
+    }
+    // Riposte : orbite le joueur agresseur (prioritaire, sauf en fuite).
+    // Agressive : orbit resserrée (on colle) à vitesse de poursuite (+25 %),
+    // formation lue sur son bouclier.
+    if (riposte && e.jpcMode !== "flee" && e.jpcMode !== "repair") {
+      const dx = riposte.x - e.x, dy = riposte.y - e.y;
+      const d = Math.hypot(dx, dy) || 1;
+      const keepSpd = e.speed;
+      e.speed = Math.min((Number(keepSpd) || 300) * 1.25, 450);
+      move = this.jpcOrbit(e, riposte.x, riposte.y, d, dt, Math.min(jpcCombatDistance(e, riposte), 450));
+      e.speed = keepSpd;
+      e.angle = Math.atan2(dy, dx);
+      if (!ishing && e.jpcDrones) {
+        try { e.jpcDrones.formation = jpcRiposteFormation(e, this.jpcFoeShieldFrac(riposte.id)); } catch {}
+      }
+    }
+    return move || { mx: 0, my: 0, spd: 0 };
+  }
+
+  // Roquette standard façon vrai joueur : dégâts + visuel rshot (arc +
+  // fumée côté client). Farm (NPC) : dégâts directs ; riposte (joueur) :
+  // playerHits. Jamais d'effets spéciaux — dégâts + visuels seuls.
+  jpcFireRocket(e, target, toPlayer, nowMs) {
+    const rocketId = String(e.jpcRockets?.standard || "r310").toLowerCase();
+    const tierIdx = Number(e.jpcTier ?? 1);
+    // Maladresse : le coup peut rater (visuel part quand même).
+    const missed = Math.random() < jpcMissChance(e.jpcSkill);
+    const mult = toPlayer ? jpcRiposteMultForSkill(e.jpcSkill) : 1;
+    const dmg = Math.max(1, Math.round(jpcRocketDamage(rocketId, tierIdx) * mult * (0.9 + Math.random() * 0.2)));
+    if (toPlayer) {
+      if (!missed) {
+        this.playerHits.push({ playerId: String(target.id), npcUid: e.uid, damage: dmg, kind: "rocket" });
+      }
+    } else {
+      if (!missed) {
+        try {
+          damageEnemyLayers(target, dmg, { shieldPenetration: 0.15, shieldSpread: target.spread ?? 0.8,
+            variance: 0.1, critChance: 0.05, critMultiplier: 1.5, random: Math.random });
+          try {
+            const key = `${target.uid}|${e.uid}`;
+            this.feed.set(key, { uid: target.uid, by: e.uid, total: Math.round((this.feed.get(key)?.total || 0) + dmg) });
+          } catch {}
+        } catch {}
+      }
+      try {
+        target.jpcAggroUid = e.uid;
+        target.jpcAggroUntil = nowMs + 6000;
+      } catch {}
+      if (!(target.hp > 0)) { this.jpcKillPrey(target, nowMs); e.jpcPreyUid = null; e.jpcBreatherUntil = nowMs + rollJpcBreather() * 1000; return; }
+    }
+    try { this.jpcPushRocketFx(e, target, rocketId, toPlayer && missed); } catch {}
+  }
+
+  jpcPushRocketFx(e, target, rocketId, miss) {
+    const fx = Number(e.x), fy = Number(e.y);
+    const tx = Number(target.x), ty = Number(target.y);
+    const d = Math.hypot(tx - fx, ty - fy) || 1;
+    const spd = Math.max(500, 900 + d * 1.1);
+    if (this.rocketFx.length > 48) this.rocketFx.shift();
+    this.rocketFx.push({
+      by: String(e.uid || ""), kind: String(rocketId || "r310").slice(0, 16),
+      x: Math.round(fx), y: Math.round(fy),
+      ang: Math.round(Math.atan2(ty - fy, tx - fx) * 100) / 100,
+      tx: Math.round(tx), ty: Math.round(ty), spd: Math.round(spd),
+      arcDir: Math.random() < 0.5 ? -1 : 1,
+      arcScale: 1, arcBoost: 15, prange: 700, miss: miss === true,
+      v: (e.jpcRocketSeq = (Number(e.jpcRocketSeq) || 0) + 1),
+    });
+  }
+
+  jpcStartVolley(e, targetId, playerTarget, nowMs, key = "x1") {
+    const pair = e.jpcAltShot === true;
+    e.jpcAltShot = !pair;
+    const ammo = String(key || "x1").toLowerCase();
+    e.jpcVisualParts = [...(e.jpcVisualParts || []), ...jpcVolleyParts(pair).map(part => ({
+      at: nowMs + part.delay * 1000, n: part.offsets.length,
+      targetId: String(targetId), playerTarget, seq: e.seq, key: ammo,
+    }))];
+  }
+
+  jpcTickVisuals(e, nowMs) {
+    e.jpcVisualParts = (e.jpcVisualParts || []).filter(part => {
+      if (part.at > nowMs) return true;
+      const target = part.playerTarget ? this.players.get(part.targetId) : this.entryAlive(part.targetId);
+      if (!target || target.dead || e.seq !== part.seq || nowMs < Number(e.jpcIshUntil || 0)
+        || nowMs < Number(e.freezeUntil || 0) || nowMs < Number(e._redirectSilenceUntil || 0)) return false;
+      // Le bot garde sa proie même lockée par un joueur (lock gris) : les
+      // visuels continuent, comme deux vrais joueurs sur le même NPC.
+      // La munition suit le tir réel (x1 farm, x4/x6 riposte).
+      if (!part.playerTarget && (e.jpcPreyUid !== part.targetId || e.jpcMode !== "farm")) return false;
+      if (part.playerTarget && String(e.chaseId || "") !== part.targetId) return false;
+      this.pushNpcShotFx(e.x, e.y, target.x, target.y, e.uid, part.key || "x1", part.n, false, part.targetId);
+      return false;
+    });
+  }
+
+  jpcSeek(e, tx, ty, dt, human = 0) {
+    return jpcTravel(e, tx, ty, dt, this.world, this.walls || [], { human });
+  }
+
+  jpcOrbit(e, tx, ty, d, dt, standD = null) {
+    return jpcCombatMove(e, { x: tx, y: ty }, dt, this.world, this.walls || [], standD);
+  }
+
 
 drainPlayerHits() {
     if (!this.playerHits.length) return [];
@@ -652,7 +1374,7 @@ drainPlayerHits() {
   countCamplessAlive() {
     let n = 0;
     for (const e of this.entries.values()) {
-      if (e && e.campId == null && e.hp > 0) n++;
+      if (e && e.campId == null && e.jpc !== true && e.hp > 0) n++;
     }
     return n;
   }
@@ -851,6 +1573,14 @@ drainPlayerHits() {
     const uid = String(hit?.uid || "");
     const entry = this.entries.get(uid);
     if (!entry || !(entry.hp > 0)) return;
+    // Bulle ISH des bots JPC : invulnérable (comme un vrai joueur).
+    if (entry.jpc === true && Date.now() < Number(entry.jpcIshUntil || 0)) return 0;
+    // Bots JPC : même protection ZNA que les joueurs (portail/base). Un bot
+    // à l'abri ne prend rien et ne donne rien (ni lock, ni aggro) — pas de
+    // vol de kill au portail pendant sa réparation.
+    if (entry.jpc === true) {
+      try { if (this.inSafe(Number(entry.x) || 0, Number(entry.y) || 0)) return 0; } catch {}
+    }
     const shooter = this.players.get(String(clientId));
     // La zone sure empeche le PvP, mais le gameplay actuel autorise encore
     // les tirs sur NPC depuis sa bordure. Ne pas rejeter ces impacts : le
@@ -1003,13 +1733,19 @@ drainPlayerHits() {
       entry.killer = String(kb || clientId);
       entry.cause = "gun";
       entry.cube = null;
+      // JPC tué : respawn programmé dans 90 s (1ter, anti-farm en boucle),
+      // pas de slot univers.
+      if (entry.jpc === true) entry.jpcRespawnAt = nowMs + JPC_RESPAWN_DELAY_S * 1000;
       if (!entry.campId) entry.deadAt = nowMs;
       if (entry.type === "npc_Cubikon") {
         try { this.releaseCubikonMinions(entry, nowMs); } catch {}
       }
       try { this.spawnOnKillWave(entry, nowMs); } catch {}
-      try { markDead(this.universe, this.mapId, uid, Date.now()); } catch {}
-      const death = { uid, type: entry.type, x: Math.round(entry.x), y: Math.round(entry.y), killer: entry.killer, cause: "gun", seq: entry.seq || 0, at: Date.now() };
+      // Les JPC n'ont pas de slot d'univers (respawn propre, pas persistant).
+      try { if (!entry.jpc) markDead(this.universe, this.mapId, uid, Date.now()); } catch {}
+      // Mort d'un JPC tué par un joueur : type récompense par tier de map
+      // (l'entité garde son type coque pour le rendu client).
+      const death = { uid, type: entry.jpc === true ? `npc_Jpc_T${Number(entry.jpcTier) || 1}` : entry.type, x: Math.round(entry.x), y: Math.round(entry.y), killer: entry.killer, cause: "gun", seq: entry.seq || 0, at: Date.now() };
       // Invoke / Mindfire : classement dégâts pour les soleils (top 10) et
       // la récompense de destruction proportionnelle (tous les tapeurs).
       if (entry.type === "npc_Invoke_XVI" || entry.type === "npc_Mindfire_Behemoth") {
@@ -1034,6 +1770,19 @@ drainPlayerHits() {
   tick(dtSec = 0.1) {
     const nowMs = Date.now();
     const dt = Math.max(0.01, Math.min(0.5, Number(dtSec) || 0.1));
+    // Rotation horaire des JPC : le nombre change toutes les heures, sans
+    // redémarrage (renforts immédiats si ça monte, convergence naturelle
+    // sinon). Avant le précalcul jpcAlive pour qu'il voie les renforts.
+    try { this.jpcApplyHourBucket(nowMs); } catch {}
+    // Bots JPC vivants : précalculé une fois par tick pour les scans
+    // d'aggro NPC (évite entries × NPC à chaque itération).
+    let jpcAlive = null;
+    try {
+      jpcAlive = [];
+      for (const e of this.entries.values()) {
+        if (e && e.jpc === true && e.hp > 0) jpcAlive.push(e);
+      }
+    } catch { jpcAlive = []; }
     // 1) Respawns. Comptage vivant par camp en UNE passe (l'ancienne double
     // boucle camps x entrees coutait ~5 ms/tick sur MAUDITE et bloquait la
     // boucle 50 ms -> pics de ping pour tout le monde).
@@ -1062,6 +1811,62 @@ drainPlayerHits() {
       const spawned = this.spawnFor(camp, nowMs);
       this.campT.set(camp.id, spawned === false ? 1 : camp.respawn);
     }
+    // 1ter) Respawns JPC : même uid, incarnation suivante (seq+1), après
+    // 90 s (anti-farm en boucle). Plafonné à la cible horaire : si la
+    // nouvelle heure veut moins de bots, les morts restent morts jusqu'à
+    // convergence (les vivants ne disparaissent jamais en plein fight).
+    // Les clients suivent via le seq (comme les camps).
+    let jpcAliveNow = 0;
+    try {
+      for (const o of this.entries.values()) {
+        if (o && o.jpc === true && o.hp > 0) jpcAliveNow++;
+      }
+    } catch {}
+    const jpcTarget = Number(this.jpcTarget);
+    for (const e of this.entries.values()) {
+      if (!e || e.jpc !== true || e.hp > 0) continue;
+      if (nowMs < Number(e.jpcRespawnAt || 0)) continue;
+      if (Number.isFinite(jpcTarget) && jpcTarget > 0 && jpcAliveNow >= jpcTarget) continue;
+      jpcAliveNow++;
+      e.hp = Number(e.hpMax) || 1;
+      e.sh = Number(e.shMax) || 0;
+      e.seq = (Number(e.seq) || 0) + 1;
+      e.killer = null; e.cause = null; e.deadAt = 0;
+      e.firstBy = null; e.lastHitBy = null;
+      e.lockBy = null; e.lockHitAt = 0; e.lockReleaseAt = 0; e.hitHist = [];
+      e.dmgBy = null; e.dmgSeq = 0;
+      e.aggroBy = null; e.aggroUntil = 0; e.chaseId = null;
+      e.jpcPreyUid = null; e.jpcMode = "farm"; e.jpcSafeX = null;
+      e.jpcIshUntil = 0; e.shootCd = 1;
+      e.jpcVisualParts = []; e.jpcRepairTick = 0; e.vx = 0; e.vy = 0;
+      e.jpcNavigation = {}; e.jpcCombatState = {};
+      try {
+        const p = this.jpcSpawnPos();
+        if (p) { e.x = p.x; e.y = p.y; }
+      } catch {}
+      e.angle = Math.random() * TAU;
+    }
+    // 1ter-b) Joueur mort : les JPC l'oublient comme s'il ne les avait
+    // jamais attaqués — pas de rancune au respawn (ni chase, ni aggro, ni
+    // historique de dégâts frais qui rouvrirait le fight tout seul).
+    try {
+      for (const [pid, p] of this.players) {
+        if (!p || p.dead !== true) continue;
+        for (const o of this.entries.values()) {
+          if (!o || o.jpc !== true) continue;
+          if (String(o.aggroBy || "") === String(pid)) { o.aggroBy = null; o.aggroUntil = 0; }
+          if (String(o.chaseId || "") === String(pid)) o.chaseId = null;
+          if (String(o.lastHitBy || "") === String(pid)) o.lastHitBy = null;
+          if (String(o.pendingAggroBy || "") === String(pid)) o.pendingAggroBy = null;
+          try { if (o.dmgBy instanceof Map) o.dmgBy.delete(String(pid)); } catch {}
+          try {
+            if (Array.isArray(o.hitHist) && o.hitHist.length) {
+              o.hitHist = o.hitHist.filter((c) => String(c?.id || "") !== String(pid));
+            }
+          } catch {}
+        }
+      }
+    } catch {}
     // 1bis) Vagues Cubikon : transitions d'animation, spawn partage,
     // dechet des minions orphelins et re-armement apres 15 s sans coup.
     for (const [muid, m] of [...this.entries]) {
@@ -1083,8 +1888,8 @@ drainPlayerHits() {
       }
       this.refillCubikonMinions(m, nowMs);
       // Entite hors-camp morte (minion ou vague onKill) : purge apres
-      // diffusion du journal (3 s).
-      if (!m.campId && !(m.hp > 0) && nowMs - Number(m.deadAt || 0) > 3000) {
+      // diffusion du journal (3 s). Les JPC ont leur propre respawn (1ter).
+      if (!m.campId && !m.jpc && !(m.hp > 0) && nowMs - Number(m.deadAt || 0) > 3000) {
         this.entries.delete(muid);
         continue;
       }
@@ -1294,10 +2099,65 @@ drainPlayerHits() {
           ? this.shuffleThreatTarget(e, nowMs)
           : this.topThreatTarget(e, nowMs);
       } catch {}
+      // Bots JPC : les NPC les aggro comme de vrais joueurs (proximité ;
+      // passifs uniquement sur provocation ; jamais dans les zones sûres).
+      // Priorité : damagers (joueur frais, puis bot qui tape), puis le plus
+      // proche. Un joueur qui ne fait que passer ne vole pas le fight du bot.
+      let jpcChase = null, jpcCloseD = Infinity, jpcProvoked = false;
+      try {
+        const jpcProvokedFresh = e.jpcAggroUid != null && nowMs < Number(e.jpcAggroUntil || 0);
+        if (jpcProvokedFresh) {
+          const t = this.entries.get(String(e.jpcAggroUid));
+          if (t && t.jpc === true && t.hp > 0 && !this.inSafe(t.x, t.y)) {
+            jpcChase = { id: t.uid, x: t.x, y: t.y, jpc: true };
+            jpcProvoked = true;
+          } else {
+            e.jpcAggroUid = null;
+            e.jpcAggroUntil = 0;
+          }
+        }
+        if (!jpcChase && (!e.passive || attacker || jpcProvokedFresh)) {
+          const range = (Number(e.aggroRange) || 700) * aggroRangeMultFor(this.mapId);
+          let bd = range * range;
+          for (const n of jpcAlive || []) {
+            if (!n || !(n.hp > 0)) continue;
+            if (this.inSafe(n.x, n.y)) continue;
+            const dx = n.x - e.x, dy = n.y - e.y;
+            const d2 = dx * dx + dy * dy;
+            if (d2 < bd) { bd = d2; jpcCloseD = Math.sqrt(d2); jpcChase = { id: n.uid, x: n.x, y: n.y, jpc: true }; }
+          }
+          // Proximité pure (pas de provocation) : le plus proche gagne.
+          if (jpcChase && !jpcProvoked && close && jpcCloseD > closeD) jpcChase = null;
+        }
+      } catch { jpcChase = null; jpcProvoked = false; }
       const taunter = nowMs < Number(e._drawFireUntil) ? this.players.get(String(e._drawFireBy)) : null;
       const taunted = this.validTarget(taunter) && Math.hypot(taunter.x - e.x, taunter.y - e.y) <= 600
         ? { id: String(e._drawFireBy), x: taunter.x, y: taunter.y } : null;
-      const chase = taunted || threat || attacker || close;
+      // Bots JPC : jamais d'aggro spontanée (ni proximité, ni Draw Fire) —
+      // uniquement la riposte aux dégâts (attacker) et la menace.
+      // Dégât joueur récent (< 4 s) : priorité comme en solo (celui qui
+      // tape). Sinon le bot qui farme garde son NPC même si un joueur
+      // passe à côté sans tirer — comme entre deux vrais joueurs.
+      let pdFresh = false;
+      try {
+        const h = Array.isArray(e.hitHist) ? e.hitHist : [];
+        for (let i = h.length - 1; i >= 0; i--) {
+          const c = h[i];
+          if (!c || !String(c.id || "").startsWith("u_")) continue;
+          pdFresh = nowMs - Number(c.at || 0) < 4000;
+          break;
+        }
+      } catch {}
+      let chase = null;
+      if (e.jpc) {
+        chase = threat || attacker;
+      } else if (jpcChase && !pdFresh) {
+        // Bot en train de farmer et aucun joueur ne tape : le bot garde sa
+        // cible même si un joueur passe à côté (comme entre vrais joueurs).
+        chase = taunted || threat || attacker || jpcChase;
+      } else {
+        chase = taunted || threat || attacker || jpcChase || close;
+      }
       if (chase) e.retreating = false;
       if (threat) {
         e.aggroBy = threat.id;
@@ -1346,10 +2206,17 @@ drainPlayerHits() {
       let mx = 0, my = 0, spd = 0;
       // Chasseurs (raid) : jamais de fuite, combat à mort comme en gate.
       // Ancres (Cubikon + boss BL) : jamais de fuite non plus.
-      const fleeing = !e.kamikaze && e.hunter !== true && !isAnchoredNpcType(e.type) && e.hpMax > 0 && e.hp / e.hpMax < 0.10;
+      // JPC : fuite propre vers le portail (jpcMove), pas la fuite générique.
+      const fleeing = !e.jpc && !e.kamikaze && e.hunter !== true && !isAnchoredNpcType(e.type) && e.hpMax > 0 && e.hp / e.hpMax < 0.10;
       if (!fleeing) e.fleeDirection = null;
       const from = attacker || close;
-      if (cubeAnchored) {
+      // Bots JPC : logique faux-joueur (farm/fuite/repair/riposte). Les tirs
+      // vers les joueurs restent génériques ci-dessous (playerHits).
+      if (e.jpc) {
+        const mv = this.jpcMove(e, chase, dt, nowMs);
+        if (mv.dead) continue;
+        mx = Number(mv.mx) || 0; my = Number(mv.my) || 0; spd = Math.max(0, Number(mv.spd) || 0);
+      } else if (cubeAnchored) {
         const patrol = protegitPatrol(e, cubeMaster, this.world, dt);
         mx = patrol.x; my = patrol.y; spd = e.speed * patrol.speed;
         e.angle = chase ? Math.atan2(chase.y - e.y, chase.x - e.x) : Math.atan2(my, mx);
@@ -1404,6 +2271,7 @@ drainPlayerHits() {
       const minBound = radiationTravel ? 80 - RADIATION_CHASE_MARGIN : 80;
       const maxBoundX = radiationTravel ? this.world.w - 80 + RADIATION_CHASE_MARGIN : this.world.w - 80;
       const maxBoundY = radiationTravel ? this.world.h - 80 + RADIATION_CHASE_MARGIN : this.world.h - 80;
+      if (e.jpc) { e.vx = mx * spd; e.vy = my * spd; }
       e.x = clamp(e.x + mx * spd * dt, minBound, maxBoundX);
       e.y = clamp(e.y + my * spd * dt, minBound, maxBoundY);
 
@@ -1412,21 +2280,70 @@ drainPlayerHits() {
       // Riposte ZNA : le NPC visé peut toucher son agresseur protégé
       // (parité solo). Tout autre tir sur joueur protégé reste interdit.
       e.shootCd = Math.max(0, Number(e.shootCd || 0) - dt);
-      const chasePlayer = chase ? this.players.get(String(chase.id)) : null;
-      const chaseTargetOk = this.validTarget(chasePlayer) || this.retaliationOpen(e, chase ? chase.id : null, nowMs);
-      if (!frozen && !(nowMs < Number(e._redirectSilenceUntil || 0)) && e.canShoot !== false && e.shootRate > 0 && chase && chaseTargetOk) {
-        const distance = Math.hypot(chase.x - e.x, chase.y - e.y);
-        if (distance <= e.shootRange && e.shootCd <= 0) {
-          e.shootCd = (1 / Math.max(0.001, e.shootRate)) * (0.85 + Math.random() * 0.3);
-          for (let shot = 0; shot < e.burst; shot++) {
-            const accuracyPenalty = Math.max(nowMs < Number(e._ddolUntil || 0) ? DDOL_ACCURACY_PENALTY : 0,
-              nowMs < Number(e.accuracyUntil || 0) ? Number(e.accuracyPenaltyPct) || 0 : 0);
-            if (Math.random() < Math.min(1, 0.15 + accuracyPenalty / 100)) continue;
-            const damage = Math.max(1, Math.round(e.bulletDmg * (0.95 + Math.random() * 0.1)));
-            this.playerHits.push({ playerId: String(chase.id), npcUid: e.uid, damage, kind: "laser" });
+      // Tirs vers un bot JPC : dégâts directs + visuels rouges (shotFx).
+      // Parité solo (enemyShootAtJpc) : cadence, portée, passifs, ISH.
+      if (!e.jpc && chase && chase.jpc === true && !frozen
+        && !(nowMs < Number(e._redirectSilenceUntil || 0))
+        && e.canShoot !== false && e.shootRate > 0) {
+        const tj = this.entries.get(String(chase.id));
+        if (tj && tj.jpc === true && tj.hp > 0 && !this.inSafe(tj.x, tj.y)) {
+          const jd = Math.hypot(tj.x - e.x, tj.y - e.y);
+          if (jd <= Number(e.shootRange || 0) && e.shootCd <= 0) {
+            e.shootCd = e.jpc ? JPC_LASER.interval : (1 / Math.max(0.001, e.shootRate)) * (0.85 + Math.random() * 0.3);
+            if (!(nowMs < Number(tj.jpcIshUntil || 0))) {
+              const damage = Math.max(1, Math.round(Number(e.bulletDmg || 10) * (0.95 + Math.random() * 0.1)));
+              try {
+                damageEnemyLayers(tj, damage, { shieldPenetration: 0.15, shieldSpread: 0.8,
+                  variance: 0.05, critChance: 0.05, critMultiplier: 1.5, random: Math.random });
+                // Dernier dégât subi : bloque la regen façon joueur (10 s).
+                tj.lastHitAt = nowMs;
+                // Chiffres façon vrai joueur locké : feed dégâts (affichés sur
+                // la cible verrouillée, comme les dégâts alliés).
+                try {
+                  const key = `${tj.uid}|${e.uid}`;
+                  this.feed.set(key, { uid: tj.uid, by: e.uid, total: Math.round((this.feed.get(key)?.total || 0) + damage) });
+                } catch {}
+              } catch {}
+              if (!(tj.hp > 0)) { try { this.jpcKillBot(tj, nowMs); } catch {} }
+              else { try { this.pushNpcShotFx(e.x, e.y, tj.x, tj.y, e.uid, "x1", 1, true, tj.uid); } catch {} }
+            }
           }
         }
       }
+      const chasePlayer = chase ? this.players.get(String(chase.id)) : null;
+      const chaseTargetOk = this.validTarget(chasePlayer) || this.retaliationOpen(e, chase ? chase.id : null, nowMs);
+      if (!frozen && !(nowMs < Number(e._redirectSilenceUntil || 0)) && e.canShoot !== false && e.shootRate > 0 && chase && chaseTargetOk
+        && (!e.jpc || nowMs >= Number(e.jpcIshUntil || 0))) {
+        const distance = Math.hypot(chase.x - e.x, chase.y - e.y);
+        if (distance <= e.shootRange && e.shootCd <= 0) {
+          e.shootCd = e.jpc ? JPC_LASER.interval : (1 / Math.max(0.001, e.shootRate)) * (0.85 + Math.random() * 0.3);
+          if (e.jpc) this.jpcStartVolley(e, chase.id, true, nowMs, nowMs < Number(e.jpcX6Until || 0) ? "x6" : "x4");
+          for (let shot = 0; shot < e.burst; shot++) {
+            const accuracyPenalty = Math.max(nowMs < Number(e._ddolUntil || 0) ? DDOL_ACCURACY_PENALTY : 0,
+              nowMs < Number(e.accuracyUntil || 0) ? Number(e.accuracyPenaltyPct) || 0 : 0);
+            // Maladresse JPC (15 % en 1-8/BL, 30 % en 1-1) par-dessus les 15 % de base.
+            const missBase = e.jpc ? jpcMissChance(e.jpcSkill) : 0.15;
+            if (Math.random() < Math.min(1, missBase + accuracyPenalty / 100)) continue;
+            // Riposte JPC : x2 en 1-1 … x4 en 1-8/BL (×1.5 en salve x6),
+            // PLUS les dégâts des drones comme un vrai joueur équipé.
+            // Les NPC gardent leurs dégâts natifs.
+            const jpcMult = e.jpc
+              ? jpcRiposteMultForSkill(e.jpcSkill) * (nowMs < Number(e.jpcX6Until || 0) ? 1.5 : 1) * jpcDroneDmgFactor(e)
+              : 1;
+            const damage = Math.max(1, Math.round(e.bulletDmg * jpcMult * (0.95 + Math.random() * 0.1)));
+            this.playerHits.push({ playerId: String(chase.id), npcUid: e.uid, damage, kind: "laser" });
+          }
+          // Roquette standard toutes les secondes en riposte, comme les
+          // vrais joueurs.
+          if (e.jpc && chasePlayer && nowMs >= Number(e.jpcRocketAt || 0)) {
+            e.jpcRocketAt = nowMs + 1000;
+            this.jpcFireRocket(e, chase, true, nowMs);
+          }
+        }
+      }
+    }
+    for (const e of this.entries.values()) {
+      if (e.jpc && e.hp > 0) this.jpcTickVisuals(e, nowMs);
     }
     // 2bis) Séparation (parité gate/Low) sur toutes les maps : les NPC
     // vivants ne peuvent plus se superposer. L'index spatial limite le coût
@@ -1438,7 +2355,7 @@ drainPlayerHits() {
       }
       this.separationIndex.forEachPair(activeList, (a, b, i, j) => {
         // Ancre impliquée : traversée libre, aucune séparation.
-        if (isAnchoredNpcType(a.type) || isAnchoredNpcType(b.type)) return;
+        if (a.jpc || b.jpc || isAnchoredNpcType(a.type) || isAnchoredNpcType(b.type)) return;
         let dx = b.x - a.x, dy = b.y - a.y;
         const minimum = (Number(a.r) || 18) + (Number(b.r) || 18) + 6;
         let squared = dx * dx + dy * dy;
@@ -1480,6 +2397,27 @@ drainPlayerHits() {
       }
     } catch {}
     this.feed.clear();
+    // Feed réparation JPC du tick (plafonné), puis vide. Chiffres +x façon
+    // vrai joueur, affichés sur le bot locké uniquement.
+    const heal = [];
+    try {
+      for (const f of this.healFeed.values()) {
+        if (f && (Number(f.hp) > 0 || Number(f.sh) > 0) && heal.length < 24) {
+          heal.push({ uid: f.uid, hp: Math.round(Number(f.hp) || 0), sh: Math.round(Number(f.sh) || 0) });
+        }
+      }
+    } catch {}
+    this.healFeed.clear();
+    // Claims JPC (lock gris) : uid du bot qui farme chaque proie. Une seule
+    // passe : les clients affichent gris tant que le bot est dessus.
+    const jpcClaims = new Map();
+    try {
+      for (const o of this.entries.values()) {
+        if (o && o.jpc === true && o.hp > 0 && o.jpcPreyUid != null && o.jpcMode === "farm") {
+          jpcClaims.set(String(o.jpcPreyUid), String(o.uid));
+        }
+      }
+    } catch {}
     const list = [];
     for (const e of this.entries.values()) {
       if (e.hp > 0) {
@@ -1507,6 +2445,22 @@ drainPlayerHits() {
           aggro: aggroId,
           // Lock premier attaquant (visuel rouge / gris) : id du détenteur.
           lock: e.lockBy != null ? String(e.lockBy) : null,
+          // Proie farmée par un JPC (visuel gris comme un vrai joueur) : uid
+          // du bot, null sinon (le client retombe sur rouge / libre).
+          jpcBy: e.jpc === true ? null : (jpcClaims.get(String(e.uid)) ?? null),
+          // Bots JPC natifs : présentation faux-joueur pour tous les écrans
+          // (pseudo, drones, formation, bulle ISH).
+          ...(e.jpc === true ? {
+            jpc: 1,
+            jpVx: Number(e.vx) || 0, jpVy: Number(e.vy) || 0, jpSpeed: e.speed,
+            jpMode: e.jpcMode,
+            jpPseudo: String(e.jpcPseudo || "JPC"),
+            jpDrones: Number(e.jpcDrones?.count) || 0,
+            jpForm: String(e.jpcDrones?.formation || "standard"),
+            jpLvl: Math.max(1, Math.min(6, Number(e.jpcDrones?.level) || 1)),
+            jpDes: (Array.isArray(e.jpcDrones?.designs) ? e.jpcDrones.designs : []).slice(0, 12).map(String),
+            jpIsh: nowMs < Number(e.jpcIshUntil || 0) ? 1 : 0,
+          } : null),
           // Animation d'ouverture du Cubikon : phase + temps restant pour
           // que tous les ecrans jouent l'ouverture en meme temps.
           cube: (e.type === "npc_Cubikon" && e.cube && e.cube.phase) ? String(e.cube.phase) : null,
@@ -1521,7 +2475,7 @@ drainPlayerHits() {
     // sans explosion ni delai. Le WS etant fiable, on vide apres envoi.
     const gone = this.recentGone.slice(-200);
     this.recentGone.length = 0;
-    return { list, deaths: this.deaths.slice(), dmg, gone };
+    return { list, deaths: this.deaths.slice(), dmg, heal, gone };
   }
 
   // État léger destiné à survivre aux redémarrages du serveur. Il contient

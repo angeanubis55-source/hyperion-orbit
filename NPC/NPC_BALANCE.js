@@ -396,4 +396,11 @@ export const NPC_REWARDS = Object.freeze({
   npc_Saturn_Sapphire: { credits: 45000, exp: 51200, honor: 512 },
   npc_Saturn_Evil_Clone: { credits: 150000, exp: 250000, honor: 2000 },
   npc_Saturn_Evil_Iris: { credits: 12800, exp: 6400, honor: 32 },
+  // Bots JPC d'Hyperion Orbit (multijoueur natif) : récompense par tier de
+  // map. Le serveur qualifie la mort avec ce type (l'entité garde son type
+  // coque npc_Jpc_<ship> pour le rendu client).
+  npc_Jpc_T0: { credits: 5000, exp: 2000, honor: 10 },
+  npc_Jpc_T1: { credits: 15000, exp: 8000, honor: 25 },
+  npc_Jpc_T2: { credits: 60000, exp: 25000, honor: 60 },
+  npc_Jpc_T3: { credits: 150000, exp: 60000, honor: 150 },
 });

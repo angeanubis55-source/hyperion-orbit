@@ -146,7 +146,7 @@ export function suspendNetplay(v) {
     lastBoxFullSyncMap = "";
     netBoxInbox.length = 0;
     pendingNetBoxClaims.clear();
-    netDmgInbox.length = 0;
+    netDmgInbox.length = 0; netHealInbox.length = 0;
     netShotInbox.length = 0;
     netPvpKillInbox.length = 0;
     netNpcRewardInbox.clear();
@@ -277,7 +277,7 @@ function clearInstanceGameplay() {
     lastBoxFullSyncMap = "";
     netBoxInbox.length = 0;
     pendingNetBoxClaims.clear();
-    netDmgInbox.length = 0;
+    netDmgInbox.length = 0; netHealInbox.length = 0;
     netShotInbox.length = 0;
     netSkillInbox.length = 0;
     netPvpKillInbox.length = 0;
@@ -411,6 +411,8 @@ export function getNetSelf() {
 }
 // Feed degats allies : { uid, by, total } (chiffres sur la cible, sans effet).
 const netDmgInbox = [];
+// Feed réparation JPC : { uid, hp, sh } (chiffres +x sur le bot locké, sans effet).
+const netHealInbox = [];
 // Cargo du vaincu PvP : apparition a relayer + collectes a effacer.
 const netPvpLootInbox = [];
 // Kick admin : { reason } + explosions d'exclusion a afficher.
@@ -539,6 +541,12 @@ const netDecloakInbox = [];
 export function drainNetDecloakInbox() {
   if (!netDecloakInbox.length) return [];
   return netDecloakInbox.splice(0, netDecloakInbox.length);
+}
+// IEM d'un bot JPC : delock + anti-relock ({ by, x, y, until }).
+const netIemHitInbox = [];
+export function drainNetIemHitInbox() {
+  if (!netIemHitInbox.length) return [];
+  return netIemHitInbox.splice(0, netIemHitInbox.length);
 }
 // Tirs allies exacts (vrais + faux) : { t:shot/rshot, ... } a jouer aussitot.
 const netShotInbox = [];
@@ -950,7 +958,7 @@ export function ensureNetplayConnection() {
               netNpcs.clear();
               netDeaths.clear();
               netGone = [];
-              netDmgInbox.length = 0;
+              netDmgInbox.length = 0; netHealInbox.length = 0;
               netShotInbox.length = 0;
               netSkillInbox.length = 0;
             } catch {}
@@ -1227,6 +1235,12 @@ export function ensureNetplayConnection() {
     if (msg.t === "mindfireDecloak" && msg && typeof msg === "object") {
       if (netDecloakInbox.length > 16) netDecloakInbox.shift();
       netDecloakInbox.push({ uid: String(msg.uid || "") });
+      return;
+    }
+    if (msg.t === "iemHit" && msg && typeof msg === "object") {
+      if (netIemHitInbox.length > 8) netIemHitInbox.shift();
+      netIemHitInbox.push({ by: String(msg.by || ""), x: Number(msg.x) || 0, y: Number(msg.y) || 0,
+        until: Math.max(0, Number(msg.until) || 0) });
       return;
     }
     if (msg.t === "lowRaid" && msg && typeof msg === "object") {
@@ -1701,6 +1715,13 @@ export function ensureNetplayConnection() {
             netDmgInbox.push({ uid: String(d.uid), by: d.by != null ? String(d.by) : "", total: Math.round(Number(d.total)) });
           }
         }
+        if (!Array.isArray(msg.npc) && Array.isArray(msg.npc.heal)) {
+          for (const h of msg.npc.heal.slice(0, 24)) {
+            if (!h || !h.uid || !(Number(h.hp) > 0 || Number(h.sh) > 0)) continue;
+            if (netHealInbox.length > 48) netHealInbox.shift();
+            netHealInbox.push({ uid: String(h.uid), hp: Math.round(Number(h.hp) || 0), sh: Math.round(Number(h.sh) || 0) });
+          }
+        }
         const list = Array.isArray(msg.npc) ? msg.npc : msg.npc.list;
         const seenNpc = new Set();
         for (const n of (Array.isArray(list) ? list : [])) {
@@ -1723,8 +1744,17 @@ export function ensureNetplayConnection() {
             uid,
             type: String(n.type || ""),
             x, y,
-            vx: n.alive === false ? 0 : (positionChanged ? velocity.vx : Number(prev?.vx || 0)),
-            vy: n.alive === false ? 0 : (positionChanged ? velocity.vy : Number(prev?.vy || 0)),
+            vx: n.alive === false ? 0 : n.jpc ? Number(n.jpVx) || 0 : (positionChanged ? velocity.vx : Number(prev?.vx || 0)),
+            vy: n.alive === false ? 0 : n.jpc ? Number(n.jpVy) || 0 : (positionChanged ? velocity.vy : Number(prev?.vy || 0)),
+            jpc: n.jpc === 1,
+            jpPseudo: String(n.jpPseudo || "").slice(0, 32),
+            jpDrones: Math.max(0, Math.min(12, Number(n.jpDrones) || 0)),
+            jpForm: String(n.jpForm || "standard").slice(0, 32),
+            jpLvl: Math.max(1, Math.min(6, Number(n.jpLvl) || 1)),
+            jpDes: Array.isArray(n.jpDes) ? n.jpDes.slice(0, 12).map(d => String(d).slice(0, 32)) : [],
+            jpIsh: n.jpIsh === 1 ? 1 : 0,
+            jpSpeed: Math.max(40, Math.min(2000, Number(n.jpSpeed) || 300)),
+            jpMode: String(n.jpMode || "farm").slice(0, 16),
             angle: Number(n.angle) || 0,
             hp: Number(n.hp) || 0,
             sh: Number(n.sh) || 0,
@@ -1960,6 +1990,11 @@ export function drainNetBoxInbox() {
 export function drainNetDmgInbox() {
   if (!netDmgInbox.length) return [];
   return netDmgInbox.splice(0, netDmgInbox.length);
+}
+
+export function drainNetHealInbox() {
+  if (!netHealInbox.length) return [];
+  return netHealInbox.splice(0, netHealInbox.length);
 }
 
 export function drainNetShotEvents() {
@@ -2412,6 +2447,18 @@ export function tickNetplayRemotes(dt = 0.016) {
   }
   for (const n of netNpcs.values()) {
     const lead = predictionLeadSeconds(now - Number(n.sampleAt || now));
+    if (n.jpc) {
+      // Vitesse serveur explicite : un arrêt efface immédiatement l'ancienne
+      // vitesse. Aucun retard d'interpolation ne s'accumule à la réparation.
+      const tx = Number(n.x) + Number(n.vx || 0) * Math.min(0.1, lead);
+      const ty = Number(n.y) + Number(n.vy || 0) * Math.min(0.1, lead);
+      const rx = Number(n.rx ?? n.x), ry = Number(n.ry ?? n.y);
+      const dx = tx - rx, dy = ty - ry, distance = Math.hypot(dx, dy);
+      const step = Math.max(Number(n.jpSpeed) || 300, Math.hypot(n.vx || 0, n.vy || 0)) * frameDt;
+      const ratio = distance > 0 ? Math.min(1, step / distance) : 0;
+      n.rx = rx + dx * ratio; n.ry = ry + dy * ratio;
+      continue;
+    }
     const targetX = Number(n.x) + Number(n.vx || 0) * lead;
     const targetY = Number(n.y) + Number(n.vy || 0) * lead;
     const rx = Number(n.rx ?? n.x), ry = Number(n.ry ?? n.y);
@@ -2479,7 +2526,7 @@ function dbgRecordSkillFx(ev) {
 // Ce module ne fait que le reseau : envoi 20 Hz + snapshots + extrapolation.
 
 try {
-  window.__NETPLAY__ = { pushNetplayLocal, netplayLocalUpdateDue, getNetplayRemotes, getNetNpcs, getNetDeaths, getNetBoxes, drainNetBoxInbox, drainNetDmgInbox, drainNetShotEvents, clearNetShots, sendShotEvent, sendPvpHit, getNetSelf, suspendNetplay, netSuspended, setNetInstanceMode, netInInstance, netConnected, sendPing, netPongAge, netHelloAckAge, netServerVersion, forceNetReconnect, clearNetBoxes, claimNetBox, requestBoxSync, requestStarJumpArrival, netBoxSyncAgeMs, netBoxSnapshotReady, sendNetHit, netMyId, netMyPseudo, netIsAuthed, netNpcFresh, netplayStatus, drainNetChatInbox, sendChat, drainNetAuctionInbox, sendAuctionBid, drainNetPvpKillInbox, drainNetPvpPetKillInbox, sendPvpPetHit, sendPvpLoot, sendPvpLootTake, drainNetPvpLootInbox, drainNetPvpLootTakeInbox, drainNetAdminKickInbox, drainNetAdminBoomInbox, drainNetBannedInbox, netDisconnect, getNetGroup, getNetFriendsOnline, drainNetGroupInviteInbox, drainNetGroupNoticeInbox, drainNetWhisperInbox, sendGroupCreate, sendGroupInvite, sendGroupAccept, sendGroupDecline, sendGroupLeave, sendGroupKick, sendGroupChat, sendGroupSync, sendWhisper, drainNetFriendRequestInbox, consumeFriendsDirty, sendFriendPing, sendFriendResponded };
+  window.__NETPLAY__ = { pushNetplayLocal, netplayLocalUpdateDue, getNetplayRemotes, getNetNpcs, getNetDeaths, getNetBoxes, drainNetBoxInbox, drainNetDmgInbox, drainNetHealInbox, drainNetShotEvents, clearNetShots, sendShotEvent, sendPvpHit, getNetSelf, suspendNetplay, netSuspended, setNetInstanceMode, netInInstance, netConnected, sendPing, netPongAge, netHelloAckAge, netServerVersion, forceNetReconnect, clearNetBoxes, claimNetBox, requestBoxSync, requestStarJumpArrival, netBoxSyncAgeMs, netBoxSnapshotReady, sendNetHit, netMyId, netMyPseudo, netIsAuthed, netNpcFresh, netplayStatus, drainNetChatInbox, sendChat, drainNetAuctionInbox, sendAuctionBid, drainNetPvpKillInbox, drainNetPvpPetKillInbox, sendPvpPetHit, sendPvpLoot, sendPvpLootTake, drainNetPvpLootInbox, drainNetPvpLootTakeInbox, drainNetAdminKickInbox, drainNetAdminBoomInbox, drainNetBannedInbox, netDisconnect, getNetGroup, getNetFriendsOnline, drainNetGroupInviteInbox, drainNetGroupNoticeInbox, drainNetWhisperInbox, sendGroupCreate, sendGroupInvite, sendGroupAccept, sendGroupDecline, sendGroupLeave, sendGroupKick, sendGroupChat, sendGroupSync, sendWhisper, drainNetFriendRequestInbox, consumeFriendsDirty, sendFriendPing, sendFriendResponded };
   window.__NETPLAY_REMOTES__ = remotes;
   window.__NETPLAY_NPCS__ = netNpcs;
   window.__NETPLAY_BOXES__ = netBoxes;
