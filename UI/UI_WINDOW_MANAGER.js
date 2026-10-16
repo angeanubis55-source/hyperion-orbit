@@ -122,6 +122,12 @@ function applySavedWindowPosition(id, card) {
     )
     : null;
 
+  // DPS : fenetre compacte auto-ajustee. On n'applique jamais une largeur
+  // sauvegardee (souvent ~300px fige au premier drag) : elle empecherait
+  // de retrecir meme apres une reduction du CSS. Le CSS reprend la main.
+  const isDpsWindow = id === "dpsWindow" || card?.id === "dpsWindow";
+  const effectiveWidth = isDpsWindow ? null : width;
+
   // Le viewport est borne apres application de la largeur sauvegardee.
   // Mesurer ici forcerait une mise en page avec l'ancienne geometrie.
   const p = {
@@ -136,8 +142,8 @@ function applySavedWindowPosition(id, card) {
   card.style.top = `${Math.round(p.top)}px`;
   card.style.right = "auto";
   card.style.bottom = "auto";
-  if (width !== null) {
-    card.style.width = `${Math.round(width)}px`;
+  if (effectiveWidth !== null) {
+    card.style.width = `${Math.round(effectiveWidth)}px`;
     card.style.minWidth = "0";
     card.style.maxWidth = "none";
   } else {
@@ -354,9 +360,13 @@ function prepareFloating(card, r = card.getBoundingClientRect()) {
   card.style.right = "auto";
   card.style.bottom = "auto";
 
-  // ✅ largeur verrouillée pour éviter l'étirement (jamais une mesure
-  // écrasée : une largeur suspecte laisse le CSS dimensionner).
-  if (r.width >= 160) {
+  // DPS : on ne verrouille jamais la largeur en inline (ca ecraserait
+  // le max-width CSS et empecherait la fenetre de retrecir).
+  if (card?.id === "dpsWindow") {
+    card.style.width = "";
+    card.style.minWidth = "";
+    card.style.maxWidth = "";
+  } else if (r.width >= 160) {
     card.style.width = `${Math.round(r.width)}px`;
     card.style.minWidth = "0";
     card.style.maxWidth = "none";

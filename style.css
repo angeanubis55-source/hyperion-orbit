@@ -759,8 +759,10 @@ body:has(> #phoneControls:not([hidden])) #ammoBar .actionPalette nav button {
 }
 /* --- Fenêtre DPS --- */
 .dpsPanel {
-  min-width:min(280px,calc(100vw - 24px));
+  min-width:min(240px,calc(100vw - 24px));
+  width:260px;
   max-width:min(320px,calc(100vw - 24px));
+  box-sizing:border-box;
   background:linear-gradient(180deg, rgba(17,22,34,.97), rgba(9,12,20,.97));
   border:1px solid rgba(255,255,255,.12);
   border-radius:12px;
@@ -782,7 +784,30 @@ body:has(> #phoneControls:not([hidden])) #ammoBar .actionPalette nav button {
   display:flex;
   justify-content:space-between;
   align-items:baseline;
-  gap:14px;
+  gap:10px;
+  min-width:0;
+}
+#dpsWindow.gameWindow.floating {
+  min-width:min(240px,calc(100vw - 24px)) !important;
+  max-width:min(320px,calc(100vw - 24px)) !important;
+  width:260px !important;
+}
+.dpsHeadRows .row .k,
+.dpsHeadRows .row .v,
+.dpsTotalRow .k,
+.dpsTotalRow .v {
+  min-width:0;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+.dpsHeadRows .row .k,
+.dpsTotalRow .k {
+  flex:1 1 auto;
+}
+.dpsHeadRows .row .v,
+.dpsTotalRow .v {
+  flex:0 1 auto;
 }
 .dpsHeadRows .row .v,
 .dpsCalcRows .row .v,
