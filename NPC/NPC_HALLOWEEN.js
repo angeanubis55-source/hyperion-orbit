@@ -2,7 +2,7 @@
 
 // Event Halloween : entre x-3 et x-8 uniquement (1-3..1-8, 2-3..2-8,
 // 3-3..3-8 — jamais x-1/x-2, BL, GG, maps spéciales, 4-x, 5-2), du 16/10
-// 23h59 au 01/11 23h59 (heure locale, chaque année).
+// 22h50 au 01/11 23h59 (heure de Paris, chaque année).
 //
 // Mécanique par map : des Curcubitors spawnent en continu avec des stats
 // calibrées à la map. Quand 50 sont tués, tous les normaux sont purgés et
@@ -23,8 +23,55 @@ export const HALLOWEEN_REWARD_MULT = 20;
 export const HALLOWEEN_DROP_BOSS_RATE = 1;
 export const HALLOWEEN_DROP_NORMAL_RATE = 1;
 
+export const HALLOWEEN_TIME_ZONE = "Europe/Paris";
 export const HALLOWEEN_START = Object.freeze({ month: 9, day: 16, hour: 22, minute: 50 }); // TEST : remettre 23h59 apres essai
 export const HALLOWEEN_END = Object.freeze({ month: 10, day: 1, hour: 23, minute: 59 });
+
+const halloweenDateFormat = new Intl.DateTimeFormat("en-GB", {
+  timeZone: HALLOWEEN_TIME_ZONE,
+  year: "numeric", month: "2-digit", day: "2-digit",
+  hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23",
+});
+
+function halloweenDateParts(date) {
+  return Object.fromEntries(halloweenDateFormat.formatToParts(date)
+    .filter((part) => part.type !== "literal")
+    .map((part) => [part.type, Number(part.value)]));
+}
+
+// Convertit une date civile de Paris en instant UTC. L'offset est calculé
+// pour chaque borne : octobre est en UTC+2, novembre en UTC+1.
+function halloweenParisTime(year, month, day, hour = 0, minute = 0, second = 0) {
+  const target = Date.UTC(year, month, day, hour, minute, second);
+  let timestamp = target;
+  for (let i = 0; i < 3; i++) {
+    const p = halloweenDateParts(new Date(timestamp));
+    const delta = target - Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute, p.second);
+    timestamp += delta;
+    if (!delta) break;
+  }
+  return timestamp;
+}
+
+// Les spawners interrogent ce calendrier à chaque tick : les conversions
+// Intl ne sont faites qu'au changement d'année, jamais pour chaque NPC.
+let halloweenWindowCache = null;
+function halloweenEventWindow(date) {
+  const timestamp = date.getTime();
+  if (!Number.isFinite(timestamp)) return null;
+  if (!halloweenWindowCache || timestamp < halloweenWindowCache.yearStart
+      || timestamp >= halloweenWindowCache.yearEnd) {
+    const { year } = halloweenDateParts(date);
+    const start = HALLOWEEN_START, end = HALLOWEEN_END;
+    halloweenWindowCache = {
+      yearStart: halloweenParisTime(year, 0, 1),
+      yearEnd: halloweenParisTime(year + 1, 0, 1),
+      start: halloweenParisTime(year, start.month, start.day, start.hour, start.minute),
+      end: halloweenParisTime(year, end.month, end.day, end.hour, end.minute, 59),
+    };
+  }
+  return halloweenWindowCache;
+}
 
 const HALLOWEEN_MAP_RE = /^[123]-[3-8]$/;
 // Types de l'event : bases + variantes par map (npc_Curcubitor_1_3...).
@@ -58,20 +105,15 @@ export function halloweenMapLevel(mapId) {
 
 export function isHalloweenEventActive(now = new Date()) {
   const t = now instanceof Date ? now : new Date(now);
-  if (Number.isNaN(t.getTime())) return false;
-  const start = new Date(t.getFullYear(), HALLOWEEN_START.month, HALLOWEEN_START.day,
-    HALLOWEEN_START.hour, HALLOWEEN_START.minute, 0);
-  const end = new Date(t.getFullYear(), HALLOWEEN_END.month, HALLOWEEN_END.day,
-    HALLOWEEN_END.hour, HALLOWEEN_END.minute, 59);
-  return t >= start && t <= end;
+  const window = halloweenEventWindow(t);
+  return !!window && t.getTime() >= window.start && t.getTime() <= window.end;
 }
 
-// Fin d'event (heure locale, chaque année) + compte à rebours.
+// Fin d'event (heure de Paris, chaque année) + compte à rebours.
 export function halloweenEventEnd(now = new Date()) {
   const t = now instanceof Date ? now : new Date(now);
-  if (Number.isNaN(t.getTime())) return null;
-  return new Date(t.getFullYear(), HALLOWEEN_END.month, HALLOWEEN_END.day,
-    HALLOWEEN_END.hour, HALLOWEEN_END.minute, 59);
+  const window = halloweenEventWindow(t);
+  return window ? new Date(window.end) : null;
 }
 
 export function halloweenCountdown(now = new Date()) {

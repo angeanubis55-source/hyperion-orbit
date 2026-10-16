@@ -31705,6 +31705,31 @@ collectableFarTickT = 0;
             zoneCamps.push({ ...freshCamps[k], id: k + 1, t: 0 });
           }
         }
+        // Event (ex : Halloween) : les slots stockés remplissent déjà le
+        // quota, mais les camps event n'y sont pas — les ajouter par rôle.
+        try {
+          const needHw = { normal: 0, boss: 0 };
+          for (const c of freshCamps) {
+            if (c?.event === "halloween") needHw[c.role === "boss" ? "boss" : "normal"]++;
+          }
+          const haveHw = { normal: 0, boss: 0 };
+          for (const c of zoneCamps) {
+            if (c?.event === "halloween") haveHw[c.role === "boss" ? "boss" : "normal"]++;
+          }
+          if (needHw.normal > haveHw.normal || needHw.boss > haveHw.boss) {
+            const missing = {
+              normal: Math.max(0, needHw.normal - haveHw.normal),
+              boss: Math.max(0, needHw.boss - haveHw.boss),
+            };
+            for (const c of freshCamps) {
+              if (c?.event !== "halloween") continue;
+              const role = c.role === "boss" ? "boss" : "normal";
+              if (missing[role] <= 0) continue;
+              missing[role]--;
+              zoneCamps.push({ ...c, id: zoneCamps.length + 1, t: 0 });
+            }
+          }
+        } catch {}
       } else {
         zoneCamps = freshCamps;
       }
