@@ -427,6 +427,107 @@ export const COLLECTABLE_TYPES = Object.freeze({
     rewards: { resources: { rinusk: [55, 80], blacklight_trace: [30, 40], eternal_fragment: [30, 50] } },
   },
 
+  // Pumpkin Box Halloween : mêmes maps / nombre / logique que les Bonus
+  // Box, uniquement pendant l'event (flag `event`, voir gating moteur).
+  // Loot : énergie GG x5, munitions x2, roquettes x2, crédits, bonbons.
+  Pumpkin_Box: {
+    name: "Pumpkin Box",
+    maps: "*",
+    // Mêmes exclusions que les Bonus Box (GG / Low / QZ / 5-2 / BL...).
+    denyMaps: ["alpha", "beta", "gamma", "delta", "epsilon", "zeta", "kappa", "lambda", "kronos", "awakened", "low", "qz", "5-2", "1-bl", "2-bl", "3-bl"],
+    event: "halloween",
+    qty: 50,
+    spawnBatch: 50,
+    minSpacing: 100,
+    avoidPlayer: 0,
+    npcDespawnAfter: 0,
+    respawnDelaySec: 0,
+    r: 30,
+    pickupRadius: 50,
+    bob: 5,
+    sprite: {
+      path: "ASSETS/COLLECTABLES/PUMPKIN_BOX/",
+      frames: 26,
+      firstNumber: 1,
+      ext: ".png",
+      fps: 20,
+      w: 100,
+      h: 100,
+      scale: 1,
+      randomStart: true,
+      glow: false,
+    },
+    exclusiveRewards: [
+      { weight: 15, reward: { credits: [15000, 30000] } },
+      { weight: 10, reward: { galaxyEnergy: [15, 45] } },
+      { weight: 28, reward: { ammo: { x2: [120, 360] } } },
+      { weight: 18, reward: { ammo: { x3: [60, 180] } } },
+      { weight: 14, reward: { ammo: { sab: [30, 150] } } },
+      { weight: 10, reward: { rockets: { plt2021: [12, 48] } } },
+      { weight: 3, reward: { ammo: { x4: [30, 90] } } },
+      // Bonbons rares en pumpkin (la source principale = les box des NPC).
+      { weight: 2, reward: { resources: { candy: [1, 3], candy_golden: [1, 3] } } },
+      // Clé du passe : très très rare (jamais doublée par les boosters).
+      { weight: 1, reward: { resources: { battlepass_key: [1, 1] } } },
+    ],
+  },
+
+  // Box de Cucurbitors : drop des Curcubitors normaux (100 %), bonbons uniquement.
+  // Reste au sol indéfiniment (pas de timer).
+  Cucurbitor_Box: {
+    name: "Box de Cucurbitors",
+    maps: "*",
+    qty: 0,
+    spawnBatch: 1,
+    minSpacing: 100,
+    avoidPlayer: 0,
+    npcDespawnAfter: 0,
+    r: 30,
+    pickupRadius: 50,
+    bob: 5,
+    sprite: {
+      path: "ASSETS/COLLECTABLES/CUCURBITOR_BOX/",
+      frames: 25,
+      firstNumber: 1,
+      ext: ".png",
+      fps: 20,
+      w: 80,
+      h: 80,
+      scale: 1,
+      randomStart: true,
+      glow: false,
+    },
+    rewards: { resources: { candy: [2, 4] } },
+  },
+
+  // Box de Boss Cucurbitors : drop des Boss Curcubitors (100 %), bonbons uniquement.
+  // Reste au sol indéfiniment (pas de timer).
+  Boss_Cucurbitor_Box: {
+    name: "Box de Boss Cucurbitors",
+    maps: "*",
+    qty: 0,
+    spawnBatch: 1,
+    minSpacing: 100,
+    avoidPlayer: 0,
+    npcDespawnAfter: 0,
+    r: 30,
+    pickupRadius: 50,
+    bob: 5,
+    sprite: {
+      path: "ASSETS/COLLECTABLES/BOSS_CUCURBITOR_BOX/",
+      frames: 25,
+      firstNumber: 1,
+      ext: ".png",
+      fps: 20,
+      w: 120,
+      h: 120,
+      scale: 1,
+      randomStart: true,
+      glow: false,
+    },
+    rewards: { resources: { candy: [4, 8], candy_golden: [2, 5] } },
+  },
+
   // Box lâchée par le Mindfire Behemoth à sa mort (jamais en ambient).
   // Officiel : Rinusk 100-120 + Trace 120-140 + Cerebrum 30-45 +
   // EXP 8.5-12.5M + Honneur 52.5-72.5k + Crédits 16.5-22.5M + Uridium 5400-5900.

@@ -15,6 +15,30 @@ export function getMinimapPortalColors(portal, isReturn = false) {
 
 const minimapStaticCache = new Map();
 
+// Icônes de boss teintées blanc (ex : Boss Curcubitor) : cache par image.
+const whiteIconCache = new Map();
+function whiteIcon(img) {
+  let tinted = whiteIconCache.get(img);
+  if (!tinted) {
+    const w = Math.max(1, Number(img.naturalWidth) || 32);
+    const h = Math.max(1, Number(img.naturalHeight) || 32);
+    tinted = document.createElement("canvas");
+    tinted.width = w;
+    tinted.height = h;
+    const g = tinted.getContext("2d");
+    g.drawImage(img, 0, 0);
+    g.globalCompositeOperation = "source-in";
+    g.fillStyle = "#ffffff";
+    g.fillRect(0, 0, w, h);
+    if (whiteIconCache.size > 64) whiteIconCache.clear();
+    whiteIconCache.set(img, tinted);
+  }
+  return tinted;
+}
+
+// Animation des icônes de boss : une frame par rendu (minimap à 20 Hz).
+let bossIconFrame = 0;
+
 function minimapStaticKey(world, portals, isZoneMap, safeZone, returnPortal, width, height, rallyZone, walls) {
   const portalKey = (portals || []).map((p) => [p.x, p.y, p.r, p.toMap, p.shortcutCreditCost]);
   const safeKey = safeZone
@@ -203,7 +227,7 @@ export function renderMinimap(context, options) {
     width, height, world, player, enemies = [], allies = [], pet = null, portals = [], returnPortal = null,
     isZoneMap = false, safeZone = null, rallyZone = null, moveTarget = null, ping = null, markers = [],
     camera, viewportWidth, viewportHeight, lockedNpc = null, shouldShowNpc = () => true, npcOpacity = () => 1,
-    walls = [],
+    walls = [], bossIconFor = null,
   } = options;
   const staticLayer = getMinimapStaticLayer(world, portals, isZoneMap, safeZone, returnPortal, width, height, rallyZone, walls);
   // La couche statique contient un fond blanc translucide. Sans effacer le
@@ -213,14 +237,41 @@ export function renderMinimap(context, options) {
   const scaleX = width / world.w;
   const scaleY = height / world.h;
 
+  // Icônes de boss (ex : Boss Curcubitor) : toujours visibles, image du
+  // NPC en petit et blanc, frames à 20 Hz — jamais le point rouge.
+  const bossMarks = [];
   for (const enemy of enemies) {
-    if (!enemy || enemy.hp <= 0 || !shouldShowNpc(player, enemy, lockedNpc)) continue;
+    if (!enemy || enemy.hp <= 0) continue;
+    if (typeof bossIconFor === "function") {
+      const mark = bossIconFor(enemy);
+      if (mark) { bossMarks.push({ enemy, mark }); continue; }
+    }
+    if (!shouldShowNpc(player, enemy, lockedNpc)) continue;
     // Tous les NPC : même point rouge, quelle que soit leur taille en jeu.
     const size = 2;
     const opacity = clamp(Number(npcOpacity(player, enemy, lockedNpc)) || 0, 0, 1);
     if (opacity <= 0) continue;
     context.fillStyle = `rgba(255,107,122,${(0.8 * opacity).toFixed(3)})`;
     context.fillRect(enemy.x * scaleX - size / 2, enemy.y * scaleY - size / 2, size, size);
+  }
+  if (bossMarks.length) {
+    bossIconFrame++;
+    for (const { enemy, mark } of bossMarks) {
+      const size = Number(mark.size) || 12;
+      const x = enemy.x * scaleX;
+      const y = enemy.y * scaleY;
+      const imgs = Array.isArray(mark.imgs) ? mark.imgs : [];
+      const img = imgs.length ? imgs[bossIconFrame % imgs.length] : null;
+      if (img && Number(img.naturalWidth) > 0) {
+        context.drawImage(whiteIcon(img), x - size / 2, y - size / 2, size, size);
+      } else {
+        // Sprite pas encore chargé : pastille blanche en attendant.
+        context.fillStyle = "#ffffff";
+        context.beginPath();
+        context.arc(x, y, 2.5, 0, Math.PI * 2);
+        context.fill();
+      }
+    }
   }
 
   for (const ally of allies) {

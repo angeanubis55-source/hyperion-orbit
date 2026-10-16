@@ -1,3 +1,5 @@
+import { parseHalloweenVariant, halloweenRewardScale, HALLOWEEN_REWARD_MULT } from "./NPC_HALLOWEEN.js";
+
 export const NPC_REWARDS = Object.freeze({
   npc_Streuner: { credits: 1000, exp: 1000, honor: 2 },
   npc_Boss_Streuner: { credits: 4000, exp: 4000, honor: 8 },
@@ -404,3 +406,18 @@ export const NPC_REWARDS = Object.freeze({
   npc_Jpc_T2: { credits: 60000, exp: 25000, honor: 60 },
   npc_Jpc_T3: { credits: 150000, exp: 60000, honor: 150 },
 });
+
+// Récompense d'un type, y compris les variantes Halloween calibrées par map
+// (absentes de la table figée : base × facteur du niveau).
+// Retourne null si le type est inconnu.
+export function resolveNpcReward(type) {
+  const direct = NPC_REWARDS[type];
+  if (direct) return direct;
+  const parsed = parseHalloweenVariant(type);
+  if (!parsed) return null;
+  const base = NPC_REWARDS[parsed.role === "boss" ? "npc_Boss_Curcubitor" : "npc_Curcubitor"];
+  if (!base) return null;
+  const f = halloweenRewardScale(parsed.level) * HALLOWEEN_REWARD_MULT;
+  const scale = (v) => Math.max(1, Math.round(Number(v || 0) * f));
+  return { credits: scale(base.credits), exp: scale(base.exp), honor: scale(base.honor) };
+}

@@ -16,7 +16,7 @@ import { getShipDesignBaseId, getShipFamilyId, getShipFamilyIds, getShipFamilyNa
 import { DRONE_XP_SHARE, getDroneLevel } from "../DRONE/DRONE_TYPES.js";
 import { DRONE_DESIGNS, getDroneDesign } from "../DRONE/DRONE_DESIGNS.js";
 import { PET_XP_SHARE, getPetLevel } from "../PET/PET_TYPES.js";
-import { NPC_REWARDS } from "../NPC/NPC_BALANCE.js";
+import { resolveNpcReward } from "../NPC/NPC_BALANCE.js";
 
 const DB_DIR = resolve(process.cwd(), "SERVER_DATA");
 const DB_PATH = join(DB_DIR, "orbit.db");
@@ -270,7 +270,7 @@ export function awardNpcKill(accountId, npcType, mapId, rewardPercent, ownsKill,
   const uid = String(accountId || "");
   const type = String(npcType || "");
   const key = String(txKey || "").slice(0, 240);
-  const reward = NPC_REWARDS[type];
+  const reward = resolveNpcReward(type);
   if (!uid || !key || !reward) return null;
   const pct = Math.max(0, Math.min(100, Math.floor(Number(rewardPercent) || 0)));
   if (pct <= 0) return null;

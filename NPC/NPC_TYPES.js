@@ -1,4 +1,5 @@
 import { NPC_REWARDS } from "./NPC_BALANCE.js";
+import { HALLOWEEN_VARIANT_SPECS, buildHalloweenVariant, halloweenVariantKey } from "./NPC_HALLOWEEN.js";
 
 export const NPC_TYPES = {
 
@@ -1427,12 +1428,13 @@ export const NPC_TYPES = {
     r: 20, hp: 2000000, shield: 1500000, speed: 250, bulletDmg: 3000, bulletSpeed: 4500, shootRange: 550,
   },
   npc_Boss_Curcubitor: {
-    name: "-=[ Boss Curcubitor ]=-",
+    name: "..::{ Boss Curcubitor }::..",
     sprite: { path: "NPC/NPC_SPRITES/BOSS_CURCUBITOR/", frames: 21, firstNumber: 1, ext: ".png", w: 263, h: 257 },
     playSprite: true,
     passiveNative: false,
     spriteSpeed: 18,
-    bulletSprite: { src: "COMBAT/MUNITIONS/SPECIAL8.png", w: 55, h: 17, glow: true, invert: true },
+    bulletSprite: { src: "COMBAT/MUNITIONS/JOB.png", w: 43, h: 12, glow: true, rotateOffset: Math.PI },
+    ammoKey: "job",
     r: 47, hp: 200000, shield: 150000, speed: 250, bulletDmg: 1500, bulletSpeed: 4500, shootRange: 550,
   },
   npc_Curcubitor: {
@@ -1441,7 +1443,8 @@ export const NPC_TYPES = {
     playSprite: true,
     passiveNative: false,
     spriteSpeed: 18,
-    bulletSprite: { src: "COMBAT/MUNITIONS/SPECIAL8.png", w: 55, h: 17, glow: true, invert: true },
+    bulletSprite: { src: "COMBAT/MUNITIONS/JOB.png", w: 43, h: 12, glow: true, rotateOffset: Math.PI },
+    ammoKey: "job",
     r: 18, hp: 10000, shield: 7500, speed: 250, bulletDmg: 100, bulletSpeed: 4500, shootRange: 550,
   },
   npc_Skoll: {
@@ -3560,4 +3563,15 @@ for (const [type, npc] of Object.entries(NPC_TYPES)) {
   npc.value = reward.credits;
   npc.exp = reward.exp;
   npc.honor = reward.honor;
+}
+
+// Event Halloween : 36 variantes calibrées par map (x-3..x-8 × normal/boss),
+// enregistrées d'office pour que client ET serveur les connaissent sans
+// timing (rendu multi, stats serveur, préchargements).
+for (const spec of HALLOWEEN_VARIANT_SPECS) {
+  const key = halloweenVariantKey(spec.mapId, spec.role);
+  if (!key || NPC_TYPES[key]) continue;
+  const base = NPC_TYPES[spec.role === "boss" ? "npc_Boss_Curcubitor" : "npc_Curcubitor"];
+  if (!base) throw new Error(`Base Halloween manquante pour ${key}`);
+  NPC_TYPES[key] = buildHalloweenVariant(base, Number(spec.mapId.split("-")[1]), spec.role);
 }

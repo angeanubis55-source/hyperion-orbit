@@ -8,6 +8,7 @@ try { bootNetFromCache(); } catch {}
 import { findCatalogItem, CATALOG } from "./CATALOG.js";
 import { SHIP_PACKS, getShipDesignBaseId, getShipPackById, getShipFamilyId } from "../../SHIP/SHIP_PACKS.js";
 import { normalizeQuestState, QUEST_DEFINITIONS } from "../../QUEST/QUEST_TYPES.js";
+import { getBattlepassObjective, isBattlepassComplete, normalizeBattlepassState } from "../../QUEST/BATTLEPASS.js";
 import { QUEST_REWARD_BASELINE_2026 } from "../../QUEST/QUEST_REWARD_BASELINE.js";
 import { calculateRankPoints, getQuestExperienceReward, getQuestHonorReward } from "./PROGRESSION.js";
 import { getFaction, getFactionBaseSpawn, normalizeFactionId } from "./FACTIONS.js";
@@ -15,8 +16,10 @@ import { compactDroneEquipment, compactFitArray, compactFitDraft, compactPetFit 
 import { resizeShield } from "./EQUIPMENT_SYNC.js";
 import { clearGalaxyGateWaveKills, completeActiveGalaxyGate, consumeBuiltGalaxyGate, deployBuiltGalaxyGate, GALAXY_GATE_BUILD_LIMIT, GALAXY_GATE_DEFINITIONS, getGalaxyGateWaveKills, loseGalaxyGateLife, normalizeGalaxyGateState, normalizeGalaxyGateWave, palladiumExchangeForEnergy, PALLADIUM_PER_GALAXY_ENERGY, recordGalaxyGateWaveKill, resetGalaxyGateWaveKills, rollGalaxyGateResourceRewards, GALAXY_GATE_EQUIPMENT_DROPS, rollGalaxyGateEquipmentReward, setGalaxyGateMultiplierArmed, spinGalaxyGate } from "./GALAXY_GATES.js";
 import { getCraftingRecipe, CRAFTING_ENABLED } from "../DATA/CRAFTING.js";
+import { isHalloweenEventActive } from "../../NPC/NPC_HALLOWEEN.js";
 import { getRefineryRecipe, refineOreOutput, isOreResource, ORE_SELL_PRICES, UPGRADE_SLOT_ORES, upgradeOreCapacity, planAutoUpgradeCharges, cargoAdd, cargoFree, CARGO_CAPACITY } from "../DATA/RESOURCES.js";
 import { getModuleRarity, MODULE_DAILY_ROLL_LIMIT, MODULE_ROLL_COST, MODULE_SELL_PRICES } from "../DATA/MODULE_DROPS.js";
+import { generateShipModule } from "../DATA/MODULE_GEN.js";
 import {
   AUCTION_ACTIVE_LOTS,
   AUCTION_CYCLE_VERSION,
@@ -2028,6 +2031,8 @@ export function buyCurrentUserDroneFormation(formationId) {
   const formation = DRONE_FORMATIONS.find(entry => entry.id === formationId);
   if (!u || !formation) return { ok: false, error: "Formation introuvable." };
   if (u.drones.formations.includes(formation.id)) return { ok: false, error: "Formation déjà possédée." };
+  // Retirée de la vente (ex : Chauve-Souris en assemblage event) : prix nul = non achetable.
+  if (!(Number(formation.price) > 0)) return { ok: false, error: "Formation non disponible en boutique." };
   if (u.credits < formation.price) return { ok: false, error: "Crédits insuffisants." };
   u.credits -= formation.price;
   noteNetPurchase(formation.price);
@@ -3551,6 +3556,94 @@ export function buyAndAddShipModule(cost, moduleObj, options = {}) {
   };
 }
 
+// Boutique du passe de combat Halloween : tirage instantané payé en clés.
+// Rareté forcée (pas de loterie inter-raretés), paliers croissants.
+// Comme en boutique : module ajouté + historique, sans animation de roue.
+export const PASS_MODULE_KEY_COSTS = Object.freeze({ common: 2, rare: 5, epic: 12, legendary: 25 });
+const PASS_MODULE_FORCED = Object.freeze({
+  common: Object.freeze({ tier: "x1", statCount: 1 }),
+  rare: Object.freeze({ tier: "x2", statCount: 2 }),
+  epic: Object.freeze({ tier: "x3", statCount: 3 }),
+  legendary: Object.freeze({ tier: "x3", statCount: 4 }),
+});
+
+// Offres de la boutique du passe (clés) : modules à rareté forcée,
+// packs de ressources, laser Xénocide (reste aussi en boutique crédits).
+export const PASS_SHOP_OFFERS = Object.freeze([
+  Object.freeze({ id: "mod_common", kind: "module", rarity: "common", cost: 2, label: "Module Commun" }),
+  Object.freeze({ id: "mod_rare", kind: "module", rarity: "rare", cost: 5, label: "Module Rare" }),
+  Object.freeze({ id: "mod_epic", kind: "module", rarity: "epic", cost: 12, label: "Module Épique" }),
+  Object.freeze({ id: "mod_legendary", kind: "module", rarity: "legendary", cost: 25, label: "Module Légendaire" }),
+  Object.freeze({ id: "res_mucosum", kind: "resources", cost: 1, label: "Mucosum ×25", resources: Object.freeze({ mucosum: 25 }) }),
+  Object.freeze({ id: "res_scrap", kind: "resources", cost: 1, label: "Scrap ×25", resources: Object.freeze({ scrap: 25 }) }),
+  Object.freeze({ id: "res_plasmide", kind: "resources", cost: 1, label: "Plasmide ×15", resources: Object.freeze({ plasmide: 15 }) }),
+  Object.freeze({ id: "res_alloy", kind: "resources", cost: 2, label: "Alliage hybride ×5", resources: Object.freeze({ hybrid_alloy: 5 }) }),
+  Object.freeze({ id: "res_prismatium", kind: "resources", cost: 2, label: "Prismatium ×10", resources: Object.freeze({ prismatium: 10 }) }),
+  Object.freeze({ id: "res_aurus", kind: "resources", cost: 2, label: "Aurus ×10", resources: Object.freeze({ aurus: 10 }) }),
+  Object.freeze({ id: "res_rinusk", kind: "resources", cost: 5, label: "Rinusk ×50 + Traceurs ×10", resources: Object.freeze({ rinusk: 50, blacklight_trace: 10 }) }),
+  Object.freeze({ id: "res_kyhalon", kind: "resources", cost: 5, label: "Kyhalon ×10 + Tetrathrin ×10", resources: Object.freeze({ kyhalon: 10, tetrathrin: 10 }) }),
+  Object.freeze({ id: "laser_xenocide", kind: "item", itemId: "laser_lf6", cost: 125, label: "Laser Xénocide" }),
+]);
+
+export function getPassShopOffer(offerId) {
+  return PASS_SHOP_OFFERS.find((o) => o.id === offerId) || null;
+}
+
+export function buyPassModuleWithKeys(rarityId) {
+  const rarity = String(rarityId || "").toLowerCase();
+  const map = { common: "mod_common", rare: "mod_rare", epic: "mod_epic", legendary: "mod_legendary" };
+  if (!map[rarity]) return { ok: false, error: "Rareté inconnue." };
+  return buyPassShopOffer(map[rarity]);
+}
+
+// Offre générique de la boutique du passe (modules, ressources, items).
+export function buyPassShopOffer(offerId) {
+  const offer = getPassShopOffer(offerId);
+  if (!offer) return { ok: false, error: "Offre inconnue." };
+  let active = false;
+  try { active = isHalloweenEventActive(); } catch {}
+  if (!active) return { ok: false, error: "Event Halloween terminé." };
+  const u = getCurrentUserForMutation();
+  if (!u) return { ok: false, error: "Non connecté." };
+  ensureUserShape(u);
+  const cost = Math.max(0, Math.floor(Number(offer.cost) || 0));
+  const have = Math.max(0, Math.floor(Number(u.inventory?.resources?.battlepass_key) || 0));
+  if (have < cost) return { ok: false, error: `Clés insuffisantes : ${have} / ${cost}.`, user: u };
+  u.inventory.resources.battlepass_key = have - cost;
+  noteNetConsumption("ores", "battlepass_key", cost);
+  let moduleObj = null;
+  if (offer.kind === "module") {
+    const forced = PASS_MODULE_FORCED[offer.rarity];
+    if (!forced) return { ok: false, error: "Rareté inconnue." };
+    if (!Array.isArray(u.inventory.shipModules)) u.inventory.shipModules = [];
+    if (!Array.isArray(u.inventory.moduleRollHistory)) u.inventory.moduleRollHistory = [];
+    moduleObj = generateShipModule(u, { tier: forced.tier, statCount: forced.statCount });
+    moduleObj.rerolls = 0;
+    moduleObj.rerollCredits = 0;
+    u.inventory.shipModules.push(moduleObj);
+    u.inventory.moduleRollHistory.push({ ...moduleObj, rollPayment: { type: "keys", amount: cost } });
+  } else if (offer.kind === "resources") {
+    u.inventory.resources ||= {};
+    const gains = {};
+    for (const [resourceId, amount] of Object.entries(offer.resources || {})) {
+      const gain = Math.max(0, Math.floor(Number(amount) || 0));
+      if (!(gain > 0)) continue;
+      u.inventory.resources[resourceId] = Math.max(0, Math.floor(Number(u.inventory.resources[resourceId]) || 0) + gain);
+      gains[resourceId] = (gains[resourceId] || 0) + gain;
+    }
+    if (Object.keys(gains).length) noteNetResourceGain(gains);
+  } else if (offer.kind === "item") {
+    if (!offer.itemId) return { ok: false, error: "Objet inconnu." };
+    incCount(u, offer.itemId, 1);
+  } else {
+    return { ok: false, error: "Offre inconnue." };
+  }
+  saveUser(u);
+  if (netActive()) flushNetUser().catch(() => {});
+  writeCurrent({ id: u.id, pseudo: u.pseudo, email: u.email });
+  return { ok: true, user: u, module: moduleObj, payment: { type: "keys", amount: cost } };
+}
+
 // ✅ Reroll ATOMIQUE (1 seule sauvegarde) : paiement + remplacement.
 // Historique append-only : l'ancien tirage reste visible.
 // options.payWith: "ticket" | "credits" | undefined (auto = ticket si dispo).
@@ -3673,6 +3766,13 @@ export function craftCurrentUserRecipe(recipeId, requestedQuantity = 1) {
   if (!u) return { ok: false, error: "Aucun utilisateur connecté." };
   const recipe = getCraftingRecipe(recipeId);
   if (!recipe) return { ok: false, error: "Recette introuvable." };
+  // Event Halloween : recettes inaccessibles hors event (anti-bricolage),
+  // même si l'atelier les affichait encore.
+  if (recipe.event === "halloween") {
+    let active = false;
+    try { active = isHalloweenEventActive(); } catch {}
+    if (!active) return { ok: false, error: "Event Halloween terminé." };
+  }
   const quantity = Math.min(100, Math.max(1, Math.floor(Number(requestedQuantity) || 1)));
   if (Object.keys(recipe.output?.ships || {}).length && quantity !== 1) {
     return { ok: false, error: "Un vaisseau se fabrique un par un." };
@@ -3831,6 +3931,28 @@ export function craftCurrentUserRecipe(recipeId, requestedQuantity = 1) {
   saveUser(u, { durable: true });
   localStorage.setItem("orbit_sync", String(Date.now()));
   return { ok: true, user: u, recipe, quantity };
+}
+
+// Passe de combat Halloween : récupère les clés d'un objectif terminé.
+// Les clés sont stockées en ressources (utilisables plus tard).
+export function claimBattlepassObjective(objId) {
+  const u = getCurrentUserForMutation();
+  if (!u) return { ok: false, error: "Aucun utilisateur connecté." };
+  const def = getBattlepassObjective(objId);
+  if (!def) return { ok: false, error: "Objectif introuvable." };
+  u.battlepass = normalizeBattlepassState(u.battlepass);
+  if (!isBattlepassComplete(u.battlepass, def.id)) return { ok: false, error: "Objectif non terminé.", user: u };
+  if (u.battlepass.claimed.includes(def.id)) return { ok: false, error: "Déjà récupéré.", user: u };
+  u.battlepass.claimed.push(def.id);
+  const keys = Math.max(0, Math.floor(Number(def.keys) || 0));
+  u.inventory ||= {};
+  u.inventory.resources ||= {};
+  u.inventory.resources.battlepass_key = Math.max(0, Math.floor(Number(u.inventory.resources.battlepass_key) || 0) + keys);
+  if (keys > 0) noteNetResourceGain({ battlepass_key: keys });
+  ensureUserShape(u);
+  saveUser(u, { durable: true });
+  localStorage.setItem("orbit_sync", String(Date.now()));
+  return { ok: true, user: u, keys };
 }
 
 // Raffinage minerais -> minerais nobles (ratios officiels, voir REFINERY_RECIPES).

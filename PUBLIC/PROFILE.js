@@ -56,6 +56,7 @@ import { DRONE_FORMATIONS, DRONE_LEVEL_XP, DRONE_MAX_LEVEL, DRONE_TYPES, getDron
 import { getDroneDesign, getDroneDesignBonuses, droneDesignBonusLabel } from "../DRONE/DRONE_DESIGNS.js";
 import { emptyPetFit, getPetHullPrice, getPetLevel, getPetLevelBonus, getPetLevelXp, getPetNextLevelXp, getPetSlots, getPetSpritePath, PET_FUEL_MAX, PET_HULL_MAX_BUYS } from "../PET/PET_TYPES.js";
 import { MODULE_ALL_STATS, MODULE_DAILY_ROLL_LIMIT, MODULE_PCT_BAN, MODULE_ROLL_COST, MODULE_SPC_STATS, MODULE_STAT_COUNT_WEIGHTS, MODULE_TIER_MALUS, MODULE_TIER_WEIGHTS, MODULE_TYPE_WEIGHTS, getModuleRarity, getModuleStatCountWeights, getStatMaxPct } from "../SRC/DATA/MODULE_DROPS.js";
+import { generateShipModule } from "../SRC/DATA/MODULE_GEN.js";
 import { appendToFitSlots, compactDroneEquipment, compactFitArray, compactFitDraft, compactPetFit, moveEquipmentSlots } from "../SRC/CORE/FIT_LAYOUT.js";
 import { pruneUnavailableLoadout } from "../SRC/CORE/FIT_INVENTORY.js";
 import { rarityForCatalogItem } from "../SRC/DATA/CRAFTING.js";
@@ -470,6 +471,8 @@ function petShopLevelOf(entry) {
 function groupPetShopItems(direct, kind = "") {
   const groups = new Map();
   for (const it of direct) {
+    // Assemblage/event uniquement (ex : niveau 5 Halloween) : jamais en boutique.
+    if (it?.shopHidden === true) continue;
     const k = it?.petGear?.key || it?.petProtocol?.key || it?.id;
     const gk = kind ? `${kind}:${k}` : String(k);
     if (!groups.has(gk)) groups.set(gk, { key: k, items: [] });
@@ -753,16 +756,6 @@ function formatStatLabel(stat) {
   return stat;
 }
 
-function rollModulePct(min, max) {
-  let value = 0;
-  let guard = 0;
-  while (value === MODULE_PCT_BAN && guard < 16) {
-    value = randInt(min, max);
-    guard++;
-  }
-  return value;
-}
-
 function moduleFamilyId(module) {
   if (module?.familyId) return String(module.familyId);
   return getShipFamilyId(module?.shipId);
@@ -785,62 +778,6 @@ function moduleRarityMeta(module) {
   const id = getModuleRarity(module?.bonuses?.length);
   const meta = ITEM_RARITIES[id] || ITEM_RARITIES.common;
   return { id, name: meta.name, color: meta.color };
-}
-
-function generateShipModule(user, opts = {}) {
-  const tier = opts.tier || pickWeighted(MODULE_TIER_WEIGHTS);
-  const type = opts.type || pickWeighted(MODULE_TYPE_WEIGHTS);
-  const statCount = opts.statCount || pickWeighted(getModuleStatCountWeights(tier));
-
-  const ships = (Array.isArray(CATALOG?.ships) ? CATALOG.ships : [])
-    .filter((s) => String(s?.ship?.id || "").toLowerCase() !== "police" && !s?.shopHidden);
-  const shipPick = ships.length ? ships[randInt(0, ships.length - 1)] : null;
-  const shipId = opts.shipId || shipPick?.ship?.id || "UnknownShip";
-  const familyId = opts.familyId || getShipFamilyId(shipId);
-
-  // Malus (borne basse) fixé par le tier. Le cap positif dépend de la
-  // COULEUR du module et de la stat tirée (getStatMaxPct).
-  const mn = MODULE_TIER_MALUS[tier] ?? -4;
-
-  let mainStat = "hp";
-  if (type === "hp") mainStat = "hp";
-  if (type === "shd") mainStat = "shield";
-  if (type === "dmg") mainStat = "damage";
-  if (type === "spc") mainStat = MODULE_SPC_STATS[randInt(0, MODULE_SPC_STATS.length - 1)];
-
-  // Chaque stat est tirée indépendamment : bonus (+) ou malus (-).
-  // Une stat hors de sa couleur est plafonnée à 5% (ex : Dégâts dans un
-  // module bleu/Shield), sauf Exp/Honneur toujours à 12%.
-  const picked = new Set([mainStat]);
-  const bonuses = [{ stat: mainStat, pct: rollModulePct(mn, getStatMaxPct(mainStat, type)) }];
-
-  const pool = MODULE_ALL_STATS.filter((s) => !picked.has(s));
-  while (bonuses.length < statCount && pool.length) {
-    const index = randInt(0, pool.length - 1);
-    const s = pool.splice(index, 1)[0];
-    picked.add(s);
-    bonuses.push({ stat: s, pct: rollModulePct(mn, getStatMaxPct(s, type)) });
-  }
-
-  const rarity = getModuleRarity(bonuses.length);
-
-  const now = Math.floor(Date.now() / 1000);
-  const uid = Math.random().toString(16).slice(2, 8);
-
-  return {
-    id: `mod_${now}_${uid}`,
-    kind: "shipModule",
-    shipId,
-    familyId,
-    tier,
-    type,
-    bonuses,
-    rarity,
-    iconKey: `${type}-${tier}`,
-    createdAt: now,
-    rerolls: 0,
-    rerollCredits: 0,
-  };
 }
 
 function iconForItem(it, cat) {
@@ -6801,6 +6738,23 @@ window.addEventListener("orbit:user-updated", event => {
 
 window.addEventListener("orbit:net-adopted", () => {
   window.dispatchEvent(new CustomEvent("orbit:user-updated", { detail: { source: "progress" } }));
+});
+
+// Boutique du passe (jeu) : un module vient d'être tiré aux clés.
+// Si la roulette ou l'historique est visible, on reconstruit la vue extras
+// avec le compte frais (sinon fermeture/rouverture nécessaire).
+window.addEventListener("orbit:pass-module-rolled", () => {
+  try {
+    if (!shopIsVisible()) return;
+    const rv = document.getElementById("rouletteView");
+    const hv = document.getElementById("moduleHistoryView");
+    const extrasVisible = (rv && rv.style.display !== "none") || (hv && hv.style.display !== "none");
+    if (!extrasVisible) return;
+    const fresh = getCurrentUserFull();
+    if (!fresh) return;
+    user = fresh;
+    renderExtrasRoulette(fresh);
+  } catch {}
 });
 
 // Onglet Compte déplacé dans Paramètres (voir switchSettingsTab moteur).

@@ -6,7 +6,8 @@ import { pickSpacedSpawnPosition } from "../NPC/NPC_SPAWN_POSITION.js";
 // NPC_TYPES (stats), COMBAT_RULES (degats), MAPS/<id>/SPAWNS+WORLD (camps).
 // Le serveur tranche les PV des NPC et les degats qu'ils infligent aux joueurs.
 
-import { createUniverse, deserializeUniverse, ensureMapSlots, markDead, markAlive, getSlot, serializeUniverse, slotUid } from "../SRC/SIM/UNIVERSE_SIM.js";
+import { createUniverse, deserializeUniverse, ensureMapSlots, markDead, markAlive, getSlot, serializeUniverse, slotUid, applyNpcDensityToCamps } from "../SRC/SIM/UNIVERSE_SIM.js";
+import { appendHalloweenCamps, applyHalloweenKill, halloweenCampBlocked, halloweenRoleOf, isHalloweenBossVariant, isHalloweenMapActive, isHalloweenVariantType, normalizeHalloweenState } from "../NPC/NPC_HALLOWEEN.js";
 import { NPC_TYPES } from "../NPC/NPC_TYPES.js";
 import { damageEnemyLayers } from "../COMBAT/COMBAT_RULES.js";
 import { JPC_LASER, jpcVolleyParts, tickJpcRepair, jpcTravel, jpcCombatMove, jpcCombatDistance, jpcEngageRange } from "../NPC/JPC_BEHAVIOR.js";
@@ -106,6 +107,14 @@ export class ZoneNpcSim {
     this.world = { w: Number(world?.w) || 11000, h: Number(world?.h) || 7000 };
     this.camps = camps;
     this.universe = savedUniverse ? deserializeUniverse(savedUniverse) : createUniverse();
+    // Event Halloween : phase persistée (survit aux restarts serveur).
+    try {
+      const rawHw = typeof savedUniverse === "string"
+        ? JSON.parse(savedUniverse)?.halloween
+        : savedUniverse?.halloween;
+      this.halloween = normalizeHalloweenState(rawHw);
+    } catch { this.halloween = normalizeHalloweenState(null); }
+    this.halloweenSyncAt = 0;
     this.entries = new Map(); // uid -> { uid, campId, type, x, y, angle, hp, sh, hpMax, shMax, speed, dr, spread, tx, ty, killer }
     this.campT = new Map(); // campId -> delai avant prochain essai de spawn
     this.players = new Map(); // clientId -> { x, y, dead, safe, hidden }
@@ -140,8 +149,11 @@ export class ZoneNpcSim {
       ]);
       if (!WORLD || typeof spawns?.getZoneSpawns !== "function") return null;
       const world = { w: Number(WORLD.w) || 11000, h: Number(WORLD.h) || 7000 };
-      const defs = spawns.getZoneSpawns(world);
-      if (!Array.isArray(defs) || !defs.length) return null;
+      const rawDefs = spawns.getZoneSpawns(world);
+      if (!Array.isArray(rawDefs) || !rawDefs.length) return null;
+      // Event Halloween (x-3..x-8, dates) + densité -30 % : mêmes règles qu'en solo.
+      const defs = applyNpcDensityToCamps(
+        appendHalloweenCamps(rawDefs, world, { npcTypes: NPC_TYPES, mapId: id }));
       // Cercles de non-agression (base) : meme calme qu'en solo.
       let safe = [];
       try {
@@ -197,6 +209,9 @@ export class ZoneNpcSim {
         hunter: c?.hunter === true,
         // Raid Low : camp à usage unique par vague (pas de respawn).
         noRespawn: c?.noRespawn === true,
+        // Event Halloween : rôle de phase (normal/boss), voir tick.
+        event: c?.event === "halloween" ? "halloween" : null,
+        role: c?.event === "halloween" ? String(c?.role || "normal") : null,
       }));
       const sim = new ZoneNpcSim(id, world, camps, savedUniverse);
       sim.safe = safe;
@@ -450,6 +465,73 @@ export class ZoneNpcSim {
     }
     for (const camp of this.camps) {
       if (camp.raidWave > 0 && camp.raidWave !== wave) this.campT.set(camp.id, 0);
+    }
+  }
+
+  // --- Event Halloween (multi, partagé par map) ---
+  // Compteur : 50 normaux tués -> purge + 3 boss ; 3 boss tués -> retour.
+  // Un boss tué ne respawn pas pendant sa phase (camp mémorisé).
+  noteHalloweenKill(type, campId = null) {
+    if (!isHalloweenMapActive(this.mapId)) return;
+    const role = halloweenRoleOf(type);
+    if (!role) return;
+    const res = applyHalloweenKill(this.halloween, role, campId);
+    this.halloween = res.state;
+    if (res.transition === "toBoss") this.purgeHalloween("normal");
+  }
+
+  // Purge silencieuse (pas de journal deaths : ni récompense, ni compteur).
+  // role null = tous les rôles (fin d'event).
+  purgeHalloween(roleOrNull = "normal") {
+    const nowMs = Date.now();
+    for (const [uid, e] of [...this.entries]) {
+      if (!e || !(e.hp > 0)) continue;
+      if (!isHalloweenVariantType(e.type)) continue;
+      if (roleOrNull && halloweenRoleOf(e.type) !== roleOrNull) continue;
+      try { markDead(this.universe, this.mapId, uid, nowMs); } catch {}
+      this.entries.delete(uid);
+      if (this.recentGone.length < 200) this.recentGone.push(uid);
+    }
+  }
+
+  // Apparition / disparition en direct (toutes les 5 s), sans restart.
+  syncHalloween(nowMs) {
+    if (nowMs - (this.halloweenSyncAt || 0) < 5000) return;
+    this.halloweenSyncAt = nowMs;
+    const active = isHalloweenMapActive(this.mapId);
+    const has = this.camps.some((c) => c?.event === "halloween");
+    if (active && !has) {
+      const extras = appendHalloweenCamps([], this.world, { npcTypes: NPC_TYPES, mapId: this.mapId });
+      if (!extras.length) return;
+      let nextId = 0;
+      for (const c of this.camps) nextId = Math.max(nextId, Number(c?.id) || 0);
+      for (const c of extras) {
+        nextId += 1;
+        this.camps.push({
+          id: nextId,
+          type: String(c.type),
+          x: Number(c.x) || 0,
+          y: Number(c.y) || 0,
+          aggroRange: Number(c.aggroRange ?? 700),
+          respawn: Number(c.respawn ?? 1.5),
+          maxAlive: Math.max(1, Number(c.maxAlive ?? 1)),
+          speed: null,
+          fixed: true,
+          spawnArea: null,
+          spawnMinDistance: 0,
+          raidWave: 0,
+          hunter: false,
+          noRespawn: false,
+          event: "halloween",
+          role: String(c.role || "normal"),
+        });
+      }
+      try { ensureMapSlots(this.universe, this.mapId, this.camps, nowMs); } catch {}
+    } else if (!active && has) {
+      this.purgeHalloween(null);
+      this.camps = this.camps.filter((c) => c?.event !== "halloween");
+      try { ensureMapSlots(this.universe, this.mapId, this.camps, nowMs); } catch {}
+      this.halloween = normalizeHalloweenState(null);
     }
   }
 
@@ -1808,9 +1890,9 @@ drainPlayerHits() {
       try { this.spawnOnKillWave(entry, nowMs); } catch {}
       try { markDead(this.universe, this.mapId, uid, Date.now()); } catch {}
       const death = { uid, type: entry.type, x: Math.round(entry.x), y: Math.round(entry.y), killer: entry.killer, cause: "gun", seq: entry.seq || 0, at: Date.now() };
-      // Invoke / Mindfire : classement dégâts pour les soleils (top 10) et
-      // la récompense de destruction proportionnelle (tous les tapeurs).
-      if (entry.type === "npc_Invoke_XVI" || entry.type === "npc_Mindfire_Behemoth") {
+      // Invoke / Mindfire / Boss Halloween : classement dégâts pour les soleils
+      // (top 10) et la récompense de destruction proportionnelle (tous les tapeurs).
+      if (entry.type === "npc_Invoke_XVI" || entry.type === "npc_Mindfire_Behemoth" || isHalloweenBossVariant(entry.type)) {
         try {
           const shares = [];
           if (entry.dmgBy && entry.dmgSeq === entry.seq) {
@@ -1824,6 +1906,7 @@ drainPlayerHits() {
         } catch {}
       }
       this.deaths.push(death);
+      try { this.noteHalloweenKill(entry.type, entry.campId); } catch {}
     }
     // Dégâts appliqués par ce coup (audit anticheat côté MULTI_SERVER).
     return applied;
@@ -1832,6 +1915,8 @@ drainPlayerHits() {
   tick(dtSec = 0.1) {
     const nowMs = Date.now();
     const dt = Math.max(0.01, Math.min(0.5, Number(dtSec) || 0.1));
+    // Event Halloween en direct : apparition / disparition sans restart.
+    try { this.syncHalloween(nowMs); } catch {}
     // Rotation horaire des JPC : le nombre change toutes les heures, sans
     // redémarrage (renforts immédiats si ça monte, convergence naturelle
     // sinon). Avant le précalcul jpcAlive pour qu'il voie les renforts.
@@ -1857,6 +1942,10 @@ drainPlayerHits() {
     for (const camp of this.camps) {
       // Raid Low : les camps de vague ne spawnent que si leur vague est active.
       if (camp.raidWave > 0 && camp.raidWave !== this.raidWave) continue;
+      // Event Halloween : chaque camp ne spawne que dans sa phase.
+      if (camp.event === "halloween") {
+        if (!isHalloweenMapActive(this.mapId) || halloweenCampBlocked(camp, this.halloween)) continue;
+      }
       // Raid Low : camp à usage unique — déjà spawné pendant cette
       // activation de vague = pas de respawn (sinon vague infinie).
       if (camp.noRespawn === true && camp._raidGen === this.raidWaveGen) continue;
@@ -2517,7 +2606,12 @@ drainPlayerHits() {
   // État léger destiné à survivre aux redémarrages du serveur. Il contient
   // notamment alive/deadAt/respawnAt, donc un Empereur tué ne réapparaît pas
   // simplement parce qu'une mise à jour redémarre le service.
+  // + phase Halloween (ne pas refaire les 50 kills après un restart).
   serializeRespawns() {
-    return serializeUniverse(this.universe);
+    try {
+      const base = JSON.parse(serializeUniverse(this.universe));
+      base.halloween = { ...normalizeHalloweenState(this.halloween) };
+      return JSON.stringify(base);
+    } catch { return serializeUniverse(this.universe); }
   }
 }

@@ -22,7 +22,8 @@ export const DRONE_FORMATIONS=Object.freeze([
   makeFormation("crab","Formation Crabe",100000000,{shieldAbsorptionPct:100,speedPct:-15},"+100 % absorption de bouclier · -15 % vitesse"),
   makeFormation("heart","Formation Cœur",100000000,{shieldPct:20,hpPct:20,laserDamagePct:-5},"+20 % bouclier · -5 % dégâts laser"),
   makeFormation("barrier","Formation Barrière",100000000,{npcDamagePct:5,npcXpPct:5,shieldAbsorptionPct:-15},"+5 % dégâts NPC · +5 % expérience · -15 % absorption de bouclier"),
-  makeFormation("bat","Formation Chauve-Souris",125000000,{npcDamagePct:8,npcXpPct:8,speedPct:-15},"+8 % dégâts NPC · +8 % expérience uniquement sur la cible détruite · -15 % vitesse"),
+  // Retirée de la boutique (price 0) : assemblage event Halloween uniquement.
+  makeFormation("bat","Formation Chauve-Souris",0,{npcDamagePct:8,npcXpPct:8,speedPct:-15},"+8 % dégâts NPC · +8 % expérience uniquement sur la cible détruite · -15 % vitesse"),
   makeFormation("ring","Formation Anneau",150000000,{shieldPct:185,speedPct:-10,laserDamagePct:-35,rocketCooldownPct:25},"+185 % bouclier · -10 % vitesse · -35 % dégâts laser"),
   makeFormation("drill","Formation Foreuse",150000000,{laserDamagePct:20,speedPct:-5,shieldPct:-25,shieldAbsorptionPct:-5},"+20 % dégâts laser · -5 % vitesse · -25 % bouclier"),
   makeFormation("veteran","Formation Vétéran",150000000,{honorPct:20,laserDamagePct:-20,shieldPct:-20,hpPct:-20},"+20 % honneur · -20 % dégâts laser · -20 % bouclier"),

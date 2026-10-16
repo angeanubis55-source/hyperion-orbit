@@ -4,6 +4,8 @@
 // Pur (aucun DOM/Canvas/window) pour pouvoir tourner tel quel sur un futur serveur Node.
 // Le client (ORBIT_ENGINE) ne fait que : assurer les slots, lire les dus, marquer mort/vivant.
 
+import { isHalloweenVariantType } from "../../NPC/NPC_HALLOWEEN.js";
+
 export const UNIVERSE_KEY = "orbit_universe_v1";
 export const UNIVERSE_VERSION = 2;
 
@@ -33,6 +35,7 @@ function npcDensityKeepType(type, count) {
 // Réduit une liste de camps de zone selon NPC_DENSITY en préservant les rares.
 // - raidWave (LOW) : retourné tel quel (la progression du raid est exacte).
 // - fixed : toujours conservés.
+// - event (Halloween...) : toujours conservés (respawn aléatoire garanti).
 // - rares (voir ci-dessus) : toujours conservés.
 // - communs : tirage aléatoire (Fisher-Yates) jusqu'à la cible.
 export function applyNpcDensityToCamps(camps = []) {
@@ -52,7 +55,7 @@ export function applyNpcDensityToCamps(camps = []) {
   const commonIdx = [];
   for (let i = 0; i < list.length; i++) {
     const c = list[i];
-    if (c && c.fixed === true) { keep.push(c); continue; }
+    if (c && (c.fixed === true || c.event === "halloween")) { keep.push(c); continue; }
     if (npcDensityKeepType(c?.type, counts.get(String(c?.type || "unknown")))) { keep.push(c); continue; }
     commonIdx.push(i);
   }
@@ -88,7 +91,9 @@ export function pruneStoredSlotsToDensity(stored = [], targetLen = 0) {
   const common = [];
   for (const s of list) {
     const t = String(s?.type || "unknown");
-    if (NPC_DENSITY_KEEP_RE.test(t) || Number(counts.get(t)) <= 2) keep.push(s);
+    // Event (variantes Halloween...) : jamais coupés ici ; le strip hors
+    // event s'occupe de les retirer quand il faut.
+    if (isHalloweenVariantType(t) || NPC_DENSITY_KEEP_RE.test(t) || Number(counts.get(t)) <= 2) keep.push(s);
     else common.push(s);
   }
   if (keep.length >= target) return keep.slice(0, target);

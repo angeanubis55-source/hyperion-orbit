@@ -255,6 +255,13 @@ export const CATALOG = {
     { id: "gear_gkk2", name: "G-KK2 · Kamikaze", price: 17500000, icon: "/PET/PET_GEARS/G-KK1.png", petLevel: 4, petGear: { key: "kk", level: 2 }, desc: "Explosion 50000, portée 350, cooldown 30 s." },
     { id: "gear_gkk3", name: "G-KK3 · Kamikaze", price: 50000000, icon: "/PET/PET_GEARS/G-KK1.png", petLevel: 8, petGear: { key: "kk", level: 3 }, desc: "Explosion 75000, portée 450, cooldown 15 s." },
     { id: "gear_gkk4", name: "G-KK4 · Kamikaze", price: 100000000, icon: "/PET/PET_GEARS/G-KK1.png", petLevel: 20, petGear: { key: "kk", level: 4 }, desc: "Explosion 93750, portée 550, cooldown 10 s." },
+    // Niveau 5 (event Halloween, assemblage uniquement : shopHidden).
+    { id: "gear_gal5", name: "G-AL5 · Auto-Loot", price: 0, shopHidden: true, icon: "/PET/PET_GEARS/G-AL1.png", petLevel: 20, petGear: { key: "al", level: 5 }, desc: "Collecte cargo + bonus boxes, portée 3938." },
+    { id: "gear_gar5", name: "G-AR5 · Collecteur", price: 0, shopHidden: true, icon: "/PET/PET_GEARS/G-AR1.png", petLevel: 20, petGear: { key: "ar", level: 5 }, desc: "Collecte minerais, portée 3938." },
+    { id: "gear_gel5", name: "G-EL5 · Localisateur ennemis", price: 0, shopHidden: true, icon: "/PET/PET_GEARS/G-EL1.png", petLevel: 20, petGear: { key: "el", level: 5 }, desc: "Localise un NPC, portée 3281." },
+    { id: "gear_gtra5", name: "G-TRA5 · Cargo Trader", price: 0, shopHidden: true, icon: "/PET/PET_GEARS/G-TRA1.png", petLevel: 20, petGear: { key: "tra", level: 5 }, desc: "Vend minerais hors base (+39,38 %, cooldown 14 s)." },
+    { id: "gear_grep5", name: "G-REP5 · Réparateur", price: 0, shopHidden: true, icon: "/PET/PET_GEARS/G-REP1.png", petLevel: 20, petGear: { key: "rep", level: 5 }, desc: "Régénère 6,56 % de la coque /s." },
+    { id: "gear_gkk5", name: "G-KK5 · Kamikaze", price: 0, shopHidden: true, icon: "/PET/PET_GEARS/G-KK1.png", petLevel: 20, petGear: { key: "kk", level: 5 }, desc: "Explosion 98438, portée 578, cooldown 9,5 s." },
     { id: "gear_gfs1", name: "G-FS1 · Flamme sacrificielle", price: 9000000, icon: "/PET/PET_GEARS/G-FS1.png", petLevel: 0, petGear: { key: "fs", level: 1 }, desc: "Bouclier P.E.T vers le vaisseau, cooldown 90 s." },
     { id: "gear_ghpl1", name: "G-HPL1 · Lien HP", price: 10000000, icon: "/PET/PET_GEARS/G-HPL1.png", petLevel: 8, petGear: { key: "hpl", level: 1 }, desc: "Dégâts coque vers le P.E.T, 20 s, cooldown 240 s." },
     { id: "gear_gbc1", name: "G-BC1 · Balise de combat", price: 35000000, icon: "/PET/PET_GEARS/G-BC1.png", petLevel: 8, petGear: { key: "bc", level: 1 }, desc: "Halo 400 : +5 % dégâts 120 s, cooldown 240 s." },
@@ -304,6 +311,17 @@ export const CATALOG = {
     { id: "proto_aieco2", name: "AI-ECO2 · Économie d'essence", price: 12500000, icon: "/PET/PET_PROTOCOLS/AI-ECO1.png", petLevel: 4, petProtocol: { key: "eco", level: 2, pct: 3.5 }, desc: "Économie d'essence du P.E.T −3,5 %." },
     { id: "proto_aieco3", name: "AI-ECO3 · Économie d'essence", price: 45000000, icon: "/PET/PET_PROTOCOLS/AI-ECO1.png", petLevel: 8, petProtocol: { key: "eco", level: 3, pct: 4 }, desc: "Économie d'essence du P.E.T −4 %." },
     { id: "proto_aieco4", name: "AI-ECO4 · Économie d'essence", price: 90000000, icon: "/PET/PET_PROTOCOLS/AI-ECO1.png", petLevel: 20, petProtocol: { key: "eco", level: 4, pct: 5 }, desc: "Économie d'essence du P.E.T −5 %." },
+    // Niveau 5 (event Halloween, assemblage uniquement : shopHidden).
+    { id: "proto_aicr5", name: "AI-CR5 · Cargo", price: 0, shopHidden: true, icon: "/PET/PET_PROTOCOLS/AI-CR1.png", petLevel: 20, petProtocol: { key: "cargo", level: 5, pct: 15.75 }, desc: "Soute cargo du VAISSEAU +15,75 %." },
+    { id: "proto_air5", name: "AI-R5 · Radar", price: 0, shopHidden: true, icon: "/PET/PET_PROTOCOLS/AI-R1.png", petLevel: 20, petProtocol: { key: "radar", level: 5, pct: 15.75 }, desc: "Radar du P.E.T +15,75 %." },
+    { id: "proto_ais5", name: "AI-S5 · Récolte", price: 0, shopHidden: true, icon: "/PET/PET_PROTOCOLS/AI-S1.png", petLevel: 20, petProtocol: { key: "salvage", level: 5, pct: 3.94 }, desc: "Récolte du P.E.T +3,94 %." },
+    { id: "proto_aism5", name: "AI-SM5 · Bouclier", price: 0, shopHidden: true, icon: "/PET/PET_PROTOCOLS/AI-SM1.png", petLevel: 20, petProtocol: { key: "shield", level: 5, pct: 5.25 }, desc: "Bouclier du P.E.T +5,25 %." },
+    { id: "proto_ailm5", name: "AI-LM5 · Laser", price: 0, shopHidden: true, icon: "/PET/PET_PROTOCOLS/AI-LM1.png", petLevel: 20, petProtocol: { key: "damage", level: 5, pct: 5.25 }, desc: "Dégâts laser du P.E.T +5,25 % (appliqué)." },
+    { id: "proto_aiaim5", name: "AI-AIM5 · Ciblage", price: 0, shopHidden: true, icon: "/PET/PET_PROTOCOLS/AI-AIM1.png", petLevel: 20, petProtocol: { key: "aim", level: 5, pct: 5.25 }, desc: "Précision laser du P.E.T +5,25 %." },
+    { id: "proto_aie5", name: "AI-E5 · Évitement", price: 0, shopHidden: true, icon: "/PET/PET_PROTOCOLS/AI-E1.png", petLevel: 20, petProtocol: { key: "evasion", level: 5, pct: 3.94 }, desc: "Évitement du P.E.T +3,94 %." },
+    { id: "proto_aihp5", name: "AI-HP5 · Coque", price: 0, shopHidden: true, icon: "/PET/PET_PROTOCOLS/AI-HP1.png", petLevel: 20, petProtocol: { key: "hp", level: 5, pct: 5.25 }, desc: "HP du P.E.T +5,25 %." },
+    { id: "proto_aial5", name: "AI-AL5 · Alien", price: 0, shopHidden: true, icon: "/PET/PET_PROTOCOLS/AI-AL1.png", petLevel: 20, petProtocol: { key: "alien", level: 5, pct: 7.88 }, desc: "Dégâts laser contre les NPC du P.E.T +7,88 % (appliqué)." },
+    { id: "proto_aieco5", name: "AI-ECO5 · Économie d'essence", price: 0, shopHidden: true, icon: "/PET/PET_PROTOCOLS/AI-ECO1.png", petLevel: 20, petProtocol: { key: "eco", level: 5, pct: 5.25 }, desc: "Économie d'essence du P.E.T −5,25 %." },
   ],
 
   formations: DRONE_FORMATIONS.filter(formation => formation.price > 0).map(formation => ({

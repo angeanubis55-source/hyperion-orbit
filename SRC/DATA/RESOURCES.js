@@ -31,6 +31,12 @@ export const RESOURCE_TYPES = Object.freeze({
   mindfire_cerebrum: Object.freeze({ id: "mindfire_cerebrum", name: "Cerebrum Mindfire", plural: "Cerebrum Mindfire", icon: "/ASSETS/ORES/MINDFIRE_CEREBRUM.png" }),
   blacklight_cipher: Object.freeze({ id: "blacklight_cipher", name: "Code secret Black Light", plural: "Codes secrets Black Light", icon: "/ASSETS/ORES/BLACKLIGHT_CIPHER.png" }),
   eternal_fragment: Object.freeze({ id: "eternal_fragment", name: "Fragment éternel", plural: "Fragments éternels", icon: "/ASSETS/ORES/ETERNAL_FRAGMENT.png" }),
+  // Bonbons Halloween (event) : stockés en ressources, connectés plus tard.
+  candy: Object.freeze({ id: "candy", name: "Bonbon", plural: "Bonbons", icon: "/ASSETS/COLLECTABLES/BONBONS.png" }),
+  candy_golden: Object.freeze({ id: "candy_golden", name: "Bonbon doré", plural: "Bonbons dorés", icon: "/ASSETS/COLLECTABLES/BONBONS_DOREE.png" }),
+  // Clé du passe de combat (event) : stockée, utilisable plus tard.
+  // Icône temporaire en attendant le visuel dédié.
+  battlepass_key: Object.freeze({ id: "battlepass_key", name: "Clé du passe", plural: "Clés du passe", icon: "/ASSETS/COLLECTABLES/BATTLEPASS.png" }),
   // Composants intermédiaires d'assemblage (atelier) : fabriqués puis réutilisés.
   nano_condensator: Object.freeze({ id: "nano_condensator", name: "Condensateur nano", plural: "Condensateurs nano", icon: "/ASSETS/CPU/NANO_CONDENSER_100X100.png" }),
   high_frequency_cable: Object.freeze({ id: "high_frequency_cable", name: "Câble haute fréquence", plural: "Câbles haute fréquence", icon: "/ASSETS/CPU/HIGH_FREQUENCY_CABLE_100X100.png" }),

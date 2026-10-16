@@ -22,6 +22,13 @@ const ITEM_RARITY_BY_ID = Object.freeze({
   plasmide: "rare", prismatium: "rare", aurus: "rare", bifenon: "rare",
   tetrathrin: "epic", kyhalon: "epic", rinusk: "epic", blacklight_trace: "epic",
   mindfire_cerebrum: "legendary",
+  // Event Halloween : protocoles et gears P.E.T niveau 5 (assemblage).
+  proto_aicr5: "legendary", proto_air5: "legendary", proto_ais5: "legendary",
+  proto_aism5: "legendary", proto_ailm5: "legendary", proto_aiaim5: "legendary",
+  proto_aie5: "legendary", proto_aihp5: "legendary", proto_aial5: "legendary",
+  proto_aieco5: "legendary",
+  gear_gal5: "legendary", gear_gar5: "legendary", gear_gel5: "legendary",
+  gear_gtra5: "legendary", gear_grep5: "legendary", gear_gkk5: "legendary",
 });
 
 export function getItemRarity(itemOrId) {

@@ -413,6 +413,16 @@ body:has(> #phoneControls:not([hidden])) #ammoBar .actionPalette nav button {
   letter-spacing:1px;
   color:var(--rarity,#a9bcc7);
 }
+.assemblyEventCountdown {
+  font-size:12px;
+  font-weight:700;
+  color:#ff9a3c;
+}
+.assemblyEventCountdown strong {
+  font-variant-numeric:tabular-nums;
+  color:#ffb066;
+  text-shadow:0 0 10px rgba(255,150,50,.45);
+}
 .assemblyDetailHead h3 {
   margin:0;
   font-size:17px;
@@ -9230,6 +9240,9 @@ body.orbitNoFade #gameWindowDock, body.orbitNoFade #ammoBar, body.orbitNoFade .g
   inset:0;
   z-index:20000;
   background:#02050e url("/ASSETS/UI/LOADING_SCREEN.jpg") center / cover no-repeat;
+}
+.loadingOverlay.halloween {
+  background:#02050e url("/ASSETS/UI/LOADING_SCREEN_HALLOWEEN.png") center / cover no-repeat;
 }
 .loadingOverlay.isLeaving {
   opacity:0;
@@ -21745,6 +21758,39 @@ html body #profileOverlay #shopTabs .subtabBtn[data-shop="extras"] {
 }
 /* Fenetre Titres : taille + specifiques (les styles cartes/checkbox sont le miroir exact des Parametres en fin de fichier) */
 .titlePanel{width:min(460px,calc(100vw - 24px));max-height:calc(100vh - 30px);display:flex;flex-direction:column;overflow:hidden}
+.passPanel{width:min(520px,calc(100vw - 24px));max-height:min(640px,calc(100vh - 30px));display:flex;flex-direction:column;overflow:hidden}
+.passPanel.gameWindow:not(.gameWinMinimized){display:flex !important}
+.passHead{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 14px 0}
+.passStatus{font-size:12px;font-weight:700;color:#dff7ff}
+.passKeys{font-size:12px;font-weight:800;color:#ffd76b;font-variant-numeric:tabular-nums;white-space:nowrap}
+.passTabs{display:flex;gap:8px;padding:10px 14px 10px;box-sizing:border-box;border-bottom:1px solid rgba(255,255,255,.1)}
+.passTab{flex:1 1 0;height:30px;padding:0 14px;box-sizing:border-box;border:1px solid rgba(124,240,255,.38);border-radius:8px;color:#eaffff;background:linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34));cursor:pointer;font:800 11px/1.2 ui-sans-serif,system-ui}
+.passTab:hover,.passTab.active{border-color:rgba(124,240,255,.62);background:rgba(0,140,185,.3);color:#eaffff}
+.passShopRow{display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid rgba(255,255,255,.1);border-radius:10px;background:rgba(255,255,255,.03)}
+.passShopInfo{flex:1 1 auto;display:flex;flex-direction:column;gap:2px;min-width:0}
+.passShopInfo b{font-size:12px}
+.passShopInfo small{font-size:11px;color:#9aa3b2}
+.passRoll{flex:0 0 auto;font-size:11px;font-weight:800;padding:6px 12px;border-radius:8px;border:1px solid rgba(124,240,255,.38);background:linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34));color:#eaffff;cursor:pointer;white-space:nowrap}
+.passRoll:disabled{opacity:.55;cursor:default}
+.passRoll:not(:disabled):hover{border-color:rgba(124,240,255,.62)}
+.passRollResult{padding:8px 10px;border:1px solid rgba(255,209,92,.45);border-radius:10px;background:rgba(255,209,92,.06);font-size:12px;color:#f0f9ff}
+.passRollResult b{color:#ffd76b}
+.passRollResult ul{margin:4px 0 0;padding-left:16px}
+.passShopEmpty{font-size:12px;color:#9aa3b2;text-align:center;padding:8px}
+.passList{display:flex;flex-direction:column;gap:8px;padding:12px 14px;overflow-y:auto;max-height:430px}
+.passList[hidden]{display:none}
+.passRow{display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid rgba(255,255,255,.1);border-radius:10px;background:rgba(255,255,255,.03)}
+.passRow.isDone{border-color:rgba(87,255,138,.4)}
+.passClaim .passCheck{color:#00ff88;font-weight:900;font-size:18px;line-height:1}
+.passInfo{flex:1 1 auto;display:flex;flex-direction:column;gap:4px;min-width:0}
+.passInfo b{font-size:12px;color:#f0f9ff}
+.passCount{font-size:11px;color:#9aa3b2;font-variant-numeric:tabular-nums}
+.passBar{display:block;height:6px;border-radius:4px;background:rgba(255,255,255,.1);overflow:hidden}
+.passBar i{display:block;height:100%;border-radius:4px;background:linear-gradient(90deg,#ff8c1a,#ffd76b)}
+.passRow.isDone .passBar i{background:linear-gradient(90deg,#2fd47e,#9dffb9)}
+.passClaim{flex:0 0 auto;font-size:11px;font-weight:800;padding:6px 12px;border-radius:8px;border:1px solid rgba(124,240,255,.38);background:linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34));color:#eaffff;cursor:pointer;white-space:nowrap}
+.passClaim:disabled{opacity:.55;cursor:default}
+.passClaim:not(:disabled):hover{border-color:rgba(124,240,255,.62)}
 .titlePanel.gameWindow:not(.gameWinMinimized){display:flex !important}
 
 /* === Fenetre Titres : miroir exact des styles Parametres (#settingsWindow -> #titleWindow) === */

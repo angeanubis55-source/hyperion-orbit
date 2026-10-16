@@ -187,6 +187,7 @@ import { initRankingsUI } from "../../UI/UI_RANKINGS.js";
 import { initPilotSkillsUI, renderPilotSkillsWindow, tickPilotSkillsDisplay } from "../../UI/UI_PILOT_SKILLS.js";
 import { initTdmUI } from "../../UI/UI_TDM.js";
 import { initTitlesUI } from "../../UI/UI_TITLES.js";
+import { initBattlepassUI } from "../../UI/UI_BATTLEPASS.js";
 import { visibleTitleOf, getTitleById, sanitizeTitleColor } from "../DATA/TITLES.js";
 import { appendGameLog, readGameLogs } from "./GAME_LOG_STORE.js";
 import { canUseFactionModule, getFaction, getFactionBaseSpawn, getFactionHomeMap, getFactionRespawnMap, getFactionUpperBaseMap, normalizeFactionId, resolveBaseCenter } from "./FACTIONS.js";
@@ -204,6 +205,11 @@ import {
   recordQuestProgress,
 } from "../../QUEST/QUEST_TYPES.js";
 import {
+  getBattlepassObjective,
+  normalizeBattlepassState,
+  recordBattlepassProgress,
+} from "../../QUEST/BATTLEPASS.js";
+import {
   COLLECTABLE_SPAWN as DEFAULT_COLLECTABLE_SPAWN,
   COLLECTABLE_TYPES as DEFAULT_COLLECTABLE_TYPES,
 } from "../DATA/COLLECTABLES.js";
@@ -213,6 +219,7 @@ import { STARMAP_NODES, STARMAP_UNIT, STARMAP_NODE, STARMAP_ART, STARMAP_JUMP_CH
 import { createStarMapLayout, findStarMapItinerary } from "./STARMAP_LAYOUT.js";
 import { getNpcCargoOres } from "../../NPC/NPC_CARGO.js";
 import { rollNpcAssemblyBox, rollNpcAssemblyDirect } from "../../NPC/NPC_ASSEMBLY.js";
+import { appendHalloweenCamps, applyHalloweenKill, halloweenCampBlocked, halloweenCountdown, halloweenPreloadTypes, halloweenRoleOf, isHalloweenBossVariant, isHalloweenEventActive, isHalloweenMap, isHalloweenMapActive, isHalloweenVariantType, normalizeHalloweenState, stripInactiveEventSlots, HALLOWEEN_DROP_NORMAL_RATE } from "../../NPC/NPC_HALLOWEEN.js";
 import { ROCKET_IDS, ROCKET_TYPES, getRocketType, rocketDockIcon, rocketFlightLife, rocketLaunchSpeed, rocketShopIcon } from "../../COMBAT/ROCKET_TYPES.js";
 import { SFX_SOUND_NAMES } from "./SFX.js";
 import { createWorldClock } from "../SIM/WORLD_CLOCK.js";
@@ -9411,6 +9418,7 @@ function registerHudWindows() {
   reg("wikiWindow", "Wiki / Aide", menuIcon("help"), false);
   reg("tdmWindow", "Inventaire", menuIcon("monthly_deluxe"), false);
   reg("titleWindow", "Titres", menuIcon("wargame_event"), false);
+  reg("passWindow", "Passe de combat", menuIcon("battle_pass"), false);
   reg("dpsWindow", "DPS", menuIcon("infiltration"), false);
   try {
     document.getElementById("dpsResetBtn")?.addEventListener("click", () => {
@@ -9427,6 +9435,7 @@ initClanUI();
 initRankingsUI();
 initTdmUI();
 initTitlesUI();
+initBattlepassUI();
 initSkylabUI({
   getUser: () => account.user,
   afterAction: () => {
@@ -13965,7 +13974,11 @@ function renderCraftingWindow(message = "") {
   account.user = user;
   const quantity = Math.max(1, Number(ui.craftingQuantity?.value || 1));
   const RARITY_RANK = { common: 0, rare: 1, epic: 2, legendary: 3 };
-  const visibleRecipes = CRAFTING_RECIPES.filter(recipe => (RARITY_RANK[recipe.rarity] ?? 0) >= 1);
+  // Event Halloween : recettes masquées hors event (items déjà craftés conservés).
+  let halloweenCraftActive = true;
+  try { halloweenCraftActive = isHalloweenEventActive(); } catch {}
+  const visibleRecipes = CRAFTING_RECIPES.filter(recipe => (RARITY_RANK[recipe.rarity] ?? 0) >= 1
+    && (recipe.event !== "halloween" || halloweenCraftActive));
   if (!visibleRecipes.some(entry => entry.id === selectedCraftingRecipeId)) {
     selectedCraftingRecipeId = visibleRecipes[0]?.id || CRAFTING_RECIPES[0]?.id || null;
   }
@@ -14018,7 +14031,7 @@ function renderCraftingWindow(message = "") {
     + `<div class="assemblyDetailHead">`
     + `<img class="assemblyMainIcon" src="${escapeHtml(mainIcon)}" alt="" loading="lazy" draggable="false" onerror="this.onerror=null;this.src='${CRAFTING_FALLBACK_ICON}'">`
     + `<div class="assemblyTitleRow"><span class="assemblyRarity">${escapeHtml(rarity.name)}</span><h3>${escapeHtml(recipe.name)}</h3></div>`
-    + `<p class="assemblyDescription" title="${escapeHtml(description)}">${escapeHtml(description).replace(/\n/g, "<br>")}</p></div>`
+    + `<p class="assemblyDescription" title="${escapeHtml(description)}">${escapeHtml(description).replace(/\n/g, "<br>")}${recipe.event === "halloween" ? `<br><span class="assemblyEventCountdown">Se termine dans <strong id="hwCountdown">${escapeHtml(formatHalloweenCountdown())}</strong></span>` : ``}</p></div>`
     + `<div class="assemblyCols"><div class="assemblySubCard"><h4>Coût ×${formatInteger(quantity)}</h4><ul class="assemblyCosts">${costs}</ul></div>`
     + `<div class="assemblySubCard"><h4>Résultat ×${formatInteger(quantity)}</h4><ul class="assemblyResults">${outputs}</ul></div></div>`
     + `</div>`;
@@ -14026,6 +14039,30 @@ function renderCraftingWindow(message = "") {
   const ownershipBlock = getCraftingOwnershipBlock(user, recipe, quantity);
   if (ui.craftingBuildBtn) ui.craftingBuildBtn.disabled = !canAfford || Boolean(ownershipBlock);
   if (ui.craftingMessage) ui.craftingMessage.textContent = message || ownershipBlock || (!canAfford ? "Ressources insuffisantes." : "");
+  if (recipe?.event === "halloween") {
+    try { ensureHalloweenCountdownTick(); } catch {}
+  }
+}
+
+function formatHalloweenCountdown(now = new Date()) {
+  let cd = null;
+  try { cd = halloweenCountdown(now); } catch {}
+  if (!cd) return "—";
+  const p2 = (v) => String(v).padStart(2, "0");
+  return `${cd.days}j ${p2(cd.hours)}h ${p2(cd.minutes)}m ${p2(cd.seconds)}s`;
+}
+
+let hwCountdownTimer = null;
+function ensureHalloweenCountdownTick() {
+  if (hwCountdownTimer) return;
+  try {
+    hwCountdownTimer = setInterval(() => {
+      try {
+        const el = document.getElementById("hwCountdown");
+        if (el) el.textContent = formatHalloweenCountdown();
+      } catch {}
+    }, 1000);
+  } catch {}
 }
 
 ui.craftingRecipes?.addEventListener("click", event => {
@@ -16041,6 +16078,10 @@ function advanceQuestProgress(kind, type, amount = 1) {
   const advanced = recordQuestProgress(questState, kind, type, amount, {
     map: String(window.__CURRENT_MAP_ID__ || "").toLowerCase(),
   });
+  // Passe de combat Halloween : mêmes événements, paliers séparés.
+  // AVANT le return anticipé : le passe compte même sans quête active.
+  try { advanceBattlepassProgress(kind, type, amount); } catch {}
+  if (!advanced.length) return;
   if (!advanced.length) return;
   markProgressDirty();
 
@@ -16061,6 +16102,26 @@ function advanceQuestProgress(kind, type, amount = 1) {
   questJournalRenderPending = true;
   questTerminalRenderPending = true;
   refreshPendingQuestViews();
+}
+
+// Passe de combat : progression persistée (account.user.battlepass),
+// récompenses en clés récupérées depuis la fenêtre dédiée.
+// Event uniquement : hors event, rien ne progresse.
+function advanceBattlepassProgress(kind, type, amount = 1) {
+  try {
+    if (!isHalloweenEventActive()) return;
+  } catch { return; }
+  const u = account.user || getCurrentUserFull();
+  if (!u) return;
+  u.battlepass = normalizeBattlepassState(u.battlepass);
+  const res = recordBattlepassProgress(u.battlepass, kind, type, amount);
+  if (!res.advanced.length) return;
+  markProgressDirty();
+  for (const id of res.completed) {
+    const def = getBattlepassObjective(id);
+    try { showToast(`Passe de combat : ${def?.label || id} — clé(s) à récupérer`, 3); } catch {}
+  }
+  try { window.dispatchEvent(new CustomEvent("orbit:battlepass-updated")); } catch {}
 }
 
 // Suivi des ressources collectées pour les quêtes (Rinusk, Traceurs...).
@@ -22441,7 +22502,7 @@ function scanTbrFetch(c, gears, exclude) {
 // st = état porteur du cooldown (petState ou clone TBR).
 function collectPetBox(box, st = petState) {
   const salvagePct = getPetProtocolPct(account.user?.pet, account.user, "salvage");
-  const eligible = ["Bonus_Box", "Cargo_Box", "Green_Booty_Box", "Astral_Prime_Box"].includes(String(box?.type || ""));
+  const eligible = ["Bonus_Box", "Pumpkin_Box", "Cargo_Box", "Green_Booty_Box", "Astral_Prime_Box"].includes(String(box?.type || ""));
   try {
     if (salvagePct > 0 && eligible) box._petSalvagePct = salvagePct;
     else if (box) delete box._petSalvagePct;
@@ -24349,12 +24410,18 @@ function collectableAllowedOnCurrentMap(cfg, mapId = currentMapId()) {
   return String(maps).trim().toLowerCase() === curLow;
 }
 
+function collectableEventActive(cfg) {
+  if (cfg?.event !== "halloween") return true;
+  try { return isHalloweenEventActive(); } catch { return false; }
+}
+
 function collectableDefsList() {
   return Object.entries(COLLECTABLE_DEFS)
     .filter(([, cfg]) =>
       cfg &&
       cfg.enabled !== false &&
-      collectableAllowedOnCurrentMap(cfg)
+      collectableAllowedOnCurrentMap(cfg) &&
+      collectableEventActive(cfg)
     );
 }
 
@@ -24452,7 +24519,7 @@ function pushNetBoxInstance(box) {
   const cfg = COLLECTABLE_DEFS[box.type] || {};
   if (!cfg || cfg.enabled === false) return false;
   ensureCollectableLoaded(box.type);
-  const sp = cfg.sprite || {};
+  const sp = collectableSpriteFor(box.type);
   const frames = Math.max(1, Number(sp.frames || 1));
   let _nx = clamp(Number(box.x) || 0, 80, WORLD.w - 80);
   let _ny = clamp(Number(box.y) || 0, 80, WORLD.h - 80);
@@ -24490,7 +24557,8 @@ function pushAmbientCollectableInstance(slot, mapId) {
   const cfg = COLLECTABLE_DEFS[slot.type] || {};
   // Type désactivé temporairement (ex : Green_Booty_Box) : aucun spawn,
   // même si des slots persistent en sauvegarde (réactivables plus tard).
-  if (cfg.enabled === false || !collectableAllowedOnCurrentMap(cfg, mapId)) return;
+  // + event terminé (ex : Pumpkin hors Halloween) : idem.
+  if (cfg.enabled === false || !collectableAllowedOnCurrentMap(cfg, mapId) || !collectableEventActive(cfg)) return;
   ensureCollectableLoaded(slot.type);
   const sp = cfg.sprite || {};
   const frames = Math.max(1, Number(sp.frames || 1));
@@ -24652,7 +24720,7 @@ function spawnCollectableAtRestored(drop, elapsedSec) {
   const cfg = COLLECTABLE_DEFS[drop.type];
   if (!cfg || cfg.enabled === false) return false;
   ensureCollectableLoaded(drop.type);
-  const sp = cfg.sprite || {};
+  const sp = collectableSpriteFor(drop.type);
   const frames = Math.max(1, Number(sp.frames || 1));
   let dx = clamp(Number(drop.x) || 0, -RADIATION_SPAWN_MARGIN, WORLD.w + RADIATION_SPAWN_MARGIN);
   let dy = clamp(Number(drop.y) || 0, -RADIATION_SPAWN_MARGIN, WORLD.h + RADIATION_SPAWN_MARGIN);
@@ -24741,9 +24809,32 @@ function pickExclusiveCollectableReward(entries) {
   return pool.at(-1).reward;
 }
 
+// Event Halloween : les Cargo Box prennent l'apparence des Candy Box
+// (contenu inchangé, seul le visuel est remplacé).
+const CANDY_BOX_SPRITE = {
+  path: "ASSETS/COLLECTABLES/CANDY_BOX/",
+  frames: 25,
+  firstNumber: 1,
+  ext: ".png",
+  fps: 20,
+  w: 128,
+  h: 128,
+  scale: 1,
+  randomStart: true,
+  glow: false,
+};
+
+function collectableSpriteFor(type) {
+  if (String(type || "") === "Cargo_Box") {
+    try {
+      if (isHalloweenEventActive()) return CANDY_BOX_SPRITE;
+    } catch {}
+  }
+  return COLLECTABLE_DEFS[type]?.sprite || {};
+}
+
 function ensureCollectableLoaded(type) {
-  const cfg = COLLECTABLE_DEFS[type];
-  const sp = cfg?.sprite;
+  const sp = collectableSpriteFor(type);
   if (!sp || !sp.path) return Promise.resolve(null);
 
   if (sp._promise) return sp._promise;
@@ -24812,7 +24903,7 @@ function grantPersonalSun(type, x, y, mapId) {
     const jy = (Number(y) || 0) + rand(-70, 70);
     return spawnCollectableAt(type, jx, jy, {
       armed: false,
-      fromNpc: type === "Mindfire_Sun_Box" ? "npc_Mindfire_Behemoth" : "npc_Invoke_XVI",
+      fromNpc: type === "Mindfire_Sun_Box" ? "npc_Mindfire_Behemoth" : type === "Boss_Cucurbitor_Box" ? "npc_Boss_Curcubitor" : "npc_Invoke_XVI",
       despawnAfter: 0,
       onlyBy: String(netMyId()),
     });
@@ -24836,7 +24927,7 @@ function spawnCollectableAt(type, x, y, opts = {}) {
 
   ensureCollectableLoaded(type);
 
-  const sp = cfg.sprite || {};
+  const sp = collectableSpriteFor(type);
   const frames = Math.max(1, Number(sp.frames || 1));
   // ✅ zone collectable garantie : marge bords + hors murs (radiation : point de chute).
   let playable = null;
@@ -24925,7 +25016,7 @@ function pickCollectableAtScreen(sx, sy) {
     if (c.map && String(c.map) !== currentMapId()) continue;
 
     const cfg = COLLECTABLE_DEFS[c.type] || {};
-    const sp = cfg.sprite || {};
+    const sp = collectableSpriteFor(c.type);
 
     const hitW = Number(sp.w || 64) * Number(sp.scale || 1);
     const hitH = Number(sp.h || 64) * Number(sp.scale || 1);
@@ -25007,7 +25098,7 @@ function applyCollectableReward(c) {
       x1Mult = pilotLevel < 7 ? 1 : pilotLevel === 7 ? 0.5 : pilotLevel === 8 ? 0.25 : pilotLevel === 9 ? 0.13 : 0;
     }
   }
-  const boxMult = (String(c?.type || "") === "Bonus_Box" ? playerBoosterMults().box * playerPilotMults().bonusLoot * playerPilotMults().luck : 1) * battleMult * salvageMult * x1Mult;
+  const boxMult = ((String(c?.type || "") === "Bonus_Box" || String(c?.type || "") === "Pumpkin_Box") ? playerBoosterMults().box * playerPilotMults().bonusLoot * playerPilotMults().luck : 1) * battleMult * salvageMult * x1Mult;
 
   // X-1 + niveau 10 : box consommée mais vide (officiel).
   if (x1Mult <= 0 && String(c?.type || "") === "Bonus_Box") {
@@ -25313,7 +25404,64 @@ function netplayBoxesActive() {
   return rules?.mode === "zone" && netConnected() && !netInInstance();
 }
 
+let eventBoxSweepT = 0;
+let battlepassEventT = 0;
+let battlepassEventWasActive = null;
+// Fin d'event : les clés du passe non utilisées sont effacées
+// (solo comme multi, via la sauvegarde).
+function syncBattlepassEvent(dt) {
+  battlepassEventT += Number(dt) || 0;
+  if (battlepassEventT < 10) return;
+  battlepassEventT = 0;
+  let active = true;
+  try { active = isHalloweenEventActive(); } catch {}
+  if (battlepassEventWasActive === null) { battlepassEventWasActive = active; return; }
+  if (battlepassEventWasActive && !active) {
+    try {
+      const u = account.user || getCurrentUserFull();
+      const left = Math.max(0, Math.floor(Number(u?.inventory?.resources?.battlepass_key) || 0));
+      if (u && left > 0) {
+        u.inventory.resources.battlepass_key = 0;
+        try { noteNetConsumption("ores", "battlepass_key", left); } catch {}
+        markProgressDirty();
+      }
+      // Seuls bonbons et modules tirés sont conservés : progression remise à zéro.
+      if (u) {
+        u.battlepass = normalizeBattlepassState(null);
+        markProgressDirty();
+      }
+    } catch {}
+  }
+  battlepassEventWasActive = active;
+}
+function sweepExpiredEventBoxes(dt) {  eventBoxSweepT += Number(dt) || 0;
+  if (eventBoxSweepT < 5) return;
+  eventBoxSweepT = 0;
+  let active = true;
+  try { active = isHalloweenEventActive(); } catch {}
+  if (active) return;
+  for (let i = collectables.length - 1; i >= 0; i--) {
+    const c = collectables[i];
+    const t = String(c?.type || "");
+    if (t !== "Pumpkin_Box" && t !== "Cucurbitor_Box" && t !== "Boss_Cucurbitor_Box") continue;
+    if (collectableTargetId === c?.id) {
+      try { cancelCollectableTarget(); } catch {}
+      moveTarget.active = false;
+      collectableTargetId = null;
+    }
+    collectables.splice(i, 1);
+    try { indexCollectableRemoved(c); } catch {}
+    if (collectableTickPlayerTarget === c) { collectableTickPlayerTarget = null; collectableTickPlayerTargetId = null; }
+    if (collectableTickPetTarget === c) { collectableTickPetTarget = null; collectableTickPetTargetId = null; }
+  }
+}
+
 function syncNetBoxes(dt) {
+  // Event terminé : les box Halloween restantes (pumpkin, cucu, boss cucu)
+  // disparaissent, en solo comme en multi.
+  try { sweepExpiredEventBoxes(dt); } catch {}
+  // Fin d'event : clés du passe non utilisées effacées.
+  try { syncBattlepassEvent(dt); } catch {}
   const curMap = currentMapId();
   netBoxMaintenanceT += dt;
   netBoxDebugT += dt;
@@ -25541,7 +25689,7 @@ function tickCollectables(dt) {
     const collectableDt = isNearPlayer || isPlayerTarget || isPetTarget ? dt : farCollectableDt;
 
     const cfg = COLLECTABLE_DEFS[c.type] || {};
-    const sp = cfg.sprite || {};
+    const sp = collectableSpriteFor(c.type);
 
     c.t += collectableDt;
 
@@ -25792,13 +25940,34 @@ function fxDensityCap(base) {
   return Math.max(4, Math.floor(Number(base) * fxDensityMult()));
 }
 
+// Event Halloween : les Bonus Box classiques prennent une légère teinte
+// orange (frames teintées une fois, en cache). Retour normal après l'event.
+const orangeBoxTintCache = new Map();
+function orangeTintedBox(img) {
+  if (!img || !(Number(img.naturalWidth) > 0)) return null;
+  let tinted = orangeBoxTintCache.get(img);
+  if (!tinted) {
+    tinted = document.createElement("canvas");
+    tinted.width = Number(img.naturalWidth);
+    tinted.height = Number(img.naturalHeight);
+    const g = tinted.getContext("2d");
+    g.drawImage(img, 0, 0);
+    g.globalCompositeOperation = "source-atop";
+    g.fillStyle = "rgba(255,130,0,0.38)";
+    g.fillRect(0, 0, tinted.width, tinted.height);
+    if (orangeBoxTintCache.size > 64) orangeBoxTintCache.clear();
+    orangeBoxTintCache.set(img, tinted);
+  }
+  return tinted;
+}
+
 function drawCollectables(ox, oy) {
   const visibleCollectables = spatialCollectablesInRect(-ox - 180, -oy - 180, -ox + innerWidth + 180, -oy + innerHeight + 180);
   for (const c of visibleCollectables) {
     // Qualité Désactivé : aucune box, même visée.
     if (gfxQualityOff()) continue;
     const cfg = COLLECTABLE_DEFS[c.type] || {};
-    const sp = cfg.sprite || {};
+    const sp = collectableSpriteFor(c.type);
 
     // Box masquée par les options : on la saute, sauf si visée
     // (collecte en cours, joueur ou PET : retour visuel conservé).
@@ -25838,6 +26007,13 @@ function drawCollectables(ox, oy) {
     try { boxAnimsOn = GAME_SETTINGS.boxAnims !== false; } catch {}
     const idx = boxAnimsOn ? Math.floor(c.frameAcc) % frames : 0;
     const img = sp._imgs?.[idx];
+    // Event Halloween : filtre orange léger sur les Bonus Box classiques.
+    let drawImg = img;
+    try {
+      if (String(c.type || "") === "Bonus_Box" && isHalloweenEventActive()) {
+        drawImg = orangeTintedBox(img) || img;
+      }
+    } catch {}
 
     // Même option : sans pulsation/flottement/halo.
     const pulse = boxAnimsOn ? 1 + Math.sin(c.t * 4) * 0.04 : 1;
@@ -25854,11 +26030,11 @@ function drawCollectables(ox, oy) {
       const h = Number(sp.h || img.naturalHeight || img.height || 64) * scale;
 
       ctx.imageSmoothingEnabled = false;
-  drawCenteredImage(ctx, img, w, h);
+  drawCenteredImage(ctx, drawImg || img, w, h);
 
       if (boxAnimsOn && sp.glow !== false) {
         ctx.globalAlpha = 0.22;
-        ctx.drawImage(img, -w * 0.7, -h * 0.7, w * 1.4, h * 1.4);
+        ctx.drawImage(drawImg || img, -w * 0.7, -h * 0.7, w * 1.4, h * 1.4);
         ctx.globalAlpha = 1;
       }
     } else {
@@ -26862,7 +27038,32 @@ e._pendingSpawn = Math.max(1, Math.floor(Number(e.cubikonMinions?.refill) || 20)
   }
 
   try { recordDps(result, opts); } catch {}
+  try { noteBattlepassDamage(e, result, opts); } catch {}
   return result;
+}
+
+// Passe de combat : cumul des dégâts joueur aux NPC (hors bots JPC),
+// reversé par tranches de 100k pour ne pas spammer la sauvegarde.
+let battlepassDamageBank = 0;
+const BATTLEPASS_DAMAGE_CHUNK = 100000;
+
+function noteBattlepassDamage(e, result, opts = {}) {
+  if (opts.fromJpc === true || e?.isJpcBot === true) return;
+  const amount = Math.max(0, Math.floor(Number(result?.total) || 0));
+  if (!(amount > 0)) return;
+  battlepassDamageBank += amount;
+  if (battlepassDamageBank >= BATTLEPASS_DAMAGE_CHUNK) {
+    const chunk = Math.floor(battlepassDamageBank);
+    battlepassDamageBank = 0;
+    try { advanceBattlepassProgress("dmg", "npc", chunk); } catch {}
+  }
+}
+
+function flushBattlepassDamage() {
+  if (!(battlepassDamageBank > 0)) return;
+  const chunk = Math.floor(battlepassDamageBank);
+  battlepassDamageBank = 0;
+  try { advanceBattlepassProgress("dmg", "npc", chunk); } catch {}
 }
 
 // --- Compteur DPS (fenêtre dédiée) : tous les dégâts infligés passent
@@ -27492,15 +27693,17 @@ function killRewards(e) {
   } catch {}
 
   markProgressDirty();
-  // Soleil personnel Invoke / Mindfire : le serveur dit si je suis dans le
-  // top 10 dégâts (même contenu pour tous). Récompense de destruction (déjà
-  // appliquée plus haut via serverReward.percent) : partagée entre tous les
-  // tapeurs au prorata, calculée côté serveur.
+  // Box perso Invoke / Mindfire / Boss Halloween : le serveur dit si je suis
+  // dans le top 10 dégâts (même contenu pour tous). Récompense de destruction
+  // (déjà appliquée plus haut via serverReward.percent) : partagée entre tous
+  // les tapeurs au prorata, calculée côté serveur.
   try {
     if (e._netUid && serverReward && serverReward.sun === true
-      && (e.type === "npc_Invoke_XVI" || e.type === "npc_Mindfire_Behemoth")) {
+      && (e.type === "npc_Invoke_XVI" || e.type === "npc_Mindfire_Behemoth" || isHalloweenBossVariant(e.type))) {
       const sunType = (serverReward.sunType === "Mindfire_Sun_Box" || e.type === "npc_Mindfire_Behemoth")
-        ? "Mindfire_Sun_Box" : "Sun_Box";
+        ? "Mindfire_Sun_Box"
+        : (serverReward.sunType === "Boss_Cucurbitor_Box" || isHalloweenBossVariant(e.type))
+          ? "Boss_Cucurbitor_Box" : "Sun_Box";
       const sunKey = `${String(e._netUid || "")}:${Number(e._netSeq) || 0}`;
       if (!claimedSunKeys.has(sunKey)) {
         claimedSunKeys.add(sunKey);
@@ -27602,7 +27805,7 @@ function processDeaths() {
     try { sunEvs = drainNetSunInbox(); } catch { sunEvs = null; }
     if (sunEvs && sunEvs.length) {
       for (const s of sunEvs) {
-        if (!s || (s.sunType !== "Sun_Box" && s.sunType !== "Mindfire_Sun_Box")) continue;
+        if (!s || (s.sunType !== "Sun_Box" && s.sunType !== "Mindfire_Sun_Box" && s.sunType !== "Boss_Cucurbitor_Box")) continue;
         const key = `${String(s.uid || "")}:${Number(s.seq) || 0}`;
         if (claimedSunKeys.has(key)) continue;
         claimedSunKeys.add(key);
@@ -27709,15 +27912,15 @@ function processDeathsMeasured() {
 
     // Multi : kill d'un autre joueur — explosion vue, mais ni butin ni recompenses.
     if (e._netSilent) {
-      // Repli Invoke / Mindfire : récompense serveur perdue — le premier
-      // attaquant (loot owner) garde au moins son soleil personnel.
+      // Repli Invoke / Mindfire / Boss Halloween : récompense serveur perdue —
+      // le premier attaquant (loot owner) garde au moins sa box personnelle.
       try {
-        if ((e.type === "npc_Invoke_XVI" || e.type === "npc_Mindfire_Behemoth") && e._netLootOwner === true) {
+        if ((e.type === "npc_Invoke_XVI" || e.type === "npc_Mindfire_Behemoth" || isHalloweenBossVariant(e.type)) && e._netLootOwner === true) {
           const sunKey = `${String(e._netUid || "")}:${Number(e._netSeq) || 0}`;
           if (!claimedSunKeys.has(sunKey)) {
             claimedSunKeys.add(sunKey);
             if (claimedSunKeys.size > 64) claimedSunKeys.delete(claimedSunKeys.keys().next().value);
-            grantPersonalSun(e.type === "npc_Mindfire_Behemoth" ? "Mindfire_Sun_Box" : "Sun_Box", e.x, e.y, String(window.__CURRENT_MAP_ID__ || ""));
+            grantPersonalSun(e.type === "npc_Mindfire_Behemoth" ? "Mindfire_Sun_Box" : isHalloweenBossVariant(e.type) ? "Boss_Cucurbitor_Box" : "Sun_Box", e.x, e.y, String(window.__CURRENT_MAP_ID__ || ""));
           }
         }
       } catch {}
@@ -27741,14 +27944,28 @@ if (e.type === "npc_Mindfire_Behemoth") {
   dropType = "Mindfire_Sun_Box";
 }
 
+// Event Halloween : les Curcubitors droppent des box à bonbons
+// (boss 100 %, normaux 45 %). Seul le propriétaire du loot la voit,
+// comme les cargos (ownsNpcLoot ci-dessous).
+const hwDropRole = isHalloweenVariantType(e.type) ? halloweenRoleOf(e.type) : null;
+if (hwDropRole === "boss") {
+  dropType = "Boss_Cucurbitor_Box";
+} else if (hwDropRole === "normal") {
+  dropType = "Cucurbitor_Box";
+}
+
 if (
   ownsNpcLoot &&
   !e.noRewards &&
   e.type !== "npc_Protegit" &&
   e.type !== "npc_Barrage_Seeker_Rocket" &&
-  // Invoke / Mindfire partagés : pas de soleil automatique — un soleil
-  // PERSONNEL est accordé via la récompense serveur (top 10 dégâts).
-  !((e.type === "npc_Invoke_XVI" || e.type === "npc_Mindfire_Behemoth") && !!e._netUid)
+  // Event uniquement (même les retardataires d'après-event ne droppent pas).
+  (hwDropRole == null || isHalloweenMapActive(currentMapId())) &&
+  // Tous à 100 % (boss comme normaux, voir HALLOWEEN_DROP_*_RATE).
+  (hwDropRole !== "normal" || Math.random() < HALLOWEEN_DROP_NORMAL_RATE) &&
+  // Invoke / Mindfire / Boss Halloween partagés : pas de box automatique —
+  // un soleil/box PERSONNEL est accordé via la récompense serveur (top dégâts).
+  !((e.type === "npc_Invoke_XVI" || e.type === "npc_Mindfire_Behemoth" || isHalloweenBossVariant(e.type)) && !!e._netUid)
 ) {
   const dropCfg = COLLECTABLE_DEFS[dropType] || {};
 
@@ -27870,7 +28087,9 @@ if ((e.type === "npc_Cubikon" || e.cubikonMinions) && e.cubikonMinions?.fleeOnDe
       }
       measureGameTask("npcDeath.rewards", () => killRewards(e));
       try { onStockpileNpcKill(); } catch {}
+      try { onHalloweenNpcKilled(e); } catch {}
     }
+    try { flushBattlepassDamage(); } catch {}
 
     // ✅ progression intra-vague GG : chaque NPC du plan de vague éliminé
     // est compté et persisté immédiatement. Après un refresh ou une mort,
@@ -31035,6 +31254,132 @@ function syncNetNpcs(dt) {
   // ou disparition (aucun jumeau) délocke normalement.
 }
 
+// --- Event Halloween : état par map (phase + compteur + boss tués), persisté ---
+const HALLOWEEN_STATE_PREFIX = "orbit_halloween:";
+const halloweenPhaseCache = { map: null, state: null };
+
+function loadHalloweenState(mapId) {
+  try {
+    const raw = localStorage.getItem(HALLOWEEN_STATE_PREFIX + String(mapId || "").toLowerCase());
+    if (!raw) return null;
+    const st = JSON.parse(raw);
+    if (!st || typeof st !== "object") return null;
+    return normalizeHalloweenState(st);
+  } catch { return null; }
+}
+
+function saveHalloweenState(mapId, st) {
+  const id = String(mapId || "").toLowerCase();
+  const clean = normalizeHalloweenState(st);
+  halloweenPhaseCache.map = id;
+  halloweenPhaseCache.state = clean;
+  try {
+    localStorage.setItem(HALLOWEEN_STATE_PREFIX + id, JSON.stringify(clean));
+  } catch {}
+}
+
+function getHalloweenState(mapId) {
+  const id = String(mapId || "").toLowerCase();
+  if (halloweenPhaseCache.map === id && halloweenPhaseCache.state) return halloweenPhaseCache.state;
+  const st = loadHalloweenState(id) || normalizeHalloweenState(null);
+  halloweenPhaseCache.map = id;
+  halloweenPhaseCache.state = st;
+  return st;
+}
+
+function getHalloweenPhase(mapId) {
+  return getHalloweenState(mapId).phase;
+}
+
+// Purge d'instances Halloween vivantes (sans récompense ni compteur).
+// role null = tous les rôles (fin d'event en direct).
+function purgeHalloweenInstances(role = "normal") {
+  try {
+    const curMap = currentMapId();
+    for (let i = enemies.length - 1; i >= 0; i--) {
+      const e = enemies[i];
+      if (!e || !isHalloweenVariantType(e.type)) continue;
+      if (role && halloweenRoleOf(e.type) !== role) continue;
+      try { spawnExplosion(Number(e.x) || 0, Number(e.y) || 0, 1); } catch {}
+      try {
+        const deadUid = e.universeUid || (e.homeCampId != null ? slotUid(curMap, e.homeCampId) : null);
+        if (deadUid && isZoneMap) markDead(universe, curMap, deadUid, worldClock.now());
+      } catch {}
+      enemies.splice(i, 1);
+    }
+    try { persistUniverse(); } catch {}
+  } catch {}
+}
+
+// Passage en phase boss : tous les normaux vivants sont purgés. Leurs
+// slots respawnent à la fin des boss.
+function purgeHalloweenNormals() {
+  purgeHalloweenInstances("normal");
+}
+
+// Compteur de l'event : 50 normaux -> 3 boss -> retour aux normaux.
+function onHalloweenNpcKilled(e) {
+  if (netplayNpcActive()) return; // multi : le serveur est autorité
+  if (!isZoneMap) return;
+  const role = halloweenRoleOf(e?.type);
+  if (!role) return;
+  const mapId = currentMapId();
+  if (!isHalloweenMap(mapId)) return;
+  const st = loadHalloweenState(mapId) || normalizeHalloweenState(null);
+  const res = applyHalloweenKill(st, role, e.homeCampId);
+  saveHalloweenState(mapId, res.state);
+  if (res.transition === "toBoss") {
+    purgeHalloweenNormals();
+    try { showNotification("50 Curcubitors éliminés ! 3 Boss Curcubitors apparaissent !", 5, "info"); } catch {}
+  } else if (res.transition === "toNormal") {
+    try { showNotification("Boss Curcubitors éliminés ! Les Curcubitors reviennent…", 5, "info"); } catch {}
+  }
+}
+
+let lastHalloweenSyncMs = 0;
+
+// Synchro live de l'event (toutes les 5 s) : apparition / disparition SANS
+// changer de map. Solo uniquement (zoneController est déjà coupé en multi).
+function syncHalloweenLive(curMap) {
+  const nowMs = worldClock.now();
+  if (nowMs - lastHalloweenSyncMs < 5000) return;
+  lastHalloweenSyncMs = nowMs;
+  const mapId = String(curMap || currentMapId());
+  const active = isHalloweenMapActive(mapId);
+  const has = zoneCamps.some((c) => c?.event === "halloween");
+  if (active && !has) {
+    // Début d'event en direct : ajoute les camps + slots + précharge.
+    const extras = appendHalloweenCamps([], WORLD, { npcTypes: NPC_TYPES, mapId });
+    if (!extras.length) return;
+    let nextId = 0;
+    for (const c of zoneCamps) nextId = Math.max(nextId, Number(c?.id) || 0);
+    for (const c of extras) { nextId += 1; zoneCamps.push({ ...c, id: nextId, t: 0 }); }
+    try { ensureMapSlots(universe, mapId, zoneCamps, nowMs); } catch {}
+    try { persistUniverse(); } catch {}
+    for (const t of halloweenPreloadTypes(mapId, NPC_TYPES)) {
+      try {
+        const r = ensureNpcLoaded(t);
+        if (r && typeof r.catch === "function") r.catch(() => {});
+      } catch {}
+    }
+    try { showNotification("Event Halloween : les Curcubitors envahissent la map !", 5, "info"); } catch {}
+  } else if (!active && has) {
+    // Fin d'event en direct : purge les instances et retire camps + slots.
+    purgeHalloweenInstances(null);
+    for (let i = zoneCamps.length - 1; i >= 0; i--) {
+      if (zoneCamps[i]?.event === "halloween") zoneCamps.splice(i, 1);
+    }
+    try {
+      const list = universe?.maps?.[mapId];
+      if (Array.isArray(list)) {
+        universe.maps[mapId] = list.filter((s) => !isHalloweenVariantType(s?.type));
+      }
+      persistUniverse();
+    } catch {}
+    try { showNotification("L'event Halloween est terminé.", 4, "info"); } catch {}
+  }
+}
+
 function zoneController(dt) {
   if (!started || player.dead) return;
   if (!isZoneMap) return;
@@ -31043,6 +31388,9 @@ function zoneController(dt) {
 
   const curMap = currentMapId();
 
+  // Event Halloween en direct : pas besoin de changer de map.
+  try { syncHalloweenLive(curMap); } catch {}
+
 for (let i = collectables.length - 1; i >= 0; i--) {
   if (collectables[i]?.map && String(collectables[i].map) !== curMap) {
     collectables.splice(i, 1);
@@ -31050,6 +31398,11 @@ for (let i = collectables.length - 1; i >= 0; i--) {
 }
 
   for (const camp of zoneCamps) {
+    // Event Halloween : chaque camp ne spawne que dans sa phase (normaux
+    // puis boss). Hors event : plus aucun respawn.
+    if (camp?.event === "halloween") {
+      if (!isHalloweenMapActive(curMap) || halloweenCampBlocked(camp, getHalloweenState(curMap))) continue;
+    }
     camp.t -= dt;
     if (camp.t > 0) continue;
 
@@ -31291,7 +31644,9 @@ collectableFarTickT = 0;
   Target.clear();
 
   if (isZoneMap && typeof rules.getZoneSpawns === "function") {
-    const rawCamps = preparedZoneCamps || rules.getZoneSpawns(WORLD);
+    // Event Halloween : Curcubitors calibrés par map, en plus des normaux.
+    const rawCamps = appendHalloweenCamps(preparedZoneCamps || rules.getZoneSpawns(WORLD), WORLD,
+      { npcTypes: NPC_TYPES, mapId: window.__CURRENT_MAP_ID__ });
     const freshCamps = applyNpcDensityToCamps(rawCamps).map((c, idx) => ({
       id: idx + 1,
       ...c,
@@ -31303,7 +31658,9 @@ collectableFarTickT = 0;
     // Sans ca, un Kristallon tape changeait de slot a chaque saut.
     try {
       const mapId = String(window.__CURRENT_MAP_ID__ || "1-1");
-      const stored = universe?.maps?.[mapId];
+      // Hors event, les slots Halloween persistés sont écartés : les
+      // Curcubitors disparaissent vraiment le 02/11.
+      const stored = stripInactiveEventSlots(universe?.maps?.[mapId]);
       if (Array.isArray(stored) && stored.length > 0) {
         const tuningByType = new Map();
         for (const c of freshCamps) {
@@ -31317,6 +31674,11 @@ collectableFarTickT = 0;
             x: Number(s.homeX),
             y: Number(s.homeY),
             fixed: tuning.fixed === true,
+            // Event Halloween : les flags viennent du tuning (les slots
+            // persistés ne les portent pas). Sans eux, la gate de phase
+            // ne bloque rien et les normaux spawnent pendant les boss.
+            event: tuning.event === "halloween" ? "halloween" : null,
+            role: tuning.event === "halloween" ? String(tuning.role || "normal") : null,
             spawnArea: tuning.spawnArea || null,
             spawnMinDistance: tuning.spawnMinDistance || 0,
             radius: tuning.radius ?? 350,
@@ -31930,6 +32292,9 @@ async function collectHomeBaseJobs({ skipCurrentMap = false } = {}) {
         for (const camp of (rules.getZoneSpawns?.(world) || [])) {
           if (camp?.type && NPC_TYPES[camp.type]) jobs.push(ensureNpcLoaded(camp.type));
         }
+        for (const type of halloweenPreloadTypes(id, NPC_TYPES)) {
+          if (NPC_TYPES[type]) jobs.push(ensureNpcLoaded(type));
+        }
         for (const targetPortal of (rules.getZonePortals?.(world) || [])) {
           jobs.push(...preloadPortalSprites(targetPortal));
         }
@@ -32307,6 +32672,16 @@ function drawMinimap() {
     viewportWidth: innerWidth,
     viewportHeight: innerHeight,
     lockedNpc: Target.get(),
+    // Boss Halloween : icône image (petit + blanc, frames 20 Hz), toujours
+    // visible même hors portée radar — jamais le point rouge.
+    bossIconFor: (enemy) => {
+      try {
+        if (!isHalloweenVariantType(enemy?.type) || halloweenRoleOf(enemy?.type) !== "boss") return null;
+        const sp = NPC_TYPES[enemy.type]?.sprite;
+        const imgs = Array.isArray(sp?._imgs) && sp._imgs.length ? sp._imgs : null;
+        return { imgs, size: 12 };
+      } catch { return null; }
+    },
     // Spearhead Recon : radar minimap x2 pendant l'effet.
     shouldShowNpc: (source, enemy, locked) => shouldDetectNpc(source, enemy, ((player.reconT || 0) > 0 ? NPC_SENSOR_RANGES.radar * 2 : NPC_SENSOR_RANGES.radar), locked),
     npcOpacity: (source, enemy, locked) => {
@@ -39728,6 +40103,15 @@ if ((e.type === "npc_Cubikon" || e.cubikonMinions) && e._animPhase) {
           }
         }
 
+        // Curcubitors Halloween : sprite joué en boucle en continu (comme le
+        // Kristallin), solo comme multi — même après un JAMX/Creed qui
+        // l'avait figé via le snapshot (spritePlay remis à false).
+        if (!e.spritePlay && typeof e.type === "string" && e.type.indexOf("Curcubitor") !== -1
+          && isHalloweenVariantType(e.type)) {
+          e.spritePlay = true;
+          e.spriteAcc = 0;
+        }
+
         // JAMX / Creed : kamikaze NPC bloqué pendant l'effet.
         if (isKamikaze && !player.dead && !isPlayerUntargetable() && !((e.jamxT || 0) > 0) && !((e.creedT || 0) > 0) && cfgE.explodeOnTouch) {
           const rrK = (cfgE.explodeRadius || 180);
@@ -39862,6 +40246,9 @@ const MAP_BACKGROUND = {
 
 // ✅ Fond par tranche de vagues (ex. GG Awakened via rules.waveBackgrounds) :
 // sinon fond global. Résolu à chaque frame pour changer dès la vague suivante.
+// Pendant l'event Halloween : fond dédié, en direct, sans changer de map.
+const MAP_BACKGROUND_HALLOWEEN = "ASSETS/BACKGROUNDS/Hyperion_fond_Halloween.webp?v=2";
+
 function currentMapBackgroundSrc() {
   try {
     const list = rules?.waveBackgrounds;
@@ -39874,16 +40261,22 @@ function currentMapBackgroundSrc() {
       }
     }
   } catch {}
+  try {
+    if (isHalloweenEventActive()) return MAP_BACKGROUND_HALLOWEEN;
+  } catch {}
   return MAP_BACKGROUND.src;
 }
 
 loadImage(MAP_BACKGROUND.src, { priority: true });
+try {
+  if (isHalloweenEventActive()) loadImage(MAP_BACKGROUND_HALLOWEEN, { priority: true });
+} catch {}
 
-function drawMapBackground() {
-  // getCachedImage déclenche le chargement si besoin : aucun flash noir
-  // prolongé quand on change de tranche (préchargé à l'entrée de toute façon).
-  const img = getCachedImage(currentMapBackgroundSrc());
-  if (!isImgReady(img)) return;
+// Fondu enchaîné entre deux fonds (ex : bascule Halloween en direct).
+const BG_FADE_MS = 1500;
+const bgCrossfade = { from: null, to: null, start: 0 };
+
+function drawBgCover(img, alpha) {
   const sourceW = Math.max(1, Number(img.naturalWidth || img.width) || 1920);
   const sourceH = Math.max(1, Number(img.naturalHeight || img.height) || 1080);
   // Fond fixe en mode "cover" : pas de sur-échantillonnage volontaire,
@@ -39893,10 +40286,43 @@ function drawMapBackground() {
   const drawW = sourceW * scale;
   const drawH = sourceH * scale;
   ctx.save();
-  ctx.imageSmoothingEnabled = false;
-  ctx.imageSmoothingQuality = "low";
+  // Fond photo/peinture : lissage activé (bilinéaire haute qualité), sinon
+  // le nearest-neighbor floute dès que l'échelle n'est pas exactement 1:1
+  // (DPR Windows, fenêtre ≠ 1920x1080). Le smoothing OFF reste réservé aux
+  // sprites pixel-art.
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
+  if (alpha < 1) ctx.globalAlpha = Math.max(0, Math.min(1, alpha));
   ctx.drawImage(img, (innerWidth - drawW) / 2, (innerHeight - drawH) / 2, drawW, drawH);
   ctx.restore();
+}
+
+function drawMapBackground() {
+  // getCachedImage déclenche le chargement si besoin : aucun flash noir
+  // prolongé quand on change de tranche (préchargé à l'entrée de toute façon).
+  const target = currentMapBackgroundSrc();
+  const now = performance.now();
+  // Nouveau fond prêt : fondu enchaîné (ex : Halloween qui tombe en direct).
+  // Tant que la nouvelle image n'est pas prête, on garde l'ancien fond.
+  if (target !== bgCrossfade.to) {
+    const img = getCachedImage(target);
+    if (isImgReady(img)) {
+      bgCrossfade.from = bgCrossfade.to;
+      bgCrossfade.to = target;
+      bgCrossfade.start = now;
+    }
+  }
+  const toImg = getCachedImage(bgCrossfade.to || target);
+  if (!isImgReady(toImg)) return;
+  const fromImg = bgCrossfade.from ? getCachedImage(bgCrossfade.from) : null;
+  const t = bgCrossfade.from ? (now - bgCrossfade.start) / BG_FADE_MS : 1;
+  if (!fromImg || !isImgReady(fromImg) || t >= 1) {
+    if (t >= 1) bgCrossfade.from = null;
+    drawBgCover(toImg, 1);
+    return;
+  }
+  drawBgCover(fromImg, 1);
+  drawBgCover(toImg, t);
 }
 
 function drawZoneWalls(ox, oy) {
@@ -41352,6 +41778,7 @@ function npcTypesForCurrentSector() {
   try {
     if (rules?.mode === "zone" && typeof rules.getZoneSpawns === "function") {
       for (const spawn of rules.getZoneSpawns(WORLD) || []) if (spawn?.type) types.add(spawn.type);
+      for (const type of halloweenPreloadTypes(window.__CURRENT_MAP_ID__, NPC_TYPES)) types.add(type);
     } else {
       for (let waveNo = 1; waveNo <= 32; waveNo++) {
         for (const spawn of getWavePlan(waveNo)?.spawns || []) if (spawn?.type) types.add(spawn.type);
@@ -41981,7 +42408,7 @@ async function switchMapConfig(nextConfig, { mapId, spawnId = null } = {}) {
   const nextRules = nextConfig.rules || {};
   const nextWorld = nextConfig.WORLD;
   const preparedZoneCamps = nextRules.mode === "zone" && typeof nextRules.getZoneSpawns === "function"
-    ? nextRules.getZoneSpawns(nextWorld) : [];
+    ? appendHalloweenCamps(nextRules.getZoneSpawns(nextWorld), nextWorld, { npcTypes: NPC_TYPES, mapId }) : [];
   const preparedZonePortals = nextRules.mode === "zone" && typeof nextRules.getZonePortals === "function"
     ? nextRules.getZonePortals(nextWorld) : [];
 
@@ -41989,6 +42416,7 @@ async function switchMapConfig(nextConfig, { mapId, spawnId = null } = {}) {
   jobs.push(...preloadCollectables(mapId));
   jobs.push(...preloadSafeModuleSprites(nextRules, nextWorld));
   for (const camp of preparedZoneCamps) if (camp?.type && NPC_TYPES[camp.type]) jobs.push(ensureNpcLoaded(camp.type));
+  for (const type of halloweenPreloadTypes(mapId, NPC_TYPES)) if (NPC_TYPES[type]) jobs.push(ensureNpcLoaded(type));
   if (nextRules.mode !== "zone" && typeof nextConfig.getWavePlan === "function") {
     const gateTypes = new Set();
     for (let waveNo = 1; waveNo <= 32; waveNo++) {

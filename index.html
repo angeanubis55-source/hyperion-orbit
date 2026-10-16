@@ -10,7 +10,7 @@
     // Fenêtre de départ à chaque refresh : pas de bypass session (la classe
     // orbitSessionReady n'est plus posée, l'overlay reste visible avec DÉPART).
     </script>
-  <link rel="stylesheet" href="style.css?v=ui-refresh-59" />
+  <link rel="stylesheet" href="style.css?v=ui-refresh-61" />
 </head>
 <body>
 <canvas id="game"></canvas>
@@ -36,6 +36,22 @@
     </div>
   </div>
 </div>
+<script>
+(function () {
+  // Halloween TEST : debut 16/10 22h50 (remettre 23h59 apres essai). Fin 01/11 23h59.
+  try {
+    var now = new Date();
+    var start = new Date(now.getFullYear(), 9, 16, 22, 50, 0);
+    var end = new Date(now.getFullYear(), 10, 1, 23, 59, 59);
+    if (now >= start && now <= end) {
+      var overlay = document.getElementById("loadingOverlay");
+      if (overlay) overlay.classList.add("halloween");
+      var pre = new Image();
+      pre.src = "ASSETS/UI/LOADING_SCREEN_HALLOWEEN.png";
+    }
+  } catch (e) {}
+})();
+</script>
 
 <div id="linkOverlay" class="linkOverlay" role="alertdialog" aria-live="assertive" style="display:none;">
   <div class="linkBox">
@@ -108,6 +124,9 @@
   </button>
   <button id="btnTitleHub" class="gameDockIcon" data-window-id="titleWindow" type="button" title="Titres" aria-label="Titres">
     <span><img src="ASSETS/UI/MENU/wargame_event.png" data-menu-icon="wargame_event" alt="" draggable="false"></span>
+  </button>
+  <button id="btnPassHub" class="gameDockIcon" data-window-id="passWindow" type="button" title="Passe de combat" aria-label="Passe de combat">
+    <span><img src="ASSETS/UI/MENU/battle_pass.png" data-menu-icon="battle_pass" alt="" draggable="false"></span>
   </button>
 </div>
   
@@ -526,6 +545,22 @@
           </div>
         </section>
       </div>
+    </div>
+
+    <div id="passWindow" class="panel passPanel">
+      <div class="passHead">
+        <div>
+          <div id="passStatus" class="passStatus">Passe de combat Halloween</div>
+          <div id="passCountdown" class="assemblyEventCountdown"></div>
+        </div>
+        <div id="passKeys" class="passKeys"></div>
+      </div>
+      <div class="passTabs">
+        <button id="passTabObjectives" class="passTab active" type="button">Objectifs</button>
+        <button id="passTabShop" class="passTab" type="button">Boutique</button>
+      </div>
+      <div id="passList" class="passList"></div>
+      <div id="passShop" class="passList" hidden></div>
     </div>
 
     <div id="questOfferWindow" class="panel questOfferPanel">

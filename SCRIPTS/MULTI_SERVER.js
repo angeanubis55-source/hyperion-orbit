@@ -483,6 +483,7 @@ import { handleSocialMessage, socialPeerGone, socialPeerChanged, socialDescribeG
 import { getAuctionSync, handleAuctionBid, pollAuctionCycle, auctionRoomStatus } from "./AUCTION_ROOM.js";
 import { GAME_VERSION } from "../SRC/DATA/VERSION.js";
 import { COLLECTABLE_TYPES } from "../SRC/DATA/COLLECTABLES.js";
+import { isHalloweenBossVariant, isHalloweenEventActive } from "../NPC/NPC_HALLOWEEN.js";
 import { GROUP_BOOSTER_BONUS } from "../SRC/DATA/BOOSTERS.js";
 import { STARMAP_JUMP_REUSE_SEC } from "../SRC/DATA/STARMAP.js";
 
@@ -1517,6 +1518,9 @@ setInterval(() => {
 let nextId = 1;
 
 function collectableAllowedOnMap(cfg, mapId) {
+  if (!cfg) return false;
+  // Event (ex : Pumpkin Box hors Halloween) : jamais, même si maps/deny OK.
+  if (cfg.event === "halloween" && !isHalloweenEventActive()) return false;
   const id = String(mapId || "").toLowerCase();
   const deny = cfg?.denyMaps ?? cfg?.blockedMaps ?? cfg?.disabledMaps ?? cfg?.excludeMaps;
   for (const value of (Array.isArray(deny) ? deny : deny != null ? [deny] : [])) {
@@ -1915,10 +1919,10 @@ function removeFromAllRooms(id) {
   instancePeers.delete(String(id));
 }
 
-// Top 10 dégâts Invoke / Mindfire (soleils personnels, même partis).
+// Top 10 dégâts Invoke / Mindfire / Boss Halloween (box perso, même partis).
 function sunTopIds(death) {
   try {
-    if (death?.type !== "npc_Invoke_XVI" && death?.type !== "npc_Mindfire_Behemoth") return [];
+    if (death?.type !== "npc_Invoke_XVI" && death?.type !== "npc_Mindfire_Behemoth" && !isHalloweenBossVariant(death?.type)) return [];
     if (!Array.isArray(death?.shares) || !death.shares.length) return [];
     return death.shares
       .filter((s) => Array.isArray(s) && String(s[0]).startsWith("u_") && Number(s[1]) > 0)
@@ -1930,11 +1934,11 @@ function sunTopIds(death) {
 }
 
 function npcRewardShares(killerId, mapId, death) {
-  // Invoke XVI / Mindfire Behemoth : pas de partage de groupe.
+  // Invoke XVI / Mindfire Behemoth / Boss Halloween : pas de partage de groupe.
   // - Destruction (credits/EXP/honneur) : TOUS les tapeurs présents sur la
   //   map, au prorata des dégâts (floor + reste au top dégâts).
-  // - Soleil : top 10 dégâts (même s'ils ont quitté la map), même contenu.
-  if ((death?.type === "npc_Invoke_XVI" || death?.type === "npc_Mindfire_Behemoth")
+  // - Box perso : top 10 dégâts (même s'ils ont quitté la map), même contenu.
+  if ((death?.type === "npc_Invoke_XVI" || death?.type === "npc_Mindfire_Behemoth" || isHalloweenBossVariant(death?.type))
     && Array.isArray(death?.shares) && death.shares.length) {
     try {
       const ranked = death.shares
@@ -2023,9 +2027,10 @@ function pumpNpcRewards(budgetMs = 12) {
     if (!killerId.startsWith("u_") || death?.cause !== "gun") { queuedNpcRewardKeys.delete(deathKey); continue; }
     if (rewardedNpcDeaths.has(deathKey)) { queuedNpcRewardKeys.delete(deathKey); continue; }
     let complete = true;
-    const isSunBoss = death?.type === "npc_Invoke_XVI" || death?.type === "npc_Mindfire_Behemoth";
+    const isSunBoss = death?.type === "npc_Invoke_XVI" || death?.type === "npc_Mindfire_Behemoth" || isHalloweenBossVariant(death?.type);
     const sunType = death?.type === "npc_Mindfire_Behemoth" ? "Mindfire_Sun_Box"
-      : death?.type === "npc_Invoke_XVI" ? "Sun_Box" : null;
+      : death?.type === "npc_Invoke_XVI" ? "Sun_Box"
+      : isHalloweenBossVariant(death?.type) ? "Boss_Cucurbitor_Box" : null;
     // Soleils : annoncés à TOUS les top 10 (présents ou partis) via un
     // message dédié ; le client déduplique (un joueur présent reçoit aussi
     // son npcReward avec sun:true). Une seule annonce par mort.
@@ -3595,6 +3600,8 @@ setInterval(() => {
       queue.splice(i, 1);
       if (set.has(pending.uid)) continue;
       const cfg = COLLECTABLE_TYPES[pending.type] || {};
+      // Event terminé entre-temps (ex : Pumpkin hors Halloween) : pas de respawn.
+      if (cfg.event === "halloween" && !isHalloweenEventActive()) continue;
       const pos = randomBoxPosition(sim && typeof sim.then !== "function" ? sim : null);
       const box = { type: pending.type, ...pos };
       set.set(pending.uid, box);
@@ -3604,6 +3611,45 @@ setInterval(() => {
     if (!queue.length) boxRespawns.delete(mapId);
   }
 }, 250);
+
+// Event Halloween : apparition / disparition des Pumpkin Box en direct
+// (toutes les 5 s), sans restart — les rooms ne sont construites qu'une fois.
+setInterval(() => {
+  try {
+    const active = isHalloweenEventActive();
+    for (const [mapId, set] of boxRooms) {
+      if (!(set instanceof Map)) continue;
+      const has = [...set.values()].some((b) => b && b.type === "Pumpkin_Box");
+      const room = rooms.get(mapId);
+      if (active && !has) {
+        const cfg = COLLECTABLE_TYPES.Pumpkin_Box;
+        if (!cfg || !collectableAllowedOnMap(cfg, mapId)) continue;
+        const sim = npcSims.get(mapId);
+        const qty = Math.max(0, Math.floor(Number(cfg.qty) || 0));
+        for (let index = 0; index < qty; index++) {
+          const uid = `Pumpkin_Box#${index}`;
+          if (set.has(uid)) continue;
+          const pos = randomBoxPosition(sim && typeof sim.then !== "function" ? sim : null);
+          const box = { type: "Pumpkin_Box", ...pos };
+          set.set(uid, box);
+          if (room?.size) broadcastRoom(room, JSON.stringify({ t: "box", op: "spawn", box: { uid, ...box } }));
+        }
+      } else if (!active && has) {
+        const gone = [];
+        for (const [uid, b] of set) {
+          if (b && b.type === "Pumpkin_Box") { set.delete(uid); gone.push(uid); }
+        }
+        const queue = boxRespawns.get(mapId);
+        if (Array.isArray(queue)) {
+          for (let i = queue.length - 1; i >= 0; i--) {
+            if (queue[i]?.type === "Pumpkin_Box") queue.splice(i, 1);
+          }
+        }
+        if (gone.length && room?.size) broadcastRoom(room, JSON.stringify({ t: "box", op: "unspawn", uids: gone }));
+      }
+    }
+  } catch {}
+}, 5000);
 
 // Broadcast + simu NPC 20 Hz par room, uniquement aux sockets ouvertes.
 // Les NPC inactifs a plus de 2 000 unites voyagent a 1 Hz, repartis sur les ticks ;
