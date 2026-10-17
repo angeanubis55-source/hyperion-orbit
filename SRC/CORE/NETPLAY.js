@@ -1234,6 +1234,16 @@ export function ensureNetplayConnection() {
         totalHonor: Number.isFinite(Number(msg.totalHonor)) ? Math.floor(Number(msg.totalHonor)) : null,
         ownsKill: msg.ownsKill === true,
         percent: Math.max(0, Math.min(100, Number(msg.percent) || 0)),
+        // Drops directs assemblage (rinusk, traceur...) : transmis tels quels
+        // (sanitisés) pour le toast + le crédit solde côté client.
+        direct: Array.isArray(msg.direct) ? msg.direct
+          .filter((entry) => entry && typeof entry === "object")
+          .map((entry) => ({
+            resource: String(entry.resource || "").slice(0, 40),
+            qty: Math.max(0, Math.floor(Number(entry.qty) || 0)),
+          }))
+          .filter((entry) => entry.resource && entry.qty > 0)
+          .slice(0, 8) : [],
         // Soleil personnel Invoke / Mindfire (top 10 dégâts).
         sun: msg.sun === true,
         sunType: typeof msg.sunType === "string" ? String(msg.sunType).slice(0, 40) : null,
@@ -2052,6 +2062,8 @@ export function sendShotEvent(ev) {
     if (ev.sab === true) o.sab = true;
     // MISS partage : le 2e ecran affiche MISS comme le tireur (meme cible lockee).
     if (ev.miss === true) o.miss = true;
+    // Precision Targeter : cercle rouge sous la roquette, des deux cotes.
+    if (ev.prec === true) o.prec = true;
     // Volley du tireur (deduplique l'affichage MISS, namespace par expediteur).
     if (Number.isFinite(Number(ev.v))) o.v = Math.max(0, Math.floor(Number(ev.v)));
     ws.send(JSON.stringify(o));
@@ -2522,7 +2534,7 @@ export function sendSkillUse(skill, details = {}) {
       amount: details.phase === "heal" ? Math.max(0, Math.min(35000, Math.round(Number(details.amount) || 0))) : undefined,
       target: String(details.target || "").slice(0, 64),
       rocket: typeof details.rocket === "string" ? details.rocket.slice(0, 16) : undefined,
-      chain: key === "ability_tempest_voltage-link" && Array.isArray(details.chain)
+      chain: (key === "ability_tempest_voltage-link" || key === "ability_tech_chain_impulse") && Array.isArray(details.chain)
         ? details.chain.slice(0, 10).map(id => String(id).slice(0, 64)) : undefined }));
     try {
       if (key.startsWith("ability_")) {

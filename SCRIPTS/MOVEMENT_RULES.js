@@ -105,8 +105,14 @@ export function movementSpeed(state, profile, now) {
   let mult = 1;
   for (const e of activeMoveEffects(state, profile, now)) mult *= Number(e.mult) || 1;
   const slow = now < Number(state.slowUntil || 0) ? Math.min(95, Math.max(0, Number(state.slowPct) || 0)) : 0;
-  const speed = Math.max(0, Math.floor(profile.speed) * mult * abilitySpeedMult(state, now) * (1 - slow / 100));
-  return fortifyActive(state, now) ? Math.min(200, speed) : speed;
+  let speed = Math.max(0, Math.floor(profile.speed) * mult * abilitySpeedMult(state, now) * (1 - slow / 100));
+  if (fortifyActive(state, now)) speed = Math.min(200, speed);
+  // Tech Speed Burst (flat 900) : boost, jamais un bridage.
+  for (const e of activeMoveEffects(state, profile, now)) {
+    const flat = Math.max(0, Number(e.flat) || 0);
+    if (flat > 0) speed = Math.max(speed, flat);
+  }
+  return speed;
 }
 
 // Integrer les changements de vitesse avec l'horloge serveur : un bonus

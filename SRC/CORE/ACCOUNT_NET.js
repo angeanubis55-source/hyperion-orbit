@@ -784,6 +784,22 @@ function addRewardToBase(base, reward) {
     base.pet ||= {};
     base.pet.exp = (Number(base.pet.exp) || 0) + petGain;
   }
+  // Drops directs assemblage (rinusk, traceur...) : sinon le rebase les
+  // retire du solde local au prochain push/pull.
+  try {
+    const direct = Array.isArray(reward?.direct) ? reward.direct : [];
+    if (direct.length) {
+      base.inventory ||= {};
+      base.inventory.resources ||= {};
+      for (const entry of direct) {
+        const resource = String(entry?.resource || "");
+        const qty = Math.max(0, Math.floor(Number(entry?.qty) || 0));
+        if (!resource || qty <= 0) continue;
+        base.inventory.resources[resource] =
+          Math.max(0, Math.floor(Number(base.inventory.resources[resource]) || 0)) + qty;
+      }
+    }
+  } catch {}
 }
 
 // Appelé avant d'appliquer un gain WebSocket au moteur. Un gain déjà présent

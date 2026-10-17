@@ -1225,19 +1225,39 @@ const PET_DOCK_MODE_VALUES = Object.freeze(["combat", "gear:al", "gear:ar", "gea
 // Anti-AI et Burning Trail exclus). Une image par tech, pas de déclinaison.
 const TECH_DOCK_ITEMS = Object.freeze([
   { id: "anti-mine-transmitter", label: "Anti-Mine Transmitter", icon: "ASSETS/CONTROL_MENU/tech_anti-mine-transmitter.png" },
-  { id: "backup-shields", label: "Backup Shields", icon: "ASSETS/CONTROL_MENU/tech_backup-shields.png" },
+  { id: "shield-backup", label: "Shield Backup", icon: "ASSETS/CONTROL_MENU/tech_backup-shields.png" },
   { id: "battle-repair-bot", label: "Battle Repair Bot", icon: "ASSETS/CONTROL_MENU/tech_battle-repair-bot.png" },
   { id: "battle-repair-bot-2", label: "Battle Repair Bot 2", icon: "ASSETS/CONTROL_MENU/tech_battle-repair-bot2.png" },
+  { id: "npc-bomb", label: "NPC Bomb", icon: "ASSETS/CONTROL_MENU/tech_npc-nuke.png" },
   { id: "chain-impulse", label: "Chain Impulse", icon: "ASSETS/CONTROL_MENU/tech_chain-impulse.png" },
   { id: "energy-leech", label: "Energy Leech", icon: "ASSETS/CONTROL_MENU/tech_energy-leech.png" },
-  { id: "explosive-charging-blob", label: "Explosive Charging Blob", icon: "ASSETS/CONTROL_MENU/tech_explosive-charging-blob.png" },
   { id: "frost-field", label: "Frost Field", icon: "ASSETS/CONTROL_MENU/tech_frost-field.png" },
-  { id: "npc-nuke", label: "NPC Nuke", icon: "ASSETS/CONTROL_MENU/tech_npc-nuke.png" },
   { id: "precision-targeter", label: "Precision Targeter", icon: "ASSETS/CONTROL_MENU/tech_precision-targeter.png" },
   { id: "shield-backup-2", label: "Shield Backup 2", icon: "ASSETS/CONTROL_MENU/tech_shield-backup2.png" },
   { id: "speed-burst", label: "Speed Burst", icon: "ASSETS/CONTROL_MENU/tech_speed-burst.png" },
 ]);
 
+// État d'affichage d'une tech du dock (onglet + slots) : actif, secondes
+// restantes, échelle du voile. NPC Bomb : CD de 10 s entre les pulses
+// pendant l'aura, puis 300 s après le 6e pulse.
+function techDockVisual(id) {
+  const active = (id === "speed-burst" && (Number(player?.speedBurstT) || 0) > 0)
+    || (id === "chain-impulse" && player?.chainArmed === true)
+    || (id === "precision-targeter" && techPrecisionActive());
+  if (id === "precision-targeter" && techPrecisionActive()) {
+    const left = Math.max(0, (Number(player.precisionUntil) - Date.now()) / 1000);
+    return { active: true, cd: left, cdMax: PRECISION_DURATION_MS / 1000 };
+  }
+  let cd = techCooldownLeftSec(id), cdMax = TECH_COOLDOWN;
+  if (id === "npc-bomb" && techNpcBombFrom) {
+    const ageS = (performance.now() - techNpcBombFrom) / 1000;
+    if (ageS >= 0 && ageS < NPC_BOMB_DURATION_MS / 1000) {
+      cd = NPC_BOMB_TICK_SEC - (ageS % NPC_BOMB_TICK_SEC);
+      cdMax = NPC_BOMB_TICK_SEC;
+    }
+  }
+  return { active, cd, cdMax };
+}
 // Bascule du menu du dock rapide (palette), accessible au clavier (TAB par défaut).
 let toggleActionDockMenu = null;
 // Re-rend l'onglet actif de la palette (ex : Aptitudes après changement de vaisseau).
@@ -1333,6 +1353,71 @@ const PROTECTION_SHARE = 0.25;
 // 1→2→3→2→1, alternance 3↔2 à l'arrêt toutes les 100 ms).
 const TRAVEL_DURATION = 5;
 const TRAVEL_COOLDOWN = 60;
+// Tech Speed Burst : vitesse 900 pendant 2 s, recharge 300 s individuelle.
+// Visuel : speed buff effect aux réacteurs (comme le voyage), visible par
+// tous via le snapshot afx (code 83).
+const SPEED_BURST_ID = "ability_tech_speed_burst";
+const SPEED_BURST_DURATION = 2;
+const SPEED_BURST_SPEED = 900;
+const TECH_COOLDOWN = 300; // recharge de chaque tech (individuelle)
+// Tech Chain Impulse : armée via l'onglet/le slot, déclenchée par le
+// prochain tir laser. Éclair (visuel lien HP du PET) sur tous les ennemis
+// dans un rayon de 700 autour du lanceur : -50 % vitesse pendant 2 s.
+// Joueurs + NPC, visible par tous (snapshot slow + skillFx chain).
+const CHAIN_IMPULSE_ID = "ability_tech_chain_impulse";
+const CHAIN_IMPULSE_RADIUS = 700;
+const CHAIN_IMPULSE_DAMAGE = 30000;
+const CHAIN_IMPULSE_BEAM_MS = 1200;
+const CHAIN_IMPULSE_MAX_TARGETS = 12;
+// Tech Precision Targeter : 100 % de précision roquettes pendant 60 min
+// (plus aucun miss), cercle rouge sous chaque roquette tirée (visible par
+// tous via le flag prec des tirs). Pas d'icône à créer (image existante).
+const PRECISION_TARGETER_ID = "ability_tech_precision_targeter";
+const PRECISION_DURATION_MS = 3600000;
+function techPrecisionActive() {
+  try { return Date.now() < Number(player?.precisionUntil || 0); } catch { return false; }
+}
+// Tech Frost Field : même déclenchement (armé, prochain tir), -50 % vitesse
+// 2 s dans 700 + halo cyan clair de 700 visible par tous (2 s).
+const FROST_FIELD_ID = "ability_tech_frost_field";
+const FROST_FIELD_RADIUS = 700;
+const FROST_FIELD_SLOW_PCT = 50;
+const FROST_FIELD_SLOW_SEC = 2;
+const FROST_FIELD_PULSE_MS = 600; // visuel : un seul pulse (pas de zone)
+// Tech NPC Bomb : halo violet 700, toutes les 10 s pendant 60 s un tick de
+// 100k dégâts sur les NPC (ni joueurs ni JPC) : 6 x 100k = 600k au total.
+// Visuel identique pour tous (skillFx + snapshot dégâts NPC).
+const NPC_BOMB_ID = "ability_tech_npc_bomb";
+const NPC_BOMB_RADIUS = 700;
+const NPC_BOMB_TICK_SEC = 10;
+const NPC_BOMB_TICK_DMG = 100000;
+const NPC_BOMB_DURATION_MS = 60000;
+const NPC_BOMB_MAX_TARGETS = 30;
+// Tech Shield Backup : restauration instantanée de bouclier (150k / 300k),
+// +X visible par soi et les verrouilleurs (canal heal). Conditions serveur :
+// générateur de bouclier équipé, pas déjà au max.
+const SHIELD_BACKUP_ID = "ability_tech_shield_backup";
+const SHIELD_BACKUP_2_ID = "ability_tech_shield_backup_2";
+const SHIELD_BACKUP_AMOUNT = 150000;
+const SHIELD_BACKUP_2_AMOUNT = 300000;
+// Tech Battle Repair Bot (10k HP/s, 15 s) / Battle Repair Bot 2 (30k HP/s,
+// 10 s) : HoT serveur, +X par tick pour soi et les verrouilleurs.
+const BATTLE_REPAIR_ID = "ability_tech_battle_repair";
+const BATTLE_REPAIR_2_ID = "ability_tech_battle_repair_2";
+const BATTLE_REPAIR_DURATION = 15;
+const BATTLE_REPAIR_2_DURATION = 10;
+// Correspondance skill serveur <-> bouton dock.
+const TECH_SKILL_DOCK_IDS = Object.freeze({
+  [SPEED_BURST_ID]: "speed-burst",
+  [SHIELD_BACKUP_ID]: "shield-backup",
+  [SHIELD_BACKUP_2_ID]: "shield-backup-2",
+  [BATTLE_REPAIR_ID]: "battle-repair-bot",
+  [BATTLE_REPAIR_2_ID]: "battle-repair-bot-2",
+  [CHAIN_IMPULSE_ID]: "chain-impulse",
+  [FROST_FIELD_ID]: "frost-field",
+  [NPC_BOMB_ID]: "npc-bomb",
+  [PRECISION_TARGETER_ID]: "precision-targeter",
+});
 // Voyage Yamato : clone exact du Voyage Citadel (x2, 5 s, CD 60 s),
 // état SÉPARÉ (yamatoT/yamatoCd) — pas de partage avec travelT.
 const YAMATO_TRAVEL_DURATION = 5;
@@ -1567,12 +1652,273 @@ function reportMovementAbility(skill, enabled = true, target = null) {
   if (!key) return;
   try { sendSkillUse(key, { enabled, target: target?._netPlayer || target?._netUid || "" }); } catch {}
 }
+// Tech Speed Burst (onglet TECH / slots) : vitesse 900 pendant 2 s,
+// recharge 300 s individuelle, effet visible par tous (snapshot afx code 83).
+function triggerSpeedBurst() {
+  try {
+    if (player.dead) return;
+    if ((Number(player.speedBurstT) || 0) > 0) return;
+    const left = techCooldownLeftSec("speed-burst");
+    if (left > 0) {
+      showToast(`Tech prête dans ${Math.ceil(left)} s`, 1.5);
+      return;
+    }
+    player.speedBurstT = SPEED_BURST_DURATION;
+    setTechCooldown("speed-burst", TECH_COOLDOWN);
+    try { sendSkillUse(SPEED_BURST_ID); } catch {}
+    showToast("Speed Burst : 900 pendant 2 s", 1.5);
+  } catch {}
+}
+// Tech Shield Backup (niveau 1 = 150k, 2 = 300k) : pré-contrôles locaux
+// (bouclier équipé, pas au max), le serveur crédite et diffuse le +X.
+function triggerShieldBackup(level) {
+  try {
+    if (player.dead) return;
+    const id = level >= 2 ? "shield-backup-2" : "shield-backup";
+    const left = techCooldownLeftSec(id);
+    if (left > 0) {
+      showToast(`Tech prête dans ${Math.ceil(left)} s`, 1.5);
+      return;
+    }
+    if (!(Number(player.shMax) > 0)) {
+      showToast("Aucun générateur de bouclier équipé.", 1.8);
+      return;
+    }
+    if (!(Number(player.sh) < Number(player.shMax))) {
+      showToast("Bouclier déjà au maximum.", 1.5);
+      return;
+    }
+    setTechCooldown(id, TECH_COOLDOWN);
+    try { sendSkillUse(level >= 2 ? SHIELD_BACKUP_2_ID : SHIELD_BACKUP_ID); } catch {}
+  } catch {}
+}
+// Tech Battle Repair Bot (niveau 1 = 10k HP/s pendant 15 s, 2 = 30k HP/s
+// pendant 10 s) : HoT serveur (+X par tick). Pré-contrôles locaux.
+function triggerBattleRepair(level) {
+  try {
+    if (player.dead) return;
+    const id = level >= 2 ? "battle-repair-bot-2" : "battle-repair-bot";
+    const left = techCooldownLeftSec(id);
+    if (left > 0) {
+      showToast(`Tech prête dans ${Math.ceil(left)} s`, 1.5);
+      return;
+    }
+    if (!(Number(player.hp) < Number(player.hpMax))) {
+      showToast("Coque déjà au maximum.", 1.5);
+      return;
+    }
+    setTechCooldown(id, TECH_COOLDOWN);
+    try { sendSkillUse(level >= 2 ? BATTLE_REPAIR_2_ID : BATTLE_REPAIR_ID); } catch {}
+  } catch {}
+}
+// Tech Chain Impulse : arme (clic = toggle). Le prochain tir laser déclenche
+// l'éclair sur les ennemis autour du lanceur. Recharge 300 s, posée au tir.
+function triggerChainImpulse() {
+  try {
+    if (player.dead) return;
+    if (player.chainArmed === true) {
+      player.chainArmed = false;
+      showToast("Chain Impulse désarmé.", 1.2);
+      return;
+    }
+    const left = techCooldownLeftSec("chain-impulse");
+    if (left > 0) {
+      showToast(`Tech prête dans ${Math.ceil(left)} s`, 1.5);
+      return;
+    }
+    player.chainArmed = true;
+    showToast("Chain Impulse armé : prochain tir.", 1.5);
+  } catch {}
+}
+// Éclairs locaux du Chain Impulse (visuel lien HP, positions figées au tir).
+const chainImpBeams = [];
+// Halo local du Frost Field (cyan clair, 2 s).
+let frostHaloUntil = 0;
+// Ennemis autour du lanceur (NPC + joueurs de firme adverse, 700) : visuel
+// local + le serveur revalide et applique (positions serveur).
+function gatherTechVictims() {
+  const victims = [];
+  try {
+    for (const e of enemies) {
+      if (!e || !(Number(e.hp) > 0)) continue;
+      const uid = String(e._netUid || "");
+      if (!uid) continue;
+      const dx = Number(e.x) - player.x, dy = Number(e.y) - player.y;
+      if (dx * dx + dy * dy > CHAIN_IMPULSE_RADIUS * CHAIN_IMPULSE_RADIUS) continue;
+      victims.push({ id: uid, x: Math.round(Number(e.x)), y: Math.round(Number(e.y)) });
+      if (victims.length >= CHAIN_IMPULSE_MAX_TARGETS) break;
+    }
+  } catch {}
+  try {
+    const peers = getNetplayRemotes?.();
+    const myFirm = String(account?.user?.faction || "").toLowerCase();
+    if (peers && victims.length < CHAIN_IMPULSE_MAX_TARGETS) {
+      for (const [rid, r] of peers) {
+        if (!r || r.dead || r.cloaked || r.cloakCpu) continue;
+        if (String(rid) === String(netMyId())) continue;
+        const rf = String(r.firm || "").toLowerCase();
+        if (myFirm && rf && rf === myFirm) continue;
+        const dx = Number(r.rx ?? r.x) - player.x, dy = Number(r.ry ?? r.y) - player.y;
+        if (dx * dx + dy * dy > CHAIN_IMPULSE_RADIUS * CHAIN_IMPULSE_RADIUS) continue;
+        victims.push({ id: String(rid), x: Math.round(Number(r.rx ?? r.x)), y: Math.round(Number(r.ry ?? r.y)) });
+        if (victims.length >= CHAIN_IMPULSE_MAX_TARGETS) break;
+      }
+    }
+  } catch {}
+  return victims;
+}
+// Déclenche le Chain Impulse : ennemis (NPC + joueurs) dans 700 autour du
+// lanceur, éclair immédiat + slow prédit, validation serveur derrière.
+// Consomme l'armement uniquement si au moins une victime (pas de gaspillage).
+function fireChainImpulse() {
+  try {
+    if (player.chainArmed !== true) return;
+    const victims = gatherTechVictims();
+    if (!victims.length) return;
+    player.chainArmed = false;
+    const until = performance.now() + CHAIN_IMPULSE_BEAM_MS;
+    for (const v of victims) {
+      chainImpBeams.push({ ax: player.x, ay: player.y, bx: v.x, by: v.y, until });
+    }
+    if (chainImpBeams.length > 48) chainImpBeams.splice(0, chainImpBeams.length - 48);
+    setTechCooldown("chain-impulse", TECH_COOLDOWN);
+    try { sendSkillUse(CHAIN_IMPULSE_ID, { phase: "fire" }); } catch {}
+  } catch {}
+}
+function drawChainImpulseFx(ox, oy) {
+  if (!chainImpBeams.length) return;
+  const now = performance.now();
+  for (let i = chainImpBeams.length - 1; i >= 0; i--) {
+    const b = chainImpBeams[i];
+    if (!b || now >= b.until) { chainImpBeams.splice(i, 1); continue; }
+    try { petLinkBeam(b.ax + ox, b.ay + oy, b.bx + ox, b.by + oy); } catch {}
+  }
+}
+// Frost Field : même déclenchement (armé, prochain tir), halo cyan clair de
+// 700 pendant 2 s + slow serveur. Le serveur revalide et applique.
+function fireFrostField() {
+  try {
+    const victims = gatherTechVictims();
+    if (!victims.length) {
+      showToast("Aucun ennemi à portée.", 1.2);
+      return;
+    }
+    frostHaloUntil = performance.now() + FROST_FIELD_PULSE_MS;
+    setTechCooldown("frost-field", TECH_COOLDOWN);
+    try { sendSkillUse(FROST_FIELD_ID, { phase: "fire" }); } catch {}
+  } catch {}
+}
+function drawFrostHaloFx(ox, oy) {
+  if (!(performance.now() < frostHaloUntil) || player.dead) return;
+  const age = FROST_FIELD_PULSE_MS - Math.max(0, frostHaloUntil - performance.now());
+  // Un seul pulse expansif (comme le soigneur) : les touchés sont ralentis,
+  // pas de zone dans le temps.
+  try { drawHaloPulse(Number(player.x) + ox, Number(player.y) + oy, FROST_FIELD_RADIUS, age / FROST_FIELD_PULSE_MS, "150,230,255", "180,240,255"); } catch {}
+}
+// Tech Frost Field : déclenchement immédiat au clic (pas de tir requis) —
+// halo + slow si au moins un ennemi à portée, sinon rien n'est consommé.
+function triggerFrostField() {
+  try {
+    if (player.dead) return;
+    const left = techCooldownLeftSec("frost-field");
+    if (left > 0) {
+      showToast(`Tech prête dans ${Math.ceil(left)} s`, 1.5);
+      return;
+    }
+    fireFrostField();
+  } catch {}
+}
+// Tech NPC Bomb : halo violet 700, un pulse toutes les 10 s pendant 60 s,
+// tick de 100k dégâts sur les NPC à chaque pulse (ni joueurs ni JPC).
+// Entre les pulses : recharge de 10 s affichée ; le CD de 300 s ne démarre
+// qu'après le 6e et dernier pulse.
+let techNpcBombFrom = 0;
+function triggerNpcBomb() {
+  try {
+    if (player.dead) return;
+    if (techNpcBombFrom && performance.now() - techNpcBombFrom < NPC_BOMB_DURATION_MS) {
+      showToast("NPC Bomb déjà active.", 1.2);
+      return;
+    }
+    const left = techCooldownLeftSec("npc-bomb");
+    if (left > 0) {
+      showToast(`Tech prête dans ${Math.ceil(left)} s`, 1.5);
+      return;
+    }
+    techNpcBombFrom = performance.now();
+    try { persistCdUntil("techAura:npc-bomb", NPC_BOMB_DURATION_MS / 1000, "global"); } catch {}
+    try { sendSkillUse(NPC_BOMB_ID, { phase: "fire" }); } catch {}
+    showToast("NPC Bomb : 100k / 10 s pendant 60 s", 1.5);
+  } catch {}
+}
+// Halo violet local : un seul pulse expansif toutes les 10 s (comme le
+// soigneur Streuner), au moment des ticks de dégâts. Pas d'anneau persistant.
+function drawNpcBombFx(ox, oy) {
+  if (!techNpcBombFrom || player.dead) return;
+  const ageSec = (performance.now() - techNpcBombFrom) / 1000;
+  if (!(ageSec >= 0) || ageSec > NPC_BOMB_DURATION_MS / 1000) return;
+  const phase = ageSec % NPC_BOMB_TICK_SEC;
+  if (phase > 0.7) return;
+  try {
+    drawHaloPulse(Number(player.x) + ox, Number(player.y) + oy, NPC_BOMB_RADIUS, phase / 0.7, "200,140,255", "220,170,255");
+  } catch {}
+}
+// Tech Precision Targeter : déclenchement immédiat, 100 % précision pendant
+// 60 min (compte à rebours affiché). Le CD de 300 s démarre à la fin de l'effet côté serveur).
+function triggerPrecisionTargeter() {
+  try {
+    if (player.dead) return;
+    if (techPrecisionActive()) {
+      showToast("Precision Targeter déjà actif.", 1.2);
+      return;
+    }
+    const left = techCooldownLeftSec("precision-targeter");
+    if (left > 0) {
+      showToast(`Tech prête dans ${Math.ceil(left)} s`, 1.5);
+      return;
+    }
+    player.precisionUntil = Date.now() + PRECISION_DURATION_MS;
+    try { persistCdUntil("techPrecisionFx", PRECISION_DURATION_MS / 1000, "global"); } catch {}
+    try { sendSkillUse(PRECISION_TARGETER_ID, { phase: "fire" }); } catch {}
+    showToast("Precision Targeter : 100 % pendant 60 min", 1.5);
+  } catch {}
+}
+function triggerTech(id) {
+  const key = String(id || "").toLowerCase();
+  if (key === "speed-burst") return triggerSpeedBurst();
+  if (key === "shield-backup") return triggerShieldBackup(1);
+  if (key === "shield-backup-2") return triggerShieldBackup(2);
+  if (key === "battle-repair-bot") return triggerBattleRepair(1);
+  if (key === "battle-repair-bot-2") return triggerBattleRepair(2);
+  if (key === "chain-impulse") return triggerChainImpulse();
+  if (key === "frost-field") return triggerFrostField();
+  if (key === "npc-bomb") return triggerNpcBomb();
+  if (key === "precision-targeter") return triggerPrecisionTargeter();
+  if (key === "precision-targeter") return triggerPrecisionTargeter();
+  const found = (TECH_DOCK_ITEMS || []).find((t) => t.id === key);
+  showToast(`${found?.label || "Tech"} : bientôt disponible`, 1.2);
+}
 // Refus serveur (skillDenied) : annule l'effet mouvement local pour
 // converger au lieu de rubber-bander. Chaque cancel est un no-op si
 // l'effet n'est pas actif : aucun risque à appeler en aveugle.
 function cancelMovementAbilityByServer(abilityId, cooldown = 0) {
   const key = String(abilityId || "").toLowerCase();
   if (!key.startsWith("ability_")) return;
+  // Techs : annule l'effet local, resync la recharge de la tech concernée
+  // si le serveur en envoie une (une tech ne verrouille plus les autres).
+  if (TECH_SKILL_DOCK_IDS[key] != null) {
+    if (key === SPEED_BURST_ID) player.speedBurstT = 0;
+    if (key === CHAIN_IMPULSE_ID) player.chainArmed = false;
+    if (key === NPC_BOMB_ID) {
+      techNpcBombFrom = 0;
+      try { persistCdUntil("techAura:npc-bomb", 0, "global"); } catch {}
+      if (!(Number(cooldown) > 0)) showToast("NPC Bomb déjà active.", 1.2);
+    }
+    if (key === PRECISION_TARGETER_ID && !(Number(cooldown) > 0)) showToast("Precision Targeter déjà actif.", 1.2);
+    if (key === PRECISION_TARGETER_ID && !(Number(cooldown) > 0)) showToast("Precision Targeter déjà actif.", 1.2);
+    if (Number(cooldown) > 0) setTechCooldown(TECH_SKILL_DOCK_IDS[key], Number(cooldown));
+    return;
+  }
   const remaining = {
     ability_cyborg_singularity: [cancelCyborg, "cyborg"], ability_venom: [cancelVenom, "venom"],
     ability_diminisher: [cancelDiminish, "diminish"], "ability_holo_enemy-reversal": [cancelHoloEnemy, "holoEnemy"],
@@ -5428,6 +5774,23 @@ function restorePersistedCds() {
   } else {
     player.travelCd = Math.min(TRAVEL_COOLDOWN, Math.max(Number(player.travelCd || 0), persistedCdLeft("travel")));
   }
+  // Techs (300 s chacune, globales, pas par vaisseau) : survivent au
+  // refresh — chaque recharge reprend où elle en était, comme le voyage.
+  // Une tech n'en verrouille plus une autre.
+  try {
+    if (!player.techCds || typeof player.techCds !== "object") player.techCds = {};
+    for (const tid of ["speed-burst", "shield-backup", "shield-backup-2", "battle-repair-bot", "battle-repair-bot-2", "chain-impulse", "frost-field", "npc-bomb", "precision-targeter"]) {
+      const left = persistedCdLeft(`tech:${tid}`, "global");
+      if (left > 0) player.techCds[tid] = Date.now() + left * 1000;
+    }
+    // NPC Bomb : restaure l'aura en cours (les pulses reprennent, le CD
+    // de 300 s démarrera à la fin comme sans refresh).
+    const auraLeft = persistedCdLeft("techAura:npc-bomb", "global");
+    if (auraLeft > 0) techNpcBombFrom = performance.now() - (NPC_BOMB_DURATION_MS - auraLeft * 1000);
+    // Precision Targeter : effet 60 min (pas un cooldown), restauré aussi.
+    const precLeft = persistedCdLeft("techPrecisionFx", "global");
+    if (precLeft > 0) player.precisionUntil = Date.now() + precLeft * 1000;
+  } catch {}
   // Voyage Yamato coupé par un refresh : même règle, état séparé.
   if (persistedCdLeft("yamatoFx") > 0) {
     player.yamatoT = 0;
@@ -7485,6 +7848,26 @@ function initializeCustomActionBar() {
   // Onglet PET du dock : Combat + gears équipés (jamais Passif), comme le
   // menu Mode de la fenêtre P.E.T. Originaux persistants (byId) : restaurés
   // dans les slots comme les roquettes, clonés dans la palette.
+  // Onglet TECH : pareil pour les techs activables (Speed Burst branché,
+  // les autres restent en palette seule).
+  const techButtons = new Map();
+  for (const t of TECH_DOCK_ITEMS) {
+    if (t.id !== "speed-burst" && t.id !== "shield-backup" && t.id !== "shield-backup-2"
+      && t.id !== "battle-repair-bot" && t.id !== "battle-repair-bot-2"
+      && t.id !== "chain-impulse" && t.id !== "frost-field" && t.id !== "npc-bomb"
+      && t.id !== "precision-targeter") continue;
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "rocketQuickAction techAction dockAction";
+    button.dataset.actionCategory = "tech";
+    const actionId = `tech:${t.id}`;
+    button.dataset.actionId = actionId;
+    button.draggable = true;
+    button.onclick = () => triggerTech(t.id);
+    button.addEventListener("dragstart", event => { event.dataTransfer.setData("application/x-orbit-action", actionId); event.dataTransfer.effectAllowed = "move"; });
+    byId.set(actionId, button);
+    techButtons.set(t.id, button);
+  }
   const petModeButtons = PET_DOCK_MODE_VALUES.map((value) => {
     const button = document.createElement("button");
     button.type = "button";
@@ -8266,9 +8649,24 @@ function initializeCustomActionBar() {
       }
     }
     else if (category === "tech") {
-      // Visuel seul pour l'instant (branchement à venir) : Anti-AI et
-      // Burning Trail exclus.
+      // Techs branchées (clic + drag vers les slots) ; les autres restent
+      // visuelles (Anti-AI et Burning Trail exclus).
+      // Recharge 300 s individuelle, voile + compte à rebours comme le reste.
+      const wired = { "speed-burst": true, "shield-backup": true, "shield-backup-2": true, "battle-repair-bot": true, "battle-repair-bot-2": true, "chain-impulse": true, "frost-field": true, "npc-bomb": true, "precision-targeter": true };
       for (const t of TECH_DOCK_ITEMS) {
+        if (wired[t.id]) {
+          const original = byId.get(`tech:${t.id}`);
+          if (!original) continue;
+          const vis = techDockVisual(t.id);
+          paintTechNode(original, t, vis.active, vis.cd, vis.cdMax);
+          const clone = original.cloneNode(true);
+          clone.draggable = true;
+          clone.dataset.actionId = original.dataset.actionId;
+          clone.addEventListener("dragstart", event => { event.dataTransfer.setData("application/x-orbit-action", clone.dataset.actionId); });
+          clone.onclick = () => original.click();
+          paletteItems.appendChild(clone);
+          continue;
+        }
         const btn = document.createElement("button");
         btn.type = "button";
         btn.className = "rocketQuickAction techAction dockAction";
@@ -13587,6 +13985,43 @@ function paintPetModeNode(el, entry, want) {
   if (cdSmall && cdSmall.textContent !== cdTxt) cdSmall.textContent = cdTxt;
 }
 
+// Peint un bouton tech du dock (slots + palette) : image + libellé +
+// secondes restantes, voile de la recharge partagée (300 s).
+function paintTechNode(el, entry, active, cdLeft, cdMax) {
+  const struct = `${entry.value}|${entry.icon || ""}|${active ? "a" : ""}`;
+  if (el.dataset.techStruct !== struct) {
+    el.dataset.techStruct = struct;
+    el.innerHTML = `${entry.icon ? `<img src="${entry.icon}" alt="">` : ""}<strong>${escapeHtml(entry.label)}</strong><small class="techCd"></small>`;
+    el.title = `Tech : ${entry.label} — clic pour activer`;
+    el.classList.toggle("active", active);
+  }
+  const cdSmall = el.querySelector(".techCd");
+  const cdTxt = Number(cdLeft) > 0 ? `${Math.ceil(Number(cdLeft))}s` : "";
+  if (cdSmall && cdSmall.textContent !== cdTxt) cdSmall.textContent = cdTxt;
+  el.dataset.techCd = Number(cdLeft) > 0 ? "1" : "";
+}
+
+// Secondes restantes de la recharge d'une tech (300 s chacune, pas
+// partagée : activer une tech ne verrouille pas les autres).
+function techCooldownLeftSec(id) {
+  try {
+    const key = String(id || "").toLowerCase();
+    const until = Number(player?.techCds?.[key] || 0);
+    if (until > 0) return Math.max(0, (until - Date.now()) / 1000);
+    return Math.max(0, persistedCdLeft(`tech:${key}`, "global"));
+  } catch { return 0; }
+}
+// Pose la recharge d'une tech (mémoire + localStorage : survit au refresh).
+function setTechCooldown(id, seconds) {
+  const key = String(id || "").toLowerCase();
+  const s = Math.max(0, Number(seconds) || 0);
+  try {
+    if (!player.techCds || typeof player.techCds !== "object") player.techCds = {};
+    player.techCds[key] = Date.now() + s * 1000;
+  } catch {}
+  try { persistCdUntil(`tech:${key}`, s, "global"); } catch {}
+}
+
 // Un seul comportement à la fois : Passif, Mode combat ou un gear équipé.
 function applyPetModeValue(v) {
     const pet = account.user?.pet?.owned === true ? account.user.pet : null;
@@ -16738,7 +17173,9 @@ function getSpeedBreakdown() {
   // ✅ Ralentis et boosts temporaires (IEM, kamikaze, Hecate, Voyage, RVG) :
   // playerSlowMult central, comme le moteur de déplacement — sinon l'HUD
   // affiche la vitesse de base (ex. 280 au lieu de 252 ralenti).
-  const total = Math.floor(((base + genSpeed) * (1 + (speedPct + designSpeedPct) / 100) + designSpeedFlat) * playerUpgradeMults().speed * (leonovHome ? 1.2 : 1) * playerSlowMult(player));
+  // Tech Speed Burst : 900 forcés comme le moteur (updatePlayerVelocity).
+  const burst = (Number(player?.speedBurstT) || 0) > 0;
+  const total = burst ? SPEED_BURST_SPEED : Math.floor(((base + genSpeed) * (1 + (speedPct + designSpeedPct) / 100) + designSpeedFlat) * playerUpgradeMults().speed * (leonovHome ? 1.2 : 1) * playerSlowMult(player));
 
   return {
     shipId,
@@ -17893,6 +18330,8 @@ function drawShipEngineFx() {
   // à la place des réacteurs, le speed buff effect.
   if ((player.travelT || 0) > 0) { drawTravelEngineFx(TRAVEL_DURATION - Number(player.travelT || 0), Number(player.travelT || 0), 24); return; }
   if ((player.yamatoT || 0) > 0) { drawTravelEngineFx(YAMATO_TRAVEL_DURATION - Number(player.yamatoT || 0), Number(player.yamatoT || 0), 24); return; }
+  // Tech Speed Burst : mêmes flammes que le voyage.
+  if ((player.speedBurstT || 0) > 0) { drawTravelEngineFx(SPEED_BURST_DURATION - Number(player.speedBurstT || 0), Number(player.speedBurstT || 0), 24); return; }
   if ((player.lightT || 0) > 0) { drawTravelEngineFx(LIGHT_DURATION - Number(player.lightT || 0), Number(player.lightT || 0), 24); return; }
   if ((player.solBoostT || 0) > 0) { drawTravelEngineFx(SOLACE_PLUS_BOOST - Number(player.solBoostT || 0), Number(player.solBoostT || 0), 24); return; }
   if ((player.sleightT || 0) > 0) { drawTravelEngineFx(Number(player.sleightElapsed || 0), 1, 24); return; }
@@ -19991,7 +20430,7 @@ function isTextOnlyMutation(records) {
 function ensureActionDockCache() {
   const bar = document.getElementById("ammoBar");
   if (!bar) return null;
-  const fresh = { bar, ammo: [], formations: [], skills: [], rockets: [], abilities: [], petmodes: [] };
+  const fresh = { bar, ammo: [], formations: [], skills: [], rockets: [], abilities: [], petmodes: [], techmodes: [] };
   for (const button of bar.querySelectorAll("[data-ammo]")) {
     fresh.ammo.push({ button, ammo: button.dataset.ammo, small: button.querySelector("small") });
   }
@@ -20012,6 +20451,9 @@ function ensureActionDockCache() {
   }
   for (const button of bar.querySelectorAll("[data-action-id^='petmode:']")) {
     fresh.petmodes.push({ button, value: String(button.dataset.actionId || "").slice("petmode:".length) });
+  }
+  for (const button of bar.querySelectorAll("[data-action-id^='tech:']")) {
+    fresh.techmodes.push({ button, actionId: button.dataset.actionId });
   }
   if (!actionDockObserver && typeof MutationObserver !== "undefined") {
     actionDockObserver = new MutationObserver((records) => {
@@ -20414,6 +20856,7 @@ function syncActionDockState() {
 
   // Modes P.E.T (slots + palette ouverte) : actif + compte à rebours, comme
   // le menu Mode de la fenêtre. Même rythme que les autres (chaque passe).
+  // Tech Speed Burst : pareil (recharge 300 s individuelle, voile + secondes).
   {
     const { opts, want } = petModeEntries();
     const byValue = new Map(opts.map((o) => [`petmode:${o.value}`, o]));
@@ -20445,6 +20888,36 @@ function syncActionDockState() {
     try {
       for (const button of document.querySelectorAll('#ammoBar .actionPaletteItems [data-action-id^="petmode:"]')) {
         paintPetDock(button, button.dataset.actionId);
+      }
+    } catch {}
+    // Techs branchées (slots + palette ouverte) : actif + voile.
+    // NPC Bomb : fin d'aura -> le CD de 300 s démarre (après le 6e pulse).
+    if (techNpcBombFrom && performance.now() - techNpcBombFrom >= NPC_BOMB_DURATION_MS) {
+      techNpcBombFrom = 0;
+      try { persistCdUntil("techAura:npc-bomb", 0, "global"); } catch {}
+      setTechCooldown("npc-bomb", TECH_COOLDOWN);
+    }
+    // Precision : fin d'effet -> le CD de 300 s demarre.
+    if (player.precisionUntil && Date.now() >= player.precisionUntil) {
+      player.precisionUntil = 0;
+      try { persistCdUntil("techPrecisionFx", 0, "global"); } catch {}
+      setTechCooldown("precision-targeter", TECH_COOLDOWN);
+    }
+    const paintTechDock = (button) => {
+      const entry = TECH_DOCK_ITEMS.find((t) => `tech:${t.id}` === button.dataset.actionId);
+      if (!entry) return;
+      const vis = techDockVisual(entry.id);
+      paintTechNode(button, entry, vis.active, vis.cd, vis.cdMax);
+      const cooling = vis.cd > 0;
+      applyDockField(button, "cdVeil", cooling,
+        (v) => button.classList.toggle("cdVeil", v));
+      applyDockField(button, "cdProgress", cooling ? clamp(vis.cd / vis.cdMax, 0, 1).toFixed(3) : "0",
+        (v) => button.style.setProperty("--cd", v));
+    };
+    for (const { button } of actionDockCache.techmodes) paintTechDock(button);
+    try {
+      for (const button of document.querySelectorAll('#ammoBar .actionPaletteItems [data-action-id^="tech:"]')) {
+        paintTechDock(button);
       }
     } catch {}
   }
@@ -23537,6 +24010,57 @@ function drawRemoteTempestChain(remote, ox, oy) {
     previous = current;
   }
   drawTempestLinks(ox, oy, beams);
+}
+
+// Halo NPC Bomb distant : même pulse unique que le lanceur (toutes les 10 s).
+function drawRemoteNpcBomb(remote, ox, oy) {
+  const fx = remote.npcBombFx;
+  if (!fx) return;
+  const age = (performance.now() - Number(fx.startedAt)) / 1000;
+  if (!(age >= 0) || age > NPC_BOMB_DURATION_MS / 1000) return;
+  const phase = age % NPC_BOMB_TICK_SEC;
+  if (phase > 0.7) return;
+  try {
+    drawHaloPulse(Number(remote.rx ?? remote.x) + ox, Number(remote.ry ?? remote.y) + oy,
+      NPC_BOMB_RADIUS, phase / 0.7, "200,140,255", "220,170,255");
+  } catch {}
+}
+
+// Halo Frost Field distant : même pulse unique que le lanceur (0,6 s).
+function drawRemoteFrostHalo(remote, ox, oy) {
+  const fx = remote.frostFx;
+  if (!fx) return;
+  const age = performance.now() - Number(fx.startedAt);
+  if (!(age >= 0) || age > FROST_FIELD_PULSE_MS) return;
+  try {
+    drawHaloPulse(Number(remote.rx ?? remote.x) + ox, Number(remote.ry ?? remote.y) + oy,
+      FROST_FIELD_RADIUS, age / FROST_FIELD_PULSE_MS, "150,230,255", "180,240,255");
+  } catch {}
+}
+
+// Chain Impulse distant : éclair lien-HP du lanceur vers chaque victime
+// (même visuel que le lanceur). Résolution live comme Tempest.
+function drawRemoteChainImpulse(remote, ox, oy) {
+  const fx = remote.chainImpFx;
+  if (!fx?.chain?.length) return;
+  if (performance.now() - Number(fx.startedAt) > CHAIN_IMPULSE_BEAM_MS) return;
+  const resolve = (point) => {
+    if (String(point.id) === String(netMyId())) return player;
+    try {
+      const peer = getNetplayRemotes()?.get(String(point.id));
+      if (peer && !peer.dead) return { x: Number(peer.rx ?? peer.x), y: Number(peer.ry ?? peer.y) };
+    } catch {}
+    try {
+      const npc = enemies.find((e) => String(e._netUid) === String(point.id) && Number(e.hp) > 0);
+      if (npc) return npc;
+    } catch {}
+    return point;
+  };
+  const cx = Number(remote.rx ?? remote.x) + ox, cy = Number(remote.ry ?? remote.y) + oy;
+  for (const point of fx.chain) {
+    const current = resolve(point);
+    try { petLinkBeam(cx, cy, Number(current.x ?? current.rx) + ox, Number(current.y ?? current.ry) + oy); } catch {}
+  }
 }
 
 // Halo "soigneur" (Streuner soigneur, pod Aegis, bouées pet) : glow radial
@@ -27919,6 +28443,25 @@ function killRewards(e) {
         account.user.pet.exp = Math.max(0, Number(account.user.pet.exp) || 0) + Math.max(0, Number(serverReward.petExp) || 0);
         account.user.pet.level = getPetLevel(account.user.pet.exp);
       }
+      // Drops directs serveur (rinusk, traceur...) : crédit immédiat du solde,
+      // sinon le toast s'affiche mais l'inventaire ne bouge qu'à la prochaine
+      // synchro. Même déduplication que les crédits (applyReward).
+      try {
+        const serverDirect = Array.isArray(serverReward?.direct) ? serverReward.direct : [];
+        if (serverDirect.length) {
+          account.user.inventory ||= {};
+          account.user.inventory.resources ||= {};
+          for (const entry of serverDirect) {
+            const resource = String(entry?.resource || "");
+            const amount = Math.max(0, Math.floor(Number(entry?.qty) || 0));
+            if (!resource || amount <= 0) continue;
+            account.user.inventory.resources[resource] =
+              Math.max(0, Math.floor(Number(account.user.inventory.resources[resource]) || 0)) + amount;
+            try { trackResourceGain(resource, amount); } catch {}
+          }
+          markProgressDirty();
+        }
+      } catch {}
       account.user.revision = Math.max(Math.floor(Number(account.user.revision) || 0), Math.floor(Number(serverReward.revision) || 0));
     }
   } else {
@@ -27958,7 +28501,19 @@ function killRewards(e) {
     : `Vous avez éliminé ${npcName}`;
   // Drops directs (rinusk, traceur...) déjà attribués dans le balayage :
   // fusionnés dans ce toast (un 2e groupe écraserait celui-ci).
+  // En multi, la récompense serveur arrive parfois avant le balayage local
+  // (applyNetNpcReward) : le direct vient alors de serverReward.direct.
   const directLines = Array.isArray(e._directDropLines) ? e._directDropLines.filter(Boolean).map(String) : [];
+  try {
+    const serverDirect = Array.isArray(serverReward?.direct) ? serverReward.direct : [];
+    for (const entry of serverDirect) {
+      const resource = String(entry?.resource || "");
+      const qty = Math.max(0, Math.floor(Number(entry?.qty) || 0));
+      if (!resource || qty <= 0) continue;
+      const label = `Vous avez reçu ${formatInteger(qty)} ${getResourceName(resource, qty)}`;
+      if (!directLines.includes(label)) directLines.push(label);
+    }
+  } catch {}
   try { delete e._directDropLines; } catch {}
   // Drop booster NPC : uniquement sur les Ubers (DLB aléatoire 85 %,
   // + NPC-B01/B02 à 35 %). Rien sur les NPC classiques et les boss.
@@ -28331,6 +28886,9 @@ if (
 // - Box à collecter (scrap, mucosum, plasmide, prismatium, aurus, bifenon,
 //   tetrathrin, kyhalon) : spawn à côté du cargo.
 // - Direct inventaire (rinusk, trace, cerebrum) : sans collecte.
+//   En multi, le direct est autoritaire serveur (ACCOUNT_SERVER.awardNpcKill)
+//   : pas de roll local ici, sinon double attribution ou écrasement par la
+//   version serveur (toast sans rinusk / rinusk perdu).
 if (ownsNpcLoot && !e.noRewards) {
   const asmBox = rollNpcAssemblyBox(e.type);
   if (asmBox && COLLECTABLE_DEFS[asmBox.box]) {
@@ -28343,7 +28901,7 @@ if (ownsNpcLoot && !e.noRewards) {
     });
   }
 
-  const asmDirect = rollNpcAssemblyDirect(e.type);
+  const asmDirect = e._netUid ? [] : rollNpcAssemblyDirect(e.type);
   if (asmDirect.length) {
     if (!account.user) loadAccountUser();
     if (account.user) {
@@ -29524,12 +30082,16 @@ function spawnRocketProjectile(rocket, t, { spread = 0, volleyId = 0, volleySize
     * rocketBoosterMults.dmg * playerPilotMults().rocketDmg * playerUpgradeMults().rocket
     * (isLeonovHomeActive() ? 2.5 : 1);
   consumeUpgradeStock("rocket");
-  const shotMiss = typeof miss === "boolean"
-    ? miss
-    : Math.random() < Math.max(0, PLAYER_SHOTS.missChance - ((Number(player.rocketHitBonusPct || 0) + Number(rocketBoosterMults.hit || 0) + playerPilotMults().rocketHit) / 100));
+  const shotMiss = techPrecisionActive() ? false
+    : typeof miss === "boolean"
+      ? miss
+      : Math.random() < Math.max(0, PLAYER_SHOTS.missChance - ((Number(player.rocketHitBonusPct || 0) + Number(rocketBoosterMults.hit || 0) + playerPilotMults().rocketHit) / 100));
   const ang = rocket.manual === false
     ? launcherRocketLaunchAngle(player.angle, arcDir, spread)
     : player.angle + spread;
+  // Precision Targeter : aucun miss + marqueur pour le cercle rouge
+  // (soi + autres via le flag prec du tir).
+  const precise = techPrecisionActive() === true;
   // Multi : direction d'arc fige pour l'evenement allie (memes courbes).
   const arcDirEff = arcDir ?? (Math.random() < 0.5 ? -1 : 1);
 
@@ -29566,6 +30128,7 @@ function spawnRocketProjectile(rocket, t, { spread = 0, volleyId = 0, volleySize
     smokeT: 0,
     smokeHue: Math.floor(Math.random() * 360),
     miss: shotMiss,
+    prec: precise === true,
   }, ENTITY_LIMITS.playerBullets);
   // Multi : evenement roquette exact pour les allies (arc + MISS identiques).
   try {
@@ -29578,6 +30141,7 @@ function spawnRocketProjectile(rocket, t, { spread = 0, volleyId = 0, volleySize
       arcDir: arcDirEff, arcScale: Number(arcScale) || 1, arcBoost: Number(arcBoost) || 0,
       prange: Math.round(playerRange),
       miss: shotMiss === true, v: volleyId,
+      prec: precise === true,
     });
   } catch {}
 }
@@ -30575,6 +31139,8 @@ addCappedProjectile(bullets, {
   if (!isSabLike) player.altShot = !player.altShot;
   maybeTriggerLaser();
   player.combatT = 5.0;
+  // Tech Chain Impulse armée : le prochain tir la déclenche.
+  if (player.chainArmed === true) { try { fireChainImpulse(); } catch {} }
   return true;
 }
 
@@ -33753,6 +34319,7 @@ function spawnNetRocketVisual(ev) {
       homing: true, visual: true, spd,
       volleyId: netVolleyR, volleySize: 1,
       miss: netMissR, isSab: false, isRocket: true, isLauncherRocket: isLauncher,
+      prec: ev.prec === true,
       launcherDepartureX: Math.cos(ang), launcherDepartureY: Math.sin(ang), launcherDepartureT: 0,
       arcDist0: dist, arcT: 0,
       arcKick0: arcDir * arcScale * spd * Math.tan((70 + arcBoost - Math.min(1, dist / prange) * 25) * Math.PI / 180),
@@ -33778,7 +34345,7 @@ function showRemoteAbilityHeal(ev, remote) {
     { text: `+${DMG_FMT.format(amount)}`, size: 21, pop: 0.3, shake: 0.6, life: 1, glow: 1, weight: 900, impact: true });
 }
 
-function applyAegisHeal(ev) {
+function applyNetHeal(ev) {
   const shield = ev.shield === true;
   if (player.dead || (!shield && (player.tempestBackupT || 0) > 0)) return;
   const key = shield ? "sh" : "hp", maxKey = shield ? "shMax" : "hpMax";
@@ -33870,7 +34437,7 @@ function tickNetplayVisuals(dt) {
         continue;
       }
       if (ev.phase === "heal" && ev.target) {
-        if (String(ev.target) === String(netMyId())) applyAegisHeal(ev);
+        if (String(ev.target) === String(netMyId())) applyNetHeal(ev);
         else showRemoteAbilityHeal({ ...ev, by: ev.target }, getNetplayRemotes()?.get(String(ev.target)));
         continue;
       }
@@ -33899,6 +34466,18 @@ function tickNetplayVisuals(dt) {
       }
       if (remote && ev.skill === "ability_tempest_voltage-link" && ev.chain?.length) {
         remote.voltLinkFx = { at: ev.at, startedAt: performance.now(), chain: ev.chain };
+      }
+      // Chain Impulse distant : même éclair (lien HP) pour tous.
+      if (remote && ev.skill === CHAIN_IMPULSE_ID && ev.chain?.length) {
+        remote.chainImpFx = { at: ev.at, startedAt: performance.now(), chain: ev.chain.slice(0, 12) };
+      }
+      // Frost Field distant : halo cyan 700 pendant 2 s.
+      if (remote && ev.skill === FROST_FIELD_ID) {
+        remote.frostFx = { at: ev.at, startedAt: performance.now() };
+      }
+      // NPC Bomb distante : halo violet 700 pendant 60 s (même visuel).
+      if (remote && ev.skill === NPC_BOMB_ID) {
+        remote.npcBombFx = { at: ev.at, startedAt: performance.now() };
       }
       if (ev.phase === "heal") {
         showRemoteAbilityHeal(ev, remote);
@@ -33999,6 +34578,7 @@ const REMOTE_FX_PRELOAD = {
   16: [["SPEED_BUFF_EFFECT", 3]], 40: [["SPEED_BUFF_EFFECT", 3]],
   55: [["SPEED_BUFF_EFFECT", 3]], 56: [["SPEED_BUFF_EFFECT", 3]],
   79: [["SPEED_BUFF_EFFECT", 3]],
+  83: [["SPEED_BUFF_EFFECT", 3]],
   17: [["SPECTRUM_PRISMATIC_SHIELDING", 35]],
   18: [["SPECTRUM_PRISMATIC_SHIELDING", 35]],
   19: [["SPECTRUM_PRISMATIC_SHIELDING", 35]],
@@ -34044,6 +34624,7 @@ const REMOTE_FX_STYLE = {
   11: { kind: "outline", color: "#ffffff", pulse: "blink10" }, // fortify Plus
   12: { kind: "none" }, 13: { kind: "none" }, // protection : halos monde partagés
   14: { kind: "flames" }, 15: { kind: "flames" }, 16: { kind: "flames" }, // voyages
+  83: { kind: "flames" }, // tech Speed Burst
   17: { kind: "sprite", folder: "SPECTRUM_PRISMATIC_SHIELDING", fps: 30, frames: 35, w: 200, h: 200 },
   18: { kind: "sprite", folder: "SPECTRUM_PRISMATIC_SHIELDING", fps: 30, frames: 35, w: 200, h: 200 },
   19: { kind: "both", outline: { color: "#7cf0ff", pulse: "pet" }, sprite: { folder: "SPECTRUM_PRISMATIC_SHIELDING", fps: 30, frames: 35, w: 200, h: 200 } },
@@ -34133,7 +34714,7 @@ function remoteAbilityShake(r) {
 // réacteurs normaux, comme drawShipEngineFx en local.)
 function remoteBoostInfo(r) {
   const boostCode = code => code === 14 || code === 15 || code === 16 || code === 40
-    || code === 55 || code === 56 || code === 79;
+    || code === 55 || code === 56 || code === 79 || code === 83;
   try {
     const afx = Array.isArray(r.afx) ? r.afx : [];
     for (const entry of afx) {
@@ -34815,8 +35396,11 @@ function drawNetplayAbilityEffects(ox, oy) {
   for (const r of remotes.values()) {
     if (!r || r.dead || r.cloaked || r.cloakCpu) continue;
     drawTbrClones(ox, oy, r);
-    if (!(r.afx?.length > 0) && !(Number(r.fxFlash?.until) > now) && !r.voltBackupReady && !r.lastStandReady && !(r.lastStandT > 0) && !r.voltLinkFx && !(Number(r.jamxT) > 0) && !(Number(r.keresSprT) > 0)) continue;
+    if (!(r.afx?.length > 0) && !(Number(r.fxFlash?.until) > now) && !r.voltBackupReady && !r.lastStandReady && !(r.lastStandT > 0) && !r.voltLinkFx && !(Number(r.jamxT) > 0) && !(Number(r.keresSprT) > 0) && !(r.chainImpFx && now - Number(r.chainImpFx.startedAt) < CHAIN_IMPULSE_BEAM_MS) && !(r.frostFx && now - Number(r.frostFx.startedAt) < FROST_FIELD_PULSE_MS) && !(r.npcBombFx && performance.now() - Number(r.npcBombFx.startedAt) < NPC_BOMB_DURATION_MS)) continue;
     drawRemoteTempestChain(r, ox, oy);
+    try { drawRemoteChainImpulse(r, ox, oy); } catch {}
+    try { drawRemoteFrostHalo(r, ox, oy); } catch {}
+    try { drawRemoteNpcBomb(r, ox, oy); } catch {}
     // Une aura sur une cible reste visible même si son lanceur est hors écran.
     ctx.save();
     try {
@@ -37642,6 +38226,13 @@ function update(dt) {
     }
   } else {
     player.travelCd = Math.max(0, (player.travelCd || 0) - dt);
+  }
+  // Tech Speed Burst (onglet TECH / slots) : vitesse 900 pendant 2 s,
+  // recharge 300 s individuelle, effet visible par tous (snapshot afx code 83).
+  // Cooldown persistant (survit au refresh, comme les autres).
+  if ((player.speedBurstT || 0) > 0) {
+    player.speedBurstT = Math.max(0, player.speedBurstT - dt);
+    if (player.speedBurstT <= 0) showNotification("Speed Burst terminé", 1.5, "info");
   }
   // Voyage Yamato : même effet, état séparé.
   if ((player.yamatoT || 0) > 0) {
@@ -40800,6 +41391,21 @@ function drawBotMinimalScene(ox, oy) {
     }
     const x = Number(shot?.x) + ox, y = Number(shot?.y) + oy;
     if (!visible(x, y, 12)) return;
+    // Precision Targeter : cercle rouge sous chaque roquette (soi + autres).
+    if (shot?.isRocket === true && shot?.prec === true) {
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
+      ctx.strokeStyle = "rgba(255,70,70,0.9)";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(x, y, 11, 0, TAU);
+      ctx.stroke();
+      ctx.globalAlpha = 0.35;
+      ctx.beginPath();
+      ctx.arc(x, y, 16, 0, TAU);
+      ctx.stroke();
+      ctx.restore();
+    }
     const vx = Number(shot?.vx) || 0, vy = Number(shot?.vy) || 0;
     const len = Math.hypot(vx, vy) || 1;
     ctx.strokeStyle = color;
@@ -40949,6 +41555,9 @@ function draw() {
   drawPet(ox, oy);
   drawTbrClones(ox, oy);
   if (displayHalosOn()) drawPetLink(ox, oy);
+  try { drawChainImpulseFx(ox, oy); } catch {}
+  try { drawFrostHaloFx(ox, oy); } catch {}
+  try { drawNpcBombFx(ox, oy); } catch {}
   if (displayHalosOn()) drawTempestLinks(ox, oy);
   drawRepairLinks(ox, oy);
   if (displayHalosOn()) drawJamxHalos(ox, oy);

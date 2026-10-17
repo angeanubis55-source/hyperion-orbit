@@ -154,6 +154,45 @@ export function tickAbilityStates(room, sim, now, emit, groupOf) {
           }
         }
       }
+      // Tech Battle Repair Bot (10k HP/s, 15 s) / Battle Repair Bot 2
+      // (30k HP/s, 10 s) : HoT serveur, +X par tick (soi + verrouilleurs).
+      if (active && (key === "ability_tech_battle_repair" || key === "ability_tech_battle_repair_2")) {
+        const tick = Math.floor((now - fx.from) / 1000), last = Number(fx.selfHealTick) || 0;
+        const total = Math.round((fx.until - fx.from) / 1000);
+        if (tick > last && last < total) {
+          fx.selfHealTick = Math.min(tick, total);
+          const perSec = key === "ability_tech_battle_repair_2" ? 30000 : 10000;
+          heal(state, key, perSec * (fx.selfHealTick - last), false);
+        }
+      }
+      // Tech NPC Bomb : toutes les 10 s pendant 60 s, 100k dégâts aux NPC
+      // dans 700 autour du lanceur (ni joueurs ni JPC). 6 x 100k = 600k.
+      if (active && key === "ability_tech_npc_bomb") {
+        const tick = Math.floor((now - fx.from) / 1000), last = Number(fx.selfHealTick) || 0;
+        const total = Math.round((fx.until - fx.from) / 1000);
+        if (tick > last && last < total) {
+          fx.selfHealTick = Math.min(tick, total);
+          if (tick > 0 && tick % 10 === 0 && sim && typeof sim.applyHit === "function") {
+            let n = 0;
+            try {
+              for (const [uid, npc] of sim.entries || []) {
+                if (n >= 30) break;
+                if (!npc || npc.dead === true || !(Number(npc.hp) > 0)) continue;
+                if (npc.jpc === true) continue;
+                const dx = Number(npc.x) - Number(state.x), dy = Number(npc.y) - Number(state.y);
+                if (dx * dx + dy * dy > 700 * 700) continue;
+                n++;
+                try { sim.applyHit(String(state.id), { uid: String(uid), dmg: 100000, pen: 0, critChance: 0, critMult: 1, variance: 0 }); } catch {}
+              }
+            } catch {}
+          }
+          // 6e et dernier pulse (t=60 s) : le CD de 300 s démarre ici, pas au tir.
+          if (tick >= 60) {
+            const cds = (state._techCds && typeof state._techCds === "object") ? state._techCds : (state._techCds = {});
+            if (!(Number(cds[key]) > now)) cds[key] = now + 300_000;
+          }
+        }
+      }
       if (active && key === "ability_keres_spr" && !state.safe) {
         const infected = fx.infected || {};
         // Une génération par tick : la contagion suit réellement les cibles.

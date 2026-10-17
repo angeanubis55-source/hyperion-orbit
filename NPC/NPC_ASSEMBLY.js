@@ -88,13 +88,15 @@ export const ASSEMBLY_DIRECT_TABLE = Object.freeze([
     resource: "rinusk",
     drops: Object.freeze({
       npc_Impulse_II: [15, 25], npc_Attend_IX: [80, 90],
+      npc_Invoke_XVI: [55, 80],
       npc_Mindfire_Behemoth: [3, 5], npc_Strokelight_Barrage: [100, 120],
     }),
   }),
   Object.freeze({
     resource: "blacklight_trace",
     drops: Object.freeze({
-      npc_Attend_IX: [5, 15], npc_Mindfire_Behemoth: [2, 3],
+      npc_Attend_IX: [5, 15], npc_Invoke_XVI: [30, 40],
+      npc_Mindfire_Behemoth: [2, 3],
       npc_Strokelight_Barrage: [120, 140],
     }),
   }),
@@ -117,6 +119,8 @@ export function assemblyBaseFamily(npcType) {
   base = base.replace(/^npc_(Boss|Uber)_/i, "npc_");
   base = base.replace(/_(alpha|beta|gamma|delta|epsilon|zeta|kappa|lambda)$/i, "");
   base = base.replace(/^npc_(Frozen|Blighted|Plagued|Awakened)_/i, "npc_");
+  // Finale GG (ex : npc_Awakened_Impulse_Final) : même famille que le régulier.
+  base = base.replace(/_Final$/i, "_II");
   base = base.replace(/_maudite\d*$/i, "");
   base = base.replace(/_(Aberration|Oddity|Corrupted)$/, "");
   return base;

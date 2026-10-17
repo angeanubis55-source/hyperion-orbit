@@ -58,6 +58,9 @@ const BASE_CARGO = Object.freeze({
   // Blacklight.
   npc_Impulse_II: Object.freeze({ ...tri(350, 350, 350), prometid: 80, duranium: 80, promerium: 10 }),
   npc_Attend_IX: Object.freeze({ ...tri(500, 500, 500), prometid: 200, duranium: 200, promerium: 25 }),
+  // Boss BL : seul le Strokelight drop une Cargo_Box (Invoke et Mindfire
+  // donnent leurs Sun Box, pas de soute).
+  npc_Strokelight_Barrage: Object.freeze({ ...tri(400, 400, 400), prometid: 160, duranium: 160, promerium: 20, xenomit: 8 }),
   npc_Purpose_XXI: Object.freeze({ ...tri(300, 300, 300), prometid: 128, duranium: 128, promerium: 16 }),
   npc_Abide_I: Object.freeze({ ...tri(80, 80, 80), prometid: 25, duranium: 25, promerium: 2 }),
   npc_SteadFast_III: Object.freeze({ ...tri(80, 80, 80), prometid: 25, duranium: 25, promerium: 2 }),
@@ -228,6 +231,8 @@ function stripReskin(type) {
   base = base.replace(/_maudite\d*$/, "");
   base = base.replace(/_(Aberration|Oddity)$/, "");
   base = base.replace(/^npc_Awakened_/, "npc_");
+  // Finale GG (ex : npc_Awakened_Impulse_Final) : même soute que le régulier.
+  base = base.replace(/_Final$/, "_II");
   if (base === "npc_QQQ_Protegit") return "npc_Protegit";
   if (base === "npc_Lordakium_Spore") return "npc_Lordakium_Spore";
   if (base === "npc_Streuner_Guard_Turret" || base === "npc_Technician_Streuner" || base === "npc_Warrior_Streuner") return "npc_Streuner";

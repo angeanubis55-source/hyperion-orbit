@@ -43,7 +43,9 @@ export function playerSlowMult(player) {
 }
 
 export function updatePlayerVelocity(player, direction, dt, options = {}) {
-  const maxSpeed = Math.max(10, Number(player.baseSpeed || 0)) * playerSlowMult(player);
+  let maxSpeed = Math.max(10, Number(player.baseSpeed || 0)) * playerSlowMult(player);
+  // Tech Speed Burst : vitesse forcée à 900 (jamais bridée en dessous).
+  if (Number(player?.speedBurstT) > 0) maxSpeed = Math.max(maxSpeed, 900);
   if ((Number(player?.freezeT) || 0) > 0) {
     player.vx = 0;
     player.vy = 0;

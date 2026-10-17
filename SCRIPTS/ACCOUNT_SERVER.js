@@ -17,6 +17,7 @@ import { DRONE_XP_SHARE, getDroneLevel } from "../DRONE/DRONE_TYPES.js";
 import { DRONE_DESIGNS, getDroneDesign } from "../DRONE/DRONE_DESIGNS.js";
 import { PET_XP_SHARE, getPetLevel } from "../PET/PET_TYPES.js";
 import { resolveNpcReward } from "../NPC/NPC_BALANCE.js";
+import { rollNpcAssemblyDirect } from "../NPC/NPC_ASSEMBLY.js";
 
 const DB_DIR = resolve(process.cwd(), "SERVER_DATA");
 const DB_PATH = join(DB_DIR, "orbit.db");
@@ -317,6 +318,28 @@ export function awardNpcKill(accountId, npcType, mapId, rewardPercent, ownsKill,
       data.stats.npcKills ||= {};
       data.stats.npcKills[type] = Math.max(0, Math.floor(Number(data.stats.npcKills[type]) || 0)) + 1;
     }
+    // Drops directs assemblage (rinusk, traceur...) : autoritaire serveur en
+    // multi, sinon le client les perdait (écrasé par la version serveur) et le
+    // toast n'affichait jamais "Vous avez reçu X Rinusk". Seul le propriétaire
+    // du loot (killer) les reçoit, comme en solo.
+    let direct = [];
+    if (ownsKill === true) {
+      try {
+        const rolled = rollNpcAssemblyDirect(type);
+        if (Array.isArray(rolled) && rolled.length) {
+          data.inventory ||= {};
+          data.inventory.resources ||= {};
+          for (const entry of rolled) {
+            const resource = String(entry?.resource || "");
+            const qty = Math.max(0, Math.floor(Number(entry?.qty) || 0));
+            if (!resource || qty <= 0) continue;
+            data.inventory.resources[resource] =
+              Math.max(0, Math.floor(Number(data.inventory.resources[resource]) || 0)) + qty;
+            direct.push({ resource, qty });
+          }
+        }
+      } catch {}
+    }
     data.stats.rankPoints = calculateRankPoints(data.stats);
     for (const drone of data.drones?.items || []) {
       drone.exp = Math.max(0, Number(drone.exp) || 0) + exp * DRONE_XP_SHARE;
@@ -337,7 +360,7 @@ export function awardNpcKill(accountId, npcType, mapId, rewardPercent, ownsKill,
     db.exec("COMMIT");
     inTx = false;
     return {
-      credits, exp, honor, baseExp, baseHonor, petExp, revision,
+      credits, exp, honor, baseExp, baseHonor, petExp, revision, direct,
       totalCredits: Math.max(0, Math.floor(Number(data.credits) || 0)),
       totalExp: Math.max(0, Math.floor(Number(data.stats?.exp) || 0)),
       totalHonor: Math.floor(Number(data.stats?.honor) || 0),

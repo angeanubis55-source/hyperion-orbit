@@ -218,6 +218,7 @@ export const ABILITY_FX_CODES = Object.freeze({
   80: "ability_goliath-x_frozen-claw",
   81: "ability_mimesis_phase-out",
   82: "ability_orcus-plus_assimilate",
+  83: "ability_tech_speed_burst",
 });
 
 // Ids qui ne doivent JAMAIS être diffusés (invisibilité gameplay).

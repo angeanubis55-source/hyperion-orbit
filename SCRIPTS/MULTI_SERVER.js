@@ -179,8 +179,12 @@ function relayAbilityHealFx(state, skill, msg, room, id, now) {
 }
 
 function hyperionSafeBlocked(state, target, sim, targetIsPlayer) {
+  // Seule la cible compte : protégée -> intouchable. Un attaquant protégé
+  // peut toujours tirer (il perd sa ZNA en attaquant, parité client
+  // netPvpBlocked) : bloquer côté attaquant rendait l'ennemi sur notre base
+  // invincible (0 dégât) tout en se réparant.
   const protectedPlayer = p => p?.safe === true && (!sim?.inSafe || sim.inSafe(p.x, p.y));
-  return !!(protectedPlayer(state) || (targetIsPlayer ? protectedPlayer(target) : target && sim?.inSafe(target.x, target.y)));
+  return !!(targetIsPlayer ? protectedPlayer(target) : target && sim?.inSafe(target.x, target.y));
 }
 function hyperionTargetAllowed(state, target, sim, targetIsPlayer) {
   if (!target || target === state || target.dead || target.pvpDead || !(target.hp > 0)) return false;
@@ -2387,7 +2391,7 @@ wss.on("connection", (ws) => {
         if (!shooter || shooter.pvpDead === true || !(Number(shooter.hp) > 0)) return;
         if (msg.ability === "ability_hyperion_qa") {
           const sim = npcSims.get(mapId);
-          if (shooter.safe === true || hyperionSafeBlocked(shooter, sim?.entries?.get(String(msg.uid)), sim, false)) return;
+          if (hyperionSafeBlocked(shooter, sim?.entries?.get(String(msg.uid)), sim, false)) return;
         }
         const now = Date.now();
         const profile = refreshCombatProfile(shooter, accountId, mapId);
@@ -2478,8 +2482,229 @@ wss.on("connection", (ws) => {
           breakRepairLink(state, skill, room, id, Date.now());
           return;
         }
+        // Tech Battle Repair Bot (10k HP/s pendant 15 s) / Battle Repair
+        // Bot 2 (30k HP/s pendant 10 s) : HoT serveur (ticks +X via le canal
+        // heal, visibles par soi et les verrouilleurs). Conditions : vivant,
+        // pas déjà au max de coque. Recharge 300 s chacune. L'aura déborde
+        // de 999 ms pour couvrir le tick de la dernière seconde.
+        if (skill === "ability_tech_battle_repair" || skill === "ability_tech_battle_repair_2") {
+          const now = Date.now();
+          const deny = (cooldown) => {
+            if (ws.readyState === 1) ws.send(JSON.stringify({ t: "skillDenied", skill,
+              cooldown: Math.max(0, Number(cooldown) || 0) }));
+          };
+          if (state.pvpDead === true || !(Number(state.hp) > 0)) { deny(0); return; }
+          const cds = (state._techCds && typeof state._techCds === "object") ? state._techCds : (state._techCds = {});
+          if (now < Number(cds[skill] || 0)) { deny((Number(cds[skill]) - now) / 1000); return; }
+          const hpMax = Math.max(0, Number(state.hpMax) || 0);
+          if (!(hpMax > 0) || !(Number(state.hp) < hpMax)) { deny(0); return; }
+          const durSec = skill === "ability_tech_battle_repair_2" ? 10 : 15;
+          if (!state._abilityFx || typeof state._abilityFx !== "object") state._abilityFx = {};
+          state._abilityFx[skill] = { from: now, until: now + durSec * 1000 + 999, x: 0, y: 0, target: "" };
+          cds[skill] = now + 300_000;
+          return;
+        }
+        // Tech Shield Backup (150k) / Shield Backup 2 (300k) : restauration
+        // instantanée, +X visible par soi et les verrouilleurs (canal heal).
+        // Conditions : générateur de bouclier équipé, pas déjà au max.
+        // Recharge 300 s chacune (une tech n'en verrouille plus une autre).
+        if (skill === "ability_tech_shield_backup" || skill === "ability_tech_shield_backup_2") {
+          const now = Date.now();
+          const deny = (cooldown) => {
+            if (ws.readyState === 1) ws.send(JSON.stringify({ t: "skillDenied", skill,
+              cooldown: Math.max(0, Number(cooldown) || 0) }));
+          };
+          if (state.pvpDead === true || !(Number(state.hp) > 0)) { deny(0); return; }
+          const cds = (state._techCds && typeof state._techCds === "object") ? state._techCds : (state._techCds = {});
+          if (now < Number(cds[skill] || 0)) { deny((Number(cds[skill]) - now) / 1000); return; }
+          const shMax = Math.max(0, Number(state.shMax) || 0);
+          const sh = Math.max(0, Number(state.sh) || 0);
+          if (!(shMax > 0)) { deny(0); return; }
+          if (!(sh < shMax)) { deny(0); return; }
+          const cap = skill === "ability_tech_shield_backup_2" ? 300_000 : 150_000;
+          const amount = Math.max(0, Math.min(cap, shMax - sh));
+          if (!(amount > 0)) { deny(0); return; }
+          state.sh = Math.min(shMax, sh + amount);
+          cds[skill] = now + 300_000;
+          emitAbilityEvent(room, { t: "skillFx", skill, phase: "heal", by: id, target: id,
+            amount: Math.round(amount), shield: true, at: now, until: now });
+          return;
+        }
         if (msg.phase === "heal") {
           relayAbilityHealFx(state, skill, msg, room, id, Date.now());
+          return;
+        }
+        if (skill === "ability_tech_speed_burst") {
+          // Tech Speed Burst : 900 pendant 2 s, recharge 300 s individuelle.
+          // Aura afx (code 83, flammes visibles par tous) + effet _moveEffects
+          // flat:900 (même plafond côté anticheat que le client).
+          const now = Date.now();
+          const profile = refreshCombatProfile(state, accountId, mapId);
+          const deny = (cooldown) => {
+            if (ws.readyState === 1) ws.send(JSON.stringify({ t: "skillDenied", skill,
+              cooldown: Math.max(0, Number(cooldown) || 0) }));
+          };
+          if (state.pvpDead === true || !(Number(state.hp) > 0)) { deny(0); return; }
+          const cds = (state._techCds && typeof state._techCds === "object") ? state._techCds : (state._techCds = {});
+          if (now < Number(cds["ability_tech_speed_burst"] || 0)) {
+            deny((Number(cds["ability_tech_speed_burst"]) - now) / 1000);
+            return;
+          }
+          cds["ability_tech_speed_burst"] = now + 300_000;
+          const from = now, until = now + 2000;
+          if (!state._abilityFx || typeof state._abilityFx !== "object") state._abilityFx = {};
+          state._abilityFx["ability_tech_speed_burst"] = { from, until, x: 0, y: 0, target: "" };
+          const map = state._moveEffects && typeof state._moveEffects === "object" ? state._moveEffects : (state._moveEffects = {});
+          map["ability_tech_speed_burst"] = { from, until, flat: 900, shipId: profile.shipId, hangarId: profile.hangarId, config: profile.config };
+          state.moveSpeed = movementSpeed(state, profile, now);
+          state.vmax = state.moveSpeed;
+          return;
+        }
+        // Tech Chain Impulse (phase fire = prochain tir consommé) : 30k
+        // dégâts à tous les ennemis (NPC + joueurs) dans 700 autour du
+        // lanceur, éclair identique pour tous (skillFx chain). Pas de
+        // ralentissement (c'est Frost Field). Recharge 300 s, posée au tir.
+        if (skill === "ability_tech_chain_impulse" && msg.phase === "fire") {
+          const now = Date.now();
+          const sim = npcSims.get(mapId);
+          const profile = refreshCombatProfile(state, accountId, mapId);
+          const deny = (cooldown) => {
+            if (ws.readyState === 1) ws.send(JSON.stringify({ t: "skillDenied", skill,
+              cooldown: Math.max(0, Number(cooldown) || 0) }));
+          };
+          if (state.pvpDead === true || !(Number(state.hp) > 0)) { deny(0); return; }
+          const cds = (state._techCds && typeof state._techCds === "object") ? state._techCds : (state._techCds = {});
+          if (now < Number(cds[skill] || 0)) { deny((Number(cds[skill]) - now) / 1000); return; }
+          const seen = new Set([String(id)]);
+          const hits = [];
+          const inRange = (x, y) => {
+            const dx = Number(x) - Number(state.x), dy = Number(y) - Number(state.y);
+            return dx * dx + dy * dy <= 700 * 700;
+          };
+          if (sim && typeof sim.entries?.[Symbol.iterator] === "function") {
+            for (const [uid, npc] of sim.entries) {
+              if (hits.length >= 12) break;
+              if (!npc || npc.dead === true || !(Number(npc.hp) > 0)) continue;
+              const vid = String(uid);
+              if (seen.has(vid) || !inRange(npc.x, npc.y)) continue;
+              seen.add(vid);
+              try { sim.applyHit(String(id), { uid: vid, dmg: 30000, pen: 0, critChance: 0, critMult: 1, variance: 0 }); } catch {}
+              hits.push({ id: vid, x: Math.round(Number(npc.x)), y: Math.round(Number(npc.y)) });
+            }
+          }
+          for (const [pid, pentry] of room) {
+            if (hits.length >= 12) break;
+            if (pid === id || seen.has(String(pid))) continue;
+            const s = pentry?.state;
+            if (!s || s.pvpDead === true || !(Number(s.hp) > 0)) continue;
+            if (s.safe === true) continue;
+            if (s.firm && state.firm && String(s.firm) === String(state.firm)) continue;
+            if (!inRange(s.x, s.y)) continue;
+            seen.add(String(pid));
+            try { applyServerAbilityDamage(room, sim, s, 30000, 0, now, id, profile, 0); } catch {}
+            hits.push({ id: String(pid), x: Math.round(Number(s.x)), y: Math.round(Number(s.y)) });
+          }
+          cds[skill] = now + 300_000;
+          if (hits.length) {
+            try {
+              broadcastRoom(room, JSON.stringify({ t: "skillFx", skill, by: id, chain: hits,
+                at: now, until: now + Math.min(1500, 200 + hits.length * 120) }));
+            } catch {}
+          }
+          return;
+        }
+        // Tech Frost Field (phase fire = prochain tir consommé) : -50 % de
+        // vitesse pendant 2 s aux ennemis (NPC + joueurs) dans 700 autour du
+        // lanceur + halo cyan clair de 700 visible par tous (skillFx, halo
+        // dessiné 2 s). Recharge 300 s, posée au tir.
+        if (skill === "ability_tech_frost_field" && msg.phase === "fire") {
+          const now = Date.now();
+          const sim = npcSims.get(mapId);
+          const deny = (cooldown) => {
+            if (ws.readyState === 1) ws.send(JSON.stringify({ t: "skillDenied", skill,
+              cooldown: Math.max(0, Number(cooldown) || 0) }));
+          };
+          if (state.pvpDead === true || !(Number(state.hp) > 0)) { deny(0); return; }
+          const cds = (state._techCds && typeof state._techCds === "object") ? state._techCds : (state._techCds = {});
+          if (now < Number(cds[skill] || 0)) { deny((Number(cds[skill]) - now) / 1000); return; }
+          const seen = new Set([String(id)]);
+          let count = 0;
+          const inRange = (x, y) => {
+            const dx = Number(x) - Number(state.x), dy = Number(y) - Number(state.y);
+            return dx * dx + dy * dy <= 700 * 700;
+          };
+          if (sim && typeof sim.entries?.[Symbol.iterator] === "function") {
+            for (const [uid, npc] of sim.entries) {
+              if (count >= 12) break;
+              if (!npc || npc.dead === true || !(Number(npc.hp) > 0)) continue;
+              const vid = String(uid);
+              if (seen.has(vid) || !inRange(npc.x, npc.y)) continue;
+              seen.add(vid);
+              npc.slowPct = Math.max(Number(npc.slowPct) || 0, 50);
+              npc.slowUntil = Math.max(Number(npc.slowUntil) || 0, now + 2000);
+              count++;
+            }
+          }
+          for (const [pid, pentry] of room) {
+            if (count >= 12) break;
+            if (pid === id || seen.has(String(pid))) continue;
+            const s = pentry?.state;
+            if (!s || s.pvpDead === true || !(Number(s.hp) > 0)) continue;
+            if (s.safe === true) continue;
+            if (s.firm && state.firm && String(s.firm) === String(state.firm)) continue;
+            if (!inRange(s.x, s.y)) continue;
+            seen.add(String(pid));
+            s.slowPct = Math.max(now < Number(s.slowUntil) ? Number(s.slowPct) || 0 : 0, 50);
+            s.slowUntil = Math.max(Number(s.slowUntil) || 0, now + 2000);
+            count++;
+          }
+          cds[skill] = now + 300_000;
+          try {
+            broadcastRoom(room, JSON.stringify({ t: "skillFx", skill, by: id,
+              at: now, until: now + 2000 }));
+          } catch {}
+          return;
+        }
+        // Tech NPC Bomb : halo violet 700 pendant 60 s, toutes les 10 s un
+        // tick de 100k dégâts sur les NPC dans 700 (ni joueurs ni JPC).
+        // 6 x 100k = 600k au total. Visuel identique pour tous (skillFx).
+        // Le CD de 300 s démarre après le 6e pulse (posé par le tick).
+        if (skill === "ability_tech_npc_bomb" && msg.phase === "fire") {
+          const now = Date.now();
+          const sim = npcSims.get(mapId);
+          const deny = (cooldown) => {
+            if (ws.readyState === 1) ws.send(JSON.stringify({ t: "skillDenied", skill,
+              cooldown: Math.max(0, Number(cooldown) || 0) }));
+          };
+          if (state.pvpDead === true || !(Number(state.hp) > 0)) { deny(0); return; }
+          const cds = (state._techCds && typeof state._techCds === "object") ? state._techCds : (state._techCds = {});
+          if (now < Number(cds[skill] || 0)) { deny((Number(cds[skill]) - now) / 1000); return; }
+          if (now < Number(state._abilityFx?.[skill]?.until) || 0) { deny(0); return; }
+          if (!state._abilityFx || typeof state._abilityFx !== "object") state._abilityFx = {};
+          // +999 ms pour couvrir le tick de la 60e seconde (sinon 5 ticks).
+          state._abilityFx[skill] = { from: now, until: now + 60000 + 999, x: 0, y: 0, target: "" };
+          try {
+            broadcastRoom(room, JSON.stringify({ t: "skillFx", skill, by: id,
+              at: now, until: now + 60000 }));
+          } catch {}
+          return;
+        }
+        // Tech Precision Targeter : le serveur ne pose que le CD de 300 s
+        // (100 % précision 60 min gérée côté client, aucun roll serveur).
+        if (skill === "ability_tech_precision_targeter" && msg.phase === "fire") {
+          // Aura 60 min : redeclenchement bloque tant qu'elle court, puis
+          // CD 300 s (le client affiche le decompte d'effet puis le CD).
+          const now = Date.now();
+          if (!state._abilityFx || typeof state._abilityFx !== "object") state._abilityFx = {};
+          const auraUntil = Number(state._abilityFx[skill]?.until) || 0;
+          const deny = (cooldown) => {
+            if (ws.readyState === 1) ws.send(JSON.stringify({ t: "skillDenied", skill,
+              cooldown: Math.max(0, Number(cooldown) || 0) }));
+          };
+          if (state.pvpDead === true || !(Number(state.hp) > 0)) { deny(0); return; }
+          if (now < auraUntil) { deny(0); return; }
+          if (auraUntil > 0 && now < auraUntil + 300000) { deny((auraUntil + 300000 - now) / 1000); return; }
+          state._abilityFx[skill] = { from: now, until: now + 3600000, x: 0, y: 0, target: "" };
           return;
         }
         if (skill.startsWith("ability_")) {
@@ -2555,13 +2780,15 @@ wss.on("connection", (ws) => {
         if (!foe || !me) return;
         if (foe === me || me.state.pvpDead === true || !(me.state.hp > 0)) return;
         if (msg.ability === "ability_hyperion_qa"
-          && (me.state.safe === true || foe.state.safe === true)) return;
+          && foe.state.safe === true) return;
         const profile = refreshCombatProfile(me.state, accountId, mapId);
         // Hits d'exécution d'aptitude : droit frais vérifié -> enveloppe
         // contournée (plafond EXEC_HIT_CAP_PVP), hit normalisé à la main.
         // Seaux anticheat conservés ci-dessous. Sinon validation standard.
         const impactNow = Date.now();
-        if (me.state.safe === true || foe.state.safe === true) return;
+        // Seule la cible protégée bloque : l'attaquant en ZNA peut tirer
+        // (il perd sa protection en attaquant, parité client netPvpBlocked).
+        if (foe.state.safe === true) return;
         msg = validateCombatHit(profile, msg, me.state, impactNow, foe.state);
         if (!msg) return;
         broadcastChargedShot(room, me.state, msg, impactNow);
@@ -2843,7 +3070,8 @@ wss.on("connection", (ws) => {
         if (foe.state.peta !== 1) return;
         const now = Date.now();
         // Le PET beneficie de la zone de non-agression de son proprietaire.
-        if (foe.state.serverSafe === true || me.state.serverSafe === true) return;
+        // Seul le PET protégé bloque (l'attaquant en ZNA peut tirer).
+        if (foe.state.serverSafe === true) return;
         const pvpPetDmg = Math.max(0, Number(msg.dmg) || 0);
         const pvpPetCost = pvpPetDmg > 0 ? 1 : 5;
         if (!acBucket(me.state, "PvpN", now, AC_PVP_HIT_CAP, AC_PVP_HIT_REFILL, pvpPetCost)
@@ -2938,6 +3166,8 @@ wss.on("connection", (ws) => {
         if (msg.sab === true) out.sab = true;
         // MISS + volley : retransmis pour l'affichage MISS sur les autres ecrans.
         if (msg.miss === true) out.miss = true;
+        // Precision Targeter : cercle rouge sous la roquette, des deux cotes.
+        if (msg.prec === true) out.prec = true;
         if (Number.isFinite(Number(msg.v))) out.v = Math.max(0, Math.floor(Number(msg.v)));
         broadcastRoom(room, JSON.stringify(out), id);
       } catch {}

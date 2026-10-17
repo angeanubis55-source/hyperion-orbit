@@ -9220,6 +9220,26 @@ body.orbitNoFade #gameWindowDock, body.orbitNoFade #ammoBar, body.orbitNoFade .g
 #ammoBar .petModeAction.cdVeil .petModeCd {
   display:block;
 }
+/* Tech Speed Burst : compteur + liseré du voile (comme les aptitudes). */
+#ammoBar .techAction.cdVeil {
+  --cd-edge:rgba(124,240,255,.9);
+}
+#ammoBar .techAction .techCd {
+  position:absolute;
+  left:0;
+  right:0;
+  bottom:0;
+  z-index:2;
+  display:none;
+  text-align:center;
+  pointer-events:none;
+  font:800 10px/1.2 ui-sans-serif,system-ui;
+  color:#eaffff;
+  text-shadow:0 0 4px #000,0 0 4px #000;
+}
+#ammoBar .techAction.cdVeil .techCd {
+  display:block;
+}
 #ammoBar .rocketQuickAction > strong {
   display:block;
   font-size:10px;
