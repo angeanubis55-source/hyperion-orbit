@@ -1224,18 +1224,18 @@ const PET_DOCK_MODE_VALUES = Object.freeze(["combat", "gear:al", "gear:ar", "gea
 // Techs affichées dans l'onglet TECH du dock (visuel seul pour l'instant ;
 // Anti-AI et Burning Trail exclus). Une image par tech, pas de déclinaison.
 const TECH_DOCK_ITEMS = Object.freeze([
-  { id: "anti-mine-transmitter", label: "Anti-Mine Transmitter", icon: "ASSETS/CONTROL_MENU/TECH_ANTI-MINE-TRANSMITTER.PNG" },
-  { id: "backup-shields", label: "Backup Shields", icon: "ASSETS/CONTROL_MENU/TECH_BACKUP-SHIELDS.PNG" },
-  { id: "battle-repair-bot", label: "Battle Repair Bot", icon: "ASSETS/CONTROL_MENU/TECH_BATTLE-REPAIR-BOT.PNG" },
-  { id: "battle-repair-bot-2", label: "Battle Repair Bot 2", icon: "ASSETS/CONTROL_MENU/TECH_BATTLE-REPAIR-BOT2.PNG" },
-  { id: "chain-impulse", label: "Chain Impulse", icon: "ASSETS/CONTROL_MENU/TECH_CHAIN-IMPULSE.PNG" },
-  { id: "energy-leech", label: "Energy Leech", icon: "ASSETS/CONTROL_MENU/TECH_ENERGY-LEECH.PNG" },
-  { id: "explosive-charging-blob", label: "Explosive Charging Blob", icon: "ASSETS/CONTROL_MENU/TECH_EXPLOSIVE-CHARGING-BLOB.PNG" },
-  { id: "frost-field", label: "Frost Field", icon: "ASSETS/CONTROL_MENU/TECH_FROST-FIELD.PNG" },
-  { id: "npc-nuke", label: "NPC Nuke", icon: "ASSETS/CONTROL_MENU/TECH_NPC-NUKE.PNG" },
-  { id: "precision-targeter", label: "Precision Targeter", icon: "ASSETS/CONTROL_MENU/TECH_PRECISION-TARGETER.PNG" },
-  { id: "shield-backup-2", label: "Shield Backup 2", icon: "ASSETS/CONTROL_MENU/TECH_SHIELD-BACKUP2.PNG" },
-  { id: "speed-burst", label: "Speed Burst", icon: "ASSETS/CONTROL_MENU/TECH_SPEED-BURST.PNG" },
+  { id: "anti-mine-transmitter", label: "Anti-Mine Transmitter", icon: "ASSETS/CONTROL_MENU/tech_anti-mine-transmitter.png" },
+  { id: "backup-shields", label: "Backup Shields", icon: "ASSETS/CONTROL_MENU/tech_backup-shields.png" },
+  { id: "battle-repair-bot", label: "Battle Repair Bot", icon: "ASSETS/CONTROL_MENU/tech_battle-repair-bot.png" },
+  { id: "battle-repair-bot-2", label: "Battle Repair Bot 2", icon: "ASSETS/CONTROL_MENU/tech_battle-repair-bot2.png" },
+  { id: "chain-impulse", label: "Chain Impulse", icon: "ASSETS/CONTROL_MENU/tech_chain-impulse.png" },
+  { id: "energy-leech", label: "Energy Leech", icon: "ASSETS/CONTROL_MENU/tech_energy-leech.png" },
+  { id: "explosive-charging-blob", label: "Explosive Charging Blob", icon: "ASSETS/CONTROL_MENU/tech_explosive-charging-blob.png" },
+  { id: "frost-field", label: "Frost Field", icon: "ASSETS/CONTROL_MENU/tech_frost-field.png" },
+  { id: "npc-nuke", label: "NPC Nuke", icon: "ASSETS/CONTROL_MENU/tech_npc-nuke.png" },
+  { id: "precision-targeter", label: "Precision Targeter", icon: "ASSETS/CONTROL_MENU/tech_precision-targeter.png" },
+  { id: "shield-backup-2", label: "Shield Backup 2", icon: "ASSETS/CONTROL_MENU/tech_shield-backup2.png" },
+  { id: "speed-burst", label: "Speed Burst", icon: "ASSETS/CONTROL_MENU/tech_speed-burst.png" },
 ]);
 
 // Bascule du menu du dock rapide (palette), accessible au clavier (TAB par défaut).
@@ -13488,21 +13488,21 @@ function shortGearLabel(label) {
 // Icônes CONTROL_MENU des gears dans la liste déroulante Mode du P.E.T
 // (une image par famille, comme la boutique : pas de déclinaison par niveau).
 const PET_GEAR_DROPDOWN_ICON = Object.freeze({
-  al: "ASSETS/CONTROL_MENU/EQUIPMENT_PETGEAR_G-AL1.PNG",
-  ar: "ASSETS/CONTROL_MENU/EQUIPMENT_PETGEAR_G-AR1.PNG",
-  el: "ASSETS/CONTROL_MENU/EQUIPMENT_PETGEAR_G-EL1.PNG",
-  rep: "ASSETS/CONTROL_MENU/EQUIPMENT_PETGEAR_G-REP1.PNG",
-  kk: "ASSETS/CONTROL_MENU/EQUIPMENT_PETGEAR_G-KK1.PNG",
-  tra: "ASSETS/CONTROL_MENU/EQUIPMENT_PETGEAR_G-TRA1.PNG",
-  fs: "ASSETS/CONTROL_MENU/EQUIPMENT_PETGEAR_G-FS1.PNG",
-  hpl: "ASSETS/CONTROL_MENU/EQUIPMENT_PETGEAR_G-HPL1.PNG",
-  bc: "ASSETS/CONTROL_MENU/EQUIPMENT_PETGEAR_G-BC1.PNG",
-  bh: "ASSETS/CONTROL_MENU/EQUIPMENT_PETGEAR_G-BH1.PNG",
+  al: "ASSETS/CONTROL_MENU/equipment_petgear_g-al1.png",
+  ar: "ASSETS/CONTROL_MENU/equipment_petgear_g-ar1.png",
+  el: "ASSETS/CONTROL_MENU/equipment_petgear_g-el1.png",
+  rep: "ASSETS/CONTROL_MENU/equipment_petgear_g-rep1.png",
+  kk: "ASSETS/CONTROL_MENU/equipment_petgear_g-kk1.png",
+  tra: "ASSETS/CONTROL_MENU/equipment_petgear_g-tra1.png",
+  fs: "ASSETS/CONTROL_MENU/equipment_petgear_g-fs1.png",
+  hpl: "ASSETS/CONTROL_MENU/equipment_petgear_g-hpl1.png",
+  bc: "ASSETS/CONTROL_MENU/equipment_petgear_g-bc1.png",
+  bh: "ASSETS/CONTROL_MENU/equipment_petgear_g-bh1.png",
 });
 
 // Icônes des 2 modes de base dans la liste déroulante Mode du P.E.T.
-const PET_MODE_PASSIVE_ICON = "ASSETS/CONTROL_MENU/EQUIPMENT_PETGEAR_A.png";
-const PET_MODE_COMBAT_ICON = "ASSETS/CONTROL_MENU/EQUIPMENT_PETGEAR_CGM-02.PNG";
+const PET_MODE_PASSIVE_ICON = "ASSETS/CONTROL_MENU/equipment_petgear_a.png";
+const PET_MODE_COMBAT_ICON = "ASSETS/CONTROL_MENU/equipment_petgear_cgm-02.png";
 
 // Entrées du sélecteur de comportement P.E.T (fenêtre + onglet dock) :
 // { opts: [{ value, label, disabled, icon }], want, has }.
@@ -27118,7 +27118,8 @@ function drainShieldFromEnemy(e, amount, recipient = player, transferPct) {
       e.spritePlay = false;
       e.spriteDir = 1;
       e.spriteIdx = 0;
-      e.spriteAcc = 0;    }
+      e.spriteAcc = 0;
+    }
   }
 
   // Multi : NPC partage — drain predit en local, serveur tranche (bouclier seul).
@@ -31471,10 +31472,12 @@ function syncNetNpcs(dt) {
           e.spriteDir = 1;
           e.spriteIdx = 0;
           e._openDelayT = Math.max(0.1, remain);
-          e._holdLastT = 0;        } else if (s.cube === "open") {
+          e._holdLastT = 0;
+        } else if (s.cube === "open") {
           e.spritePlay = true;
           e.spriteDir = 1;
-          e.spriteIdx = 0;        } else if (s.cube === "hold") {
+          e.spriteIdx = 0;
+        } else if (s.cube === "hold") {
           try {
             const sp = NPC_TYPES[e.type]?.sprite;
             const frames = sp?.frames || sp?._imgs?.length || 1;
@@ -39941,7 +39944,8 @@ if ((e.type === "npc_Cubikon" || e.cubikonMinions) && e._animPhase) {
 
       // ✅ fini : idle
       e._animPhase = null;
-      e.spriteDir = 1;    }
+      e.spriteDir = 1;
+    }
   }
 }
 

@@ -9017,91 +9017,91 @@ body.orbitNoFade #gameWindowDock, body.orbitNoFade #ammoBar, body.orbitNoFade .g
   display:none;
 }
 #ammoBar .actionPalette nav button[data-action-category="ammo"] {
-  background:url("ASSETS/CONTROL_MENU/LASERS_NORMAL.PNG") center / contain no-repeat, linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34));
+  background:url("ASSETS/CONTROL_MENU/lasers_normal.png") center / contain no-repeat, linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34));
 }
 #ammoBar .actionPalette nav button[data-action-category="ammo"]:hover:not(.active):not(:disabled) {
-  background:url("ASSETS/CONTROL_MENU/LASERS_HOVER.PNG") center / contain no-repeat, rgba(0,140,185,.3);
+  background:url("ASSETS/CONTROL_MENU/lasers_hover.png") center / contain no-repeat, rgba(0,140,185,.3);
 }
 #ammoBar .actionPalette nav button[data-action-category="ammo"].active {
   border-color:rgba(255,209,102,.9);
-  background:url("ASSETS/CONTROL_MENU/LASERS_SELECT.PNG") center / contain no-repeat, rgba(0,140,185,.3);
+  background:url("ASSETS/CONTROL_MENU/lasers_select.png") center / contain no-repeat, rgba(0,140,185,.3);
   box-shadow:0 0 16px rgba(255,209,102,.35);
 }
 #ammoBar .actionPalette nav button[data-action-category="rockets"] {
-  background:url("ASSETS/CONTROL_MENU/ROCKETS_NORMAL.PNG") center / contain no-repeat, linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34));
+  background:url("ASSETS/CONTROL_MENU/rockets_normal.png") center / contain no-repeat, linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34));
 }
 #ammoBar .actionPalette nav button[data-action-category="rockets"]:hover:not(.active):not(:disabled) {
-  background:url("ASSETS/CONTROL_MENU/ROCKETS_HOVER.PNG") center / contain no-repeat, rgba(0,140,185,.3);
+  background:url("ASSETS/CONTROL_MENU/rockets_hover.png") center / contain no-repeat, rgba(0,140,185,.3);
 }
 #ammoBar .actionPalette nav button[data-action-category="rockets"].active {
   border-color:rgba(255,209,102,.9);
-  background:url("ASSETS/CONTROL_MENU/ROCKETS_SELECT.PNG") center / contain no-repeat, rgba(0,140,185,.3);
+  background:url("ASSETS/CONTROL_MENU/rockets_select.png") center / contain no-repeat, rgba(0,140,185,.3);
   box-shadow:0 0 16px rgba(255,209,102,.35);
 }
 #ammoBar .actionPalette nav button[data-action-category="launchers"] {
-  background:url("ASSETS/CONTROL_MENU/ROCKET_LAUNCHERS_NORMAL.PNG") center / contain no-repeat, linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34));
+  background:url("ASSETS/CONTROL_MENU/rocket_launchers_normal.png") center / contain no-repeat, linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34));
 }
 #ammoBar .actionPalette nav button[data-action-category="launchers"]:hover:not(.active):not(:disabled) {
-  background:url("ASSETS/CONTROL_MENU/ROCKET_LAUNCHERS_HOVER.PNG") center / contain no-repeat, rgba(0,140,185,.3);
+  background:url("ASSETS/CONTROL_MENU/rocket_launchers_hover.png") center / contain no-repeat, rgba(0,140,185,.3);
 }
 #ammoBar .actionPalette nav button[data-action-category="launchers"].active {
   border-color:rgba(255,209,102,.9);
-  background:url("ASSETS/CONTROL_MENU/ROCKET_LAUNCHERS_SELECT.PNG") center / contain no-repeat, rgba(0,140,185,.3);
+  background:url("ASSETS/CONTROL_MENU/rocket_launchers_select.png") center / contain no-repeat, rgba(0,140,185,.3);
   box-shadow:0 0 16px rgba(255,209,102,.35);
 }
 #ammoBar .actionPalette nav button[data-action-category="formations"] {
-  background:url("ASSETS/CONTROL_MENU/DRONE_FORMATIONS_NORMAL.PNG") center / contain no-repeat, linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34));
+  background:url("ASSETS/CONTROL_MENU/drone_formations_normal.png") center / contain no-repeat, linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34));
 }
 #ammoBar .actionPalette nav button[data-action-category="formations"]:hover:not(.active):not(:disabled) {
-  background:url("ASSETS/CONTROL_MENU/DRONE_FORMATIONS_HOVER.PNG") center / contain no-repeat, rgba(0,140,185,.3);
+  background:url("ASSETS/CONTROL_MENU/drone_formations_hover.png") center / contain no-repeat, rgba(0,140,185,.3);
 }
 #ammoBar .actionPalette nav button[data-action-category="formations"].active {
   border-color:rgba(255,209,102,.9);
-  background:url("ASSETS/CONTROL_MENU/DRONE_FORMATIONS_SELECT.PNG") center / contain no-repeat, rgba(0,140,185,.3);
+  background:url("ASSETS/CONTROL_MENU/drone_formations_select.png") center / contain no-repeat, rgba(0,140,185,.3);
   box-shadow:0 0 16px rgba(255,209,102,.35);
 }
 #ammoBar .actionPalette nav button[data-action-category="skills"] {
-  background:url("ASSETS/CONTROL_MENU/CPUS_NORMAL.PNG") center / contain no-repeat, linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34));
+  background:url("ASSETS/CONTROL_MENU/cpus_normal.png") center / contain no-repeat, linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34));
 }
 #ammoBar .actionPalette nav button[data-action-category="skills"]:hover:not(.active):not(:disabled) {
-  background:url("ASSETS/CONTROL_MENU/CPUS_HOVER.PNG") center / contain no-repeat, rgba(0,140,185,.3);
+  background:url("ASSETS/CONTROL_MENU/cpus_hover.png") center / contain no-repeat, rgba(0,140,185,.3);
 }
 #ammoBar .actionPalette nav button[data-action-category="skills"].active {
   border-color:rgba(255,209,102,.9);
-  background:url("ASSETS/CONTROL_MENU/CPUS_SELECT.PNG") center / contain no-repeat, rgba(0,140,185,.3);
+  background:url("ASSETS/CONTROL_MENU/cpus_select.png") center / contain no-repeat, rgba(0,140,185,.3);
   box-shadow:0 0 16px rgba(255,209,102,.35);
 }
 #ammoBar .actionPalette nav button[data-action-category="abilities"] {
-  background:url("ASSETS/CONTROL_MENU/SHIP_ABILITIES_NORMAL.PNG") center / contain no-repeat, linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34));
+  background:url("ASSETS/CONTROL_MENU/ship_abilities_normal.png") center / contain no-repeat, linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34));
 }
 #ammoBar .actionPalette nav button[data-action-category="abilities"]:hover:not(.active):not(:disabled) {
-  background:url("ASSETS/CONTROL_MENU/SHIP_ABILITIES_HOVER.PNG") center / contain no-repeat, rgba(0,140,185,.3);
+  background:url("ASSETS/CONTROL_MENU/ship_abilities_hover.png") center / contain no-repeat, rgba(0,140,185,.3);
 }
 #ammoBar .actionPalette nav button[data-action-category="abilities"].active {
   border-color:rgba(255,209,102,.9);
-  background:url("ASSETS/CONTROL_MENU/SHIP_ABILITIES_SELECT.PNG") center / contain no-repeat, rgba(0,140,185,.3);
+  background:url("ASSETS/CONTROL_MENU/ship_abilities_select.png") center / contain no-repeat, rgba(0,140,185,.3);
   box-shadow:0 0 16px rgba(255,209,102,.35);
 }
 #ammoBar .actionPalette nav button[data-action-category="pet"] {
-  background:url("ASSETS/CONTROL_MENU/PET_NORMAL.PNG") center / contain no-repeat, linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34));
+  background:url("ASSETS/CONTROL_MENU/pet_normal.png") center / contain no-repeat, linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34));
 }
 #ammoBar .actionPalette nav button[data-action-category="pet"]:hover:not(.active):not(:disabled) {
-  background:url("ASSETS/CONTROL_MENU/PET_HOVER.PNG") center / contain no-repeat, rgba(0,140,185,.3);
+  background:url("ASSETS/CONTROL_MENU/pet_hover.png") center / contain no-repeat, rgba(0,140,185,.3);
 }
 #ammoBar .actionPalette nav button[data-action-category="pet"].active {
   border-color:rgba(255,209,102,.9);
-  background:url("ASSETS/CONTROL_MENU/PET_SELECT.PNG") center / contain no-repeat, rgba(0,140,185,.3);
+  background:url("ASSETS/CONTROL_MENU/pet_select.png") center / contain no-repeat, rgba(0,140,185,.3);
   box-shadow:0 0 16px rgba(255,209,102,.35);
 }
 #ammoBar .actionPalette nav button[data-action-category="tech"] {
-  background:url("ASSETS/CONTROL_MENU/TECH_ITEMS_NORMAL.PNG") center / contain no-repeat, linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34));
+  background:url("ASSETS/CONTROL_MENU/tech_items_normal.png") center / contain no-repeat, linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34));
 }
 #ammoBar .actionPalette nav button[data-action-category="tech"]:hover:not(.active):not(:disabled) {
-  background:url("ASSETS/CONTROL_MENU/TECH_ITEMS_HOVER.PNG") center / contain no-repeat, rgba(0,140,185,.3);
+  background:url("ASSETS/CONTROL_MENU/tech_items_hover.png") center / contain no-repeat, rgba(0,140,185,.3);
 }
 #ammoBar .actionPalette nav button[data-action-category="tech"].active {
   border-color:rgba(255,209,102,.9);
-  background:url("ASSETS/CONTROL_MENU/TECH_ITEMS_SELECT.PNG") center / contain no-repeat, rgba(0,140,185,.3);
+  background:url("ASSETS/CONTROL_MENU/tech_items_select.png") center / contain no-repeat, rgba(0,140,185,.3);
   box-shadow:0 0 16px rgba(255,209,102,.35);
 }
 #ammoBar .actionPaletteItems {
