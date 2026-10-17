@@ -13501,7 +13501,7 @@ const PET_GEAR_DROPDOWN_ICON = Object.freeze({
 });
 
 // Icônes des 2 modes de base dans la liste déroulante Mode du P.E.T.
-const PET_MODE_PASSIVE_ICON = "ASSETS/CONTROL_MENU/equipment_petgear_a.png";
+const PET_MODE_PASSIVE_ICON = "ASSETS/CONTROL_MENU/EQUIPMENT_PETGEAR_A.png";
 const PET_MODE_COMBAT_ICON = "ASSETS/CONTROL_MENU/equipment_petgear_cgm-02.png";
 
 // Entrées du sélecteur de comportement P.E.T (fenêtre + onglet dock) :
