@@ -1935,11 +1935,16 @@ function sunTopIds(death) {
 }
 
 function npcRewardShares(killerId, mapId, death) {
-  // Invoke XVI / Mindfire Behemoth / Boss Halloween : pas de partage de groupe.
+  // Strokelight : 100 % au détenteur du lock rouge, même s'il est en groupe.
+  if (death?.type === "npc_Strokelight_Barrage") {
+    return [{ pid: String(killerId), percent: 100 }];
+  }
+  // Invoke / Mindfire / Boss Halloween : pas de partage de groupe.
   // - Destruction (credits/EXP/honneur) : TOUS les tapeurs présents sur la
   //   map, au prorata exact des dégâts, y compris une part inférieure à 1 %.
-  // - Box perso : top 10 dégâts (même s'ils ont quitté la map), même contenu.
-  if ((death?.type === "npc_Invoke_XVI" || death?.type === "npc_Mindfire_Behemoth" || isHalloweenBossVariant(death?.type))
+  // - Invoke / Mindfire / Boss Halloween : box perso au top 10 dégâts.
+  if ((death?.type === "npc_Invoke_XVI" || death?.type === "npc_Mindfire_Behemoth"
+    || isHalloweenBossVariant(death?.type))
     && Array.isArray(death?.shares) && death.shares.length) {
     try {
       const ranked = death.shares
@@ -2513,7 +2518,7 @@ wss.on("connection", (ws) => {
         const now = Date.now();
         const cdKey = skill === "iem" ? "iemCdUntil" : skill === "ish" ? "ishCdUntil" : "smbCdUntil";
         if (now < Number(state[cdKey] || 0)) return;
-        state[cdKey] = now + 10_000;
+        state[cdKey] = now + 30_000;
         const until = now + 3_000;
         if (skill === "iem") {
           takeMovement(state, refreshCombatProfile(state, accountId, mapId), state.x, state.y, now);

@@ -6541,8 +6541,12 @@ document.getElementById("btnShopHub")?.addEventListener("click", () => {
 });
 
 document.getElementById("btnHangarHub")?.addEventListener("click", () => {
-  if (window.GameWindowManager?.isOpen("hangarWindow")) window.GameWindowManager.minimize("hangarWindow");
-  else openHangarOverlay();
+  if (window.GameWindowManager?.isOpen("hangarWindow")) {
+    // Sauvegarde avec les règles habituelles, puis réduit même en cas de refus.
+    // Les brouillons non sauvegardés sont annulés par la réduction.
+    if (fitState.hangarId) saveFitModal();
+    window.GameWindowManager.minimize("hangarWindow");
+  } else openHangarOverlay();
 });
 
 btnLogout?.addEventListener("click", async () => {

@@ -203,6 +203,31 @@ test("roster JPC remplacé : aucune incarnation déjà récompensée n'est réut
   assert.equal(s.saved.size, 4, "chaque vie du bot a versé sa récompense");
 });
 
+test("Strokelight : seul le détenteur du lock rouge est récompensé, même en groupe", () => {
+  const s = rewardServer(2);
+  const type = "npc_Strokelight_Barrage";
+  const camps = [1, 2].map(id => ({ id, type, x: 5000, y: 3500, fixed: true, maxAlive: 1, respawn: 3600 }));
+  const sim = new ZoneNpcSim("1-3", { w: 11000, h: 7000 }, camps);
+  sim.onDeath = death => s.context.awardNpcDeaths("1-3", [death]);
+  for (const [index, percent] of [.5, 20].entries()) {
+    sim.spawnFor(camps[index], Date.now());
+    const boss = [...sim.entries.values()].find(e => e.campId === index + 1);
+    Object.assign(boss, { hp: 10000, hpMax: 10000, sh: 0, shMax: 0, dr: 0 });
+    for (const id of ["u_0", "u_1"]) sim.setPlayer(id, boss.x, boss.y);
+    sim.applyHit("u_0", { uid: boss.uid, dmg: 10000 - percent * 100, variance: 0, critChance: 0 });
+    sim.applyHit("u_1", { uid: boss.uid, dmg: percent * 100, variance: 0, critChance: 0 });
+    assert.equal(boss.hp, 0);
+    const rewards = s.messages.filter(m => m.t === "npcReward" && m.uid === boss.uid);
+    assert.equal(rewards.length, 1, "le groupe et le dernier coup ne donnent aucune part");
+    assert.equal(rewards[0].pid, "u_0");
+    assert.equal(rewards[0].percent, 100);
+    assert.equal(rewards[0].ownsKill, true);
+    assert.ok(rewards.every(m => m.sun === false), "le Strokelight ne crée pas de soleil personnel");
+  }
+  s.context.awardNpcDeaths("1-3", sim.snapshot().deaths);
+  assert.equal(s.saved.size, 2, "les snapshots suivants ne doublent aucun gain");
+});
+
 test("Boss Cucurbitor : chaque tapeur reçoit sa part exacte sans être le premier attaquant", () => {
   const s = rewardServer(2);
   const death = { ...s.deaths(1)[0], type: "npc_Boss_Curcubitor_1_3", shares: [["u_0", 9950], ["u_1", 50]] };

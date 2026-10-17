@@ -15,10 +15,36 @@
 export const HALLOWEEN_NORMAL_COUNT = 16;
 export const HALLOWEEN_BOSS_COUNT = 3;
 export const HALLOWEEN_KILLS_FOR_BOSS = 50;
-// Multiplicateur global de l'event (x3) : s'ajoute au facteur de map.
-// Récompenses (crédits/XP/honneur) : x20.
-export const HALLOWEEN_STAT_MULT = 3;
-export const HALLOWEEN_REWARD_MULT = 20;
+// Barèmes du wiki ; seul le gain en crédits est majoré de 50 % en jeu.
+export const HALLOWEEN_CREDIT_MULT = 1.5;
+
+// https://darkorbitwiki.com/aliens/curcubitor/
+export const HALLOWEEN_NORMAL_MAP_STATS = Object.freeze({
+  3: Object.freeze({ hp: 20000, shield: 15000, bulletDmg: 300, credits: 2500, exp: 2000, honor: 12 }),
+  4: Object.freeze({ hp: 32000, shield: 24000, bulletDmg: 600, credits: 4001, exp: 3200, honor: 20 }),
+  5: Object.freeze({ hp: 94000, shield: 70500, bulletDmg: 1200, credits: 10751, exp: 8600, honor: 52 }),
+  6: Object.freeze({ hp: 180000, shield: 135000, bulletDmg: 3100, credits: 22001, exp: 17601, honor: 106 }),
+  7: Object.freeze({ hp: 270000, shield: 202500, bulletDmg: 4300, credits: 33251, exp: 26601, honor: 160 }),
+  8: Object.freeze({ hp: 360000, shield: 270000, bulletDmg: 5700, credits: 45000, exp: 36000, honor: 216 }),
+});
+
+// https://darkorbitwiki.com/aliens/boss-curcubitor/
+// X-2 exclue de l'événement ; mêmes valeurs pour les trois firmes.
+export const HALLOWEEN_BOSS_MAP_STATS = Object.freeze({
+  3: Object.freeze({ hp: 400000, shield: 300000, bulletDmg: 4000, credits: 409600, exp: 51200, honor: 156 }),
+  4: Object.freeze({ hp: 640000, shield: 480000, bulletDmg: 10000, credits: 655361, exp: 81920, honor: 250 }),
+  5: Object.freeze({ hp: 1880000, shield: 1410000, bulletDmg: 20000, credits: 1761281, exp: 220160, honor: 672 }),
+  6: Object.freeze({ hp: 3600000, shield: 2700000, bulletDmg: 40000, credits: 3604461, exp: 335600, honor: 1246 }),
+  7: Object.freeze({ hp: 5400000, shield: 4050000, bulletDmg: 55000, credits: 4447681, exp: 507200, honor: 1884 }),
+  8: Object.freeze({ hp: 7200000, shield: 5400000, bulletDmg: 80000, credits: 7400000, exp: 922000, honor: 2864 }),
+});
+
+export function halloweenMapStats(level, role) {
+  const table = role === "boss" ? HALLOWEEN_BOSS_MAP_STATS
+    : role === "normal" ? HALLOWEEN_NORMAL_MAP_STATS : null;
+  const stats = table?.[level];
+  return stats ? { ...stats, credits: Math.round(stats.credits * HALLOWEEN_CREDIT_MULT) } : null;
+}
 // Taux de drop des box à bonbons sur les NPC : boss et normaux 100 %.
 export const HALLOWEEN_DROP_BOSS_RATE = 1;
 export const HALLOWEEN_DROP_NORMAL_RATE = 1;
@@ -147,21 +173,9 @@ export function halloweenRoleOf(type) {
 export function parseHalloweenVariant(type) {
   const m = String(type || "").match(/^npc_(Boss_)?Curcubitor_(\d+)_(\d+)$/);
   if (!m) return null;
-  const level = Math.max(3, Math.min(8, Number(m[3])));
+  const level = Number(m[3]);
   if (![1, 2, 3].includes(Number(m[2])) || !(level >= 3 && level <= 8)) return null;
   return { role: m[1] ? "boss" : "normal", level };
-}
-
-// Facteur vie/bouclier/récompenses selon le niveau (x1 en x-3 .. x4 en x-8).
-export function halloweenRewardScale(level) {
-  const k = Math.max(0, Math.min(5, Number(level) - 3));
-  return 1 + 0.6 * k;
-}
-
-// Facteur dégâts (x1 .. x2.75).
-export function halloweenDamageScale(level) {
-  const k = Math.max(0, Math.min(5, Number(level) - 3));
-  return 1 + 0.35 * k;
 }
 
 // Nom déterministe de variante (+ les 36 specs x-3..x-8 × normal/boss).
@@ -182,21 +196,18 @@ export const HALLOWEEN_VARIANT_SPECS = (() => {
   return Object.freeze(out);
 })();
 
-const scaleNum = (v, f) => Math.max(1, Math.round(Number(v || 0) * f));
-
 function buildHalloweenVariant(base, level, role) {
-  const bodyF = halloweenRewardScale(level) * HALLOWEEN_STAT_MULT;
-  const dmgF = halloweenDamageScale(level) * HALLOWEEN_STAT_MULT;
-  const rwF = halloweenRewardScale(level) * HALLOWEEN_REWARD_MULT;
+  const stats = halloweenMapStats(level, role);
+  if (!stats) throw new Error(`Barème Halloween introuvable : ${role} x-${level}`);
   const cfg = JSON.parse(JSON.stringify(base));
   // Convention d'affichage : "..::{ Boss X }::.." pour les boss.
   cfg.name = role === "boss" ? "..::{ Boss Curcubitor }::.." : "-=[ Curcubitor ]=-";
-  cfg.hp = scaleNum(base.hp ?? 10000, bodyF);
-  cfg.shield = scaleNum(base.shield ?? 0, bodyF);
-  cfg.bulletDmg = scaleNum(base.bulletDmg ?? 0, dmgF);
-  cfg.value = scaleNum(base.value ?? 0, rwF);
-  cfg.exp = scaleNum(base.exp ?? base.value ?? 0, rwF);
-  cfg.honor = scaleNum(base.honor ?? 0, rwF);
+  cfg.hp = stats.hp;
+  cfg.shield = stats.shield;
+  cfg.bulletDmg = stats.bulletDmg;
+  cfg.value = stats.credits;
+  cfg.exp = stats.exp;
+  cfg.honor = stats.honor;
   // Portée : 600 pour les boss, 500 pour les petits (comme le Kristallin).
   cfg.shootRange = role === "boss" ? 600 : 500;
   // Sprite PARTAGE avec la base : un seul chargement pour les 36 variantes.

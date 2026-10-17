@@ -7,6 +7,47 @@ import { isHalloweenEventActive, halloweenEventEnd, halloweenCountdown,
   isHalloweenVariantType, halloweenRoleOf } from "../NPC/NPC_HALLOWEEN.js";
 import { COLLECTABLE_TYPES } from "../SRC/DATA/COLLECTABLES.js";
 import { ZoneNpcSim } from "./NPC_ROOM.js";
+import { NPC_TYPES } from "../NPC/NPC_TYPES.js";
+import { resolveNpcReward } from "../NPC/NPC_BALANCE.js";
+
+for (const [role, caps] of Object.entries({
+  normal: [
+    [3, 20000, 15000, 300, 2500, 2000, 12],
+    [4, 32000, 24000, 600, 4001, 3200, 20],
+    [5, 94000, 70500, 1200, 10751, 8600, 52],
+    [6, 180000, 135000, 3100, 22001, 17601, 106],
+    [7, 270000, 202500, 4300, 33251, 26601, 160],
+    [8, 360000, 270000, 5700, 45000, 36000, 216],
+  ],
+  boss: [
+    [3, 400000, 300000, 4000, 409600, 51200, 156],
+    [4, 640000, 480000, 10000, 655361, 81920, 250],
+    [5, 1880000, 1410000, 20000, 1761281, 220160, 672],
+    [6, 3600000, 2700000, 40000, 3604461, 335600, 1246],
+    [7, 5400000, 4050000, 55000, 4447681, 507200, 1884],
+    [8, 7200000, 5400000, 80000, 7400000, 922000, 2864],
+  ],
+})) {
+test(`Curcubitor ${role} : caps du wiki et crédits x1.5 sur les 18 cartes, client et serveur`, () => {
+  const prefix = role === "boss" ? "npc_Boss_Curcubitor" : "npc_Curcubitor";
+  for (const firm of [1, 2, 3]) {
+    assert.equal(NPC_TYPES[`${prefix}_${firm}_2`], undefined);
+    assert.equal(resolveNpcReward(`${prefix}_${firm}_2`), null);
+    for (const [level, hp, shield, damage, credits, exp, honor] of caps) {
+      const type = `${prefix}_${firm}_${level}`, cfg = NPC_TYPES[type];
+      const boostedCredits = Math.round(credits * 1.5);
+      assert.deepEqual([cfg.hp, cfg.shield, cfg.bulletDmg, cfg.value, cfg.exp, cfg.honor],
+        [hp, shield, damage, boostedCredits, exp, honor], type);
+      assert.deepEqual(resolveNpcReward(type), { credits: boostedCredits, exp, honor });
+      const camp = { id: 1, type, fixed: true, x: 5000, y: 3500 };
+      const sim = new ZoneNpcSim(`${firm}-${level}`, { w: 11000, h: 7000 }, [camp]);
+      assert.equal(sim.spawnFor(camp, Date.now()), true);
+      const npc = [...sim.entries.values()][0];
+      assert.deepEqual([npc.hp, npc.hpMax, npc.sh, npc.shMax, npc.bulletDmg], [hp, hp, shield, shield, damage]);
+    }
+  }
+});
+}
 
 const beforeStart = Date.parse("2026-10-16T20:49:59Z");
 const start = Date.parse("2026-10-16T20:50:00Z"); // 22h50 à Paris (UTC+2).

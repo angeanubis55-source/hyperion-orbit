@@ -138,7 +138,7 @@ import { applyNpcSeparation as separateNpcEntities } from "../../NPC/NPC_MOVEMEN
 import { CUBIKON_RESET } from "../../NPC/NPC_SPECIAL_BEHAVIORS.js";
 import { selectNpcCombatTarget } from "../../NPC/NPC_COMBAT.js";
 import { resetJpcState, resetJpcFill, tickJpcSystem, ensureJpcTypes, findJpcPreyForNpc, isJpcBotSheltered } from "../../NPC/JPC_BOTS.js";
-import { getNpcSpriteFrame } from "../../NPC/NPC_RENDERER.js";
+import { getNpcSpriteFrame, getNpcSpriteBrightness } from "../../NPC/NPC_RENDERER.js";
 import { pushBounded } from "./BOUNDED_COLLECTION.js";
 import { createRadiationSystem } from "./RADIATION_SYSTEM.js";
 import { renderSpeedGuard } from "./SPEED_GUARD_UI.js";
@@ -7365,9 +7365,9 @@ function initializeCustomActionBar() {
   // ✅ Munitions (dont les nouvelles : RCB, CBO, JOB...) : câblage des
   // ORIGINAUX (les clones des slots/palette redirigent vers eux via .click()).
   const SKILL_TIPS = Object.freeze({
-    pulse: "IEM (30k) : les NPC qui t'attaquent perdent ta trace (3 s). CD 10 s.",
-    ish: "ISH (30k) : invincible 3 s. CD 10 s.",
-    smb: "SMB (30k) : 50k dégâts autour (500). CD 10 s.",
+    pulse: "IEM (30k) : les NPC qui t'attaquent perdent ta trace (3 s). CD 30 s.",
+    ish: "ISH (30k) : invincible 3 s. CD 30 s.",
+    smb: "SMB (30k) : 50k dégâts autour (500). CD 30 s.",
     repair: "Réparation : le robot répare la coque au fil du temps.",
   });
   for (const button of actions) {
@@ -8871,6 +8871,7 @@ function codeLabel(code) {
   };
 
   if (map[code]) return map[code];
+  if (/^Mouse\d+$/.test(code)) return `SOURIS ${Number(code.slice(5)) + 1}`;
   if (code.startsWith("Key")) return code.slice(3).toUpperCase();
   if (code.startsWith("Digit")) return code.slice(5);
   if (code.startsWith("Numpad")) return "NUM " + code.slice(6);
@@ -8926,7 +8927,19 @@ function beginKeyCapture(action) {
   });
 
   const label = KEYBIND_LABELS[action] || action;
-  showToast(`Appuie sur une touche pour : ${label}`, 2);
+  showToast(`Appuie sur une touche ou un bouton supplémentaire de souris pour : ${label}`, 2);
+}
+
+function finishKeyCapture(code) {
+  if (code === "Escape") {
+    waitingForBindAction = null;
+    renderSettingsWindow();
+    showToast("Changement de touche annulé", 1);
+    return;
+  }
+  bindKey(waitingForBindAction, code);
+  waitingForBindAction = null;
+  renderSettingsWindow();
 }
 
 function renderKeybindRows() {
@@ -20391,16 +20404,7 @@ addEventListener(
       e.preventDefault();
       e.stopPropagation();
 
-      if (e.code === "Escape") {
-        waitingForBindAction = null;
-        renderSettingsWindow();
-        showToast("Changement de touche annulé", 1);
-        return;
-      }
-
-      bindKey(waitingForBindAction, e.code);
-      waitingForBindAction = null;
-      renderSettingsWindow();
+      finishKeyCapture(e.code);
       return;
     }
 
@@ -20412,11 +20416,16 @@ const used = [...boundKeys];
 
     if (used.includes(e.code)) e.preventDefault();
 
-    keyboard.keyDown(e.code, e.repeat);
+    triggerBoundCommand(e.code, e.repeat);
+  },
+  { passive: false }
+);
 
-    if (e.repeat) return;
+function triggerBoundCommand(code, repeat = false) {
+    keyboard.keyDown(code, repeat);
+    if (repeat) return;
 
-    if (isKeybind("portal", e.code)) {
+    if (isKeybind("portal", code)) {
       if (!isZoneMap && betweenWaves) {
         const near = getInteractivePortals().find(isPlayerNearPortal);
         if (near) startGatePortalJump(near, near === portal ? "continue" : "return");
@@ -20424,41 +20433,106 @@ const used = [...boundKeys];
       return;
     }
 
-    if (isKeybind("switchConfig", e.code)) {
+    if (isKeybind("switchConfig", code)) {
       toggleActiveConfigByKey();
       return;
     }
 
-    if (isKeybind("toggleAttack", e.code)) {
+    if (isKeybind("toggleAttack", code)) {
       toggleAttack();
       return;
     }
 
-    if (isKeybind("fireRocket", e.code)) {
+    if (isKeybind("fireRocket", code)) {
       tryFireRocket();
       return;
     }
 
-    if (isKeybind("toggleWindows", e.code)) {
+    if (isKeybind("toggleWindows", code)) {
       window.GameWindowManager?.toggleAll?.();
       return;
     }
 
-    if (isKeybind("toggleDock", e.code)) {
+    if (isKeybind("toggleDock", code)) {
       toggleActionDockMenu?.();
       return;
     }
 
     for (let slotIndex = 0; slotIndex < 20; slotIndex++) {
-      if (!isKeybind(`slot${slotIndex + 1}`, e.code)) continue;
+      if (!isKeybind(`slot${slotIndex + 1}`, code)) continue;
       document.querySelectorAll("#ammoBar .actionSlot")[slotIndex]?.querySelector(".ammoBtn, .rocketQuickAction")?.click();
       return;
     }
-  },
-  { passive: false }
-);
+}
 
 addEventListener("keyup", (e) => keyboard.keyUp(e.code));
+
+// Seuls les boutons supplémentaires (souris 4 et suivantes) sont assignables.
+// Gauche, droit, clic molette et clics d'interface gardent leur usage habituel.
+const heldMouseBinds = new Set();
+const suppressedMouseClicks = new Set();
+
+function mouseButtonCode(event) {
+  if (event.pointerType && event.pointerType !== "mouse") return null;
+  if (event.sourceCapabilities?.firesTouchEvents) return null;
+  return Number.isInteger(event.button) && event.button >= 3 ? `Mouse${event.button}` : null;
+}
+
+function consumeMouseBindEvent(event) {
+  event.preventDefault();
+  event.stopImmediatePropagation();
+}
+
+function mouseBindDown(event) {
+  const code = mouseButtonCode(event);
+  if (!code) return;
+  // mousedown complète pointerdown pour les boutons pressés simultanément.
+  if (heldMouseBinds.has(code)) {
+    consumeMouseBindEvent(event);
+    return;
+  }
+  suppressedMouseClicks.delete(code);
+  const capturing = !!waitingForBindAction;
+  if (!capturing && (event.target !== canvas
+    || !Object.keys(DEFAULT_KEYBINDS).some(action => isKeybind(action, code)))) return;
+  heldMouseBinds.add(code);
+  suppressedMouseClicks.add(code);
+  consumeMouseBindEvent(event);
+  if (capturing) finishKeyCapture(code);
+  else triggerBoundCommand(code);
+}
+
+function mouseBindUp(event) {
+  const code = mouseButtonCode(event);
+  if (!heldMouseBinds.has(code) && !suppressedMouseClicks.has(code)) return;
+  heldMouseBinds.delete(code);
+  keyboard.keyUp(code);
+  consumeMouseBindEvent(event);
+}
+
+for (const type of ["pointerdown", "mousedown"]) {
+  addEventListener(type, mouseBindDown, { capture: true, passive: false });
+}
+for (const type of ["pointerup", "mouseup"]) {
+  addEventListener(type, mouseBindUp, { capture: true, passive: false });
+}
+for (const type of ["click", "auxclick", "contextmenu"]) {
+  addEventListener(type, event => {
+    const code = mouseButtonCode(event);
+    if (!suppressedMouseClicks.has(code)) return;
+    consumeMouseBindEvent(event);
+    if (type !== "contextmenu") suppressedMouseClicks.delete(code);
+  }, { capture: true, passive: false });
+}
+function resetMouseBinds() {
+  for (const code of heldMouseBinds) keyboard.keyUp(code);
+  heldMouseBinds.clear();
+  suppressedMouseClicks.clear();
+}
+addEventListener("blur", resetMouseBinds);
+addEventListener("pointercancel", event => {
+  if (event.pointerType === "mouse") resetMouseBinds();
+});
 
 // Click-to-move / Lock manuel
 canvas.style.touchAction = "none";
@@ -28702,20 +28776,20 @@ function runOnKillAction(action, pos = null) {
 // ============================================================
 const PULSE_COST = 30000;
 
-const PULSE_COOLDOWN = 10.0;
+const PULSE_COOLDOWN = 30.0;
 
 // Compétence ISH : même CD que l'IEM, 3 s d'invincibilité + anim de réapparition.
 const ISH_COST = 30000;
 
-const ISH_COOLDOWN = 10.0;
+const ISH_COOLDOWN = 30.0;
 
 const ISH_DURATION = 3.0;
 
-// Extras Mine SMB-01 : 30k, CD 10 s, 50k dégâts autour (500) + visuel officiel
+// Extras Mine SMB-01 : 30k, CD 30 s, 50k dégâts autour (500) + visuel officiel
 // smartbomb1.swf (sprites ASSETS/SMARTBOMB/), bleu marine côté dock.
 const SMB_COST = 30000;
 
-const SMB_COOLDOWN = 10.0;
+const SMB_COOLDOWN = 30.0;
 
 // Dégâts : 50k à tout ce qui est autour dans un rayon de 500.
 // (Pas d'invincibilité : la bombe ne protège pas le lanceur.)
@@ -35297,6 +35371,11 @@ function drawEnemyBody(e, exactFrame = null) {
 
   ctx.save();
   ctx.imageSmoothingEnabled = false;
+  const brightness = getNpcSpriteBrightness(e);
+  if (brightness < 1) {
+    const existingFilter = ctx.filter && ctx.filter !== "none" ? `${ctx.filter} ` : "";
+    ctx.filter = `${existingFilter}brightness(${brightness})`;
+  }
   drawCenteredImage(ctx, img, w, h);
   ctx.restore();
   // ✅ bulle ISH sur boss invulnérable (finale Zeta) : anim en boucle.

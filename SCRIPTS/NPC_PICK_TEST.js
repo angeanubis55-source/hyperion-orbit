@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import { createSpriteHitCache } from '../SRC/CORE/SPRITE_HIT_CACHE.js';
-import { getNpcSpriteFrame } from '../NPC/NPC_RENDERER.js';
+import { getNpcSpriteFrame, getNpcSpriteBrightness } from '../NPC/NPC_RENDERER.js';
 import { drawCenteredImage, screenToWorldPoint, worldToScreenPoint } from '../SRC/CORE/RENDERING.js';
 
 const engine = readFileSync(new URL('../SRC/CORE/ORBIT_ENGINE.js', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
@@ -111,7 +111,7 @@ function pickerHarness(config = {}) {
   const c = vm.createContext({
     NPC_TYPES: { npc_test: { sprite: { _ready: true, _imgs: [image(), image(9, 5, (x, y) => x === 7 && y === 2)],
       frames: 2, w: 90, h: 50 }, ...config } },
-    spriteHitCache: createSpriteHitCache(factory), getNpcSpriteFrame, drawCenteredImage,
+    spriteHitCache: createSpriteHitCache(factory), getNpcSpriteFrame, getNpcSpriteBrightness, drawCenteredImage,
     screenToWorldPoint, worldToScreenPoint, innerWidth: 1600, innerHeight: 900,
     camera: { x: 12000, y: 7000 }, enemies: [], TAU: Math.PI * 2,
     normAng: angle => ((angle % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2),

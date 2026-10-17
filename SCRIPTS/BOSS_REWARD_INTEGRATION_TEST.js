@@ -13,15 +13,19 @@ import { resolveNpcReward } from "../NPC/NPC_BALANCE.js";
 
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 
-test("Boss Cucurbitor : deux joueurs sans groupe, parts de 0.5 % et 20 % versées au second attaquant", { timeout: 20000 }, async t => {
+for (const [bossType, bossName, grouped] of [["npc_Boss_Curcubitor_1_3", "Boss Cucurbitor", false],
+  ["npc_Strokelight_Barrage", "Strokelight", false], ["npc_Strokelight_Barrage", "Strokelight", true],
+  ["npc_Curcubitor_1_3", "Curcubitor normal", false]]) {
+const exclusive = bossType === "npc_Strokelight_Barrage" || bossType === "npc_Curcubitor_1_3";
+test(`${bossName} : ${grouped ? "en groupe" : "hors groupe"}, ${exclusive ? "100 % au lock rouge" : "parts de 0.5 % et 20 % au second attaquant"}`, { timeout: 20000 }, async t => {
   const temporary = await mkdtemp(join(tmpdir(), "orbit-boss-reward-"));
   const fixture = join(temporary, "fixture.mjs");
-  const bossType = "npc_Boss_Curcubitor_1_3";
   // Seuls les combats sont déterministes : toute l'attribution utilise le
   // serveur réel, ses identifiants de transaction et ses comptes SQLite.
   await writeFile(fixture, `
 import { ZoneNpcSim } from ${JSON.stringify(new URL("./NPC_ROOM.js", import.meta.url).href)};
 import { NPC_TYPES } from ${JSON.stringify(new URL("../NPC/NPC_TYPES.js", import.meta.url).href)};
+import { socialGroupOf } from ${JSON.stringify(new URL("./SOCIAL_ROOM.js", import.meta.url).href)};
 const bossType = ${JSON.stringify(bossType)};
 NPC_TYPES[bossType] = { ...NPC_TYPES[bossType], hp: 10000, shield: 0, dr: 0, canShoot: false };
 const create = ZoneNpcSim.create.bind(ZoneNpcSim);
@@ -35,8 +39,9 @@ ZoneNpcSim.create = async function(mapId, saved) {
   sim.tick = function(dt) {
     tick(dt);
     if (this.testDone || this.players.size < 2) return;
-    this.testDone = true;
     const [first, second] = [...this.players.keys()];
+    if (${JSON.stringify(grouped)} && !socialGroupOf(first)) return;
+    this.testDone = true;
     const bosses = [...this.entries.values()].filter(e => e.type === bossType);
     for (let i = 0; i < bosses.length; i++) {
       const boss = bosses[i];
@@ -106,12 +111,43 @@ ZoneNpcSim.create = async function(mapId, saved) {
       assert.fail(`Message manquant : ${JSON.stringify(messages)}; ${output}`);
     };
     await wait(m => m.t === "welcome" && m.authed);
-    return { messages, wait };
+    return { messages, wait, send: message => ws.send(JSON.stringify(message)) };
   }
   const firstAccount = await account("boss-first");
   const secondAccount = await account("boss-later");
   const first = await connect(firstAccount);
   const second = await connect(secondAccount);
+  if (grouped) {
+    first.send({ t: "groupInvite", to: "boss-later" });
+    await second.wait(m => m.t === "groupInvite");
+    second.send({ t: "groupAccept" });
+    await first.wait(m => m.t === "groupUpdate" && m.group?.members?.length === 2);
+  }
+  if (exclusive) {
+    await first.wait(m => m.t === "npcReward" && first.messages.filter(m => m.t === "npcReward").length === 2);
+    await pause(150);
+    const rewards = first.messages.filter(m => m.t === "npcReward");
+    const pool = resolveNpcReward(bossType);
+    assert.equal(rewards.length, 2);
+    for (const reward of rewards) {
+      assert.equal(reward.percent, 100);
+      assert.equal(reward.ownsKill, true);
+      assert.equal(reward.credits, pool.credits);
+      assert.equal(reward.exp, pool.exp);
+      assert.equal(reward.honor, pool.honor);
+      assert.equal(reward.sun, false);
+    }
+    assert.equal(second.messages.filter(m => m.t === "npcReward").length, 0);
+    const owner = (await api("/api/me", { token: firstAccount.token })).user;
+    const helper = (await api("/api/me", { token: secondAccount.token })).user;
+    assert.equal(owner.credits, firstAccount.user.credits + 2 * pool.credits);
+    assert.equal(owner.stats.exp, (firstAccount.user.stats?.exp || 0) + 2 * pool.exp);
+    assert.equal(owner.stats.honor, (firstAccount.user.stats?.honor || 0) + 2 * pool.honor);
+    assert.equal(helper.credits, secondAccount.user.credits);
+    assert.equal(helper.stats?.exp || 0, secondAccount.user.stats?.exp || 0);
+    assert.equal(helper.stats?.honor || 0, secondAccount.user.stats?.honor || 0);
+    return;
+  }
   await second.wait(m => m.t === "npcReward" && m.percent === .5);
   await second.wait(m => m.t === "npcReward" && m.percent === 20);
   await first.wait(m => m.t === "npcReward" && m.percent === 80);
@@ -125,7 +161,8 @@ ZoneNpcSim.create = async function(mapId, saved) {
     assert.equal(reward.credits, Math.floor(pool.credits * reward.percent / 100));
     assert.equal(reward.exp, Math.floor(pool.exp * reward.percent / 100));
     assert.equal(reward.honor, Math.floor(pool.honor * reward.percent / 100));
-    assert.ok(reward.credits > 0 && reward.exp > 0 && reward.honor > 0);
+    assert.ok(reward.credits > 0 && reward.exp > 0);
+    assert.ok(reward.honor >= 0); // Une petite part peut valoir moins d'un point.
   }
   await pause(150); // Les journaux suivants ne doivent pas réattribuer les parts.
   assert.equal(second.messages.filter(m => m.t === "npcReward").length, 2);
@@ -135,3 +172,4 @@ ZoneNpcSim.create = async function(mapId, saved) {
   assert.equal(saved.stats.exp, (Number(secondAccount.user.stats?.exp) || 0) + total("exp"));
   assert.equal(saved.stats.honor, (Number(secondAccount.user.stats?.honor) || 0) + total("honor"));
 });
+}

@@ -42,7 +42,7 @@ try {
   const results = await page.evaluate(async functions => {
     const { createSpriteHitCache } = await import('/SRC/CORE/SPRITE_HIT_CACHE.js');
     const { NPC_TYPES } = await import('/NPC/NPC_TYPES.js');
-    const { getNpcSpriteFrame } = await import('/NPC/NPC_RENDERER.js');
+    const { getNpcSpriteFrame, getNpcSpriteBrightness } = await import('/NPC/NPC_RENDERER.js');
     const { drawCenteredImage, screenToWorldPoint, worldToScreenPoint } = await import('/SRC/CORE/RENDERING.js');
     let maskReads = 0, lastDrawing;
     const cache = createSpriteHitCache({ createCanvas() {
@@ -52,7 +52,7 @@ try {
       return canvas;
     } });
     Object.assign(window, {
-      NPC_TYPES, getNpcSpriteFrame, spriteHitCache: cache, enemies: [], TAU: Math.PI * 2,
+      NPC_TYPES, getNpcSpriteFrame, getNpcSpriteBrightness, spriteHitCache: cache, enemies: [], TAU: Math.PI * 2,
       normAng: angle => ((angle % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2),
       isImgReady: img => !!(img?.complete && img.naturalWidth > 0),
       ctx: document.getElementById('fixture').getContext('2d'),
