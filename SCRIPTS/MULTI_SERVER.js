@@ -1057,7 +1057,7 @@ function handleAdminApi(request, response, pathname) {
           adminJson(response, 200, res);
           return;
         }
-        if (pathname === "/api/admin/give-gg") {          // Ajoute la completion d'une Galaxy Gate (pseudo + gate ou "all").
+        if (pathname === "/api/admin/give-gg") {          // Ajoute +1 complétion Galaxy Gate (pseudo + gate ou "all"), +1 pièce Kronos.
           // L'anneau doré apparaît à la prochaine synchro du joueur.
           const res = adminGiveGalaxyGate(String(body?.pseudo || ""), String(body?.gate || ""));
           if (!res || res.ok !== true) {
@@ -1067,7 +1067,10 @@ function handleAdminApi(request, response, pathname) {
           try {
             const peer = findPeerByPseudo(res.pseudo);
             if (peer) {
-              const names = (res.gates || []).map((g) => String(g).slice(0, 1).toUpperCase() + String(g).slice(1));
+              const names = (res.gates || []).map((g) => {
+                const n = Number(res.after?.[g]);
+                return String(g).slice(0, 1).toUpperCase() + String(g).slice(1) + (Number.isFinite(n) ? ` x${n}` : "");
+              });
               const txt = `L'admin t'a ajouté la GG ${names.join(", ")} (anneau ajouté).`;
               sendToPeer(peer.id, { t: "chatMsg", from: "[ADMIN]", text: txt, at: Date.now(), by: "admin" });
             }

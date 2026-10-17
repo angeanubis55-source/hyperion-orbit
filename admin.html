@@ -522,7 +522,7 @@
     const opts = Object.entries(GG_NAMES).map(([v, label]) => `<option value="${v}">${esc(label)}</option>`).join("") + `<option value="all">Toutes</option>`;
     openModal({
       title: `Ajouter une GG — ${pseudo}`,
-      sub: "La complétion est ajoutée (anneau visible à la prochaine synchro).",
+      sub: "Chaque clic = +1 complétion (+1 pièce Kronos pour Alpha/Beta/Gamma/Delta/Epsilon/Zeta/Kappa/Lambda). Anneau visible à la prochaine synchro.",
       bodyHTML: `<select id="ggGiveSel" style="width:100%;height:34px;">${opts}</select>`,
       actions: [
         { label: "Annuler", onClick: closeModal },
@@ -532,7 +532,9 @@
             const out = await call("/api/admin/give-gg", { method: "POST", body: JSON.stringify({ pseudo, gate }) });
             if (!out || out.ok !== true) throw new Error(out?.error || "Échec.");
             closeModal();
-            toast(`${out.pseudo} : GG ${gate} ajoutée.`, "ok");
+            const n = out.after != null && out.after[gate] != null ? ` x${out.after[gate]}` : "";
+            const kp = out.kronosAfter != null && out.kronosAfter[gate] != null ? ` (Kronos ${out.kronosAfter[gate]} pièce(s))` : "";
+            toast(`${out.pseudo} : GG ${gate}${n} ajoutée${kp}.`, "ok");
           } catch (e) { modalError(e?.message || "Erreur."); return; }
           refresh();
         } },

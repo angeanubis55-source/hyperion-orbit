@@ -491,8 +491,12 @@ export function adminListAccounts() {
 // la complétion d'une Galaxy Gate d'un compte par pseudo ("all" = toutes).
 // L'anneau doré apparaît/disparaît : le client adopte la version serveur à
 // sa prochaine synchro (révision bumpée). Reset retire aussi les pièces
-// Kronos issues de cette gate.
+// Kronos issues de cette gate. Give incrémente (+1 par clic) ET ajoute
+// +1 pièce Kronos (plafonnée au quota de la gate, comme une vraie complétion).
 const ADMIN_GG_IDS = Object.freeze(["alpha", "beta", "gamma", "delta", "epsilon", "zeta", "kappa", "lambda", "kronos", "awakened"]);
+// Quotas fidèles (miroir de KRONOS_PARTS_BY_GATE dans SRC/CORE/GALAXY_GATES.js) :
+// chaque complétion d'une gate source donne +1 pièce Kronos jusqu'au quota.
+const ADMIN_KRONOS_QUOTA = Object.freeze({ alpha: 4, beta: 3, gamma: 1, delta: 1, epsilon: 4, zeta: 1, kappa: 2, lambda: 5 });
 export function adminGiveGalaxyGate(pseudo, gate) {
   try {
     initAccountDb();
@@ -507,11 +511,25 @@ export function adminGiveGalaxyGate(pseudo, gate) {
     try { data = JSON.parse(row.data || "{}") || {}; } catch { data = {}; }
     data.galaxyGates ||= {};
     data.galaxyGates.completed ||= {};
+    data.galaxyGates.kronosParts ||= {};
     const targets = all ? [...ADMIN_GG_IDS] : [id];
+    const kronosBuilt = Math.max(0, Math.floor(Number(data.galaxyGates.built?.kronos) || 0));
     const before = {};
+    const after = {};
+    const kronosBefore = {};
+    const kronosAfter = {};
     for (const g of targets) {
       before[g] = Math.max(0, Math.floor(Number(data.galaxyGates.completed[g]) || 0));
-      data.galaxyGates.completed[g] = Math.max(1, before[g]);
+      after[g] = before[g] + 1;
+      data.galaxyGates.completed[g] = after[g];
+      // ✅ pièce Kronos comme une vraie complétion (plafond par gate source,
+      // jamais pour kronos/awakened, jamais si Kronos déjà construite).
+      const quota = ADMIN_KRONOS_QUOTA[g] || 0;
+      if (quota > 0 && kronosBuilt < 1) {
+        kronosBefore[g] = Math.min(quota, Math.max(0, Math.floor(Number(data.galaxyGates.kronosParts[g]) || 0)));
+        kronosAfter[g] = Math.min(quota, kronosBefore[g] + 1);
+        data.galaxyGates.kronosParts[g] = kronosAfter[g];
+      }
     }
     const now = Date.now();
     const newRev = Math.max(Math.floor(Number(data.revision) || 0), Number(row.revision) || 0) + 1;
@@ -520,7 +538,7 @@ export function adminGiveGalaxyGate(pseudo, gate) {
     data.updatedAt = now;
     db.prepare("UPDATE users SET data = ?, revision = ?, updated_at = ? WHERE id = ?")
       .run(JSON.stringify(data), newRev, now, row.id);
-    return { ok: true, id: String(row.id), pseudo: String(row.pseudo || "Pilote").slice(0, 20), gates: targets, before, revision: newRev };
+    return { ok: true, id: String(row.id), pseudo: String(row.pseudo || "Pilote").slice(0, 20), gates: targets, before, after, kronosBefore, kronosAfter, revision: newRev };
   } catch { return { ok: false, error: "Erreur serveur." }; }
 }
 export function adminResetGalaxyGate(pseudo, gate) {
