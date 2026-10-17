@@ -121,6 +121,9 @@ export class ZoneNpcSim {
     } catch { this.halloween = normalizeHalloweenState(null); }
     this.halloweenSyncAt = 0;
     this.entries = new Map(); // uid -> { uid, campId, type, x, y, angle, hp, sh, hpMax, shMax, speed, dr, spread, tx, ty, killer }
+    // Les camps et rosters gardent leur incarnation même après une purge de phase.
+    // Sinon un nouveau kill réutilise la clé d'une récompense déjà attribuée.
+    this.spawnSequences = new Map();
     this.campT = new Map(); // campId -> delai avant prochain essai de spawn
     this.players = new Map(); // clientId -> { x, y, dead, safe, hidden }
     this.safe = []; // cercles de non-agression { x, y, r }
@@ -603,6 +606,14 @@ export class ZoneNpcSim {
     return this.randomPos(pad);
   }
 
+  nextSpawnSequence(uid) {
+    const key = String(uid);
+    const seq = Math.max(this.spawnSequences.get(key) || 0,
+      Number(this.entries.get(key)?.seq) || 0) + 1;
+    this.spawnSequences.set(key, seq);
+    return seq;
+  }
+
   spawnFor(camp, nowMs) {
     const uid = slotUid(this.mapId, camp.id);
     const stats = statsFor(camp.type);
@@ -615,7 +626,6 @@ export class ZoneNpcSim {
     // Camp à usage unique (raid) : marqué comme spawné pour cette
     // activation de vague (anti-respawn, voir tick).
     if (camp.noRespawn === true) camp._raidGen = Number(this.raidWaveGen) || 0;
-    const prev = this.entries.get(uid);
     this.entries.set(uid, {
       uid, campId: camp.id, type: camp.type,
       x: clamp(pos.x, 80, this.world.w - 80),
@@ -635,7 +645,7 @@ export class ZoneNpcSim {
       tx: null, ty: null, killer: null, firstBy: null, lastHitBy: null,
       lockBy: null, lockHitAt: 0, lockReleaseAt: 0, hitHist: [],
       orbitDir: Math.random() < 0.5 ? -1 : 1, orbitT: 2 + Math.random() * 3,
-      seq: (Number(prev?.seq) || 0) + 1, // incarnation : anti-confusion au respawn
+      seq: this.nextSpawnSequence(uid),
     });
     return true;
   }
@@ -671,7 +681,7 @@ export class ZoneNpcSim {
         tx: null, ty: null, killer: null, firstBy: null, lastHitBy: null,
         lockBy: null, lockHitAt: 0, lockReleaseAt: 0, hitHist: [],
         orbitDir: Math.random() < 0.5 ? -1 : 1, orbitT: 2 + Math.random() * 3,
-        seq: 1,
+        seq: this.nextSpawnSequence(def.uid),
         isJpcBot: true, jpc: true,
         jpcTier: tierForMap(this.mapId),
         jpcPseudo: String(def.pseudo || "JPC"),
@@ -1986,7 +1996,7 @@ drainPlayerHits() {
       jpcAliveNow++;
       e.hp = Number(e.hpMax) || 1;
       e.sh = Number(e.shMax) || 0;
-      e.seq = (Number(e.seq) || 0) + 1;
+      e.seq = this.nextSpawnSequence(e.uid);
       e.killer = null; e.cause = null; e.deadAt = 0;
       e.firstBy = null; e.lastHitBy = null;
       e.lockBy = null; e.lockHitAt = 0; e.lockReleaseAt = 0; e.hitHist = [];

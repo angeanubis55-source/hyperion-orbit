@@ -16,6 +16,7 @@ import { getAbilityInfo, ABILITY_IDS, abilityShipKeyFor } from "../SHIP/SHIP_ABI
 import { SHIP_PACKS } from "../SHIP/SHIP_PACKS.js";
 import { ShipEngine } from "../SHIP/SHIP_ENGINE_RENDERER.js";
 import { CATALOG } from "../SRC/CORE/CATALOG.js";
+import { isHalloweenVariantType, isHalloweenBossVariant } from "../NPC/NPC_HALLOWEEN.js";
 
 // Exécute les vrais chemins du moteur avec un Canvas instrumenté.
 const engine = readFileSync(new URL("../SRC/CORE/ORBIT_ENGINE.js", import.meta.url), "utf8");
@@ -1115,6 +1116,7 @@ ZoneNpcSim.create = async function(...args) {
   const quests = [], credited = [];
   const noop = () => {};
   const context = vm.createContext({ enemies: [target], rules: { mode: "zone" }, window: { __CURRENT_MAP_ID__: "1-1" },
+    isHalloweenVariantType, isHalloweenBossVariant,
     getNetDeaths: () => new Map([[death.uid, death]]), netMyId: () => hunter.id, getNetGroup: () => null,
     netBoomSelfDamage: noop, playNpcDeathFxOnce: noop, botQueueCloakAfterKill: noop,
     Target: { get: () => target, clear: noop }, COLLECTABLE_DEFS: {}, spawnCollectableAt: noop,

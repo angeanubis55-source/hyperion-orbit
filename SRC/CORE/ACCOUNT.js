@@ -8,7 +8,7 @@ try { bootNetFromCache(); } catch {}
 import { findCatalogItem, CATALOG } from "./CATALOG.js";
 import { SHIP_PACKS, getShipDesignBaseId, getShipPackById, getShipFamilyId } from "../../SHIP/SHIP_PACKS.js";
 import { normalizeQuestState, QUEST_DEFINITIONS } from "../../QUEST/QUEST_TYPES.js";
-import { getBattlepassObjective, isBattlepassComplete, normalizeBattlepassState } from "../../QUEST/BATTLEPASS.js";
+import { getBattlepassObjective, isBattlepassComplete, normalizeBattlepassState, mergeBattlepassProgress } from "../../QUEST/BATTLEPASS.js";
 import { QUEST_REWARD_BASELINE_2026 } from "../../QUEST/QUEST_REWARD_BASELINE.js";
 import { calculateRankPoints, getQuestExperienceReward, getQuestHonorReward } from "./PROGRESSION.js";
 import { getFaction, getFactionBaseSpawn, normalizeFactionId } from "./FACTIONS.js";
@@ -1631,6 +1631,9 @@ export function updateCurrentUserProgress(patch = {}) {
   if (!u) return { ok: false, error: "Aucun utilisateur connecté." };
 
   if (patch.credits != null) u.credits = Number(patch.credits || 0);
+  if (patch.battlepass && typeof patch.battlepass === "object") {
+    u.battlepass = mergeBattlepassProgress(patch.battlepass, u.battlepass);
+  }
   if (patch.ship != null) u.ship = String(patch.ship || STARTER_SHIP_ID);
 
   if (patch.ammo && typeof patch.ammo === "object") {

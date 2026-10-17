@@ -1,9 +1,11 @@
 // SRC/CORE/ACCOUNT_NET.js — Comptes serveur (mode multi).
-// Standalone : aucun import métier (pas de cycle avec ACCOUNT.js).
+// Fusion pure : aucun import de ACCOUNT.js (pas de cycle).
 // - legacy (aucun token) : ACCOUNT.js utilise localStorage comme avant ;
 // - net (token + cache) : readUsers/writeUsers/readCurrent/writeCurrent
 //   branchent ici ; les saves partent en POST /api/save (debounce 2 s) ;
 // - revision serveur strictement croissante : anti-ecrasement (409 stale).
+
+import { mergeBattlepassProgress } from "../../QUEST/BATTLEPASS.js";
 
 const TOKEN_KEY = "orbit_token";
 const CACHE_KEY = "orbit_user_cache";
@@ -752,6 +754,9 @@ function rebaseValue(base, local, remote, path = "") {
 
 function rebaseUser(local, remote, base = serverBase) {
   const result = { ...rebaseValue(base || {}, local, remote) };
+  if (local.battlepass || remote.battlepass) {
+    result.battlepass = mergeBattlepassProgress(local.battlepass, remote.battlepass);
+  }
   for (const key of ["id", "pseudo", "email", "password", "_adminWriteToken"]) {
     if (remote[key] !== undefined) result[key] = remote[key];
   }

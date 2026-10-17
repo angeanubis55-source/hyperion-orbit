@@ -18,6 +18,7 @@ import { createDefaultSkylabState, normalizeSkylabState, tickSkylabState } from 
 import { CATALOG, findCatalogItem } from "../SRC/CORE/CATALOG.js";
 import { AMMO } from "../COMBAT/AMMO_TYPES.js";
 import { isJpcBotSheltered } from "../NPC/JPC_BOTS.js";
+import { isHalloweenBossVariant } from "../NPC/NPC_HALLOWEEN.js";
 import { HYPERION_QA_DAMAGE, HYPERION_QA_BURST_SEC, HYPERION_QA_SALVOS } from "../SHIP/SHIP_ABILITIES.js";
 
 // Exerce les fonctions livrées sans démarrer une session ou un serveur réel.
@@ -102,7 +103,7 @@ function salvoHarness({ ammo = 'x4', stock = 100, pair = false } = {}) {
   // Load the actual firing, selection, queue and emission paths together.
   vm.runInContext('const isRsbLike = key => key === "x6" || key === "rcb";\n'
     + ['rsbLikeCooldown', 'ammoCount', 'setAmmo', 'consumeAmmo', 'countPlayerLasers',
-      'resolveAmmoMult', 'laserFitVsExtra', 'laserFitUnstableDelta', 'laserFitOverdrive',
+      'resolveAmmoMult', 'isBlacklightTargetType', 'laserFitVsExtra', 'laserFitUnstableDelta', 'laserFitOverdrive',
       'clearPendingSalvo', 'scheduleSalvoPart', 'spawnScheduledSalvo', 'spawnSalvoDecoy',
       'tickPendingSalvo', 'scheduleSwitchDecoys', 'tryFireOnce', 'startAttack', 'stopAttack',
       'fireQaSalvo', 'spawnQaSalvoPart',
@@ -269,6 +270,7 @@ test('HUD : un calcul du dock par image, actions immediates entre deux images', 
     currentCargo: () => 0, isOreTradeWindowOpen: () => false, canUseSkill: () => true,
     isPlayerCpuCloaked: () => false, getRsbPercent: () => 100, ammoCount: () => 0,
     netLatencyMs: () => 10, GAME_VERSION: 'test',
+    performance: { now: () => 0 }, lastDpsHudAt: 0,
     pulseCd: 0, ishCd: 0, smbCd: 0, cloakCd: 0,
     setHudText: noop, setHudClass: noop, updateConfigButtons: noop, updateResourceHud: noop,
     updateProgressHud: noop, updatePetHud: noop, updateWaveHud: noop,
@@ -277,7 +279,7 @@ test('HUD : un calcul du dock par image, actions immediates entre deux images', 
   const hudStart = engine.indexOf('function drawUI(');
   const hudEnd = engine.indexOf('\n// ============================================================', hudStart);
   assert.ok(hudStart >= 0 && hudEnd > hudStart);
-  vm.runInContext(['updateSkillUI', 'updateRepairUI'].map(name => engineFunction(name)).join('\n')
+  vm.runInContext(['formatPlaytime', 'formatRegDate', 'updateSkillUI', 'updateRepairUI'].map(name => engineFunction(name)).join('\n')
     + '\n' + engine.slice(hudStart, hudEnd), ctx);
   ctx.drawUI();
   assert.equal(dockUpdates, 1);
@@ -1050,7 +1052,7 @@ test('Maudite : Chaos Cubikon compte en contrats generaux, objectifs specifiques
 test('Maudite : parts groupe sur meme carte totalisent 100, hors carte et instances exclus', () => {
  const source=readFileSync(new URL('./MULTI_SERVER.js',import.meta.url),'utf8').replace(/\r\n/g,'\n');
  const members=[{id:'u_a',map:'MAUDITE',online:true},{id:'u_b',map:'maudite',online:true},{id:'u_c',map:'maudite',online:true},{id:'u_d',map:'1-7',online:true},{id:'u_e',map:'maudite',instance:true},{id:'u_f',map:'maudite',online:false}];
- const ctx=vm.createContext({socialDescribeGroup:()=>({members}),describePeer:()=>{},death:{uid:'cube',seq:1}});
+ const ctx=vm.createContext({isHalloweenBossVariant,socialDescribeGroup:()=>({members}),describePeer:()=>{},death:{uid:'cube',seq:1}});
  vm.runInContext(engineFunction('npcRewardShares',source),ctx);
  const shares=vm.runInContext('npcRewardShares("u_a","maudite",death)',ctx);
  assert.deepEqual(Array.from(shares,s=>s.pid),['u_a','u_b','u_c']);

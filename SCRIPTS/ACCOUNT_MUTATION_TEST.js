@@ -10,6 +10,7 @@ import { GALAXY_GATE_DEFINITIONS, normalizeGalaxyGateState } from "../SRC/CORE/G
 import { GALAXY_GATE_DRONE_DESIGN_DROPS } from '../SRC/CORE/GALAXY_GATES.js';
 import { CATALOG } from "../SRC/CORE/CATALOG.js";
 import { ORE_SELL_PRICES } from "../SRC/DATA/RESOURCES.js";
+import { normalizeBattlepassState } from "../QUEST/BATTLEPASS.js";
 
 for (const key of ["localStorage", "window", "CustomEvent"]) {
   Object.defineProperty(globalThis, key, { value: undefined, writable: true, configurable: true });
@@ -61,6 +62,23 @@ function session(t) {
   });
   return { ctx, original, flushes: () => flushes };
 }
+
+test("la sauvegarde réelle du moteur conserve le passe après remplacement du compte", t => {
+  const { ctx } = session(t);
+  ctx.account.user.battlepass = normalizeBattlepassState(null);
+  ctx.account.user.battlepass.progress.hw_kill_7 = 321;
+  ctx.account.user.battlepass.claimed.push("hw_kill_1");
+  ctx.saveProgressNowMeasured();
+  const saved = getCurrentUserFull();
+  assert.equal(saved.battlepass.progress.hw_kill_7, 321);
+  assert.deepEqual(saved.battlepass.claimed, ["hw_kill_1"]);
+  // Un ancien patch ne doit pas faire reculer la progression persistée.
+  const stale = normalizeBattlepassState(null);
+  stale.progress.hw_kill_7 = 20;
+  const result = updateCurrentUserProgress({ credits: saved.credits, battlepass: stale });
+  assert.equal(result.user.battlepass.progress.hw_kill_7, 321);
+  assert.deepEqual(result.user.battlepass.claimed, ["hw_kill_1"]);
+});
 
 test("achat d'essence : conserve gains, tirs, minerais et réparation PET avant l'autosave", t => {
   const { ctx, original, flushes } = session(t);

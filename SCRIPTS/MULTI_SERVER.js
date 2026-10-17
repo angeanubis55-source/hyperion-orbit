@@ -2001,6 +2001,7 @@ function awardNpcDeaths(mapId, deaths) {
     if (!killerId.startsWith("u_") || death.cause !== "gun") continue;
     const deathKey = npcDeathKey(mapId, death);
     if (rewardedNpcDeaths.has(deathKey)) continue;
+    const killerPseudo = String(findPeerState(killerId)?.pseudo || "");
     const isSunBoss = death.type === "npc_Invoke_XVI" || death.type === "npc_Mindfire_Behemoth" || isHalloweenBossVariant(death.type);
     const sunType = death.type === "npc_Mindfire_Behemoth" ? "Mindfire_Sun_Box"
       : death.type === "npc_Invoke_XVI" ? "Sun_Box"
@@ -2033,7 +2034,7 @@ function awardNpcDeaths(mapId, deaths) {
       }
       sendToPeer(share.pid, {
         t: "npcReward", map: String(mapId), uid: String(death.uid), seq: Number(death.seq) || 0,
-        killer: killerId, percent: share.percent, ...reward,
+        killer: killerId, killerPseudo, percent: share.percent, ...reward,
         x: Math.round(Number(death.x) || 0), y: Math.round(Number(death.y) || 0),
         sun: isSunBoss && share.sun === true, sunType,
         sunX: isSunBoss ? Math.round(Number(death.x) || 0) : 0,

@@ -63,11 +63,12 @@ test("Boss Cucurbitor : la part de 0.5 % d'un second attaquant est transmise san
   let received = null;
   c.api.setNetNpcRewardHandler(reward => { received = reward; });
   c.sockets[0].receive({ t: "npcReward", map: "1-3", uid: "boss", seq: 1,
-    type: "npc_Boss_Curcubitor_1_3", killer: "first", ownsKill: false,
+    type: "npc_Boss_Curcubitor_1_3", killer: "first", killerPseudo: "Mira", ownsKill: false,
     percent: .5, credits: 16384, exp: 2048, honor: 6 });
   assert.equal(received.percent, .5);
   assert.equal(received.ownsKill, false);
   assert.equal(received.credits, 16384);
+  assert.equal(received.killerPseudo, "Mira");
 });
 
 test("JPC : protection portail/base transmise, attaque refusee puis autorisee a la sortie", () => {

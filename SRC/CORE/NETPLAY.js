@@ -1220,6 +1220,7 @@ export function ensureNetplayConnection() {
         uid: String(msg.uid || ""),
         seq: Number(msg.seq) || 0,
         type: String(msg.type || ""), killer: String(msg.killer || ""),
+        killerPseudo: String(msg.killerPseudo || ""),
         x: Number(msg.x) || 0, y: Number(msg.y) || 0,
         credits: Math.max(0, Math.floor(Number(msg.credits) || 0)),
         exp: Math.max(0, Math.floor(Number(msg.exp) || 0)),

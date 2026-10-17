@@ -207,6 +207,7 @@ import {
 import {
   getBattlepassObjective,
   normalizeBattlepassState,
+  mergeBattlepassProgress,
   recordBattlepassProgress,
 } from "../../QUEST/BATTLEPASS.js";
 import {
@@ -16117,7 +16118,6 @@ function advanceQuestProgress(kind, type, amount = 1, context = null) {
   // AVANT le return anticipé : le passe compte même sans quête active.
   try { advanceBattlepassProgress(kind, type, amount); } catch {}
   if (!advanced.length) return;
-  if (!advanced.length) return;
   markProgressDirty();
 
   for (const id of advanced) {
@@ -16151,6 +16151,8 @@ function advanceBattlepassProgress(kind, type, amount = 1) {
   u.battlepass = normalizeBattlepassState(u.battlepass);
   const res = recordBattlepassProgress(u.battlepass, kind, type, amount);
   if (!res.advanced.length) return;
+  const live = netList()[0];
+  if (live && live.id === u.id && live !== u) live.battlepass = mergeBattlepassProgress(u.battlepass, live.battlepass);
   markProgressDirty();
   for (const id of res.completed) {
     const def = getBattlepassObjective(id);
@@ -16337,6 +16339,7 @@ function saveProgressNowMeasured() {
   const result = updateCurrentUserProgress({
   credits: player.credits,
   quests: questState,
+  battlepass: account.user.battlepass,
   stats: { ...(account.user.stats || {}) },
   inventory: { resources: { ...(account.user.inventory?.resources || {}) } },
   drones: account.user.drones,
@@ -16804,6 +16807,9 @@ function syncPlayerFromAccount() {
   const fresh = getCurrentUserFull();
   if (!fresh) return false;
 
+  if (fresh.id === account.user?.id && account.user.battlepass) {
+    fresh.battlepass = mergeBattlepassProgress(account.user.battlepass, fresh.battlepass);
+  }
   account.user = preserveLivePetVitals(account.user, fresh);
   // Synchronise aussi le journal des missions lors d'un refresh ou d'une
   // reconnexion (le moteur peut avoir été créé avant le compte).
@@ -27598,6 +27604,7 @@ function killRewards(e) {
     // evite de normaliser tous les hangars/inventaires pendant chaque kill.
     const currentAccountUser = preserveLivePetVitals(account.user, netList()[0] || getCurrentUserFull());
     if (currentAccountUser && (!account.user || String(currentAccountUser.id) === String(account.user.id))) {
+      if (account.user?.battlepass) currentAccountUser.battlepass = mergeBattlepassProgress(account.user.battlepass, currentAccountUser.battlepass);
       account.user = currentAccountUser;
     } else if (!account.user) {
       loadAccountUser();
@@ -27659,14 +27666,14 @@ function killRewards(e) {
   const whiteTerms = [];
   const violetTerms = [];
   const npcName = String(NPC_TYPES[e.type]?.name || e.type || "NPC").replace(/^npc_/i, "");
-  const isSharedGroupKill = !!e._netUid && e._netLootOwner !== true;
+  const isSharedGroupKill = !!e._netUid && (serverReward ? serverReward.ownsKill !== true : e._netLootOwner !== true);
   const groupKiller = isSharedGroupKill
     ? getNetGroup()?.members?.find(member => String(member.id) === String(e._netKillerId || ""))
     : null;
-  const killerPseudo = String(e._netKillerPseudo || groupKiller?.pseudo || "Pilote");
+  const killerPseudo = String(serverReward?.killerPseudo || e._netKillerPseudo || groupKiller?.pseudo || "").trim();
   const killLabel = isSharedGroupKill
-    ? `Le pilote ${killerPseudo} a éliminé ${npcName}`
-    : `${npcName} éliminé`;
+    ? (killerPseudo ? `Le pilote ${killerPseudo} a éliminé ${npcName}` : `Un autre pilote a éliminé ${npcName}`)
+    : `Vous avez éliminé ${npcName}`;
   // Drops directs (rinusk, traceur...) déjà attribués dans le balayage :
   // fusionnés dans ce toast (un 2e groupe écraserait celui-ci).
   const directLines = Array.isArray(e._directDropLines) ? e._directDropLines.filter(Boolean).map(String) : [];
@@ -27887,6 +27894,7 @@ function processDeaths() {
 
 function applyNetNpcReward(reward) {
   if (reward._progressApplied === true) return;
+  if (!account.user) loadAccountUser();
   const currentMap = String(window.__CURRENT_MAP_ID__ || "").toLowerCase();
   const existing = reward.map === currentMap ? enemies.find(e => e?._netUid === reward.uid
     && (Number(e._netSeq) || 0) === (Number(reward.seq) || 0)) : null;
@@ -27897,10 +27905,15 @@ function applyNetNpcReward(reward) {
     isJpcBot: /^npc_Jpc_/i.test(reward.type),
   };
   e._netReward = reward;
+  e._netLootOwner = reward.ownsKill === true;
+  e._netKillerId = reward.killer;
+  e._netKillerPseudo = reward.killerPseudo || "";
   if (!e.type) return;
+  // Adopter le compte courant avant de modifier les quêtes et le passe.
+  // Une sauvegarde peut avoir remplacé l'objet depuis le kill précédent.
+  measureGameTask("npcDeath.rewards", () => killRewards(e));
   measureGameTask("npcDeath.quests", () => advanceQuestProgress("kill", e.type, 1, { map: reward.map }));
   if (e.isJpcBot === true) advanceQuestProgress("pvp", "pvp", 1, { map: reward.map });
-  measureGameTask("npcDeath.rewards", () => killRewards(e));
   reward._progressApplied = true;
   try { onStockpileNpcKill(); } catch {}
   // La phase Halloween multijoueur est comptée par le serveur.
@@ -28132,6 +28145,7 @@ if ((e.type === "npc_Cubikon" || e.cubikonMinions) && e.cubikonMinions?.fleeOnDe
    // }
 
     if (!e.noRewards && e._netReward?._progressApplied !== true) {
+      measureGameTask("npcDeath.rewards", () => killRewards(e));
       measureGameTask("npcDeath.quests", () => advanceQuestProgress("kill", e.type));
       // Bots JPC : ce sont des pilotes (plaque joueur, pseudo, grade BOT) —
       // leur destruction compte aussi pour les quêtes "tuer des joueurs".
@@ -28139,7 +28153,6 @@ if ((e.type === "npc_Cubikon" || e.cubikonMinions) && e.cubikonMinions?.fleeOnDe
       if (e.isJpcBot === true) {
         measureGameTask("npcDeath.questsJpc", () => advanceQuestProgress("pvp", "pvp"));
       }
-      measureGameTask("npcDeath.rewards", () => killRewards(e));
       if (e._netReward) e._netReward._progressApplied = true;
       try { onStockpileNpcKill(); } catch {}
       try { onHalloweenNpcKilled(e); } catch {}
@@ -42438,6 +42451,7 @@ function saveStateImmediate(opts = {}) {
 updateCurrentUserProgress({
   credits: player.credits,
   quests: questState,
+  battlepass: account.user.battlepass,
   stats: { ...(account.user.stats || {}) },
   inventory: { resources: { ...(account.user.inventory?.resources || {}) } },
   drones: account.user.drones,

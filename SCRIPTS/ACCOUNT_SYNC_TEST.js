@@ -7,6 +7,7 @@ import { normalizePilotSkills, canInvestPilotSkill, LOGDISK_PRICE, LOGDISK_PACK 
 import { planAutoUpgradeCharges, UPGRADE_SLOT_ORES, upgradeOreCapacity } from '../SRC/DATA/RESOURCES.js';
 import { CRAFTING_ENABLED, getCraftingRecipe } from '../SRC/DATA/CRAFTING.js';
 import { isOreResource } from '../SRC/DATA/RESOURCES.js';
+import { mergeBattlepassProgress, normalizeBattlepassState } from '../QUEST/BATTLEPASS.js';
 
 const source = readFileSync(new URL("../SRC/CORE/ACCOUNT_NET.js", import.meta.url), "utf8").replace(/^import .*;\r?\n/gm, "").replace(/^export /gm, "");
 const account = readFileSync(new URL("../SRC/CORE/ACCOUNT.js", import.meta.url), "utf8");
@@ -220,7 +221,7 @@ test("modules : purger les anciens items conserve une liste valide en place", ()
 
 function client(storage = new Map()) {
   const requests = [], timers = new Map(), listeners = new Map(); let timerId = 0;
-  const api = vm.createContext({ structuredClone, AbortController, performance,
+  const api = vm.createContext({ structuredClone, AbortController, performance, mergeBattlepassProgress,
     localStorage: { getItem: k => storage.get(k) ?? null, setItem: (k, v) => storage.set(k, v), removeItem: k => storage.delete(k) },
     window: { addEventListener: (type, fn) => listeners.set(type, fn), dispatchEvent: event => listeners.get(event.type)?.(event) },
     CustomEvent: class { constructor(type, options = {}) { this.type = type; this.detail = options.detail; } },
@@ -244,6 +245,25 @@ function client(storage = new Map()) {
   };
   return { api, requests, storage, timers, mutate, conflict, accept, refresh, current: () => api.netList()[0] };
 }
+
+test("le passe et les objectifs réclamés survivent aux conflits puis au rechargement", async () => {
+  const c = client(), initial = user();
+  initial.battlepass = normalizeBattlepassState(null);
+  initial.battlepass.progress.hw_kill_7 = 10;
+  c.api.enterNetMode("token", structuredClone(initial));
+  c.mutate(u => {
+    u.battlepass.progress.hw_kill_7 = 321;
+    u.battlepass.claimed.push("hw_kill_1");
+  });
+  await c.conflict({ ...initial, revision: 10 });
+  assert.equal(c.current().battlepass.progress.hw_kill_7, 321);
+  assert.deepEqual(plain(c.current().battlepass.claimed), ["hw_kill_1"]);
+  await c.accept();
+  const reloaded = client(new Map(c.storage));
+  assert.equal(reloaded.api.bootNetFromCache(), true);
+  assert.equal(reloaded.current().battlepass.progress.hw_kill_7, 321);
+  assert.deepEqual(plain(reloaded.current().battlepass.claimed), ["hw_kill_1"]);
+});
 
 function wireLogout(c) {
   const start = account.indexOf("export async function logout("), end = account.indexOf("\n}", start) + 2;

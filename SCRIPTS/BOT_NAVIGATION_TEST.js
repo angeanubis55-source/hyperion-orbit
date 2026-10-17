@@ -403,7 +403,7 @@ function autoCloakContext() {
   const user = { credits: 60000 };
   Object.assign(c, { started: true, player: { dead: false, credits: 60000, cpuCloak: false },
     cloakCd: 0, CPU_CLOAK_COST: 30000, CPU_CLOAK_COOLDOWN: 1, enemies: [],
-    currentMapId: () => '1-7', isPlayerCloaked: () => false,
+    window: { __CURRENT_MAP_ID__: '1-7' }, currentMapId: () => '1-7', isPlayerCloaked: () => false,
     isPlayerCpuCloaked: () => c.player.cpuCloak === true, persistCpuCloak: () => {},
     account: { user }, getCurrentUserFull: () => user, markProgressDirty: () => {},
     purchases: [], noteNetPurchase: amount => c.purchases.push(amount),
@@ -413,7 +413,8 @@ function autoCloakContext() {
   const locks = source.slice(source.indexOf('function botNpcLockKey('), source.indexOf('function botLockNpc('));
   const auto = source.slice(source.indexOf('function botQueueCloakAfterKill('), source.indexOf('function tickBot('));
   const cpu = source.slice(source.indexOf('function toggleCpuCloak('), source.indexOf('function activatePoliceCloak('));
-  vm.runInContext(locks + auto + cpu, c);
+  const cloakMaps = source.slice(source.indexOf('const NO_CLOAK_MAPS ='), source.indexOf('function stripCloakForNoCloakMap('));
+  vm.runInContext(cloakMaps + locks + auto + cpu, c);
   return c;
 }
 

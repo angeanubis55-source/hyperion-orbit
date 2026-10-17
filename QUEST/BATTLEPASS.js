@@ -26,19 +26,34 @@ export const BATTLEPASS_OBJECTIVES = Object.freeze([
   obj("hw_boss_4", "Éliminer 25 Boss Curcubitors", "kill", "npc_Boss_Curcubitor", 25, 25),
   obj("hw_boss_5", "Éliminer 50 Boss Curcubitors", "kill", "npc_Boss_Curcubitor", 50, 40),
   obj("hw_boss_6", "Éliminer 100 Boss Curcubitors", "kill", "npc_Boss_Curcubitor", 100, 60),
+  obj("hw_boss_7", "Éliminer 250 Boss Curcubitors", "kill", "npc_Boss_Curcubitor", 250, 90),
+  obj("hw_boss_8", "Éliminer 500 Boss Curcubitors", "kill", "npc_Boss_Curcubitor", 500, 120),
   obj("hw_candy_1", "Collecter 50 bonbons", "collect", "candy", 50, 2),
   obj("hw_candy_2", "Collecter 200 bonbons", "collect", "candy", 200, 5),
   obj("hw_candy_3", "Collecter 500 bonbons", "collect", "candy", 500, 10),
   obj("hw_candy_4", "Collecter 1500 bonbons", "collect", "candy", 1500, 20),
+  obj("hw_candy_5", "Collecter 5000 bonbons", "collect", "candy", 5000, 30),
+  obj("hw_candy_6", "Collecter 25000 bonbons", "collect", "candy", 25000, 45),
+  obj("hw_candy_7", "Collecter 100000 bonbons", "collect", "candy", 100000, 60),
   obj("hw_gold_1", "Collecter 10 bonbons dorés", "collect", "candy_golden", 10, 3),
   obj("hw_gold_2", "Collecter 30 bonbons dorés", "collect", "candy_golden", 30, 8),
   obj("hw_gold_3", "Collecter 75 bonbons dorés", "collect", "candy_golden", 75, 15),
   obj("hw_gold_4", "Collecter 200 bonbons dorés", "collect", "candy_golden", 200, 25),
+  obj("hw_gold_5", "Collecter 1000 bonbons dorés", "collect", "candy_golden", 1000, 35),
+  obj("hw_gold_6", "Collecter 5000 bonbons dorés", "collect", "candy_golden", 5000, 50),
+  obj("hw_gold_7", "Collecter 15000 bonbons dorés", "collect", "candy_golden", 15000, 70),
+  obj("hw_gold_8", "Collecter 50000 bonbons dorés", "collect", "candy_golden", 50000, 90),
   obj("hw_pump_1", "Ramasser 10 Pumpkin Box", "collect", "Pumpkin_Box", 10, 2),
   obj("hw_pump_2", "Ramasser 50 Pumpkin Box", "collect", "Pumpkin_Box", 50, 6),
+  obj("hw_pump_3", "Ramasser 150 Pumpkin Box", "collect", "Pumpkin_Box", 150, 12),
+  obj("hw_pump_4", "Ramasser 500 Pumpkin Box", "collect", "Pumpkin_Box", 500, 20),
+  obj("hw_pump_5", "Ramasser 1500 Pumpkin Box", "collect", "Pumpkin_Box", 1500, 35),
   obj("hw_cucu_1", "Ramasser 10 Box de Cucurbitors", "collect", ["Cucurbitor_Box", "Boss_Cucurbitor_Box"], 10, 2),
   obj("hw_cucu_2", "Ramasser 30 Box de Cucurbitors", "collect", ["Cucurbitor_Box", "Boss_Cucurbitor_Box"], 30, 5),
   obj("hw_cucu_3", "Ramasser 100 Box de Cucurbitors", "collect", ["Cucurbitor_Box", "Boss_Cucurbitor_Box"], 100, 12),
+  obj("hw_cucu_4", "Ramasser 300 Box de Cucurbitors", "collect", ["Cucurbitor_Box", "Boss_Cucurbitor_Box"], 300, 20),
+  obj("hw_cucu_5", "Ramasser 800 Box de Cucurbitors", "collect", ["Cucurbitor_Box", "Boss_Cucurbitor_Box"], 800, 30),
+  obj("hw_cucu_6", "Ramasser 1500 Box de Cucurbitors", "collect", ["Cucurbitor_Box", "Boss_Cucurbitor_Box"], 1500, 45),
   obj("hw_dmg_1", "Infliger 1 000 000 de dégâts aux NPC", "dmg", "npc", 1000000, 3),
   obj("hw_dmg_2", "Infliger 10 000 000 de dégâts aux NPC", "dmg", "npc", 10000000, 6),
   obj("hw_dmg_3", "Infliger 100 000 000 de dégâts aux NPC", "dmg", "npc", 100000000, 12),
@@ -69,6 +84,13 @@ export function normalizeBattlepassState(raw) {
     ? obj.claimed.map(String).filter((id) => getBattlepassObjective(id))
     : [];
   return { eventId: BATTLEPASS_EVENT_ID, progress, claimed };
+}
+
+export function mergeBattlepassProgress(local, persisted) {
+  const a = normalizeBattlepassState(local), b = normalizeBattlepassState(persisted);
+  const progress = {};
+  for (const def of BATTLEPASS_OBJECTIVES) progress[def.id] = Math.max(a.progress[def.id], b.progress[def.id]);
+  return { eventId: BATTLEPASS_EVENT_ID, progress, claimed: [...new Set([...a.claimed, ...b.claimed])] };
 }
 
 // Types alimentés par un événement (kind, type) : les variantes Halloween

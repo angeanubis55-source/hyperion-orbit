@@ -121,6 +121,7 @@ ZoneNpcSim.create = async function(mapId, saved) {
   for (const reward of laterRewards) {
     assert.equal(reward.ownsKill, false, "le premier attaquant garde le crédit personnel du kill");
     assert.equal(reward.killer, `u_${firstAccount.user.id}`);
+    assert.equal(reward.killerPseudo, "boss-first");
     assert.equal(reward.credits, Math.floor(pool.credits * reward.percent / 100));
     assert.equal(reward.exp, Math.floor(pool.exp * reward.percent / 100));
     assert.equal(reward.honor, Math.floor(pool.honor * reward.percent / 100));

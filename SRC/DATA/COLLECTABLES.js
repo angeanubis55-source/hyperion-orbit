@@ -458,16 +458,16 @@ export const COLLECTABLE_TYPES = Object.freeze({
       glow: false,
     },
     exclusiveRewards: [
-      { weight: 15, reward: { credits: [15000, 30000] } },
-      { weight: 10, reward: { galaxyEnergy: [15, 45] } },
-      { weight: 28, reward: { ammo: { x2: [120, 360] } } },
-      { weight: 18, reward: { ammo: { x3: [60, 180] } } },
-      { weight: 14, reward: { ammo: { sab: [30, 150] } } },
-      { weight: 10, reward: { rockets: { plt2021: [12, 48] } } },
-      { weight: 3, reward: { ammo: { x4: [30, 90] } } },
+      { weight: 150, reward: { credits: [15000, 30000] } },
+      { weight: 100, reward: { galaxyEnergy: [10, 29] } },
+      { weight: 280, reward: { ammo: { x2: [120, 360] } } },
+      { weight: 180, reward: { ammo: { x3: [60, 180] } } },
+      { weight: 140, reward: { ammo: { sab: [30, 150] } } },
+      { weight: 100, reward: { rockets: { plt2021: [12, 48] } } },
+      { weight: 30, reward: { ammo: { x4: [30, 90] } } },
       // Bonbons rares en pumpkin (la source principale = les box des NPC).
-      { weight: 2, reward: { resources: { candy: [1, 3], candy_golden: [1, 3] } } },
-      // Clé du passe : très très rare (jamais doublée par les boosters).
+      { weight: 20, reward: { resources: { candy: [1, 3], candy_golden: [1, 3] } } },
+      // Clé du passe : 0,1 % (jamais doublée par les boosters).
       { weight: 1, reward: { resources: { battlepass_key: [1, 1] } } },
     ],
   },
