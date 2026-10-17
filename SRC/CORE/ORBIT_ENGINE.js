@@ -1217,6 +1217,27 @@ const ui = {
 
 const ACTION_BAR_LAYOUT_KEY = "orbit_action_bar_layout_v2";
 
+// Valeurs proposées dans le dock rapide (jamais Passif) : Combat + gears.
+// (Défini ici car initializeCustomActionBar() s'exécute avant la suite du module.)
+const PET_DOCK_MODE_VALUES = Object.freeze(["combat", "gear:al", "gear:ar", "gear:el", "gear:rep", "gear:kk", "gear:tra", "gear:fs", "gear:hpl", "gear:bc", "gear:bh"]);
+
+// Techs affichées dans l'onglet TECH du dock (visuel seul pour l'instant ;
+// Anti-AI et Burning Trail exclus). Une image par tech, pas de déclinaison.
+const TECH_DOCK_ITEMS = Object.freeze([
+  { id: "anti-mine-transmitter", label: "Anti-Mine Transmitter", icon: "ASSETS/CONTROL_MENU/TECH_ANTI-MINE-TRANSMITTER.PNG" },
+  { id: "backup-shields", label: "Backup Shields", icon: "ASSETS/CONTROL_MENU/TECH_BACKUP-SHIELDS.PNG" },
+  { id: "battle-repair-bot", label: "Battle Repair Bot", icon: "ASSETS/CONTROL_MENU/TECH_BATTLE-REPAIR-BOT.PNG" },
+  { id: "battle-repair-bot-2", label: "Battle Repair Bot 2", icon: "ASSETS/CONTROL_MENU/TECH_BATTLE-REPAIR-BOT2.PNG" },
+  { id: "chain-impulse", label: "Chain Impulse", icon: "ASSETS/CONTROL_MENU/TECH_CHAIN-IMPULSE.PNG" },
+  { id: "energy-leech", label: "Energy Leech", icon: "ASSETS/CONTROL_MENU/TECH_ENERGY-LEECH.PNG" },
+  { id: "explosive-charging-blob", label: "Explosive Charging Blob", icon: "ASSETS/CONTROL_MENU/TECH_EXPLOSIVE-CHARGING-BLOB.PNG" },
+  { id: "frost-field", label: "Frost Field", icon: "ASSETS/CONTROL_MENU/TECH_FROST-FIELD.PNG" },
+  { id: "npc-nuke", label: "NPC Nuke", icon: "ASSETS/CONTROL_MENU/TECH_NPC-NUKE.PNG" },
+  { id: "precision-targeter", label: "Precision Targeter", icon: "ASSETS/CONTROL_MENU/TECH_PRECISION-TARGETER.PNG" },
+  { id: "shield-backup-2", label: "Shield Backup 2", icon: "ASSETS/CONTROL_MENU/TECH_SHIELD-BACKUP2.PNG" },
+  { id: "speed-burst", label: "Speed Burst", icon: "ASSETS/CONTROL_MENU/TECH_SPEED-BURST.PNG" },
+]);
+
 // Bascule du menu du dock rapide (palette), accessible au clavier (TAB par défaut).
 let toggleActionDockMenu = null;
 // Re-rend l'onglet actif de la palette (ex : Aptitudes après changement de vaisseau).
@@ -7342,7 +7363,7 @@ function initializeCustomActionBar() {
   const palette = document.createElement("div");
   palette.className = "actionPalette";
   palette.hidden = true;
-  palette.innerHTML = `<nav><button class="active" data-action-category="ammo">Munitions</button><button data-action-category="rockets">Roquettes</button><button data-action-category="launchers">Lance-roquettes</button><button data-action-category="formations">Formations</button><button data-action-category="skills">Extras</button><button data-action-category="abilities">Aptitudes</button></nav><div class="actionPaletteItems"></div>`;
+  palette.innerHTML = `<div class="actionPaletteItems"></div><nav><button class="active" data-action-category="ammo" title="Munitions" aria-label="Munitions">Munitions</button><button data-action-category="rockets" title="Roquettes" aria-label="Roquettes">Roquettes</button><button data-action-category="launchers" title="Lance-roquettes" aria-label="Lance-roquettes">Lance-roquettes</button><button data-action-category="formations" title="Formations" aria-label="Formations">Formations</button><button data-action-category="skills" title="Extras" aria-label="Extras">Extras</button><button data-action-category="abilities" title="Aptitudes" aria-label="Aptitudes">Aptitudes</button><button data-action-category="pet" title="PET" aria-label="PET">PET</button><button data-action-category="tech" title="Tech" aria-label="Tech">Tech</button></nav>`;
   const toggle = document.createElement("button");
   toggle.type = "button"; toggle.className = "actionPaletteToggle"; toggle.textContent = "⌃"; toggle.title = "Configurer la barre rapide";
   const byId = new Map(actions.map((button) => {
@@ -7458,6 +7479,23 @@ function initializeCustomActionBar() {
     };
     button.addEventListener("dragstart", event => { event.dataTransfer.setData("application/x-orbit-action", button.dataset.actionId); event.dataTransfer.effectAllowed = "move"; });
     byId.set(button.dataset.actionId, button);
+    return button;
+  });
+
+  // Onglet PET du dock : Combat + gears équipés (jamais Passif), comme le
+  // menu Mode de la fenêtre P.E.T. Originaux persistants (byId) : restaurés
+  // dans les slots comme les roquettes, clonés dans la palette.
+  const petModeButtons = PET_DOCK_MODE_VALUES.map((value) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "rocketQuickAction petModeAction dockAction";
+    button.dataset.actionCategory = "pet";
+    const actionId = `petmode:${value}`;
+    button.dataset.actionId = actionId;
+    button.draggable = true;
+    button.onclick = () => applyPetModeValue(value);
+    button.addEventListener("dragstart", event => { event.dataTransfer.setData("application/x-orbit-action", actionId); event.dataTransfer.effectAllowed = "move"; });
+    byId.set(actionId, button);
     return button;
   });
 
@@ -8203,6 +8241,42 @@ function initializeCustomActionBar() {
       clone.addEventListener("dragstart", event => { event.dataTransfer.setData("application/x-orbit-action", button.dataset.actionId); event.dataTransfer.effectAllowed = "copy"; });
       paletteItems.appendChild(clone);
       });
+    }
+    else if (category === "pet") {
+      // Comme le menu Mode de la fenêtre P.E.T (images + compte à rebours),
+      // sauf Passif (jamais proposé dans le dock). Clic = activation directe.
+      const { opts, want, has } = petModeEntries();
+      const dockOpts = opts.filter((o) => o.value !== "passive");
+      if (!has) {
+        const empty = document.createElement("div");
+        empty.className = "abilityEmpty";
+        empty.textContent = "P.E.T non possédé";
+        paletteItems.appendChild(empty);
+      }
+      for (const o of dockOpts) {
+        const original = byId.get(`petmode:${o.value}`);
+        if (!original) continue;
+        paintPetModeNode(original, o, want);
+        const clone = original.cloneNode(true);
+        clone.draggable = true;
+        clone.dataset.actionId = original.dataset.actionId;
+        clone.addEventListener("dragstart", event => { event.dataTransfer.setData("application/x-orbit-action", clone.dataset.actionId); });
+        clone.onclick = () => original.click();
+        paletteItems.appendChild(clone);
+      }
+    }
+    else if (category === "tech") {
+      // Visuel seul pour l'instant (branchement à venir) : Anti-AI et
+      // Burning Trail exclus.
+      for (const t of TECH_DOCK_ITEMS) {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "rocketQuickAction techAction dockAction";
+        btn.innerHTML = `<img src="${t.icon}" alt=""><strong>${escapeHtml(t.label)}</strong>`;
+        btn.title = `${t.label} — bientôt disponible`;
+        btn.onclick = () => showToast(`${t.label} : bientôt disponible`, 1.2);
+        paletteItems.appendChild(btn);
+      }
     }
     else actions.filter((button) => {
       if (category === "ammo") {
@@ -13411,6 +13485,108 @@ function shortGearLabel(label) {
   return (parts.length > 1 ? parts[parts.length - 1] : parts[0] || "").trim() || String(label || "");
 }
 
+// Icônes CONTROL_MENU des gears dans la liste déroulante Mode du P.E.T
+// (une image par famille, comme la boutique : pas de déclinaison par niveau).
+const PET_GEAR_DROPDOWN_ICON = Object.freeze({
+  al: "ASSETS/CONTROL_MENU/EQUIPMENT_PETGEAR_G-AL1.PNG",
+  ar: "ASSETS/CONTROL_MENU/EQUIPMENT_PETGEAR_G-AR1.PNG",
+  el: "ASSETS/CONTROL_MENU/EQUIPMENT_PETGEAR_G-EL1.PNG",
+  rep: "ASSETS/CONTROL_MENU/EQUIPMENT_PETGEAR_G-REP1.PNG",
+  kk: "ASSETS/CONTROL_MENU/EQUIPMENT_PETGEAR_G-KK1.PNG",
+  tra: "ASSETS/CONTROL_MENU/EQUIPMENT_PETGEAR_G-TRA1.PNG",
+  fs: "ASSETS/CONTROL_MENU/EQUIPMENT_PETGEAR_G-FS1.PNG",
+  hpl: "ASSETS/CONTROL_MENU/EQUIPMENT_PETGEAR_G-HPL1.PNG",
+  bc: "ASSETS/CONTROL_MENU/EQUIPMENT_PETGEAR_G-BC1.PNG",
+  bh: "ASSETS/CONTROL_MENU/EQUIPMENT_PETGEAR_G-BH1.PNG",
+});
+
+// Icônes des 2 modes de base dans la liste déroulante Mode du P.E.T.
+const PET_MODE_PASSIVE_ICON = "ASSETS/CONTROL_MENU/EQUIPMENT_PETGEAR_A.png";
+const PET_MODE_COMBAT_ICON = "ASSETS/CONTROL_MENU/EQUIPMENT_PETGEAR_CGM-02.PNG";
+
+// Entrées du sélecteur de comportement P.E.T (fenêtre + onglet dock) :
+// { opts: [{ value, label, disabled, icon }], want, has }.
+// want = valeur active ("passive", "combat" ou "gear:xx").
+function petModeEntries() {
+  const pet = account.user?.pet?.owned === true ? account.user.pet : null;
+  const has = !!pet;
+  const mode = normalizePetMode(pet?.mode);
+  const equipped = has ? petEquippedGearOptions() : [];
+  // Gears à cooldown (TRA, FS, KK, HPL, bouées) : option grisée + compte à rebours.
+  const cdFloat = { tra: Math.max(0, Number(traCooldownLeftSec()) || 0), fs: Math.max(0, Number(fsCooldownLeftSec()) || 0), kk: Math.max(0, Number(kkCooldownLeftSec()) || 0), hpl: Math.max(0, Number(hplCooldownLeftSec()) || 0), bc: Math.max(0, Number(buoyCooldownLeftSec("bc")) || 0), bh: Math.max(0, Number(buoyCooldownLeftSec("bh")) || 0) };
+  const cdLeft = { tra: Math.ceil(cdFloat.tra), fs: Math.ceil(cdFloat.fs), kk: Math.ceil(cdFloat.kk), hpl: Math.ceil(cdFloat.hpl), bc: Math.ceil(cdFloat.bc), bh: Math.ceil(cdFloat.bh) };
+  const cdMaxFor = (key, level) => {
+    const l = Math.max(1, Math.floor(Number(level) || 0));
+    try {
+      if (key === "tra") return Math.max(1, Number(getPetTradeCooldownSec(l)) || 0);
+      if (key === "fs") return Math.max(1, Number(getPetSacrificeCooldownSec(l)) || 0);
+      if (key === "kk") return Math.max(1, Number(getPetKamikazeCooldownSec(l)) || 0);
+      if (key === "hpl") return Math.max(1, Number(PET_GEAR_HPLINK_COOLDOWN_SEC) || 0);
+      if (key === "bc" || key === "bh") return Math.max(1, Number(PET_BUOY_COOLDOWN_SEC) || 0);
+    } catch {}
+    return 0;
+  };
+  const opts = [
+    { value: "passive", label: "Passif", disabled: !has, icon: PET_MODE_PASSIVE_ICON },
+    { value: "combat", label: "Combat", disabled: !has, icon: PET_MODE_COMBAT_ICON },
+  ].concat(equipped.map((e) => {
+    const key = String(e.key || "").toLowerCase();
+    const left = Number(cdLeft[key]) || 0;
+    const short = shortGearLabel(e.label);
+    return {
+      value: `gear:${key}`,
+      label: left > 0 ? `${short} (${left} s)` : short,
+      short,
+      disabled: left > 0,
+      icon: PET_GEAR_DROPDOWN_ICON[key] || "",
+      cd: Math.max(0, Number(cdFloat[key]) || 0),
+      cdMax: cdMaxFor(key, e.level),
+    };
+  }));
+  const activeKey = petActiveGearKey();
+  let want = activeKey ? `gear:${activeKey}` : mode;
+  // Sessions actives non persistées en activeGear (bouées, lien HP, kamikaze) :
+  // affichées comme comportement courant, dans la fenêtre comme dans le dock.
+  try {
+    if (!activeKey) {
+      if (traWindowActive()) want = "gear:tra";
+      else if (hplLinkActive()) want = "gear:hpl";
+      else if (buoySessionActive() && petBuoy.key) want = `gear:${String(petBuoy.key).toLowerCase()}`;
+      else if (kkRunActive()) want = "gear:kk";
+    }
+  } catch {}
+  return { opts, want, has };
+}
+
+// Peint un bouton de mode P.E.T (slots + palette) : image + libellé + état.
+// Ne touche au DOM que si quelque chose a changé (sig).
+function paintPetModeNode(el, entry, want) {
+  const active = entry.value === want;
+  // Bouton réellement grisé seulement si indisponible (pas de P.E.T / gear
+  // retiré) : pendant un cooldown il reste cliquable (le clic refuse avec
+  // un message) pour ne pas griser le voile.
+  const dis = entry.disabled === true && !(Number(entry.cd) > 0);
+  // Structure (image + état) : reconstruite uniquement si elle change
+  // (pas de flicker d'icône à chaque seconde comme les autres slots).
+  const struct = `${entry.value}|${entry.icon || ""}|${dis ? "d" : ""}|${active ? "a" : ""}`;
+  if (el.dataset.petStruct !== struct) {
+    el.dataset.petStruct = struct;
+    el.innerHTML = `${entry.icon ? `<img src="${entry.icon}" alt="">` : ""}<strong></strong><small class="petModeCd"></small>`;
+    el.disabled = dis;
+    el.classList.toggle("active", active);
+  }
+  const tip = `P.E.T : ${entry.label} — clic pour activer`;
+  if (el.title !== tip) el.title = tip;
+  // Libellé court dans le slot (sans le compte à rebours) + secondes
+  // restantes en surimpression, comme le compteur des aptitudes.
+  const strong = el.querySelector("strong");
+  const clean = entry.short || entry.label;
+  if (strong && strong.textContent !== clean) strong.textContent = clean;
+  const cdSmall = el.querySelector(".petModeCd");
+  const cdTxt = Number(entry.cd) > 0 ? `${Math.ceil(Number(entry.cd))}s` : "";
+  if (cdSmall && cdSmall.textContent !== cdTxt) cdSmall.textContent = cdTxt;
+}
+
 // Un seul comportement à la fois : Passif, Mode combat ou un gear équipé.
 function applyPetModeValue(v) {
     const pet = account.user?.pet?.owned === true ? account.user.pet : null;
@@ -13632,35 +13808,26 @@ function updatePetHud() {
   }
   // Menu custom Mode (+ gears équipés, noms boutique, un seul choix actif).
   if (ui.petModeBtn && ui.petModeList) {
-    const mode = normalizePetMode(pet?.mode);
-    const equipped = has ? petEquippedGearOptions() : [];
-    // Gears à cooldown (TRA, FS, KK, HPL, bouées) : option grisée + compte à rebours.
-    const cdLeft = { tra: Math.ceil(traCooldownLeftSec()), fs: Math.ceil(fsCooldownLeftSec()), kk: Math.ceil(kkCooldownLeftSec()), hpl: Math.ceil(hplCooldownLeftSec()), bc: Math.ceil(buoyCooldownLeftSec("bc")), bh: Math.ceil(buoyCooldownLeftSec("bh")) };
-    const opts = [{ value: "passive", label: "Passif" }, { value: "combat", label: "Combat" }]
-      .concat(equipped.map((e) => {
-        const left = Number(cdLeft[e.key]) || 0;
-        const short = shortGearLabel(e.label);
-        return {
-          value: `gear:${e.key}`,
-          label: left > 0 ? `${short} (${left} s)` : short,
-          disabled: left > 0,
-        };
-      }));
-    const activeKey = petActiveGearKey();
-    const want = activeKey ? `gear:${activeKey}` : mode;
+    const { opts, want } = petModeEntries();
     const wantOpt = opts.find((o) => o.value === want) || opts[0];
     // Libellés inclus : le compte à rebours (Xs) reconstruit chaque seconde.
-    const sig = `${mode}|${opts.map((o) => `${o.value}=${o.label}`).join(",")}`;
+    const sig = `${want}|${opts.map((o) => `${o.value}=${o.label}`).join(",")}`;
     if (sig !== lastPetModeSig) {
       lastPetModeSig = sig;
-      ui.petModeList.innerHTML = opts.map((o) =>
-        `<button type="button" data-value="${escapeHtml(o.value)}"${o.disabled ? " disabled" : ""}>${escapeHtml(o.label)}</button>`
-      ).join("");
+      ui.petModeList.innerHTML = opts.map((o) => {
+        const img = o.icon ? `<img class="petModeIcon" src="${o.icon}" alt="">` : "";
+        return `<button type="button" data-value="${escapeHtml(o.value)}"${o.disabled ? " disabled" : ""}>${img}${escapeHtml(o.label)}</button>`;
+      }).join("");
     }
     for (const b of ui.petModeList.querySelectorAll("button[data-value]")) {
       b.classList.toggle("isCurrent", b.dataset.value === wantOpt.value);
     }
-    if (ui.petModeBtn.textContent !== wantOpt.label) ui.petModeBtn.textContent = wantOpt.label;
+    // Bouton fermé : icône du gear actif si c'en est un, sinon texte seul.
+    const wantSig = `${wantOpt.value}|${wantOpt.label}`;
+    if (ui.petModeBtn.dataset.sig !== wantSig) {
+      ui.petModeBtn.dataset.sig = wantSig;
+      ui.petModeBtn.innerHTML = (wantOpt.icon ? `<img class="petModeIcon" src="${wantOpt.icon}" alt="">` : "") + escapeHtml(wantOpt.label);
+    }
   }
   // Liste des NPC de la carte : visible uniquement si le localisateur est actif.
   const showPetNpc = has && pet?.active === true && petActiveGearKey() === "el";
@@ -19824,7 +19991,7 @@ function isTextOnlyMutation(records) {
 function ensureActionDockCache() {
   const bar = document.getElementById("ammoBar");
   if (!bar) return null;
-  const fresh = { bar, ammo: [], formations: [], skills: [], rockets: [], abilities: [] };
+  const fresh = { bar, ammo: [], formations: [], skills: [], rockets: [], abilities: [], petmodes: [] };
   for (const button of bar.querySelectorAll("[data-ammo]")) {
     fresh.ammo.push({ button, ammo: button.dataset.ammo, small: button.querySelector("small") });
   }
@@ -19842,6 +20009,9 @@ function ensureActionDockCache() {
   }
   for (const button of bar.querySelectorAll("[data-action-id^='ability:']")) {
     fresh.abilities.push({ button, abilityId: String(button.dataset.actionId || "").slice("ability:".length) });
+  }
+  for (const button of bar.querySelectorAll("[data-action-id^='petmode:']")) {
+    fresh.petmodes.push({ button, value: String(button.dataset.actionId || "").slice("petmode:".length) });
   }
   if (!actionDockObserver && typeof MutationObserver !== "undefined") {
     actionDockObserver = new MutationObserver((records) => {
@@ -20240,6 +20410,43 @@ function syncActionDockState() {
         (v) => button.classList.toggle("cdVeil", v));
 
     }
+  }
+
+  // Modes P.E.T (slots + palette ouverte) : actif + compte à rebours, comme
+  // le menu Mode de la fenêtre. Même rythme que les autres (chaque passe).
+  {
+    const { opts, want } = petModeEntries();
+    const byValue = new Map(opts.map((o) => [`petmode:${o.value}`, o]));
+    const paintPetDock = (button, actionId) => {
+      const o = byValue.get(actionId);
+      if (o) {
+        paintPetModeNode(button, o, want);
+        // Voile de recharge dans le slot (comme roquettes/aptitudes), fluide.
+        const left = Math.max(0, Number(o.cd) || 0);
+        const max = Math.max(0, Number(o.cdMax) || 0);
+        const cooling = left > 0 && max > 0;
+        applyDockField(button, "cdVeil", cooling,
+          (v) => button.classList.toggle("cdVeil", v));
+        applyDockField(button, "cdProgress", cooling ? clamp(left / max, 0, 1).toFixed(3) : "0",
+          (v) => button.style.setProperty("--cd", v));
+      }
+      else {
+        // Gear déséquipé après coup : grisé, jamais actif.
+        const key = String(actionId || "").replace(/^petmode:gear:/, "");
+        paintPetModeNode(button, {
+          value: String(actionId || "").slice("petmode:".length),
+          label: `${key.toUpperCase()} (retiré)`,
+          disabled: true,
+          icon: PET_GEAR_DROPDOWN_ICON[key] || "",
+        }, want);
+      }
+    };
+    for (const { button, value } of actionDockCache.petmodes) paintPetDock(button, `petmode:${value}`);
+    try {
+      for (const button of document.querySelectorAll('#ammoBar .actionPaletteItems [data-action-id^="petmode:"]')) {
+        paintPetDock(button, button.dataset.actionId);
+      }
+    } catch {}
   }
 }
 

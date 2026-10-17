@@ -7335,6 +7335,15 @@ html body #profileOverlay .profileHeaderTop .profileTitle, html body #profileOve
 #petWindow .petDropdownList>button.isCurrent {
   background:rgba(0,217,255,.2);
 }
+/* Icônes des gears dans la liste déroulante Mode + bouton fermé. */
+#petWindow .petDropdownList>button img.petModeIcon,
+#petWindow #petModeBtn img.petModeIcon {
+  width:22px;
+  height:22px;
+  object-fit:contain;
+  vertical-align:-6px;
+  margin-right:6px;
+}
 #petWindow .petNoPet {
   padding:8px 12px 12px;
   color:#789cac;
@@ -8920,7 +8929,7 @@ body.orbitNoFade #gameWindowDock, body.orbitNoFade #ammoBar, body.orbitNoFade .g
   display:flex;
   gap:5px;
   justify-content:center;
-  margin-bottom:5px;
+  margin-top:5px;
 }
 #ammoBar .actionPalette nav button {
   flex:0 0 auto;
@@ -8971,6 +8980,129 @@ body.orbitNoFade #gameWindowDock, body.orbitNoFade #ammoBar, body.orbitNoFade .g
 #ammoBar .actionPalette nav button:disabled {
   opacity:.35;
   cursor:default;
+}
+/* Onglets Munitions / Roquettes / Lance-roquettes : icône (CONTROL_MENU)
+   au lieu du texte. Repos = NORMAL, survol = HOVER, onglet ouvert = SELECT
+   + contour jaune. */
+#ammoBar .actionPalette nav button[data-action-category="ammo"],
+#ammoBar .actionPalette nav button[data-action-category="rockets"],
+#ammoBar .actionPalette nav button[data-action-category="launchers"],
+#ammoBar .actionPalette nav button[data-action-category="formations"],
+#ammoBar .actionPalette nav button[data-action-category="skills"],
+#ammoBar .actionPalette nav button[data-action-category="abilities"],
+#ammoBar .actionPalette nav button[data-action-category="pet"],
+#ammoBar .actionPalette nav button[data-action-category="tech"] {
+  width:46px;
+  height:44px;
+  min-height:44px;
+  font-size:0;
+  color:transparent;
+}
+#ammoBar .actionPalette nav button[data-action-category="ammo"].active::before,
+#ammoBar .actionPalette nav button[data-action-category="ammo"].active::after,
+#ammoBar .actionPalette nav button[data-action-category="rockets"].active::before,
+#ammoBar .actionPalette nav button[data-action-category="rockets"].active::after,
+#ammoBar .actionPalette nav button[data-action-category="launchers"].active::before,
+#ammoBar .actionPalette nav button[data-action-category="launchers"].active::after,
+#ammoBar .actionPalette nav button[data-action-category="formations"].active::before,
+#ammoBar .actionPalette nav button[data-action-category="formations"].active::after,
+#ammoBar .actionPalette nav button[data-action-category="skills"].active::before,
+#ammoBar .actionPalette nav button[data-action-category="skills"].active::after,
+#ammoBar .actionPalette nav button[data-action-category="abilities"].active::before,
+#ammoBar .actionPalette nav button[data-action-category="abilities"].active::after,
+#ammoBar .actionPalette nav button[data-action-category="pet"].active::before,
+#ammoBar .actionPalette nav button[data-action-category="pet"].active::after,
+#ammoBar .actionPalette nav button[data-action-category="tech"].active::before,
+#ammoBar .actionPalette nav button[data-action-category="tech"].active::after {
+  display:none;
+}
+#ammoBar .actionPalette nav button[data-action-category="ammo"] {
+  background:url("ASSETS/CONTROL_MENU/LASERS_NORMAL.PNG") center / contain no-repeat, linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34));
+}
+#ammoBar .actionPalette nav button[data-action-category="ammo"]:hover:not(.active):not(:disabled) {
+  background:url("ASSETS/CONTROL_MENU/LASERS_HOVER.PNG") center / contain no-repeat, rgba(0,140,185,.3);
+}
+#ammoBar .actionPalette nav button[data-action-category="ammo"].active {
+  border-color:rgba(255,209,102,.9);
+  background:url("ASSETS/CONTROL_MENU/LASERS_SELECT.PNG") center / contain no-repeat, rgba(0,140,185,.3);
+  box-shadow:0 0 16px rgba(255,209,102,.35);
+}
+#ammoBar .actionPalette nav button[data-action-category="rockets"] {
+  background:url("ASSETS/CONTROL_MENU/ROCKETS_NORMAL.PNG") center / contain no-repeat, linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34));
+}
+#ammoBar .actionPalette nav button[data-action-category="rockets"]:hover:not(.active):not(:disabled) {
+  background:url("ASSETS/CONTROL_MENU/ROCKETS_HOVER.PNG") center / contain no-repeat, rgba(0,140,185,.3);
+}
+#ammoBar .actionPalette nav button[data-action-category="rockets"].active {
+  border-color:rgba(255,209,102,.9);
+  background:url("ASSETS/CONTROL_MENU/ROCKETS_SELECT.PNG") center / contain no-repeat, rgba(0,140,185,.3);
+  box-shadow:0 0 16px rgba(255,209,102,.35);
+}
+#ammoBar .actionPalette nav button[data-action-category="launchers"] {
+  background:url("ASSETS/CONTROL_MENU/ROCKET_LAUNCHERS_NORMAL.PNG") center / contain no-repeat, linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34));
+}
+#ammoBar .actionPalette nav button[data-action-category="launchers"]:hover:not(.active):not(:disabled) {
+  background:url("ASSETS/CONTROL_MENU/ROCKET_LAUNCHERS_HOVER.PNG") center / contain no-repeat, rgba(0,140,185,.3);
+}
+#ammoBar .actionPalette nav button[data-action-category="launchers"].active {
+  border-color:rgba(255,209,102,.9);
+  background:url("ASSETS/CONTROL_MENU/ROCKET_LAUNCHERS_SELECT.PNG") center / contain no-repeat, rgba(0,140,185,.3);
+  box-shadow:0 0 16px rgba(255,209,102,.35);
+}
+#ammoBar .actionPalette nav button[data-action-category="formations"] {
+  background:url("ASSETS/CONTROL_MENU/DRONE_FORMATIONS_NORMAL.PNG") center / contain no-repeat, linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34));
+}
+#ammoBar .actionPalette nav button[data-action-category="formations"]:hover:not(.active):not(:disabled) {
+  background:url("ASSETS/CONTROL_MENU/DRONE_FORMATIONS_HOVER.PNG") center / contain no-repeat, rgba(0,140,185,.3);
+}
+#ammoBar .actionPalette nav button[data-action-category="formations"].active {
+  border-color:rgba(255,209,102,.9);
+  background:url("ASSETS/CONTROL_MENU/DRONE_FORMATIONS_SELECT.PNG") center / contain no-repeat, rgba(0,140,185,.3);
+  box-shadow:0 0 16px rgba(255,209,102,.35);
+}
+#ammoBar .actionPalette nav button[data-action-category="skills"] {
+  background:url("ASSETS/CONTROL_MENU/CPUS_NORMAL.PNG") center / contain no-repeat, linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34));
+}
+#ammoBar .actionPalette nav button[data-action-category="skills"]:hover:not(.active):not(:disabled) {
+  background:url("ASSETS/CONTROL_MENU/CPUS_HOVER.PNG") center / contain no-repeat, rgba(0,140,185,.3);
+}
+#ammoBar .actionPalette nav button[data-action-category="skills"].active {
+  border-color:rgba(255,209,102,.9);
+  background:url("ASSETS/CONTROL_MENU/CPUS_SELECT.PNG") center / contain no-repeat, rgba(0,140,185,.3);
+  box-shadow:0 0 16px rgba(255,209,102,.35);
+}
+#ammoBar .actionPalette nav button[data-action-category="abilities"] {
+  background:url("ASSETS/CONTROL_MENU/SHIP_ABILITIES_NORMAL.PNG") center / contain no-repeat, linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34));
+}
+#ammoBar .actionPalette nav button[data-action-category="abilities"]:hover:not(.active):not(:disabled) {
+  background:url("ASSETS/CONTROL_MENU/SHIP_ABILITIES_HOVER.PNG") center / contain no-repeat, rgba(0,140,185,.3);
+}
+#ammoBar .actionPalette nav button[data-action-category="abilities"].active {
+  border-color:rgba(255,209,102,.9);
+  background:url("ASSETS/CONTROL_MENU/SHIP_ABILITIES_SELECT.PNG") center / contain no-repeat, rgba(0,140,185,.3);
+  box-shadow:0 0 16px rgba(255,209,102,.35);
+}
+#ammoBar .actionPalette nav button[data-action-category="pet"] {
+  background:url("ASSETS/CONTROL_MENU/PET_NORMAL.PNG") center / contain no-repeat, linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34));
+}
+#ammoBar .actionPalette nav button[data-action-category="pet"]:hover:not(.active):not(:disabled) {
+  background:url("ASSETS/CONTROL_MENU/PET_HOVER.PNG") center / contain no-repeat, rgba(0,140,185,.3);
+}
+#ammoBar .actionPalette nav button[data-action-category="pet"].active {
+  border-color:rgba(255,209,102,.9);
+  background:url("ASSETS/CONTROL_MENU/PET_SELECT.PNG") center / contain no-repeat, rgba(0,140,185,.3);
+  box-shadow:0 0 16px rgba(255,209,102,.35);
+}
+#ammoBar .actionPalette nav button[data-action-category="tech"] {
+  background:url("ASSETS/CONTROL_MENU/TECH_ITEMS_NORMAL.PNG") center / contain no-repeat, linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34));
+}
+#ammoBar .actionPalette nav button[data-action-category="tech"]:hover:not(.active):not(:disabled) {
+  background:url("ASSETS/CONTROL_MENU/TECH_ITEMS_HOVER.PNG") center / contain no-repeat, rgba(0,140,185,.3);
+}
+#ammoBar .actionPalette nav button[data-action-category="tech"].active {
+  border-color:rgba(255,209,102,.9);
+  background:url("ASSETS/CONTROL_MENU/TECH_ITEMS_SELECT.PNG") center / contain no-repeat, rgba(0,140,185,.3);
+  box-shadow:0 0 16px rgba(255,209,102,.35);
 }
 #ammoBar .actionPaletteItems {
   display:flex;
@@ -9030,6 +9162,63 @@ body.orbitNoFade #gameWindowDock, body.orbitNoFade #ammoBar, body.orbitNoFade .g
   border-color:#ff9a3c;
   color:#ffd9a8;
   background:#2a1c11;
+}
+/* Modes P.E.T dans le dock (slots + palette) : image + libellé compacts. */
+#ammoBar .rocketQuickAction.petModeAction img {
+  width:26px;
+  height:26px;
+}
+#ammoBar .rocketQuickAction.petModeAction > strong {
+  font-size:8px;
+  max-width:100%;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+/* Comme les aptitudes : pas de libellé (icône + compteur seuls). */
+#ammoBar .actionPaletteItems .petModeAction > strong,
+#ammoBar .actionSlot .petModeAction > strong {
+  display:none;
+}
+#ammoBar .petModeAction:disabled {
+  opacity:.45;
+}
+#ammoBar .actionSlot .petModeAction {
+  cursor:grab;
+}
+#ammoBar .actionSlot .petModeAction:active {
+  cursor:grabbing;
+}
+#ammoBar .petModeAction.cdVeil {
+  --cd-edge:rgba(124,240,255,.9);
+}
+/* Techs dans l'onglet TECH du dock (visuel seul pour l'instant). */
+#ammoBar .rocketQuickAction.techAction img {
+  width:26px;
+  height:26px;
+}
+#ammoBar .rocketQuickAction.techAction > strong {
+  font-size:8px;
+  max-width:100%;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+#ammoBar .petModeAction .petModeCd {
+  position:absolute;
+  left:0;
+  right:0;
+  bottom:0;
+  z-index:2;
+  display:none;
+  text-align:center;
+  pointer-events:none;
+  font:800 10px/1.2 ui-sans-serif,system-ui;
+  color:#eaffff;
+  text-shadow:0 0 4px #000,0 0 4px #000;
+}
+#ammoBar .petModeAction.cdVeil .petModeCd {
+  display:block;
 }
 #ammoBar .rocketQuickAction > strong {
   display:block;
@@ -10655,7 +10844,7 @@ body #profileOverlay #panel_shop .shopLayout {
   position:absolute;
   left:0;
   right:0;
-  bottom:3px;
+  bottom:2px;
   z-index:2;
   display:none;
   text-align:center;
