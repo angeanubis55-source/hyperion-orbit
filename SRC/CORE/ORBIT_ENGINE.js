@@ -8959,6 +8959,7 @@ function initializeCustomActionBar() {
     : phoneCat === "rockets2" ? "rockets"
     : phoneCat === "launchers2" ? "launchers"
     : phoneCat === "formations2" ? "formations"
+    : phoneCat === "tech2" ? "tech"
     : phoneCat
   );
   const phoneSlotFamily = phoneCat => (
@@ -8967,6 +8968,7 @@ function initializeCustomActionBar() {
     : phoneCat === "rockets" || phoneCat === "rockets2" ? "rockets"
     : phoneCat === "launchers" || phoneCat === "launchers2" ? "launchers"
     : phoneCat === "formations" || phoneCat === "formations2" ? "formations"
+    : phoneCat === "tech" || phoneCat === "tech2" ? "tech"
     : phoneCat
   );
   const PHONE_ACTION_SELECTION_KEY = "orbit_phone_action_selection_v1";
@@ -9017,14 +9019,16 @@ function initializeCustomActionBar() {
     skills: { ring: 0, angle: -86 },
     skills2: { ring: 1, angle: -86 },
     skills3: { ring: 2, angle: -86 },
-    rockets: { ring: 0, angle: -112.5 },
-    rockets2: { ring: 1, angle: -112.5 },
-    launchers: { ring: 0, angle: -140 },
-    launchers2: { ring: 1, angle: -140 },
-    ammo: { ring: 0, angle: -167.5 },
-    ammo2: { ring: 1, angle: -167.5 },
-    formations: { ring: 0, angle: -195 },
-    formations2: { ring: 1, angle: -195 },
+    rockets: { ring: 0, angle: -109 },
+    rockets2: { ring: 1, angle: -109 },
+    launchers: { ring: 0, angle: -132 },
+    launchers2: { ring: 1, angle: -132 },
+    ammo: { ring: 0, angle: -155 },
+    ammo2: { ring: 1, angle: -155 },
+    formations: { ring: 0, angle: -178 },
+    formations2: { ring: 1, angle: -178 },
+    tech: { ring: 0, angle: -201 },
+    tech2: { ring: 1, angle: -201 },
   };
   const applyPhoneActionDefault = button => {
     const entry = PHONE_ACTION_DEFAULT_ARC[button.dataset.phoneActionCategory];
@@ -9140,6 +9144,8 @@ function initializeCustomActionBar() {
       launchers2: "ASSETS/CONTROL_MENU/ammunition_rocketlauncher_eco-10.png",
       formations: formationIcon,
       formations2: formationIcon,
+      tech: "ASSETS/CONTROL_MENU/tech_battle-repair-bot.png",
+      tech2: "ASSETS/CONTROL_MENU/tech_speed-burst.png",
     };
     phoneCategoryButtons.forEach(button => {
       const cat = button.dataset.phoneActionCategory;
@@ -9246,6 +9252,17 @@ function initializeCustomActionBar() {
         image.alt = label;
       });
     }
+    if (category === "tech") {
+      paletteItems.querySelectorAll("button:not([data-action-id])").forEach(item => item.remove());
+      paletteItems.querySelectorAll("[data-action-id]").forEach(item => {
+        const label = item.querySelector("strong")?.textContent?.trim() || item.title || "";
+        item.querySelectorAll("strong").forEach(node => node.remove());
+        let image = item.querySelector("img");
+        if (!image) { image = document.createElement("img"); image.className = "phoneActionIcon"; item.prepend(image); }
+        else image.classList.add("phoneActionIcon");
+        if (label && !image.alt) image.alt = label;
+      });
+    }
     if (category === "rockets" || category === "launchers") {
       paletteItems.querySelectorAll("button:not([data-action-id])").forEach(item => item.remove());
       paletteItems.querySelectorAll('[data-action-id^="rocket:"]').forEach(item => {
@@ -9298,6 +9315,14 @@ function initializeCustomActionBar() {
       if (base === "rockets") return `rocket:${String(player.rocketActive || "r310").toLowerCase()}`;
       if (base === "launchers") return "skill:launcherUse";
       if (base === "formations") return `formation:${String(account?.user?.drones?.activeFormation || "default")}`;
+      if (base === "tech") {
+        try {
+          if (byId.has("tech:battle-repair-bot")) return "tech:battle-repair-bot";
+          const first = TECH_DOCK_ITEMS.map(t => `tech:${t.id}`).find(id => { try { return byId.has(id); } catch { return false; } });
+          if (first) return first;
+        } catch {}
+        return "";
+      }
     } catch {}
     if (category === "skills2") return "skill:ish";
     if (category === "skills3") return "skill:smb";
