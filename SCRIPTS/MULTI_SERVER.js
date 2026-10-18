@@ -2550,7 +2550,15 @@ wss.on("connection", (ws) => {
               cooldown: Math.max(0, Number(cooldown) || 0) }));
           };
           if (state.pvpDead === true || !(Number(state.hp) > 0)) { deny(0); return; }
-          if (now < auraUntil) { deny(0); return; }
+          if (now < auraUntil) {
+            // Une reconnexion peut répéter l'activation locale persistée.
+            // Garde l'aura et renvoie son horloge au lieu de l'annuler.
+            try {
+              broadcastRoom(room, JSON.stringify({ t: "skillFx", skill, by: id,
+                at: Number(state._abilityFx[skill]?.from) || now, until: auraUntil }));
+            } catch {}
+            return;
+          }
           if (auraUntil > 0 && now < auraUntil + 900000) { deny((auraUntil + 900000 - now) / 1000); return; }
           state._abilityFx[skill] = { from: now, until: now + 1800000, x: 0, y: 0, target: "" };
           try { console.log(`[leech] fire ${state.pseudo || id} aura jusqu=${new Date(now + 1800000).toISOString()}`); } catch {}

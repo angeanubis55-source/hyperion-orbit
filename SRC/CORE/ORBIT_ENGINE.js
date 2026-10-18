@@ -2004,13 +2004,18 @@ function triggerEnergyLeech() {
       showToast(`Tech prête dans ${Math.ceil(left)} s`, 1.5);
       return;
     }
+    const localInstance = techInLocalInstance();
+    if (!localInstance && !sendSkillUse(ENERGY_LEECH_ID, { phase: "fire" })) {
+      showToast("Energy Leech : connexion serveur indisponible", 1.5);
+      return;
+    }
     player.energyLeechUntil = Date.now() + ENERGY_LEECH_DURATION_MS;
+    player.energyLeechNeedsResync = false;
     try { persistCdUntil("techAura:energy-leech", ENERGY_LEECH_DURATION_MS / 1000, "global"); } catch {}
     try {
       for (let f = 1; f <= 30; f++) loadImage(`ASSETS/LIFE_STEAL/${f}.png`, { priority: true });
       loadImage("ASSETS/VOL_DE_VIE_EFFET_INVERSE/1.png", { priority: true });
     } catch {}
-    try { sendSkillUse(ENERGY_LEECH_ID, { phase: "fire" }); } catch {}
     showToast("Energy Leech : 10 % des dégâts rendus en coque", 1.5);
   } catch {}
 }
@@ -2050,6 +2055,7 @@ function cancelMovementAbilityByServer(abilityId, cooldown = 0) {
     }
     if (key === ENERGY_LEECH_ID) {
       player.energyLeechUntil = 0;
+      player.energyLeechNeedsResync = false;
       player.leechFx = null;
       try { persistCdUntil("techAura:energy-leech", 0, "global"); } catch {}
       if (!(Number(cooldown) > 0)) showToast("Energy Leech déjà actif.", 1.2);
@@ -5938,7 +5944,10 @@ function restorePersistedCds() {
     if (precLeft > 0) player.precisionUntil = Date.now() + precLeft * 1000;
     // Energy Leech : effet 30 min restauré aussi.
     const leechLeft = persistedCdLeft("techAura:energy-leech", "global");
-    if (leechLeft > 0) player.energyLeechUntil = Date.now() + leechLeft * 1000;
+    if (leechLeft > 0) {
+      player.energyLeechUntil = Date.now() + leechLeft * 1000;
+      player.energyLeechNeedsResync = !techInLocalInstance();
+    }
   } catch {}
   // Voyage Yamato coupé par un refresh : même règle, état séparé.
   if (persistedCdLeft("yamatoFx") > 0) {
@@ -21059,8 +21068,17 @@ function syncActionDockState() {
     // Energy Leech : fin d'effet -> le CD de 900 s demarre (spécifique).
     if (player.energyLeechUntil && Date.now() >= player.energyLeechUntil) {
       player.energyLeechUntil = 0;
+      player.energyLeechNeedsResync = false;
       try { persistCdUntil("techAura:energy-leech", 0, "global"); } catch {}
       setTechCooldown("energy-leech", ENERGY_LEECH_CD_S);
+    }
+    // Après un refresh/rebranchement, réannonce l'aura persistée au serveur.
+    // L'activation serveur est idempotente et renvoie sa durée autoritaire.
+    if (player.energyLeechNeedsResync === true && techEnergyLeechActive()
+      && !techInLocalInstance() && netConnected()) {
+      try {
+        if (sendSkillUse(ENERGY_LEECH_ID, { phase: "fire" })) player.energyLeechNeedsResync = false;
+      } catch {}
     }
     const paintTechDock = (button) => {
       const entry = TECH_DOCK_ITEMS.find((t) => `tech:${t.id}` === button.dataset.actionId);
@@ -34571,7 +34589,7 @@ function applyNetHeal(ev) {
   // Tempest Back-up bloque bien le soin de coque, mais Energy Leech doit
   // quand même afficher le +0 confirmé par le serveur.
   const tempestBlocked = !shield && (player.tempestBackupT || 0) > 0;
-  if (tempestBlocked && !(ev.skill === ENERGY_LEECH_ID && Math.round(Number(ev.amount) || 0) === 0)) return;
+  if (tempestBlocked && !(ev.skill === "ability_tech_energy_leech" && Math.round(Number(ev.amount) || 0) === 0)) return;
   const key = shield ? "sh" : "hp", maxKey = shield ? "shMax" : "hpMax";
   const aegis = ev.skill.startsWith("ability_aegis_");
   const cap = aegis ? ev.skill === "ability_aegis_repair-pod" ? 18000 : shield ? 25000 : 40000 : 1e9;
@@ -34624,7 +34642,10 @@ function applyTechVisualEvent(ev) {
   const startedAt = performance.now() - Math.max(0, serverNow - at);
   if (field && actor[field]?.at !== at) actor[field] = { at, startedAt, chain: ev.chain || [] };
   if (local) {
-    if (skill === "ability_tech_energy_leech") player.energyLeechUntil = Date.now() + Math.max(0, Number(ev.until) - serverNow);
+    if (skill === "ability_tech_energy_leech") {
+      player.energyLeechUntil = Date.now() + Math.max(0, Number(ev.until) - serverNow);
+      player.energyLeechNeedsResync = false;
+    }
     if (skill === "ability_tech_precision_targeter") player.precisionUntil = Date.now() + Math.max(0, Number(ev.until) - serverNow);
     if (skill === "ability_tech_npc_bomb") techNpcBombFrom = actor.npcBombFx.startedAt;
   }

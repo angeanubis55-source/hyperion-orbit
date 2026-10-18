@@ -1255,6 +1255,10 @@ ZoneNpcSim.create = async function(...args) {
   caster.send({ t: "skillUse", skill, phase: "fire" });
   await caster.wait(m => m.t === "skillFx" && m.skill === skill && m.phase !== "heal");
   await observer.wait(m => m.t === "skillFx" && m.skill === skill && m.phase !== "heal");
+  const repeatAt = caster.messages.length;
+  caster.send({ t: "skillUse", skill, phase: "fire" });
+  const repeated = await caster.wait(m => m.t === "skillFx" && m.skill === skill && m.phase !== "heal", repeatAt);
+  assert.ok(repeated.until > Date.now(), "la resynchronisation conserve l'aura serveur");
   await pause(500);
   caster.send({ t: "hit", uid: "leech-test", dmg: 100 });
   const heal = await caster.wait(m => m.t === "skillFx" && m.skill === skill && m.phase === "heal");
