@@ -601,11 +601,13 @@ function refreshCombatProfile(state, accountId, map, message = {}) {
       state.sh = Math.min(state.shMax, shields[key] ?? state.shMax);
     }
     // Duree de l'effet portail distant, sans protection contre les degats.
-    // Changement de vaisseau : les auras d'aptitudes ne suivent pas
+    // Changement de vaisseau : les aptitudes du vaisseau ne suivent pas
     // (le nouveau récupère les siennes, comme les CDs Orcus côté client).
+    // Les techs (buffs perso : leech, precision...) suivent, comme leurs
+    // timers côté client.
     if (prior && prior.shipId !== profile.shipId) {
       if (!state._swapFxFromClient) state._swapFxUntil = now + 3000;
-      clearAbilityFx(state);
+      preserveTechAurasAcrossMapChange(state);
     }
     state._combat = profile;
     state._config = profile.config;
