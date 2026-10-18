@@ -27972,7 +27972,7 @@ function damageEnemy(e, dmg, shieldPenetration, crit, opts = {}) {
   if (typeof techInLocalInstance === "function" && techInLocalInstance()
     && techEnergyLeechActive() && result.total > 0 && opts.fromJpc !== true && !player.dead) {
     const before = Number(player.hp) || 0;
-    player.hp = Math.min(Number(player.hpMax) || 0, before + Math.round(result.total * ENERGY_LEECH_PCT));
+    player.hp = Math.min(Number(player.hpMax) || 0, before + Math.floor(result.total * ENERGY_LEECH_PCT));
     showTechLocalHeal(Math.max(0, Math.round(player.hp - before)));
     if (!player.cloaked && !player.cloakCpu) {
       leechBeams.push({ ax: Number(e.x) || 0, ay: Number(e.y) || 0, by: String(netMyId()), t0: performance.now() });
@@ -34567,7 +34567,11 @@ function showRemoteAbilityHeal(ev, remote) {
 
 function applyNetHeal(ev) {
   const shield = ev.shield === true;
-  if (player.dead || (!shield && (player.tempestBackupT || 0) > 0)) return;
+  if (player.dead) return;
+  // Tempest Back-up bloque bien le soin de coque, mais Energy Leech doit
+  // quand même afficher le +0 confirmé par le serveur.
+  const tempestBlocked = !shield && (player.tempestBackupT || 0) > 0;
+  if (tempestBlocked && !(ev.skill === ENERGY_LEECH_ID && Math.round(Number(ev.amount) || 0) === 0)) return;
   const key = shield ? "sh" : "hp", maxKey = shield ? "shMax" : "hpMax";
   const aegis = ev.skill.startsWith("ability_aegis_");
   const cap = aegis ? ev.skill === "ability_aegis_repair-pod" ? 18000 : shield ? 25000 : 40000 : 1e9;

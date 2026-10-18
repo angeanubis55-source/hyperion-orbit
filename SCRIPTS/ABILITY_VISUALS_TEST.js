@@ -1181,6 +1181,7 @@ test("High-tech : gains Energy Leech confirmes +X/+0 visibles sur soi et sur le 
     v.api.applyTechVisualEvent({ by, skill: "ability_tech_energy_leech", at: 49000, until: 1849000 });
     const start = actor.leechFx.startedAt;
     for (const [index, amount] of [100, 0].entries()) {
+      if (local && amount === 0) v.api.player.tempestBackupT = 2;
       let pending = [{ by, target: by, skill: "ability_tech_energy_leech", phase: "heal", amount,
         hp: 1000, sh: 0, healSeq: index + 1, x: 500, y: 600 }];
       v.api.drainNetSkillInbox = () => { const batch = pending; pending = []; return batch; };
