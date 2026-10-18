@@ -8022,6 +8022,7 @@ function initializeCustomActionBar() {
       account.user = result.user;
       applyCurrentConfigStats(false, null, true);
       syncActionDockState();
+      try { window.__SYNC_PHONE_ACTION_GOLD__?.(); } catch {}
       showNotification(`${formation.name} activée`, 2, "info", { goldTerms: [formation.name] });
       // Ne force plus l'onglet Formations : rafraîchit l'onglet courant
       // (ou rien si la palette est fermée).
@@ -8947,6 +8948,488 @@ function initializeCustomActionBar() {
     try { invalidateActionDockCache(); } catch {}
   }
   palette.querySelectorAll("[data-action-category]").forEach(button => button.onclick = () => renderPalette(button.dataset.actionCategory));
+  const phoneActionTray = document.querySelector(".phoneActionTray");
+  const phoneActionLauncher = document.querySelector(".phoneActionLauncher");
+  const phoneCategoryButtons = [...document.querySelectorAll("[data-phone-action-category]")];
+  let phoneActionCategory = "";
+  const phonePaletteCategory = phoneCat => (
+    phoneCat === "skills2" || phoneCat === "skills3" ? "skills"
+    : phoneCat === "ammo2" ? "ammo"
+    : phoneCat === "rockets2" ? "rockets"
+    : phoneCat === "launchers2" ? "launchers"
+    : phoneCat === "formations2" ? "formations"
+    : phoneCat
+  );
+  const phoneSlotFamily = phoneCat => (
+    phoneCat === "ammo" || phoneCat === "ammo2" ? "ammo"
+    : phoneCat === "skills" || phoneCat === "skills2" || phoneCat === "skills3" ? "skills"
+    : phoneCat === "rockets" || phoneCat === "rockets2" ? "rockets"
+    : phoneCat === "launchers" || phoneCat === "launchers2" ? "launchers"
+    : phoneCat === "formations" || phoneCat === "formations2" ? "formations"
+    : phoneCat
+  );
+  const PHONE_ACTION_SELECTION_KEY = "orbit_phone_action_selection_v1";
+  const persistPhoneActionSelection = () => {
+    try {
+      const saved = Object.fromEntries(phoneCategoryButtons
+        .filter(button => button.dataset.phoneSelectedAction)
+        .map(button => {
+          const preview = button.querySelector("img");
+          return [button.dataset.phoneActionCategory, {
+            actionId: button.dataset.phoneSelectedAction,
+            src: preview?.getAttribute("src") || "",
+            alt: preview?.alt || "",
+          }];
+        }));
+      localStorage.setItem(PHONE_ACTION_SELECTION_KEY, JSON.stringify(saved));
+    } catch {}
+  };
+  const restorePhoneActionSelection = () => {
+    let saved = null;
+    try { saved = JSON.parse(localStorage.getItem(PHONE_ACTION_SELECTION_KEY) || "null"); } catch {}
+    if (!saved) return;
+    phoneCategoryButtons.forEach(button => {
+      const entry = saved?.[button.dataset.phoneActionCategory];
+      const actionId = String(entry?.actionId || "");
+      if (!actionId) return;
+      try { if (typeof byId !== "undefined" && byId && !byId.has(actionId)) return; } catch {}
+      button.dataset.phoneSelectedAction = actionId;
+      if (entry?.src) {
+        const preview = document.createElement("img");
+        preview.className = "phoneActionPrimaryIcon";
+        preview.src = String(entry.src);
+        preview.alt = String(entry.alt || actionId);
+        button.replaceChildren(preview);
+      }
+    });
+  };
+  const PHONE_ACTION_LAYOUT_KEY = "orbit_phone_action_buttons_layout_v3";
+  let phoneActionDrag = null;
+  const phoneActionScales = Object.fromEntries(phoneCategoryButtons.map(button => [button.dataset.phoneActionCategory, 1]));
+  const freezePhoneActionButton = button => {
+    const rect = button.getBoundingClientRect();
+    Object.assign(button.style, { position: "fixed", left: `${rect.left}px`, top: `${rect.top}px`, width: `${rect.width}px`, height: `${rect.height}px` });
+  };
+  // Disposition de base en soleil : arc au-dessus et à gauche du joystick
+  // de visée (bas-droite), rien en dessous. Anneau 0 = proches.
+  const PHONE_ACTION_DEFAULT_ARC = {
+    skills: { ring: 0, angle: -86 },
+    skills2: { ring: 1, angle: -86 },
+    skills3: { ring: 2, angle: -86 },
+    rockets: { ring: 0, angle: -112.5 },
+    rockets2: { ring: 1, angle: -112.5 },
+    launchers: { ring: 0, angle: -140 },
+    launchers2: { ring: 1, angle: -140 },
+    ammo: { ring: 0, angle: -167.5 },
+    ammo2: { ring: 1, angle: -167.5 },
+    formations: { ring: 0, angle: -195 },
+    formations2: { ring: 1, angle: -195 },
+  };
+  const applyPhoneActionDefault = button => {
+    const entry = PHONE_ACTION_DEFAULT_ARC[button.dataset.phoneActionCategory];
+    if (!entry) return;
+    const stickSize = Math.max(104, Math.min(144, innerWidth * 0.26));
+    const cx = innerWidth - 18 - stickSize / 2;
+    const cy = innerHeight - 76 - stickSize / 2;
+    const radius = stickSize / 2 + 29 + 72 + (entry.ring * 78);
+    const rad = entry.angle * Math.PI / 180;
+    const size = 58;
+    const left = Math.max(0, Math.min(innerWidth - size, cx + Math.cos(rad) * radius - size / 2));
+    const top = Math.max(0, Math.min(innerHeight - size, cy + Math.sin(rad) * radius - size / 2));
+    phoneActionScales[button.dataset.phoneActionCategory] = 1;
+    Object.assign(button.style, { position: "fixed", left: `${left}px`, top: `${top}px`, width: `${size}px`, height: `${size}px` });
+  };
+  const applySavedPhoneActionLayout = () => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(PHONE_ACTION_LAYOUT_KEY) || "null");
+      phoneCategoryButtons.forEach(button => {
+        const entry = saved?.[button.dataset.phoneActionCategory];
+        if (!entry) return applyPhoneActionDefault(button);
+        const size = Math.max(36, Number(entry.size) || 58);
+        const left = Math.max(0, Math.min(innerWidth - size, Number(entry.x) * innerWidth));
+        const top = Math.max(0, Math.min(innerHeight - size, Number(entry.y) * innerHeight));
+        phoneActionScales[button.dataset.phoneActionCategory] = Math.max(.6, Math.min(1.6, Number(entry.scale) || 1));
+        Object.assign(button.style, { position: "fixed", left: `${left}px`, top: `${top}px`, width: `${size}px`, height: `${size}px` });
+      });
+    } catch {}
+  };
+  phoneCategoryButtons.forEach(button => button.addEventListener("pointerdown", event => {
+    if (!document.body.classList.contains("phoneJoystickLayoutOpen") || event.button !== 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const rect = button.getBoundingClientRect();
+    phoneActionDrag = { button, id: event.pointerId, dx: event.clientX - rect.left, dy: event.clientY - rect.top };
+    button.classList.add("layoutDragging");
+    try { button.setPointerCapture(event.pointerId); } catch {}
+  }));
+  phoneCategoryButtons.forEach(button => button.addEventListener("pointermove", event => {
+    if (!phoneActionDrag || phoneActionDrag.button !== button || event.pointerId !== phoneActionDrag.id) return;
+    event.preventDefault();
+    const rect = button.getBoundingClientRect();
+    const left = Math.max(0, Math.min(innerWidth - rect.width, event.clientX - phoneActionDrag.dx));
+    const top = Math.max(0, Math.min(innerHeight - rect.height, event.clientY - phoneActionDrag.dy));
+    Object.assign(button.style, { position: "fixed", left: `${left}px`, top: `${top}px` });
+  }));
+  const endPhoneActionDrag = event => {
+    if (!phoneActionDrag || event.pointerId !== phoneActionDrag.id) return;
+    const button = phoneActionDrag.button;
+    phoneActionDrag = null;
+    button.classList.remove("layoutDragging");
+    try { button.releasePointerCapture(event.pointerId); } catch {}
+  };
+  phoneCategoryButtons.forEach(button => {
+    button.addEventListener("pointerup", endPhoneActionDrag);
+    button.addEventListener("pointercancel", endPhoneActionDrag);
+  });
+  window.__SET_PHONE_ACTION_LAYOUT_EDITING__ = on => {
+    if (on) {
+      phoneCategoryButtons.forEach(button => { if (getComputedStyle(button).position !== "fixed") freezePhoneActionButton(button); });
+      return;
+    }
+    const saved = Object.fromEntries(phoneCategoryButtons.map(button => {
+      const rect = button.getBoundingClientRect();
+      return [button.dataset.phoneActionCategory, { x: rect.left / Math.max(1, innerWidth), y: rect.top / Math.max(1, innerHeight), size: rect.width, scale: phoneActionScales[button.dataset.phoneActionCategory] }];
+    }));
+    try { localStorage.setItem(PHONE_ACTION_LAYOUT_KEY, JSON.stringify(saved)); } catch {}
+  };
+  window.__RESET_PHONE_ACTION_LAYOUT__ = () => {
+    try { localStorage.removeItem(PHONE_ACTION_LAYOUT_KEY); } catch {}
+    phoneCategoryButtons.forEach(button => {
+      for (const property of ["position", "left", "right", "top", "bottom", "width", "height"]) button.style.removeProperty(property);
+      applyPhoneActionDefault(button);
+    });
+  };
+  requestAnimationFrame(applySavedPhoneActionLayout);
+  const paintPhoneAmmoButton = () => {
+    const button = phoneCategoryButtons.find(candidate => candidate.dataset.phoneActionCategory === "ammo");
+    if (!button) return;
+    // Slot 1 fixe dès qu'il a été réglé explicitement via son tray : sinon
+    // tirer depuis le slot 2 change l'active et repeindrait le slot 1.
+    // Sans sélection explicite, il suit l'active (init). Slot 2 ("ammo2")
+    // jamais repeint ici : placeholder "Mun 2" puis mémoire indépendante.
+    if (button.dataset.phoneSelectedAction) return;
+    let ammo = "x1";
+    try { ammo = String(player.ammo.active || "x1").toLowerCase(); } catch {}
+    const source = actions.find(action => String(action.dataset.ammo || "").toLowerCase() === ammo);
+    const label = source?.querySelector("strong")?.textContent?.trim() || ammo.toUpperCase();
+    button.dataset.ammo = ammo;
+    button.innerHTML = `<img class="phoneAmmoIcon" src="ASSETS/ITEMS/AMMO_${encodeURIComponent(ammo.toUpperCase())}.png" alt="${escapeHtml(label)}">`;
+    button.title = source?.title || `Munition ${label}`;
+  };
+  // Icônes par défaut des boutons (sans texte, image centrée en CSS),
+  // posées une fois à l'init pour les slots sans sélection.
+  const paintPhoneLauncherDefaults = () => {
+    let activeAmmo = "X1";
+    try { activeAmmo = String(player.ammo.active || "X1").toUpperCase(); } catch {}
+    let formationIcon = "ASSETS/CONTROL_MENU/drone_formation_default.png";
+    try {
+      const f = getActiveDroneFormation(account?.user);
+      const src = (typeof formationDockIcon === "function" && formationDockIcon(f)) || f?.icon;
+      if (src) formationIcon = String(src);
+    } catch {}
+    const defaults = {
+      ammo: `ASSETS/ITEMS/AMMO_${encodeURIComponent(activeAmmo)}.png`,
+      ammo2: `ASSETS/ITEMS/AMMO_${encodeURIComponent(activeAmmo)}.png`,
+      skills: "ASSETS/CONTROL_MENU/ammunition_specialammo_emp-01.png",
+      skills2: "ASSETS/CPU/ISH_01_100X100.png",
+      skills3: "ASSETS/CPU/SMB_01_100X100.png",
+      rockets: "ASSETS/CONTROL_MENU/ammunition_rocket_r-310.png",
+      rockets2: "ASSETS/CONTROL_MENU/ammunition_rocket_r-310.png",
+      launchers: "ASSETS/CONTROL_MENU/ammunition_rocketlauncher_eco-10.png",
+      launchers2: "ASSETS/CONTROL_MENU/ammunition_rocketlauncher_eco-10.png",
+      formations: formationIcon,
+      formations2: formationIcon,
+    };
+    phoneCategoryButtons.forEach(button => {
+      const cat = button.dataset.phoneActionCategory;
+      if (button.dataset.phoneSelectedAction || button.querySelector("img") || !defaults[cat]) return;
+      const icon = document.createElement("img");
+      icon.className = "phoneActionPrimaryIcon";
+      icon.src = defaults[cat];
+      icon.alt = cat;
+      icon.onerror = () => { icon.onerror = null; icon.style.display = "none"; };
+      button.replaceChildren(icon);
+    });
+  };
+  // Menu : grille compacte centrée près du bouton (aucun chevauchement
+  // possible, quel que soit le nombre d'options ou la place disponible).
+  const layoutPhoneActionItems = sourceButton => {
+    if (!phoneActionTray) return;
+    const items = [...phoneActionTray.children].filter(item => item.matches("button, [data-action-id]"));
+    if (!items.length) return;
+    const rect = sourceButton.getBoundingClientRect();
+    const originX = rect.left + rect.width / 2;
+    const originY = rect.top + rect.height / 2;
+    const MARGIN = 36, COL = 62, ROW = 76;
+    const maxCols = Math.max(1, Math.floor((innerWidth - MARGIN * 2) / COL));
+    const cols = Math.max(1, Math.min(items.length, maxCols, 6));
+    const rows = Math.ceil(items.length / cols);
+    const gw = cols * COL, gh = rows * ROW;
+    // Grille centrée en bas de l'écran.
+    const gx = Math.max(MARGIN, Math.min(innerWidth - MARGIN - gw, (innerWidth - gw) / 2));
+    const gy = Math.max(MARGIN, Math.min(innerHeight - MARGIN - gh, innerHeight - MARGIN - gh));
+    items.forEach((item, i) => {
+      // Dernière ligne incomplète : centrée au lieu d'alignée à gauche.
+      const inRow = Math.min(cols, items.length - Math.floor(i / cols) * cols);
+      const rowDx = ((cols - inRow) * COL) / 2;
+      item.style.setProperty("--phone-action-x", `${gx + rowDx + (i % cols) * COL + COL / 2}px`);
+      item.style.setProperty("--phone-action-y", `${gy + Math.floor(i / cols) * ROW + ROW / 2}px`);
+    });
+  };
+  const closePhoneActionTray = () => {
+    phoneActionCategory = "";
+    document.body.classList.remove("phoneActionMenuOpen");
+    if (phoneActionTray) {
+      phoneActionTray.hidden = true;
+      phoneActionTray.replaceChildren();
+    }
+    phoneCategoryButtons.forEach(button => button.classList.remove("active"));
+  };
+  window.__CLOSE_PHONE_ACTION_TRAY__ = closePhoneActionTray;
+  const takePaletteItems = (category, target) => {
+    category = phonePaletteCategory(category);
+    renderPalette(category);
+    if (category === "ammo") paletteItems.querySelectorAll("[data-ammo]").forEach(item => {
+      const ammo = String(item.dataset.ammo || "x1").toUpperCase();
+      let stock = Infinity;
+      try {
+        stock = ammo === "X1" ? Infinity : ammoCount(ammo.toLowerCase());
+        if (stock <= 0) return item.remove();
+      } catch {}
+      const label = item.querySelector("strong")?.textContent?.trim() || ammo;
+      item.querySelectorAll("strong, .fireOrbit").forEach(node => node.remove());
+      let image = item.querySelector("img.phoneAmmoIcon");
+      if (!image) {
+        image = document.createElement("img");
+        image.className = "phoneAmmoIcon";
+        item.prepend(image);
+      }
+      image.src = `ASSETS/ITEMS/AMMO_${encodeURIComponent(ammo)}.png`;
+      image.alt = label;
+      const quantity = item.querySelector("small");
+      if (quantity) quantity.textContent = ammo === "X1" ? "∞" : formatAmmoCount(stock);
+    });
+    if (category === "formations") paletteItems.querySelectorAll('[data-action-id^="formation:"]').forEach(item => {
+      [...item.children].forEach(node => { if (node.tagName !== "IMG") node.remove(); });
+      [...item.childNodes].filter(node => node.nodeType === Node.TEXT_NODE).forEach(node => node.remove());
+    });
+    // Téléphone : menu Formations = uniquement les possédées (+ l'active).
+    if (category === "formations") {
+      let owned = null, activeFid = "";
+      try { owned = new Set(account?.user?.drones?.formations || []); } catch { owned = null; }
+      try { activeFid = String(account?.user?.drones?.activeFormation || ""); } catch {}
+      if (owned || activeFid) {
+        paletteItems.querySelectorAll('[data-action-id^="formation:"]').forEach(item => {
+          const fid = String(item.dataset.actionId || "").slice("formation:".length);
+          if (fid && (fid === activeFid || (owned && owned.has(fid)))) return;
+          item.remove();
+        });
+      }
+    }
+    if (category === "skills") {
+      const skillImages = {
+        pulse: "ASSETS/CONTROL_MENU/ammunition_specialammo_emp-01.png",
+        ish: "ASSETS/CPU/ISH_01_100X100.png",
+        cloak: "ASSETS/CPU/CL04K_XL_100X100.png",
+        smb: "ASSETS/CPU/SMB_01_100X100.png",
+        repair: "ASSETS/CPU/REP_4_100X100.png",
+      };
+      paletteItems.querySelectorAll("[data-skill]").forEach(item => {
+        const skill = String(item.dataset.skill || "");
+        const label = item.querySelector("strong")?.textContent?.trim() || item.title || skill;
+        item.querySelectorAll("strong, .skillPriceMini").forEach(node => node.remove());
+        let image = item.querySelector("img");
+        if (!image) { image = document.createElement("img"); item.prepend(image); }
+        image.classList.add("phoneActionIcon");
+        if (skillImages[skill]) image.src = skillImages[skill];
+        image.alt = label;
+      });
+    }
+    if (category === "rockets" || category === "launchers") {
+      paletteItems.querySelectorAll("button:not([data-action-id])").forEach(item => item.remove());
+      paletteItems.querySelectorAll('[data-action-id^="rocket:"]').forEach(item => {
+        const rocketId = String(item.dataset.actionId || "").slice("rocket:".length);
+        let stock = 0;
+        try {
+          stock = rocketCount(rocketId);
+          if (stock <= 0) return item.remove();
+        } catch {}
+        item.querySelectorAll("strong").forEach(node => node.remove());
+        item.querySelector("img")?.classList.add("phoneActionIcon");
+        const quantity = item.querySelector(".rocketCount, .launcherCount, small");
+        if (quantity) quantity.textContent = formatRocketCount(stock);
+      });
+      // Pas de bouton "salve" (USE) dans le menu téléphone : uniquement les
+      // types de roquettes. Le tir passe par le tap sur le slot.
+      paletteItems.querySelectorAll('[data-action-id="skill:launcherUse"]').forEach(item => item.remove());
+    }
+    while (paletteItems.firstChild) target.appendChild(paletteItems.firstChild);
+  };
+  // Croix de fermeture du menu (l'appui long ouvrir/fermer est gardé).
+  const phoneActionCloseBtn = document.createElement("button");
+  phoneActionCloseBtn.type = "button";
+  phoneActionCloseBtn.className = "phoneActionClose";
+  phoneActionCloseBtn.textContent = "✕";
+  phoneActionCloseBtn.setAttribute("aria-label", "Fermer le menu");
+  phoneActionCloseBtn.addEventListener("click", event => {
+    event.preventDefault();
+    event.stopPropagation();
+    closePhoneActionTray();
+  });
+  const openPhoneActionCategory = button => {
+    const phoneCat = String(button.dataset.phoneActionCategory || "");
+    if (!phoneActionTray || phoneActionCategory === phoneCat) return closePhoneActionTray();
+    paintPhoneAmmoButton();
+    const content = document.createDocumentFragment();
+    takePaletteItems(phonePaletteCategory(phoneCat), content);
+    phoneActionTray.replaceChildren(content);
+    phoneActionTray.prepend(phoneActionCloseBtn);
+    layoutPhoneActionItems(button);
+    phoneActionTray.hidden = false;
+    phoneActionCategory = phoneCat;
+    document.body.classList.add("phoneActionMenuOpen");
+    phoneCategoryButtons.forEach(candidate => candidate.classList.toggle("active", candidate === button));
+  };
+  const defaultPhoneActionId = category => {
+    const base = phonePaletteCategory(category);
+    try {
+      if (base === "ammo") return `ammo:${String(player.ammo.active || "x1").toLowerCase()}`;
+      if (base === "rockets") return `rocket:${String(player.rocketActive || "r310").toLowerCase()}`;
+      if (base === "launchers") return "skill:launcherUse";
+      if (base === "formations") return `formation:${String(account?.user?.drones?.activeFormation || "default")}`;
+    } catch {}
+    if (category === "skills2") return "skill:ish";
+    if (category === "skills3") return "skill:smb";
+    return base === "skills" ? "skill:pulse" : "";
+  };
+  const usePhonePrimaryAction = button => {
+    const category = String(button.dataset.phoneActionCategory || "");
+    const selected = String(button.dataset.phoneSelectedAction || "");
+    // Slots secondaires vides : le tap ouvre le choix au lieu de tirer un
+    // défaut que l'utilisateur n'y a jamais mis.
+    if (!selected && phoneSlotFamily(category) !== category) {
+      openPhoneActionCategory(button);
+      return;
+    }
+    const actionId = String(selected || defaultPhoneActionId(category));
+    const action = byId.get(actionId);
+    if (action) action.click();
+  };
+  // Doré = contenu actif : munition/roquette/formation active, roquette
+  // chargée dans le lance-roquettes, camouflage engagé. Extras exclus sauf
+  // camouflage activé. Slots "2" vides et bouton USE : jamais dorés.
+  const syncPhoneActionGold = () => {
+    let activeAmmo = "x1", activeRocket = "r310", activeLauncher = "", activeFormation = "";
+    let cloaked = false;
+    try { activeAmmo = String(player.ammo.active || "x1").toLowerCase(); } catch {}
+    try { activeRocket = String(player.rocketActive || "r310").toLowerCase(); } catch {}
+    try { activeLauncher = String(player.launcherActive || "").toLowerCase(); } catch {}
+    try { activeFormation = String(account?.user?.drones?.activeFormation || "").toLowerCase(); } catch {}
+    try { cloaked = isPlayerCpuCloaked(); } catch {}
+    phoneCategoryButtons.forEach(button => {
+      const cat = String(button.dataset.phoneActionCategory || "");
+      const base = phonePaletteCategory(cat);
+      const explicit = String(button.dataset.phoneSelectedAction || "");
+      const isSecond = phoneSlotFamily(cat) !== cat;
+      let actionId = "";
+      try { actionId = String(explicit || defaultPhoneActionId(cat)).toLowerCase(); } catch {}
+      let gold = false;
+      if (base === "ammo") gold = actionId === `ammo:${activeAmmo}`;
+      else if (base === "rockets") gold = actionId === `rocket:${activeRocket}`;
+      else if (base === "formations") gold = !!activeFormation && actionId === `formation:${activeFormation}`;
+      else if (base === "launchers") gold = !!explicit && actionId !== "skill:launcheruse" && activeLauncher !== "" && actionId === `rocket:${activeLauncher}`;
+      else if (base === "skills") gold = actionId === "skill:cloak" && cloaked;
+      if (isSecond && !explicit) gold = false;
+      if (button.classList.contains("phoneGold") !== gold) button.classList.toggle("phoneGold", gold);
+    });
+  };
+  window.__SYNC_PHONE_ACTION_GOLD__ = syncPhoneActionGold;
+  const phoneActionHolds = new WeakMap();
+  phoneCategoryButtons.forEach(button => {
+    button.addEventListener("pointerdown", event => {
+      if (document.body.classList.contains("phoneJoystickLayoutOpen") || event.button !== 0) return;
+      event.preventDefault();
+      const hold = { opened: false, timer: 0 };
+      button.classList.add("holding");
+      try { button.setPointerCapture(event.pointerId); } catch {}
+      hold.timer = setTimeout(() => {
+        hold.opened = true;
+        button.classList.remove("holding");
+        openPhoneActionCategory(button);
+        try { navigator.vibrate?.(12); } catch {}
+      }, 480);
+      phoneActionHolds.set(button, hold);
+    });
+    const finish = event => {
+      const hold = phoneActionHolds.get(button);
+      if (!hold) return;
+      event.preventDefault();
+      clearTimeout(hold.timer);
+      button.classList.remove("holding");
+      phoneActionHolds.delete(button);
+      try { button.releasePointerCapture(event.pointerId); } catch {}
+      if (!hold.opened) usePhonePrimaryAction(button);
+    };
+    button.addEventListener("pointerup", finish);
+    button.addEventListener("pointercancel", event => {
+      const hold = phoneActionHolds.get(button);
+      if (!hold) return;
+      clearTimeout(hold.timer);
+      phoneActionHolds.delete(button);
+      button.classList.remove("holding");
+      try { button.releasePointerCapture(event.pointerId); } catch {}
+    });
+    button.addEventListener("click", event => { event.preventDefault(); event.stopPropagation(); });
+  });
+  phoneActionTray?.addEventListener("click", event => {
+    const item = event.target.closest("button, [data-action-id]");
+    if (item) {
+      const categoryButton = phoneCategoryButtons.find(button => button.dataset.phoneActionCategory === phoneActionCategory);
+      const actionId = String(item.dataset.actionId || "");
+      if (categoryButton && actionId) {
+        categoryButton.dataset.phoneSelectedAction = actionId;
+        const image = item.querySelector("img");
+        if (image) {
+          const preview = image.cloneNode(true);
+          preview.removeAttribute("style");
+          preview.className = "phoneActionPrimaryIcon";
+          categoryButton.replaceChildren(preview);
+        }
+        // Fige le slot 1 de la même famille sur ce qu'il affiche déjà :
+        // sans ça, régler le slot 2 change l'active et repeint le slot 1.
+        const mainCat = phoneSlotFamily(phoneActionCategory);
+        if (mainCat && mainCat !== String(categoryButton.dataset.phoneActionCategory || "")) {
+          const mainButton = phoneCategoryButtons.find(button => button.dataset.phoneActionCategory === mainCat);
+          if (mainButton && !mainButton.dataset.phoneSelectedAction) {
+            // Figer sur ce que le slot 1 AFFICHE (pas l'active du moment :
+            // le choix du slot 2 vient déjà de changer l'active via son tir).
+            let currentId = "";
+            if (mainCat === "ammo") {
+              const shown = String(mainButton.dataset.ammo || "").toLowerCase();
+              currentId = shown ? `ammo:${shown}` : String(defaultPhoneActionId(mainCat));
+            } else {
+              currentId = String(defaultPhoneActionId(mainCat));
+            }
+            if (currentId) mainButton.dataset.phoneSelectedAction = currentId;
+          }
+        }
+        persistPhoneActionSelection();
+      }
+      queueMicrotask(() => {
+      paintPhoneAmmoButton();
+      try { syncPhoneActionGold(); } catch {}
+      closePhoneActionTray();
+      });
+    }
+  });
+  document.addEventListener("pointerdown", event => {
+    if (!phoneActionCategory || event.target.closest(".phoneActionLauncher, .phoneActionTray")) return;
+    closePhoneActionTray();
+  }, { capture: true });
+  restorePhoneActionSelection();
+  paintPhoneLauncherDefaults();
+  paintPhoneAmmoButton();
+  try { syncPhoneActionGold(); } catch {}
   refreshActiveActionPalette = (shipChanged = false) => {
     const match = syncAbilitiesTabVisibility();
     if (shipChanged) {
@@ -17590,6 +18073,7 @@ function applyCurrentConfigStats(keepRatios = true, restoreShieldConfigNo = null
   }
 
   player.baseDamage = Math.max(1, Math.floor(stats.totalLaserDamage || 1));
+  player.baseDamageNoLeonov = Math.max(1, Math.floor(stats.totalLaserDamageNoLeonov ?? stats.totalLaserDamage ?? 1));
 
   player.laserHitBonusPct = clamp(Number(stats.bonusLaserHitPct || 0), -100, 100);
   player.rocketHitBonusPct = clamp(Number(stats.bonusRocketHitPct || 0), -100, 100);
@@ -20322,6 +20806,7 @@ const player = {
   repairColdStart: false,
 
   baseDamage: 0,
+  baseDamageNoLeonov: 0,
   baseFireRate: 0,
   baseBulletSpeed: 0,
 
@@ -20427,6 +20912,7 @@ function resetPlayerToBase() {
   player.critMult = oslCount > 0 ? 2.0 : 1.5;
 
   player.baseDamage = Math.max(1, Math.floor(stats.totalLaserDamage || 1));
+  player.baseDamageNoLeonov = Math.max(1, Math.floor(stats.totalLaserDamageNoLeonov ?? stats.totalLaserDamage ?? 1));
 
   player.laserHitBonusPct = clamp(Number(stats.bonusLaserHitPct || 0), -100, 100);
   player.rocketHitBonusPct = clamp(Number(stats.bonusRocketHitPct || 0), -100, 100);
@@ -20697,6 +21183,7 @@ function updateAmmoUI() {
   refreshRocketPaletteCounts();
 
   syncActionDockState();
+  try { window.__SYNC_PHONE_ACTION_GOLD__?.(); } catch {}
 }
 
 // Vente de munitions depuis l'inventaire : recopie le stock du compte vers
@@ -21913,6 +22400,7 @@ if (phoneControlsRoot) {
   }));
   const resetPhoneJoystickLayout = () => {
     phoneControls.resetLayout();
+    try { window.__RESET_PHONE_ACTION_LAYOUT__?.(); } catch {}
     sizeControls.forEach(control => {
       const input = control.querySelector("input"), output = control.querySelector("output");
       if (input) input.value = "100";
@@ -21925,6 +22413,7 @@ if (phoneControlsRoot) {
   layoutButton?.addEventListener("click", () => {
     const opening = !document.body.classList.contains("phoneJoystickLayoutOpen");
     if (opening) {
+      try { window.__CLOSE_PHONE_ACTION_TRAY__?.(); } catch {}
       moveTarget.active = false;
       player.vx = 0;
       player.vy = 0;
@@ -21933,6 +22422,7 @@ if (phoneControlsRoot) {
     }
     document.body.classList.toggle("phoneJoystickLayoutOpen", opening);
     phoneControls.setLayoutEditing(opening);
+    try { window.__SET_PHONE_ACTION_LAYOUT_EDITING__?.(opening); } catch {}
     if (opening) sizeControls.forEach(control => {
       const input = control.querySelector("input"), output = control.querySelector("output");
       const value = String(phoneControls.layoutScale(control.dataset.phoneSize));
@@ -25550,6 +26040,28 @@ function isLeonovHomeShip(shipId, faction) {
 
 function isLeonovHomeActive() {
   return isLeonovHomeShip(account.user?.ship, account.user?.faction);
+}
+
+// ✅ Leonov : son buff de dégâts (+150 % lasers, ×2.5 roquettes) ne
+// s'applique pas sur l'Emperor Sibelon.
+function isLeonovExcludedTarget(t) {
+  return String(t?.type || "").toLowerCase() === "npc_emperor_sibelon";
+}
+
+function leonovDamageExcludedForTarget(t) {
+  return isLeonovHomeActive() && isLeonovExcludedTarget(t);
+}
+
+// Base laser sans le bonus Leonov quand la cible est exclue.
+function laserBaseDamageForTarget(t) {
+  if (leonovDamageExcludedForTarget(t) && Number(player.baseDamageNoLeonov) > 0) {
+    return Number(player.baseDamageNoLeonov);
+  }
+  return Number(player.baseDamage || 0);
+}
+
+function leonovRocketMultForTarget(t) {
+  return leonovDamageExcludedForTarget(t) ? 1 : (isLeonovHomeActive() ? 2.5 : 1);
 }
 
 // ✅ Goliath Plus (HEAT) : +10 % dégâts / PV / bouclier du REX par VISUEL
@@ -30034,6 +30546,7 @@ function updateSkillUI(syncDock = true) {
     if (ui.cloakTxt) ui.cloakTxt.textContent = isPlayerCpuCloaked() ? "ACTIF" : (cloakOk ? "PRET" : "—");
   } catch {}
   if (syncDock) syncActionDockState();
+  try { window.__SYNC_PHONE_ACTION_GOLD__?.(); } catch {}
 }
 
 function npcIsEngagingPlayer(enemy) {
@@ -30520,7 +31033,7 @@ function spawnRocketProjectile(rocket, t, { spread = 0, volleyId = 0, volleySize
     * formationRocketDamageMult()
     * formationNpcDamageMult(t)
     * rocketBoosterMults.dmg * playerPilotMults().rocketDmg * playerUpgradeMults().rocket
-    * (isLeonovHomeActive() ? 2.5 : 1);
+    * leonovRocketMultForTarget(t);
   consumeUpgradeStock("rocket");
   const shotMiss = techPrecisionActive() ? false
     : typeof miss === "boolean"
@@ -31422,14 +31935,15 @@ consumeUpgradeStock("laser", countPlayerLasers());
 // Idem vsMatch (LF-3, Magmadrill, Paritydrill, AA-1/AAP-1 Mimesis, PR-L Blacklight, Xénocide...) et U-LF4 instable.
 // Xénocide : +510/canon dans la GG Awakened (inclus dans laserFitVsExtra).
 const droneLaserDamageMult = 1 + Math.max(0, Number(player.droneDamageBonusPct) || 0) / 100;
-let laserBase = player.baseDamage + laserFitVsExtra(player.laserMods, t, player.droneLaserMods) * droneLaserDamageMult;
+const laserBaseForTarget = laserBaseDamageForTarget(t);
+let laserBase = laserBaseForTarget + laserFitVsExtra(player.laserMods, t, player.droneLaserMods) * droneLaserDamageMult;
 laserBase += laserFitUnstableDelta(player.laserMods, player.droneLaserMods) * droneLaserDamageMult;
 const overdrive = laserFitOverdrive(player.laserMods, player.droneLaserMods, player.volleyCount) * droneLaserDamageMult;
 // Boosters : dégâts globaux + précision laser.
 const shotBoosterMults = playerBoosterMults();
 const shotHitBonusPct = Number(player.laserHitBonusPct || 0) + Number(shotBoosterMults.hit || 0);
   const dmgShot = isSab
-    ? player.baseDamage * SAB50.drainMult * shotBoosterMults.dmg
+    ? laserBaseForTarget * SAB50.drainMult * shotBoosterMults.dmg
     : (laserBase + overdrive) * mult * formationNpcDamageMult(t) * formationPlayerLaserDamageMult(t) * shotBoosterMults.dmg * playerPilotMults().alienDmg * playerUpgradeMults().laser * buoyDamageMult() * valourDamageMult() * berserkDamageMult() * holoDamageMult() * scrambleDamageMult() * specDamageMult() * tempestDischargeMult() * shipPassiveDamageMult();
 
   const shotMiss = Math.random() < Math.max(0, PLAYER_SHOTS.missChance - ((shotHitBonusPct + playerPilotMults().laserHit) / 100));

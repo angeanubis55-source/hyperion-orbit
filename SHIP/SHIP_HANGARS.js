@@ -219,6 +219,11 @@ const fit =
 
   // ✅ ÉTAPE 3 : calculer les valeurs finales
   const totalLaserDamage = baseDamage * (1 + bonusDamagePct / 100);
+  // ✅ Sans le bonus dégâts Leonov (+150 %) : utilisé quand la cible est
+  // un Emperor Sibelon (le buff Leonov ne s'y applique pas).
+  const totalLaserDamageNoLeonov = leonovHome
+    ? baseDamage * (1 + (bonusDamagePct - 150) / 100)
+    : totalLaserDamage;
   // The engine adds the hull speed: include its percentage bonus here too.
   const hullSpeed = Number(getShipPackById(hangar?.shipId)?.speed || 0);
   const bonusSpeed = baseSpeed * (1 + bonusSpeedPct / 100) + hullSpeed * bonusSpeedPct / 100
@@ -231,6 +236,8 @@ const fit =
 
   return { 
     totalLaserDamage, 
+    totalLaserDamageNoLeonov,
+    leonovDamagePct: leonovHome ? 150 : 0,
     bonusSpeed, 
     bonusShield, 
     bonusAbsorb,          // max des générateurs montés (0 = défaut 80 % moteur)

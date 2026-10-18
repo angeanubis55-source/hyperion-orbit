@@ -27,7 +27,7 @@
     // Fenêtre de départ à chaque refresh : pas de bypass session (la classe
     // orbitSessionReady n'est plus posée, l'overlay reste visible avec DÉPART).
     </script>
-  <link rel="stylesheet" href="style.css?v=ui-refresh-89" />
+  <link rel="stylesheet" href="style.css?v=ui-refresh-100" />
 </head>
 <body>
 <canvas id="game"></canvas>
@@ -46,7 +46,20 @@
     <span class="phoneQuickItems" aria-hidden="true"></span>
     <span class="phoneJoystickKnob" aria-hidden="true"></span><span class="phoneJoystickLabel">Barres 1 / 2</span>
   </div>
-  <button id="phoneQuickEditBtn" class="phoneQuickEditBtn" type="button">Modifier le dock</button>
+  <div class="phoneActionLauncher" aria-label="Actions rapides">
+    <button type="button" data-phone-action-category="ammo">X1</button>
+    <button type="button" data-phone-action-category="ammo2">Mun 2</button>
+    <button type="button" data-phone-action-category="skills">Extras</button>
+    <button type="button" data-phone-action-category="skills2">Extra 2</button>
+    <button type="button" data-phone-action-category="skills3">Extra 3</button>
+    <button type="button" data-phone-action-category="rockets">Roquettes</button>
+    <button type="button" data-phone-action-category="rockets2">Roquettes 2</button>
+    <button type="button" data-phone-action-category="launchers">Lance-roquettes</button>
+    <button type="button" data-phone-action-category="launchers2">Lance-R 2</button>
+    <button type="button" data-phone-action-category="formations">Formations</button>
+    <button type="button" data-phone-action-category="formations2">Formations 2</button>
+  </div>
+  <div class="phoneActionTray" hidden aria-label="Choix rapide"></div>
   <button id="phoneJoystickLayoutBtn" class="phoneJoystickLayoutBtn" type="button">Déplacer les joysticks</button>
   <label class="phoneJoystickSizeControl" data-phone-size="move" aria-label="Taille du joystick de déplacement"><input type="range" min="60" max="160" step="5" value="100" /></label>
   <label class="phoneJoystickSizeControl" data-phone-size="aim" aria-label="Taille du joystick de visée"><input type="range" min="60" max="160" step="5" value="100" /></label>
@@ -1513,6 +1526,6 @@
 <script src="./UI/UI_WINDOW_MANAGER.js?v=hangar-win-3"></script>
 
   <script type="module" src="./PUBLIC/PROFILE.js?v=lf6-shop-1"></script>
-  <script type="module" src="./SRC/MAIN.js?v=phone-wheel-17"></script>
+  <script type="module" src="./SRC/MAIN.js?v=phone-actions-18"></script>
 </body>
 </html>
