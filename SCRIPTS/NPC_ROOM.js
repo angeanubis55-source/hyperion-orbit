@@ -1960,6 +1960,15 @@ drainPlayerHits() {
       }
       this.recordDeath(death);
       try { this.noteHalloweenKill(entry.type, entry.campId); } catch {}
+      // [ UFONIT ] : camp consommé à la mort, sinon le tick (20 Hz) respawn
+      // sur la même map avant que le contrôleur (2 s) ne relocalise.
+      // Le contrôleur recrée un camp sur une map tirée au hasard.
+      if (isSundayBossVariant(entry.type)) {
+        try {
+          this.camps = this.camps.filter((c) => !(c && c.id === entry.campId && c.event === "sunday"));
+          ensureMapSlots(this.universe, this.mapId, this.camps, nowMs);
+        } catch {}
+      }
     }
     // Dégâts appliqués par ce coup (audit anticheat côté MULTI_SERVER).
     return applied;
@@ -2677,7 +2686,7 @@ drainPlayerHits() {
 // retourner la sim de la map ou null. Throttle interne 2 s.
 // Retourne { events, liveMap, active } ou null (throttle) ;
 // events = [{ t: "start" | "spawn" | "end", map? }].
-const SUNDAY_CTRL = { at: 0, wasActive: false };
+const SUNDAY_CTRL = { at: 0, wasActive: false, lastMap: null };
 export function syncSundayEvent(getSim, nowMs = Date.now()) {
   if (nowMs - SUNDAY_CTRL.at < 2000) return null;
   SUNDAY_CTRL.at = nowMs;
@@ -2704,8 +2713,13 @@ export function syncSundayEvent(getSim, nowMs = Date.now()) {
   }
   const ready = [...sims.keys()];
   if (!ready.length) return { events, liveMap: null, active: true };
-  const pick = sundayPickMap(Math.random);
+  // Tirage aléatoire, sans répéter la map précédente si possible.
+  let pick = sundayPickMap(Math.random);
+  if (ready.length > 1) {
+    for (let tries = 0; tries < 4 && pick === SUNDAY_CTRL.lastMap; tries++) pick = sundayPickMap(Math.random);
+  }
   const finalMap = ready.includes(pick) ? pick : ready[0];
+  SUNDAY_CTRL.lastMap = finalMap;
   const sim = sims.get(finalMap);
   for (const [m, s] of sims) {
     if (m === finalMap) continue;

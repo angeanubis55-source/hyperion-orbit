@@ -158,6 +158,14 @@ test("UFONIT : 1 seul sur les 4 maps, respawn instant, purge hors fenêtre", () 
   const getSim = (m) => sims.get(String(m).toLowerCase()) || null;
   let t = SUN_OCT_MID;
   const step = () => { t += 3000; return t; };
+  const liveEntry = () => {
+    for (const sim of sims.values()) {
+      for (const e of sim.entries.values()) {
+        if (e && e.type === SUNDAY_UFONIT_TYPE && e.hp > 0) return { sim, e };
+      }
+    }
+    return null;
+  };
   // Hors fenêtre : rien.
   let res = syncSundayEvent(getSim, SUN_OCT_BEFORE);
   assert.equal(res.active, false);
@@ -172,15 +180,25 @@ test("UFONIT : 1 seul sur les 4 maps, respawn instant, purge hors fenêtre", () 
   res = syncSundayEvent(getSim, step());
   assert.equal(liveTotal(sims), 1);
   assert.equal(res.events.filter((e) => e.t === "spawn").length, 0);
-  // Kill -> respawn immédiat (≤1 tick contrôleur), toujours 1 seul.
-  for (const sim of sims.values()) {
-    for (const [uid, e] of [...sim.entries]) {
-      if (e && e.type === SUNDAY_UFONIT_TYPE) { e.hp = 0; e.sh = 0; sim.entries.delete(uid); }
-    }
+  // Kills réels : le tick ne respawn PAS sur la même map (camp consommé),
+  // le contrôleur respawn (toujours 1 seul), sur des maps variées.
+  const seenMaps = new Set();
+  for (let cycle = 0; cycle < 6; cycle++) {
+    const found = liveEntry();
+    assert.ok(found);
+    seenMaps.add([...sims.keys()].find((m) => sims.get(m) === found.sim));
+    found.sim.setPlayer("u_1", found.e.x + 100, found.e.y, { dead: false });
+    found.sim.applyHit("u_1", { uid: found.e.uid, dmg: 2e9, execOk: true, critChance: 0, variance: 0 });
+    assert.equal(liveTotal(sims), 0);
+    // Le tick ne fait pas respawner sur place.
+    for (let i = 0; i < 5; i++) found.sim.tick(0.1);
+    assert.equal(liveTotal(sims), 0);
+    assert.equal(found.sim.camps.some((c) => c?.event === "sunday"), false);
+    res = syncSundayEvent(getSim, step());
+    assert.equal(liveTotal(sims), 1);
+    assert.equal(res.events.filter((e) => e.t === "spawn").length, 1);
   }
-  res = syncSundayEvent(getSim, step());
-  assert.equal(liveTotal(sims), 1);
-  assert.equal(res.events.filter((e) => e.t === "spawn").length, 1);
+  assert.ok(seenMaps.size >= 2);
   // Fin de fenêtre : purge + annonce, zéro vivant, camps retirés.
   res = syncSundayEvent(getSim, SUN_OCT_END + 3000);
   assert.equal(res.active, false);

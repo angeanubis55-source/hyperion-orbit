@@ -2161,7 +2161,10 @@ function pumpSundayEvent() {
   if (!res || !Array.isArray(res.events)) return;
   for (const ev of res.events) {
     try {
-      if (ev?.t === "spawn" && ev.map) announceSunday(ev.map, `[ UFONIT ] est apparu en ${String(ev.map).toUpperCase()} !`);
+      if (ev?.t === "spawn" && ev.map) {
+        try { console.info(`[sunday] spawn ${String(ev.map).toLowerCase()}`); } catch {}
+        announceSunday(ev.map, `[ UFONIT ] est apparu en ${String(ev.map).toUpperCase()} !`);
+      }
       else if (ev?.t === "start") { for (const m of SUNDAY_MAP_IDS) announceSunday(m, "[ UFONIT ] rôde sur 4-1 / 4-2 / 4-3 / 4-4 jusqu'à 22h30 !"); }
       else if (ev?.t === "end") { for (const m of SUNDAY_MAP_IDS) announceSunday(m, "L'[ UFONIT ] a disparu... à dimanche prochain !"); }
     } catch {}
