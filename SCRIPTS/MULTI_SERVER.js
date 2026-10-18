@@ -2025,6 +2025,10 @@ function awardNpcDeaths(mapId, deaths) {
       for (const pid of sunTopIds(death)) sendToPeer(pid, sunMsg);
     }
     let complete = true;
+    // Le nerf appartient au kill : si le tueur utilisait le bot, le pool
+    // total crédits/XP/honneur tombe à 25 % avant la répartition. Tous les
+    // membres reçoivent donc 25 % de leur part normale.
+    const botRewardFactor = findPeerState(killerId)?.bot === true ? 0.25 : 1;
     for (const share of npcRewardShares(killerId, mapId, death)) {
       if (!(share.percent > 0)) continue;
       const accountId = share.pid.slice(2);
@@ -2033,7 +2037,7 @@ function awardNpcDeaths(mapId, deaths) {
       const passivesEnabled = !(Number(death.at) >= Number(rewardState?._jamAt || Infinity)
         && Number(death.at) < Number(rewardState?._jamUntil || 0));
       let reward = null;
-      try { reward = awardNpcKill(accountId, death.type, mapId, share.percent, share.pid === killerId, txKey, passivesEnabled); } catch {}
+      try { reward = awardNpcKill(accountId, death.type, mapId, share.percent * botRewardFactor, share.pid === killerId, txKey, passivesEnabled); } catch {}
       if (!reward) {
         complete = false;
         console.error(`[multi:npc] échec attribution ${deathKey} à ${share.pid}`);
@@ -3549,6 +3553,7 @@ wss.on("connection", (ws) => {
       if (typeof msg.collectUid === "string") state.collectUid = String(msg.collectUid).slice(0, 64);
       if (typeof msg.collectPet === "boolean") state.collectPet = msg.collectPet;
       if (typeof msg.bg === "boolean") state.bg = msg.bg;
+      if (typeof msg.bot === "boolean") state.bot = msg.bot;
       if (typeof msg.atk === "boolean") state.atk = msg.atk;
       if (msg.combat === "npc" || msg.combat === "player" || msg.combat === "") state.combat = msg.combat;
       if (typeof msg.targetName === "string") state.targetName = String(msg.targetName).slice(0, 64);

@@ -1,5 +1,11 @@
 import { parseHalloweenVariant, halloweenMapStats } from "./NPC_HALLOWEEN.js";
 
+// Cartes classiques des trois firmes : x-1 à x-8. Les cartes de bataille,
+// pirates, Blacklight, raids et Galaxy Gates gardent leur barème propre.
+export function npcMapCreditMultiplier(mapId) {
+  return /^[123]-[1-8]$/.test(String(mapId || "").trim().toLowerCase()) ? 2 : 1;
+}
+
 export const NPC_REWARDS = Object.freeze({
   npc_Streuner: { credits: 1000, exp: 1000, honor: 2 },
   npc_Boss_Streuner: { credits: 4000, exp: 4000, honor: 8 },

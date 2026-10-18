@@ -5,6 +5,7 @@ import vm from "node:vm";
 import { isHalloweenBossVariant, appendHalloweenCamps, halloweenRoleOf } from "../NPC/NPC_HALLOWEEN.js";
 import { NPC_TYPES } from "../NPC/NPC_TYPES.js";
 import { ZoneNpcSim } from "./NPC_ROOM.js";
+import { npcMapCreditMultiplier } from "../NPC/NPC_BALANCE.js";
 import { QUEST_DEFINITIONS, getQuestObjectives, normalizeQuestState, recordQuestProgress, isQuestComplete } from "../QUEST/QUEST_TYPES.js";
 import { normalizeBattlepassState, recordBattlepassProgress, getBattlepassObjective, mergeBattlepassProgress } from "../QUEST/BATTLEPASS.js";
 
@@ -20,7 +21,7 @@ function functionSource(source, name) {
   assert.fail(`Fonction incomplète : ${name}`);
 }
 
-function rewardServer(size = 1, failOnce = false, sun = false) {
+function rewardServer(size = 1, failOnce = false, sun = false, killerBot = false) {
   let now = 1000000;
   const members = Array.from({ length: size }, (_, i) => ({ id: `u_${i}`, online: true, map: "1-3" }));
   const calls = [], messages = [], saved = new Map();
@@ -30,7 +31,7 @@ function rewardServer(size = 1, failOnce = false, sun = false) {
     rewardedNpcDeaths: new Map(), serverRunId: "test-run", isHalloweenBossVariant,
     socialDescribeGroup: () => ({ members: members.slice() }), describePeer: () => null,
     rooms: new Map([["1-3", new Map(members.map(member => [member.id, {}]))]]),
-    findPeerState: () => ({}), audOf: () => ({}), recordAbilityNpcKill: () => {},
+    findPeerState: pid => ({ bot: killerBot === true && pid === "u_0" }), audOf: () => ({}), recordAbilityNpcKill: () => {},
     awardNpcKill: (id, type, map, percent, ownsKill, txKey) => {
       calls.push(txKey);
       now += 8; // Un coût par transaction ne doit interrompre aucun kill.
@@ -52,6 +53,14 @@ function rewardServer(size = 1, failOnce = false, sun = false) {
   return { context, members, calls, messages, saved, deaths };
 }
 
+test("crédits NPC : seules les cartes classiques 1-1 à 3-8 sont doublées", () => {
+  for (const sector of [1, 2, 3]) {
+    for (let map = 1; map <= 8; map++) assert.equal(npcMapCreditMultiplier(`${sector}-${map}`), 2);
+  }
+  for (const map of ["4-1", "4-5", "5-1", "1-BL", "low", "alpha", "awakened"])
+    assert.equal(npcMapCreditMultiplier(map), 1, map);
+});
+
 test("1500 kills attribués dans l'appel initial, sans délai ni double récompense", () => {
   const s = rewardServer();
   const deaths = s.deaths(1500);
@@ -72,6 +81,23 @@ test("600 kills en groupe de 24 : les 14400 parts sont attribuées immédiatemen
   const total = s.messages.reduce((sum, m) => sum + m.percent, 0);
   assert.equal(total, 600 * 100);
   for (let i = 0; i < 24; i++) assert.equal(s.messages.filter(m => m.pid === `u_${i}`).length, 600);
+});
+
+test("kill du bot : le groupe partage un pool réduit à 25 %", () => {
+  const s = rewardServer(4, false, false, true);
+  s.context.awardNpcDeaths("1-3", s.deaths(1));
+  const rewards = s.messages.filter(message => message.t === "npcReward");
+  assert.equal(rewards.length, 4);
+  assert.equal(rewards.reduce((sum, reward) => sum + reward.percent, 0), 25);
+  assert.deepEqual(rewards.map(reward => reward.percent), [6.25, 6.25, 6.25, 6.25]);
+  assert.equal(rewards.filter(reward => reward.ownsKill).length, 1);
+});
+
+test("kill manuel : le groupe conserve le pool normal à 100 %", () => {
+  const s = rewardServer(4);
+  s.context.awardNpcDeaths("1-3", s.deaths(1));
+  const rewards = s.messages.filter(message => message.t === "npcReward");
+  assert.equal(rewards.reduce((sum, reward) => sum + reward.percent, 0), 100);
 });
 
 test("journal rejoué après une erreur SQLite : aucun doublon ni soleil répété", () => {

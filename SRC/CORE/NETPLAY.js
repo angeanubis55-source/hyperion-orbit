@@ -1900,6 +1900,7 @@ function sendNow(local, force = false) {
       collectUid: String(local.collectUid || "").slice(0, 64),
       collectPet: local.collectPet === true,
       bg: local.background === true,
+      bot: local.bot === true,
       safe: local.safe === true,
       atk: local.atk === true,
       combat: local.combat === "player" ? "player" : (local.combat === "npc" ? "npc" : ""),

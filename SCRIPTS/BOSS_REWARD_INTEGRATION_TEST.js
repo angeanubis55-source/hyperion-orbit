@@ -9,7 +9,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { createServer } from "node:net";
 import { once } from "node:events";
 import WebSocket from "ws";
-import { resolveNpcReward } from "../NPC/NPC_BALANCE.js";
+import { npcMapCreditMultiplier, resolveNpcReward } from "../NPC/NPC_BALANCE.js";
 
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -132,7 +132,7 @@ ZoneNpcSim.create = async function(mapId, saved) {
     for (const reward of rewards) {
       assert.equal(reward.percent, 100);
       assert.equal(reward.ownsKill, true);
-      assert.equal(reward.credits, pool.credits);
+      assert.equal(reward.credits, pool.credits * npcMapCreditMultiplier("1-1"));
       assert.equal(reward.exp, pool.exp);
       assert.equal(reward.honor, pool.honor);
       assert.equal(reward.sun, false);
@@ -140,7 +140,7 @@ ZoneNpcSim.create = async function(mapId, saved) {
     assert.equal(second.messages.filter(m => m.t === "npcReward").length, 0);
     const owner = (await api("/api/me", { token: firstAccount.token })).user;
     const helper = (await api("/api/me", { token: secondAccount.token })).user;
-    assert.equal(owner.credits, firstAccount.user.credits + 2 * pool.credits);
+    assert.equal(owner.credits, firstAccount.user.credits + 2 * pool.credits * npcMapCreditMultiplier("1-1"));
     assert.equal(owner.stats.exp, (firstAccount.user.stats?.exp || 0) + 2 * pool.exp);
     assert.equal(owner.stats.honor, (firstAccount.user.stats?.honor || 0) + 2 * pool.honor);
     assert.equal(helper.credits, secondAccount.user.credits);
@@ -158,7 +158,7 @@ ZoneNpcSim.create = async function(mapId, saved) {
     assert.equal(reward.ownsKill, false, "le premier attaquant garde le crédit personnel du kill");
     assert.equal(reward.killer, `u_${firstAccount.user.id}`);
     assert.equal(reward.killerPseudo, "boss-first");
-    assert.equal(reward.credits, Math.floor(pool.credits * reward.percent / 100));
+    assert.equal(reward.credits, Math.floor(pool.credits * reward.percent / 100 * npcMapCreditMultiplier("1-1")));
     assert.equal(reward.exp, Math.floor(pool.exp * reward.percent / 100));
     assert.equal(reward.honor, Math.floor(pool.honor * reward.percent / 100));
     assert.ok(reward.credits > 0 && reward.exp > 0);

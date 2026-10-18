@@ -16,7 +16,7 @@ import { getShipDesignBaseId, getShipFamilyId, getShipFamilyIds, getShipFamilyNa
 import { DRONE_XP_SHARE, getDroneLevel } from "../DRONE/DRONE_TYPES.js";
 import { DRONE_DESIGNS, getDroneDesign } from "../DRONE/DRONE_DESIGNS.js";
 import { PET_XP_SHARE, getPetLevel } from "../PET/PET_TYPES.js";
-import { resolveNpcReward } from "../NPC/NPC_BALANCE.js";
+import { npcMapCreditMultiplier, resolveNpcReward } from "../NPC/NPC_BALANCE.js";
 import { rollNpcAssemblyDirect } from "../NPC/NPC_ASSEMBLY.js";
 
 const DB_DIR = resolve(process.cwd(), "SERVER_DATA");
@@ -298,7 +298,8 @@ export function awardNpcKill(accountId, npcType, mapId, rewardPercent, ownsKill,
     let pilot = {};
     try { pilot = pilotSkillMults(data.pilotSkills) || {}; } catch {}
     const factor = (v) => Math.max(0, 1 + (Number(v) || 0) / 100);
-    const baseCredits = Math.max(0, Math.floor(Number(reward.credits) * pct / 100));
+    const baseCredits = Math.max(0, Math.floor(Number(reward.credits) * pct / 100
+      * npcMapCreditMultiplier(mapId)));
     const baseExp = Math.max(0, Math.floor(Number(reward.exp) * pct / 100));
     const baseHonor = Math.max(0, Math.floor(Number(reward.honor) * pct / 100));
     const rawShipId = String(hangar?.shipId || data.ship || "");

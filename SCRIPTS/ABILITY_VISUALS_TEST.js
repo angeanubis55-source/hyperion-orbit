@@ -17,6 +17,7 @@ import { SHIP_PACKS } from "../SHIP/SHIP_PACKS.js";
 import { ShipEngine } from "../SHIP/SHIP_ENGINE_RENDERER.js";
 import { CATALOG } from "../SRC/CORE/CATALOG.js";
 import { isHalloweenVariantType, isHalloweenBossVariant } from "../NPC/NPC_HALLOWEEN.js";
+import { npcMapCreditMultiplier } from "../NPC/NPC_BALANCE.js";
 
 // Exécute les vrais chemins du moteur avec un Canvas instrumenté.
 const engine = readFileSync(new URL("../SRC/CORE/ORBIT_ENGINE.js", import.meta.url), "utf8");
@@ -1096,7 +1097,7 @@ ZoneNpcSim.create = async function(...args) {
   assert.equal(reward.killer, hunter.id);
   assert.equal(reward.ownsKill, true);
   assert.equal(reward.type, "npc_Jpc_T0");
-  assert.equal(reward.credits, 5000);
+  assert.equal(reward.credits, 5000 * npcMapCreditMultiplier("1-1"));
   assert.equal(reward.baseExp, 2000);
   assert.equal(reward.baseHonor, 10);
   const deathSnapshot = await hunter.wait(m => m.t === "snapshot"

@@ -134,6 +134,7 @@ import { computeNpcCombatMove as computeNpcCombatMovement, computeNpcSteering, s
 import { DEFAULT_NPC_RADAR_FADE_START, getNpcSensorRanges, npcSensorOpacity, shouldDetectNpc } from "../../NPC/NPC_SENSORS.js";
 import { shouldRunNpcFrame } from "../../NPC/NPC_ACTIVITY.js";
 import { NPC_SHOTS as NPC_SHOT_RULES } from "../../NPC/NPC_PROJECTILES.js";
+import { npcMapCreditMultiplier } from "../../NPC/NPC_BALANCE.js";
 import { applyNpcSeparation as separateNpcEntities } from "../../NPC/NPC_MOVEMENT.js";
 import { CUBIKON_RESET } from "../../NPC/NPC_SPECIAL_BEHAVIORS.js";
 import { selectNpcCombatTarget } from "../../NPC/NPC_COMBAT.js";
@@ -28561,7 +28562,11 @@ function killRewards(e) {
   player.kills++;
   // Cupidité (arbre pilote) : +X % crédits par alien.
   const serverReward = e._netUid ? e._netReward : null;
-  const rewardPct = serverReward ? Number(serverReward.percent) || 100 : groupNpcRewardPercent(e);
+  // Combat local (Galaxy Gates) : un kill réalisé pendant que le bot est
+  // actif ne génère que 25 % des crédits, XP et honneur. En multi, le même
+  // coefficient est appliqué autoritairement par le serveur avant partage.
+  const botRewardFactor = !serverReward && Bot.active === true ? 0.25 : 1;
+  const rewardPct = (serverReward ? Number(serverReward.percent) || 100 : groupNpcRewardPercent(e)) * botRewardFactor;
   let credits, experience, honor, gainedXp, gainedHonor;
   if (serverReward) {
     credits = Math.max(0, Math.floor(Number(serverReward.credits) || 0));
@@ -28633,7 +28638,8 @@ function killRewards(e) {
       account.user.revision = Math.max(Math.floor(Number(account.user.revision) || 0), Math.floor(Number(serverReward.revision) || 0));
     }
   } else {
-    credits = Math.max(0, Math.floor(Number(e.value || 0) * rewardPct / 100 * playerPilotMults().credit));
+    credits = Math.max(0, Math.floor(Number(e.value || 0) * rewardPct / 100
+      * npcMapCreditMultiplier(window.__CURRENT_MAP_ID__) * playerPilotMults().credit));
     player.credits += credits;
     experience = Math.max(0, Math.floor(getNpcExperienceReward(e, NPC_TYPES[e.type]) * rewardPct / 100));
     honor = Math.max(0, Math.floor(getNpcHonorReward(e, { ...NPC_TYPES[e.type], type: e.type }) * rewardPct / 100));
@@ -43510,6 +43516,7 @@ function frame(t) {
         collectUid: activeCollectable?.slotUid ? String(activeCollectable.slotUid) : "",
         collectPet: !!petCollectable,
         background: document.visibilityState === "hidden" && Bot.active === true,
+        bot: Bot.active === true,
         atk: attackActive === true && !!atkTgt && !player.dead,
         combat: atkTgt ? (atkTgt._netPlayer != null ? "player" : "npc") : "",
         targetName: atkTgt && atkTgt._netPlayer == null
