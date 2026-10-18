@@ -3585,7 +3585,7 @@ export const PASS_SHOP_OFFERS = Object.freeze([
   Object.freeze({ id: "res_aurus", kind: "resources", cost: 2, label: "Aurus ×10", resources: Object.freeze({ aurus: 10 }) }),
   Object.freeze({ id: "res_rinusk", kind: "resources", cost: 5, label: "Rinusk ×50 + Traceurs ×10", resources: Object.freeze({ rinusk: 50, blacklight_trace: 10 }) }),
   Object.freeze({ id: "res_kyhalon", kind: "resources", cost: 5, label: "Kyhalon ×10 + Tetrathrin ×10", resources: Object.freeze({ kyhalon: 10, tetrathrin: 10 }) }),
-  Object.freeze({ id: "laser_xenocide", kind: "item", itemId: "laser_lf6", cost: 125, label: "Laser Xénocide" }),
+  Object.freeze({ id: "laser_xenocide", kind: "item", itemId: "laser_lf6", cost: 333, label: "Laser Xénocide" }),
 ]);
 
 export function getPassShopOffer(offerId) {

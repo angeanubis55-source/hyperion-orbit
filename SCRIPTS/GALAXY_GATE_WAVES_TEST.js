@@ -12,6 +12,19 @@ import { GALAXY_GATE_DRONE_DESIGN_DROPS, rollGalaxyGateDroneDesignReward, galaxy
 import { KRONOS_PARTS_BY_GATE, consumeBuiltGalaxyGate } from '../SRC/CORE/GALAXY_GATES.js';
 import { GALAXY_GATE_EQUIPMENT_DROPS, rollGalaxyGateEquipmentReward, galaxyGateEquipmentRewardMessage } from '../SRC/CORE/GALAXY_GATES.js';
 import { findCatalogItem } from '../SRC/CORE/CATALOG.js';
+import { getPortalSkinForMap } from '../SRC/CORE/PORTAL_SKINS.js';
+
+test('Kronos : le saut sans animation reste dans les six images existantes', () => {
+  const context = vm.createContext({});
+  vm.runInContext(engineFunction('getPortalFrameSrc'), context);
+  const skin = getPortalSkinForMap('kronos');
+  const pack = { path: skin.jumpFxPath, frames: skin.jumpFxFrames, firstNumber: 1, ext: '.png' };
+  assert.equal(context.getPortalFrameSrc(pack, 9), 'ASSETS/KRONOS_PORTAL/JUMP_FX/6.png');
+  for (let index = 0; index < pack.frames; index++) {
+    assert.ok(readFileSync(new URL('../' + context.getPortalFrameSrc(pack, index), import.meta.url)).length > 0);
+  }
+  assert.equal(context.getPortalFrameSrc({ ...pack, frames: 30 }, 9), 'ASSETS/KRONOS_PORTAL/JUMP_FX/10.png');
+});
 
 test('Epsilon : 50% Anchorlock, un laser maximum, tirage resolu conserve et catalogue equipable', () => {
   const drop = GALAXY_GATE_EQUIPMENT_DROPS.epsilon;

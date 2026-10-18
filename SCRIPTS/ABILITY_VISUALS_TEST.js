@@ -1166,3 +1166,126 @@ ZoneNpcSim.create = async function(...args) {
   const red = await observer.wait(m => m.t === "snapshot" && m.npc?.list?.some(e => e.uid === "lock-prey" && e.lock == null && e.jpcBy == null), selectedAt, 8500);
   assert.equal(red.npc.list.find(e => e.uid === "lock-prey").lock, null);
 });
+
+
+test("High-tech : gains Energy Leech confirmes +X/+0 visibles sur soi et sur le pilote selectionne", () => {
+  for (const local of [true, false]) {
+    const v = visuals();
+    const actor = local ? v.api.player : { id: "friend", x: 100, y: 100 };
+    if (!local) v.remotes.set("friend", actor);
+    Object.assign(v.api, { leechBeams: [], netGameTimeMs: () => 50000 });
+    Object.assign(v.api.player, { hp: 900, hpMax: 1000, sh: 0, shMax: 0 });
+    v.api.Target.get = () => ({ _netPlayer: "friend" });
+    const by = local ? "me" : "friend";
+    v.api.applyTechVisualEvent({ by, skill: "ability_tech_energy_leech", at: 49000, until: 1849000 });
+    const start = actor.leechFx.startedAt;
+    for (const [index, amount] of [100, 0].entries()) {
+      let pending = [{ by, target: by, skill: "ability_tech_energy_leech", phase: "heal", amount,
+        hp: 1000, sh: 0, healSeq: index + 1, x: 500, y: 600 }];
+      v.api.drainNetSkillInbox = () => { const batch = pending; pending = []; return batch; };
+      v.api.tickNetplayVisuals(0.016);
+      assert.equal(v.floats.at(-1)[4].text, `+${amount}`);
+      assert.equal(actor.leechFx.startedAt, start, "un soin ne relance pas l'aura");
+      assert.equal(v.api.leechBeams.length, index + 1);
+    }
+    if (local) assert.equal(v.api.player.hp, 1000);
+    assert.deepEqual(v.renderErrors, []);
+  }
+});
+
+test("High-tech : reconnexion conserve la phase des auras et annulation les retire", () => {
+  const v = visuals();
+  Object.assign(v.api, { leechBeams: [], netGameTimeMs: () => 50000 });
+  const actor = { id: "friend", afx: [[abilityFxCodeFor("ability_tech_energy_leech"), 1799, 0, 0, "", 49000],
+    [abilityFxCodeFor("ability_tech_npc_bomb"), 59, 0, 0, "", 49000]] };
+  v.remotes.set(actor.id, actor);
+  v.api.syncTechVisualSnapshot(actor);
+  assert.equal(actor.leechFx.startedAt, 0);
+  assert.equal(actor.npcBombFx.startedAt, 0);
+  v.advance(200);
+  v.api.syncTechVisualSnapshot(actor);
+  assert.equal(actor.leechFx.startedAt, 0, "snapshot suivant sans redemarrage");
+  v.api.applyTechVisualEvent({ by: actor.id, skill: "ability_tech_energy_leech", enabled: false });
+  assert.equal(actor.leechFx, null);
+});
+
+test("High-tech : Frost et les six pulses Bomb ont un rendu local et distant identique", () => {
+  const v = visuals();
+  const pulses = [];
+  v.api.drawHaloPulse = (...args) => pulses.push(args);
+  for (const name of ["drawRemoteNpcBomb", "drawRemoteFrostHalo", "drawNpcBombFx", "drawFrostHaloFx"]) {
+    const from = engine.indexOf(`function ${name}(`);
+    const to = engine.indexOf("\n}", from) + 2;
+    vm.runInContext(engine.slice(from, to), v.api);
+  }
+  Object.assign(v.api.player, { npcBombFx: { startedAt: 1000 }, frostFx: { startedAt: 1000 } });
+  const remote = { ...v.api.player };
+  v.advance(200);
+  v.api.drawFrostHaloFx(10, 20); v.api.drawRemoteFrostHalo(remote, 10, 20);
+  assert.deepEqual(pulses[0], pulses[1]); pulses.length = 0;
+  v.api.drawNpcBombFx(0, 0); assert.equal(pulses.length, 0, "aucune explosion avant 10 secondes");
+  for (let tick = 1; tick <= 6; tick++) {
+    v.advance(10000);
+    v.api.drawNpcBombFx(10, 20); v.api.drawRemoteNpcBomb(remote, 10, 20);
+    assert.equal(pulses.length, 2, `pulse ${tick}`);
+    assert.deepEqual(pulses[0], pulses[1]); pulses.length = 0;
+  }
+  assert.deepEqual(v.renderErrors, []);
+});
+
+
+test("Energy Leech WebSocket : un impact NPC envoie +0 aux deux clients et conserve son aura", { timeout: 15000 }, async t => {
+  const { connect, pause } = await visualServer(t, `
+const originalCreate = ZoneNpcSim.create;
+ZoneNpcSim.create = async function(...args) {
+  const sim = await originalCreate.apply(this, args);
+  if (sim?.mapId !== "1-1") return sim;
+  const npc = [...sim.entries.values()][0] || {};
+  sim.camps = []; sim.entries.clear(); sim.safe = []; sim.walls = [];
+  Object.assign(npc, { type: "npc_Streuner", jpc: false, uid: "leech-test", x: 4800, y: 3500, hp: 1000000, hpMax: 1000000,
+    sh: 0, shMax: 0, canShoot: false, speed: 0 });
+  sim.entries.set(npc.uid, npc);
+  return sim;
+};`);
+  const caster = await connect("leech-caster", "goliath", { position: { x: 4500, y: 3500 } });
+  const observer = await connect("leech-viewer", "goliath", { position: { x: 4500, y: 3600 } });
+  const skill = "ability_tech_energy_leech";
+  caster.send({ t: "skillUse", skill, phase: "fire" });
+  await caster.wait(m => m.t === "skillFx" && m.skill === skill && m.phase !== "heal");
+  await observer.wait(m => m.t === "skillFx" && m.skill === skill && m.phase !== "heal");
+  await pause(500);
+  caster.send({ t: "hit", uid: "leech-test", dmg: 100 });
+  const heal = await caster.wait(m => m.t === "skillFx" && m.skill === skill && m.phase === "heal");
+  const shared = await observer.wait(m => m.t === "skillFx" && m.skill === skill && m.phase === "heal");
+  assert.equal(heal.amount, 0);
+  assert.ok(heal.healSeq > 0);
+  assert.deepEqual(shared, heal);
+  assert.equal(heal.x, 4800);
+  const snapshot = await observer.wait(m => m.t === "snapshot" && m.players.some(p =>
+    p.id === caster.id && p.afx?.some(entry => entry[0] === abilityFxCodeFor(skill) && entry[5] > 0)));
+  assert.ok(snapshot);
+});
+
+
+test("High-tech : Energy Leech partage la frame et la taille native, Chain suit les memes cibles vivantes", () => {
+  const v = visuals(), beams = [];
+  Object.assign(v.api, { netGameTimeMs: () => 50321, techEnergyLeechActive: () => true,
+    getCachedImage: path => ({ complete: true, naturalWidth: 100, naturalHeight: 80, path }),
+    petLinkBeam: (...args) => beams.push(args) });
+  for (const name of ["drawEnergyLeechFx", "drawRemoteEnergyLeech", "drawChainImpulseFx", "drawRemoteChainImpulse"]) {
+    const from = engine.indexOf(`function ${name}(`), to = engine.indexOf("\n}", from) + 2;
+    vm.runInContext(engine.slice(from, to), v.api);
+  }
+  const remote = { ...v.api.player, leechFx: { startedAt: 1000 } };
+  v.api.drawEnergyLeechFx(); v.api.drawRemoteEnergyLeech(remote, 0, 0);
+  assert.equal(v.draws.length, 2);
+  assert.deepEqual(v.draws[0], v.draws[1]);
+  assert.equal(v.draws[0].w, 100); assert.equal(v.draws[0].h, 80);
+  const fx = { startedAt: 1000, chain: [{ id: "npc", x: 1, y: 2 }] };
+  v.api.player.chainImpFx = fx; remote.chainImpFx = fx;
+  v.api.enemies.push({ _netUid: "npc", hp: 100, x: 800, y: 900 });
+  v.api.drawChainImpulseFx(0, 0); v.api.drawRemoteChainImpulse(remote, 0, 0);
+  assert.deepEqual(beams[0], beams[1]);
+  assert.deepEqual(beams[0], [100, 100, 800, 900]);
+  assert.deepEqual(v.renderErrors, []);
+});

@@ -78,16 +78,16 @@ test("sanitize borne positions et durées, conserve la cible", () => {
   assert.ok(String(out[4]).length <= 64);
 });
 
-test("sanitize liste plafonne à 8 entrées", () => {
+test("sanitize liste conserve les high-tech simultanés et plafonne à 32 entrées", () => {
   const code = abilityFxCodeFor("ability_berserker_bsk");
-  const list = Array.from({ length: 20 }, () => [code, 5, 0, 0]);
-  assert.equal(sanitizeAbilityFxList(list).length, 8);
+  const list = Array.from({ length: 40 }, () => [code, 5, 0, 0]);
+  assert.equal(sanitizeAbilityFxList(list).length, 32);
   assert.deepEqual(sanitizeAbilityFxList("nope"), []);
 });
 
 // --- Prune serveur ---
 
-test("prune garde les auras actives, purge les expirées et clamps à 8", () => {
+test("prune garde les auras actives et purge les expirées", () => {
   const now = 1_000_000;
   const fx = {
     ability_berserker_bsk: { until: now + 5000, x: 0, y: 0, target: "" },
@@ -219,4 +219,19 @@ test("solaris plus : spec 3s halo 800 CD80", () => {
   const base = getAbilityInfo("ability_solaris_inc");
   assert.equal(base.durationSec, 3);
   assert.equal(base.cooldownSec, 90);
+});
+
+
+test("high-tech : les dix effets traversent le snapshot ensemble avec leur phase d'origine", () => {
+  const ids = ["speed_burst", "shield_backup", "shield_backup_2", "battle_repair", "battle_repair_2",
+    "chain_impulse", "frost_field", "npc_bomb", "precision_targeter", "energy_leech"].map(id => `ability_tech_${id}`);
+  const state = Object.fromEntries(ids.map(id => [id, { from: 49000, until: 70000 }]));
+  const entries = pruneAbilityFxMap(state, 50000);
+  assert.equal(entries.length, 10);
+  const received = sanitizeAbilityFxList(entries);
+  assert.equal(received.length, 10);
+  for (const entry of received) {
+    assert.ok(ids.includes(abilityIdForFxCode(entry[0])));
+    assert.equal(entry[5], 49000);
+  }
 });

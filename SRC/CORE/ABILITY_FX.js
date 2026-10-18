@@ -16,7 +16,7 @@
 // - x, y : position monde arrondie (utile pour les zones posées : pods,
 //   nébuleuse). 0,0 = suit le lanceur.
 // - target : id réseau de la cible (marqueurs/debuffs mono-cible), "" sinon.
-// - max 8 entrées par joueur, expirées purgées côté serveur.
+// - max 32 entrées par joueur, expirées purgées côté serveur.
 //
 // Les camouflages (cloak) ne transitent JAMAIS ici : un joueur camouflé
 // reste invisible (règle cloakCpu existante, dévoilement IEM inchangé).
@@ -219,6 +219,15 @@ export const ABILITY_FX_CODES = Object.freeze({
   81: "ability_mimesis_phase-out",
   82: "ability_orcus-plus_assimilate",
   83: "ability_tech_speed_burst",
+  84: "ability_tech_shield_backup",
+  85: "ability_tech_shield_backup_2",
+  86: "ability_tech_battle_repair",
+  87: "ability_tech_battle_repair_2",
+  88: "ability_tech_chain_impulse",
+  89: "ability_tech_frost_field",
+  90: "ability_tech_npc_bomb",
+  91: "ability_tech_precision_targeter",
+  92: "ability_tech_energy_leech",
 });
 
 // Ids qui ne doivent JAMAIS être diffusés (invisibilité gameplay).
@@ -265,16 +274,18 @@ export function sanitizeAbilityFxEntry(entry) {
   const x = Number.isFinite(Number(entry[2])) ? Math.max(-50000, Math.min(50000, Math.round(Number(entry[2])))) : 0;
   const y = Number.isFinite(Number(entry[3])) ? Math.max(-50000, Math.min(50000, Math.round(Number(entry[3])))) : 0;
   const target = typeof entry[4] === "string" ? entry[4].slice(0, 64) : "";
-  return [code, Math.round(secLeft * 10) / 10, x, y, target];
+  const out = [code, Math.round(secLeft * 10) / 10, x, y, target];
+  if (id.startsWith("ability_tech_") && Number.isFinite(entry[5]) && entry[5] > 0) out.push(entry[5]);
+  return out;
 }
 
-// Sanitise un tableau afx complet (max 8 entrées valides).
+// Sanitise un tableau afx complet (max 32 entrées valides).
 export function sanitizeAbilityFxList(list) {
   if (!Array.isArray(list)) return [];
   const out = [];
-  for (const entry of list.slice(0, 16)) {
+  for (const entry of list.slice(0, 64)) {
     const clean = sanitizeAbilityFxEntry(entry);
-    if (clean && out.length < 8) out.push(clean);
+    if (clean && out.length < 32) out.push(clean);
   }
   return out;
 }
@@ -289,10 +300,12 @@ export function pruneAbilityFxMap(fxMap, now) {
     const code = abilityFxCodeFor(key);
     if (!code) continue;
     if (!isAbilityFxBroadcastable(key)) continue;
-    out.push([code, Math.round(((until - now) / 1000) * 10) / 10,
+    const entry = [code, Math.round(((until - now) / 1000) * 10) / 10,
       Math.round(Number(fx.x) || 0), Math.round(Number(fx.y) || 0),
-      typeof fx.target === "string" ? fx.target.slice(0, 64) : ""]);
-    if (out.length >= 8) break;
+      typeof fx.target === "string" ? fx.target.slice(0, 64) : ""];
+    if (key.startsWith("ability_tech_") && Number(fx.from) > 0) entry.push(Number(fx.from));
+    out.push(entry);
+    if (out.length >= 32) break;
   }
   return out;
 }

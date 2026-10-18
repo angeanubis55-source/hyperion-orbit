@@ -8,7 +8,7 @@ import { ABILITIES, ABILITY_IDS, getAbilityInfo, abilityShipKeyFor, HYPERION_QA_
 import { SHIP_PACKS } from "../SHIP/SHIP_PACKS.js";
 import { isAbilityFxBroadcastable, healSpecFor, fxDebuffsOn, HEAL_MIN_INTERVAL_MS, EXEC_WINDOW_MS } from "../SRC/CORE/ABILITY_FX.js";
 import { ABILITY_DAMAGE_RULES, validateAbilityDamage, hostileAbility, unlimitedAbilityRange, abilitySpeedMult } from "../SRC/CORE/ABILITY_COMBAT_RULES.js";
-import { abilityDamage, activeAbility, tickAbilityStates, triggerPaladin, recordAbilityDamageDealt, recordAbilityNpcKill } from "./ABILITY_RUNTIME.js";
+import { abilityDamage, activeAbility, tickAbilityStates, triggerPaladin, recordAbilityDamageDealt, recordAbilityNpcKill, applyEnergyLeech } from "./ABILITY_RUNTIME.js";
 import { shipOwnsAbility, useMovementAbility, isMovementAbilityKey, usePhaseOut, movementSpeed, takeMovement, stopMovementAbility } from "./MOVEMENT_RULES.js";
 import { validateCombatHit } from "./COMBAT_PROFILE.js";
 import { syncDisarrayShield, syncDisruptorEffects, laserDisrupted, redirectedPlayer, DDOL_ACCURACY_PENALTY } from "./DISRUPTOR_RULES.js";
@@ -19,6 +19,52 @@ import { ZoneNpcSim } from "./NPC_ROOM.js";
 
 const source = readFileSync(new URL("./MULTI_SERVER.js", import.meta.url), "utf8");
 const NOW = 100000;
+test("Energy Leech : gain réel plafonné, +0 à pleine coque, sans soin hors aura ni sur un raté", () => {
+  const events = [];
+  const state = { id: "caster", hp: 99950, hpMax: 100000,
+    _abilityFx: { ability_tech_energy_leech: { from: NOW, until: NOW + 1800000 } } };
+  const heal = (damage, now = NOW) => applyEnergyLeech(state, damage, now, event => events.push(event), { x: 400, y: 500 });
+  assert.equal(heal(10000), 50);
+  assert.equal(events.at(-1).amount, 50);
+  assert.equal(events.at(-1).hp, 100000);
+  assert.deepEqual([events.at(-1).x, events.at(-1).y], [400, 500]);
+  assert.equal(heal(10000), 0); assert.equal(events.at(-1).amount, 0);
+  assert.equal(events.length, 2);
+  heal(0); heal(10000, NOW + 1800000);
+  assert.equal(events.length, 2);
+  state.hp = 50000; state._tempestBackupUntil = NOW + 100;
+  assert.equal(heal(10000), 0); assert.equal(state.hp, 50000);
+});
+
+for (const [skill, seconds, amount] of [["ability_tech_battle_repair", 15, 10000], ["ability_tech_battle_repair_2", 10, 30000]]) {
+  test(`${skill} : dernier tick inclus à expiration, gain réel et +0 sans duplication`, () => {
+    const state = { id: "caster", hp: 1, hpMax: 2000000, sh: 0, shMax: 0, x: 5000, y: 3500,
+      _abilityFx: { [skill]: { from: NOW, until: NOW + seconds * 1000 } } };
+    const room = new Map([[state.id, { state }]]), events = [];
+    for (let i = 1; i <= seconds + 1; i++) tickAbilityStates(room, null, NOW + i * 1000, e => events.push(e), () => null);
+    assert.equal(events.filter(e => e.skill === skill).length, seconds);
+    assert.equal(state.hp, 1 + seconds * amount);
+    const zero = { ...state, hp: state.hpMax, _abilityFx: { [skill]: { from: NOW, until: NOW + seconds * 1000 } } };
+    tickAbilityStates(new Map([[zero.id, { state: zero }]]), null, NOW + 1000, e => events.push(e), () => null);
+    assert.equal(events.at(-1).amount, 0);
+  });
+}
+
+test("NPC Bomb : six impacts même avec des ticks retardés, zéro impact initial et leech réel", () => {
+  const state = { id: "caster", hp: 1, hpMax: 2000000, x: 5000, y: 3500,
+    _abilityFx: { ability_tech_npc_bomb: { from: NOW, until: NOW + 60999 },
+      ability_tech_energy_leech: { from: NOW, until: NOW + 1800000 } } };
+  const events = [], hits = [], npc = { hp: 10000000, hpMax: 10000000, x: 5000, y: 3500 };
+  const sim = { entries: new Map([["npc", npc]]), applyHit: (id, hit) => { hits.push(hit); return 100000; } };
+  const room = new Map([[state.id, { state }]]);
+  tickAbilityStates(room, sim, NOW, e => events.push(e), () => null); assert.equal(hits.length, 0);
+  for (const elapsed of [11000, 31000, 61000, 62000]) tickAbilityStates(room, sim, NOW + elapsed, e => events.push(e), () => null);
+  assert.equal(hits.length, 6);
+  assert.equal(events.filter(e => e.skill === "ability_tech_energy_leech").length, 6);
+  assert.equal(state.hp, 60001);
+  assert.equal(state._techCds.ability_tech_npc_bomb, NOW + 61000 + 300000);
+});
+
 const profileFor = ship => ({ shipId: SHIP_PACKS.find(p => abilityShipKeyFor(p.id) === ship)?.id || ship,
   baseId: ship, hpMax: 1000000, shMax: 100000, speed: 400, range: 1400,
   hangarId: "test", config: 1, laserDamage: 10000, penetration: 0, maxDamage: 1000000,
@@ -96,14 +142,29 @@ test('Hermes : le serveur accepte la prochaine aptitude apres sa recharge reduit
 
 for (const skill of ABILITY_IDS.filter(id => hostileAbility(id, ABILITIES[id]))) {
   for (const npc of [false, true]) test(`ZNA ${npc ? "NPC" : "joueur"} : ${skill}`, () => {
-    for (const side of ["caster", "target"]) {
+    const message = sid => ({ target: sid, chain: [sid], rocket: "eco10", chargeSec: 3 });
+    // Cible protégée : bloqué dans tous les cas, aucun événement.
+    for (const casterSafe of [false, true]) {
       const f = fixture(ABILITIES[skill].ship, npc);
-      f[side].safe = true;
-      f.sim.inSafe = (x, y) => x === f[side].x;
-      assert.equal(f.api.trackAbilityFx(f.caster, f.profile, skill,
-        { target: f.target.id, chain: [f.target.id], chargeSec: 3 }, f.room, f.caster.id, NOW, f.sim), false);
+      f.caster.safe = casterSafe;
+      f.target.safe = true;
+      f.sim.inSafe = (x, y) => x === f.target.x;
+      assert.equal(f.api.trackAbilityFx(f.caster, f.profile, skill, message(f.target.id), f.room, f.caster.id, NOW, f.sim), false);
       assert.equal(f.events.length, 0);
     }
+    // Attaquant seul protégé : même résultat que sans protection (il perd
+    // sa ZNA en attaquant, parité client netPvpBlocked).
+    const run = (safeCaster) => {
+      const f = fixture(ABILITIES[skill].ship, npc);
+      f.caster.safe = safeCaster;
+      f.sim.inSafe = () => false;
+      if (isMovementAbilityKey(skill)) assert.equal(useMovementAbility(f.caster, f.profile, skill, true, NOW, f.target, f.target.id), true);
+      const ret = f.api.trackAbilityFx(f.caster, f.profile, skill, message(f.target.id), f.room, f.caster.id, NOW, f.sim);
+      return { ret: ret === true, events: f.events.length };
+    };
+    const base = run(false), prot = run(true);
+    assert.deepEqual(prot, base);
+    assert.ok(base.events > 0, "le tir part vraiment");
   });
 }
 

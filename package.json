@@ -16,6 +16,7 @@
     "server:multi": "node SCRIPTS/MULTI_SERVER.js",
     "benchmark": "node SCRIPTS/BENCHMARK_SPATIAL.js",
     "assets:manifest": "node SCRIPTS/GENERATE_ASSET_MANIFEST.js",
+    "assets:check": "node SCRIPTS/GENERATE_ASSET_MANIFEST.js --check",
     "version:sync": "node SCRIPTS/VERSION_SYNC.js",
     "test:account-portal-browser": "node SCRIPTS/ACCOUNT_PORTAL_BROWSER_TEST.js",
     "test:window-open-browser": "node SCRIPTS/WINDOW_OPEN_BROWSER_TEST.js",

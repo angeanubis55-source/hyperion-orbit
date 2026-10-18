@@ -1,4 +1,4 @@
-import { readdir, writeFile } from "node:fs/promises";
+import { readdir, readFile, writeFile } from "node:fs/promises";
 import { extname, join, relative, sep } from "node:path";
 
 const root = process.cwd();
@@ -21,5 +21,20 @@ async function scan(directory) {
 
 await scan(root);
 assets.sort((a, b) => a.localeCompare(b, "en"));
-await writeFile(output, `${JSON.stringify({ version: 1, assets }, null, 2)}\n`, "utf8");
-console.log(`Asset manifest: ${assets.length} files.`);
+if (process.argv.includes("--check")) {
+  const manifest = JSON.parse(await readFile(output, "utf8"));
+  const listed = new Set(manifest.assets);
+  const actual = new Set(assets);
+  const missing = assets.filter(asset => !listed.has(asset));
+  const obsolete = manifest.assets.filter(asset => !actual.has(asset));
+  const duplicates = manifest.assets.length - listed.size;
+  if (manifest.version !== 1 || missing.length || obsolete.length || duplicates) {
+    console.error(JSON.stringify({ version: manifest.version, missing, obsolete, duplicates }, null, 2));
+    process.exitCode = 1;
+  } else {
+    console.log(`Asset manifest verified: ${assets.length} files, no missing, obsolete or duplicate entries.`);
+  }
+} else {
+  await writeFile(output, `${JSON.stringify({ version: 1, assets }, null, 2)}\n`, "utf8");
+  console.log(`Asset manifest: ${assets.length} files.`);
+}

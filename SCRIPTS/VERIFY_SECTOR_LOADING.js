@@ -50,7 +50,8 @@ try {
   page.on('response', response => {
     const path = new URL(response.url()).pathname;
     if (response.status() === 404 && optionalRocketPaths.has(path)) missingOptionalSprites.add(path);
-    else if (response.status() >= 400 && !path.endsWith('favicon.ico')) errors.push(`${response.status()} ${response.url()}`);
+    // Account APIs are outside this static-server resource test.
+    else if (response.status() >= 400 && !path.startsWith('/api/') && !path.endsWith('favicon.ico')) errors.push(`${response.status()} ${response.url()}`);
   });
   await page.addInitScript(() => {
     const user = { id: 'loading-test', pseudo: 'Loading', email: 'loading@local', password: 'test', ship: 'PhoenixBleu', inventory: { counts: { laser_lf1: 1 }, ships: ['PhoenixBleu'], shipModules: [] } };
@@ -73,6 +74,10 @@ try {
     assert.ok(requests.includes('/ASSETS/MMO/BEACON.png'));
     assert.equal(requests.some(p => /^\/assets\/(EIC|VRU|PIRATES)\//.test(p)), false, 'Other sectors bases must not load at boot');
     assert.equal(requests.includes('/ASSETS/MMO/QUEST.png'), false);
+    for (let frame = 1; frame <= 30; frame++) {
+      assert.ok(requests.includes(`/ASSETS/LIFE_STEAL/${frame}.png`), `Energy Leech frame ${frame} prepared before entry`);
+    }
+    assert.ok(requests.includes('/ASSETS/VOL_DE_VIE_EFFET_INVERSE/1.png'));
     assert.ok(requests.length < 2000, `Excessive boot resources: ${requests.length}`);
     const progress = await page.locator('#loadingOverlay .loadingTrack').getAttribute('aria-valuenow');
     assert.equal(progress, '100');
@@ -84,8 +89,9 @@ try {
       uniqueResourceBytes: resources.reduce((sum, item) => sum + item.bytes, 0),
       largestResources: resources.sort((a,b) => b.bytes-a.bytes).slice(0, 8) });
     console.log(JSON.stringify({ network: networkName, ...results.phases.at(-1) }));
-    await page.click('#loadingStartBtn');
-    await page.waitForSelector('#game', { state: 'visible' });
+    // This static-server test checks resource preparation before entering play.
+    // DEPART now requires an authenticated WebSocket server; map preparation
+    // itself can be exercised without connecting or creating a real account.
   };
   await boot('cold 1-1');
   await page.evaluate(() => sessionStorage.setItem('orbit_assets_preloaded_v1', 'ready'));

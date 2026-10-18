@@ -112,7 +112,7 @@ import { SHIP_EFFECTS } from "../../SHIP/SHIP_EFFECTS.js";
 import { getShipEffectStats, getShipBonusInfo } from "../../SHIP/SHIP_BONUSES.js";
 import { GAME_VERSION } from "../DATA/VERSION.js";
 import { getShipPackById as getShipPackByIdData, getShipDesignBaseId } from "../../SHIP/SHIP_PACKS.js";
-import { getAbilityInfo, formatAbilityTiming, policeAbilityIds, abilityIconFile, HYPERION_QA_DAMAGE, HYPERION_QA_BURST_SEC, HYPERION_QA_SALVOS } from "../../SHIP/SHIP_ABILITIES.js";
+import { getAbilityInfo, formatAbilityTiming, policeAbilityIds, abilityIconFile, ABILITY_IDS, HYPERION_QA_DAMAGE, HYPERION_QA_BURST_SEC, HYPERION_QA_SALVOS } from "../../SHIP/SHIP_ABILITIES.js";
 import { abilityFxCodeFor, abilityIdForFxCode, healSpecFor } from "./ABILITY_FX.js";
 import { DRONE_FORMATIONS, DRONE_MAX_LEVEL, DRONE_TYPES, DRONE_XP_SHARE, formationDockIcon, getActiveDroneFormation, getDroneLevel, getDroneShopSpritePath, getDroneSpritePath, isClassicFormation } from "../../DRONE/DRONE_TYPES.js";
 import { DRONE_DESIGNS, getDroneDesign, getDroneFitForHangar, droneDesignCooldown, droneIndicatorColor } from "../../DRONE/DRONE_DESIGNS.js";
@@ -1224,7 +1224,6 @@ const PET_DOCK_MODE_VALUES = Object.freeze(["combat", "gear:al", "gear:ar", "gea
 // Techs affichées dans l'onglet TECH du dock (visuel seul pour l'instant ;
 // Anti-AI et Burning Trail exclus). Une image par tech, pas de déclinaison.
 const TECH_DOCK_ITEMS = Object.freeze([
-  { id: "anti-mine-transmitter", label: "Anti-Mine Transmitter", icon: "ASSETS/CONTROL_MENU/tech_anti-mine-transmitter.png" },
   { id: "shield-backup", label: "Shield Backup", icon: "ASSETS/CONTROL_MENU/tech_backup-shields.png" },
   { id: "battle-repair-bot", label: "Battle Repair Bot", icon: "ASSETS/CONTROL_MENU/tech_battle-repair-bot.png" },
   { id: "battle-repair-bot-2", label: "Battle Repair Bot 2", icon: "ASSETS/CONTROL_MENU/tech_battle-repair-bot2.png" },
@@ -1243,18 +1242,23 @@ const TECH_DOCK_ITEMS = Object.freeze([
 function techDockVisual(id) {
   const active = (id === "speed-burst" && (Number(player?.speedBurstT) || 0) > 0)
     || (id === "chain-impulse" && player?.chainArmed === true)
-    || (id === "precision-targeter" && techPrecisionActive());
+    || (id === "precision-targeter" && techPrecisionActive())
+    || (id === "energy-leech" && techEnergyLeechActive());
   if (id === "precision-targeter" && techPrecisionActive()) {
     const left = Math.max(0, (Number(player.precisionUntil) - Date.now()) / 1000);
     return { active: true, cd: left, cdMax: PRECISION_DURATION_MS / 1000 };
   }
-  let cd = techCooldownLeftSec(id), cdMax = TECH_COOLDOWN;
+  let cd = techCooldownLeftSec(id), cdMax = id === "energy-leech" ? ENERGY_LEECH_CD_S : TECH_COOLDOWN;
   if (id === "npc-bomb" && techNpcBombFrom) {
     const ageS = (performance.now() - techNpcBombFrom) / 1000;
     if (ageS >= 0 && ageS < NPC_BOMB_DURATION_MS / 1000) {
       cd = NPC_BOMB_TICK_SEC - (ageS % NPC_BOMB_TICK_SEC);
       cdMax = NPC_BOMB_TICK_SEC;
     }
+  }
+  if (id === "energy-leech" && techEnergyLeechActive()) {
+    const left = Math.max(0, (Number(player.energyLeechUntil) - Date.now()) / 1000);
+    return { active: true, cd: left, cdMax: ENERGY_LEECH_DURATION_MS / 1000 };
   }
   return { active, cd, cdMax };
 }
@@ -1360,6 +1364,7 @@ const SPEED_BURST_ID = "ability_tech_speed_burst";
 const SPEED_BURST_DURATION = 2;
 const SPEED_BURST_SPEED = 900;
 const TECH_COOLDOWN = 300; // recharge de chaque tech (individuelle)
+const ENERGY_LEECH_CD_S = 900; // Energy Leech : 900 s au lieu de 300
 // Tech Chain Impulse : armée via l'onglet/le slot, déclenchée par le
 // prochain tir laser. Éclair (visuel lien HP du PET) sur tous les ennemis
 // dans un rayon de 700 autour du lanceur : -50 % vitesse pendant 2 s.
@@ -1369,6 +1374,17 @@ const CHAIN_IMPULSE_RADIUS = 700;
 const CHAIN_IMPULSE_DAMAGE = 30000;
 const CHAIN_IMPULSE_BEAM_MS = 1200;
 const CHAIN_IMPULSE_MAX_TARGETS = 12;
+// Tech Energy Leech : 30 min de vol de vie (10 % des dégâts infligés
+// rendus en coque), CD 900 s uniquement pour elle. LOOP visuel
+// LIFE_STEAL sur le vaisseau (visible par tous), VOL_DE_VIE qui part de
+// la cible vers nous (visible pour tous), +X affichés comme les soins.
+const ENERGY_LEECH_ID = "ability_tech_energy_leech";
+const ENERGY_LEECH_DURATION_MS = 1800000;
+const ENERGY_LEECH_CD_MS = 900000;
+const ENERGY_LEECH_PCT = 0.10;
+function techEnergyLeechActive() {
+  try { return Date.now() < Number(player?.energyLeechUntil || 0); } catch { return false; }
+}
 // Tech Precision Targeter : 100 % de précision roquettes pendant 60 min
 // (plus aucun miss), cercle rouge sous chaque roquette tirée (visible par
 // tous via le flag prec des tirs). Pas d'icône à créer (image existante).
@@ -1417,6 +1433,7 @@ const TECH_SKILL_DOCK_IDS = Object.freeze({
   [FROST_FIELD_ID]: "frost-field",
   [NPC_BOMB_ID]: "npc-bomb",
   [PRECISION_TARGETER_ID]: "precision-targeter",
+  [ENERGY_LEECH_ID]: "energy-leech",
 });
 // Voyage Yamato : clone exact du Voyage Citadel (x2, 5 s, CD 60 s),
 // état SÉPARÉ (yamatoT/yamatoCd) — pas de partage avec travelT.
@@ -1731,9 +1748,9 @@ function triggerChainImpulse() {
   } catch {}
 }
 // Éclairs locaux du Chain Impulse (visuel lien HP, positions figées au tir).
-const chainImpBeams = [];
+// Volées VOL_DE_VIE : partent de la cible vers nous quand on inflige des dégâts (leech actif, visible pour tous).
+const leechBeams = [];
 // Halo local du Frost Field (cyan clair, 2 s).
-let frostHaloUntil = 0;
 // Ennemis autour du lanceur (NPC + joueurs de firme adverse, 700) : visuel
 // local + le serveur revalide et applique (positions serveur).
 function gatherTechVictims() {
@@ -1776,22 +1793,41 @@ function fireChainImpulse() {
     const victims = gatherTechVictims();
     if (!victims.length) return;
     player.chainArmed = false;
-    const until = performance.now() + CHAIN_IMPULSE_BEAM_MS;
-    for (const v of victims) {
-      chainImpBeams.push({ ax: player.x, ay: player.y, bx: v.x, by: v.y, until });
-    }
-    if (chainImpBeams.length > 48) chainImpBeams.splice(0, chainImpBeams.length - 48);
+    if (!netActive()) player.chainImpFx = { startedAt: performance.now(), chain: victims };
     setTechCooldown("chain-impulse", TECH_COOLDOWN);
     try { sendSkillUse(CHAIN_IMPULSE_ID, { phase: "fire" }); } catch {}
   } catch {}
 }
 function drawChainImpulseFx(ox, oy) {
-  if (!chainImpBeams.length) return;
+  drawRemoteChainImpulse(player, ox, oy);
+}
+// Volées VOL_DE_VIE : partent de la cible vers nous pendant ~450 ms
+// (visible pour tous, le soin vient du serveur via le canal heal).
+function drawLeechBeamsFx(ox, oy) {
+  if (!leechBeams.length) return;
   const now = performance.now();
-  for (let i = chainImpBeams.length - 1; i >= 0; i--) {
-    const b = chainImpBeams[i];
-    if (!b || now >= b.until) { chainImpBeams.splice(i, 1); continue; }
-    try { petLinkBeam(b.ax + ox, b.ay + oy, b.bx + ox, b.by + oy); } catch {}
+  const img = getCachedImage("ASSETS/VOL_DE_VIE_EFFET_INVERSE/1.png");
+  const ready = isImgReady(img);
+  if (!ready) { try { loadImage("ASSETS/VOL_DE_VIE_EFFET_INVERSE/1.png", { priority: true }); } catch {} }
+  for (let i = leechBeams.length - 1; i >= 0; i--) {
+    const b = leechBeams[i];
+    const k = (now - (Number(b?.t0) || 0)) / 450;
+    if (!b || k < 0 || k >= 1) { leechBeams.splice(i, 1); continue; }
+    if (!ready) continue;
+    try {
+      const recipient = !b.by || b.by === String(netMyId()) ? player : getNetplayRemotes()?.get(b.by);
+      if (!recipient || recipient.dead || recipient.cloaked || recipient.cloakCpu) continue;
+      const x = Number(b.ax) + (Number(recipient.rx ?? recipient.x) - Number(b.ax)) * k + ox;
+      const y = Number(b.ay) + (Number(recipient.ry ?? recipient.y) - Number(b.ay)) * k + oy;
+      const w = Number(img.naturalWidth || img.width) || 0, h = Number(img.naturalHeight || img.height) || 0;
+      if (!(w > 0 && h > 0)) continue;
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.globalCompositeOperation = "lighter";
+      ctx.globalAlpha = 0.35 + 0.65 * (1 - k);
+      drawCenteredImage(ctx, img, w, h);
+      ctx.restore();
+    } catch { try { ctx.restore(); } catch {} }
   }
 }
 // Frost Field : même déclenchement (armé, prochain tir), halo cyan clair de
@@ -1803,17 +1839,13 @@ function fireFrostField() {
       showToast("Aucun ennemi à portée.", 1.2);
       return;
     }
-    frostHaloUntil = performance.now() + FROST_FIELD_PULSE_MS;
+    if (!netActive()) player.frostFx = { startedAt: performance.now() };
     setTechCooldown("frost-field", TECH_COOLDOWN);
     try { sendSkillUse(FROST_FIELD_ID, { phase: "fire" }); } catch {}
   } catch {}
 }
 function drawFrostHaloFx(ox, oy) {
-  if (!(performance.now() < frostHaloUntil) || player.dead) return;
-  const age = FROST_FIELD_PULSE_MS - Math.max(0, frostHaloUntil - performance.now());
-  // Un seul pulse expansif (comme le soigneur) : les touchés sont ralentis,
-  // pas de zone dans le temps.
-  try { drawHaloPulse(Number(player.x) + ox, Number(player.y) + oy, FROST_FIELD_RADIUS, age / FROST_FIELD_PULSE_MS, "150,230,255", "180,240,255"); } catch {}
+  if (!player.dead) drawRemoteFrostHalo(player, ox, oy);
 }
 // Tech Frost Field : déclenchement immédiat au clic (pas de tir requis) —
 // halo + slow si au moins un ennemi à portée, sinon rien n'est consommé.
@@ -1846,6 +1878,7 @@ function triggerNpcBomb() {
       return;
     }
     techNpcBombFrom = performance.now();
+    if (!netActive()) player.npcBombFx = { startedAt: techNpcBombFrom };
     try { persistCdUntil("techAura:npc-bomb", NPC_BOMB_DURATION_MS / 1000, "global"); } catch {}
     try { sendSkillUse(NPC_BOMB_ID, { phase: "fire" }); } catch {}
     showToast("NPC Bomb : 100k / 10 s pendant 60 s", 1.5);
@@ -1854,14 +1887,45 @@ function triggerNpcBomb() {
 // Halo violet local : un seul pulse expansif toutes les 10 s (comme le
 // soigneur Streuner), au moment des ticks de dégâts. Pas d'anneau persistant.
 function drawNpcBombFx(ox, oy) {
-  if (!techNpcBombFrom || player.dead) return;
-  const ageSec = (performance.now() - techNpcBombFrom) / 1000;
-  if (!(ageSec >= 0) || ageSec > NPC_BOMB_DURATION_MS / 1000) return;
-  const phase = ageSec % NPC_BOMB_TICK_SEC;
-  if (phase > 0.7) return;
+  if (!player.dead) drawRemoteNpcBomb(player, ox, oy);
+}
+// LIFE_STEAL en boucle sur notre vaisseau, PAR-DESSUS (appelée dans le
+// bloc joueur, déjà translaté au centre du vaisseau). Taille native du sprite.
+const LIFE_STEAL_FRAMES = 30;
+const LIFE_STEAL_FPS = 24;
+function drawEnergyLeechFx() {
+  if (!techEnergyLeechActive() || player.dead) return;
   try {
-    drawHaloPulse(Number(player.x) + ox, Number(player.y) + oy, NPC_BOMB_RADIUS, phase / 0.7, "200,140,255", "220,170,255");
-  } catch {}
+    const frame = Math.floor((typeof netGameTimeMs === "function" ? netGameTimeMs() : Date.now()) / 1000 * LIFE_STEAL_FPS) % LIFE_STEAL_FRAMES + 1;
+    const img = getCachedImage(`ASSETS/LIFE_STEAL/${frame}.png`);
+    if (!isImgReady(img)) { try { loadImage(`ASSETS/LIFE_STEAL/${frame}.png`, { priority: true }); } catch {} return; }
+    const w = Number(img.naturalWidth || img.width) || 0, h = Number(img.naturalHeight || img.height) || 0;
+    if (!(w > 0 && h > 0)) return;
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    drawCenteredImage(ctx, img, w, h);
+    ctx.restore();
+  } catch { try { ctx.restore(); } catch {} }
+}
+// LIFE_STEAL en boucle sur un joueur distant qui a la tech active.
+// Déjà au-dessus (drawNetplayAbilityEffects après drawNetplayRemotes).
+// Taille native du sprite.
+function drawRemoteEnergyLeech(r, ox, oy) {
+  const fx = r.leechFx;
+  if (!fx) return;
+  if (performance.now() - Number(fx.startedAt || 0) > ENERGY_LEECH_DURATION_MS) return;
+  try {
+    const frame = Math.floor((typeof netGameTimeMs === "function" ? netGameTimeMs() : Date.now()) / 1000 * LIFE_STEAL_FPS) % LIFE_STEAL_FRAMES + 1;
+    const img = getCachedImage(`ASSETS/LIFE_STEAL/${frame}.png`);
+    if (!isImgReady(img)) { try { loadImage(`ASSETS/LIFE_STEAL/${frame}.png`, { priority: true }); } catch {} return; }
+    const w = Number(img.naturalWidth || img.width) || 0, h = Number(img.naturalHeight || img.height) || 0;
+    if (!(w > 0 && h > 0)) return;
+    ctx.save();
+    ctx.translate(Number(r.rx ?? r.x) + ox, Number(r.ry ?? r.y) + oy);
+    ctx.globalCompositeOperation = "lighter";
+    drawCenteredImage(ctx, img, w, h);
+    ctx.restore();
+  } catch { try { ctx.restore(); } catch {} }
 }
 // Tech Precision Targeter : déclenchement immédiat, 100 % précision pendant
 // 60 min (compte à rebours affiché). Le CD de 300 s démarre à la fin de l'effet côté serveur).
@@ -1883,6 +1947,30 @@ function triggerPrecisionTargeter() {
     showToast("Precision Targeter : 100 % pendant 60 min", 1.5);
   } catch {}
 }
+// Tech Energy Leech : déclenchement immédiat, vol de vie 10 % pendant 30 min,
+// CD de 900 s ensuite. +X via le canal heal classique.
+function triggerEnergyLeech() {
+  try {
+    if (player.dead) return;
+    if (techEnergyLeechActive()) {
+      showToast("Energy Leech déjà actif.", 1.2);
+      return;
+    }
+    const left = techCooldownLeftSec("energy-leech");
+    if (left > 0) {
+      showToast(`Tech prête dans ${Math.ceil(left)} s`, 1.5);
+      return;
+    }
+    player.energyLeechUntil = Date.now() + ENERGY_LEECH_DURATION_MS;
+    try { persistCdUntil("techAura:energy-leech", ENERGY_LEECH_DURATION_MS / 1000, "global"); } catch {}
+    try {
+      for (let f = 1; f <= 30; f++) loadImage(`ASSETS/LIFE_STEAL/${f}.png`, { priority: true });
+      loadImage("ASSETS/VOL_DE_VIE_EFFET_INVERSE/1.png", { priority: true });
+    } catch {}
+    try { sendSkillUse(ENERGY_LEECH_ID, { phase: "fire" }); } catch {}
+    showToast("Energy Leech : 10 % des dégâts rendus en coque", 1.5);
+  } catch {}
+}
 function triggerTech(id) {
   const key = String(id || "").toLowerCase();
   if (key === "speed-burst") return triggerSpeedBurst();
@@ -1894,7 +1982,7 @@ function triggerTech(id) {
   if (key === "frost-field") return triggerFrostField();
   if (key === "npc-bomb") return triggerNpcBomb();
   if (key === "precision-targeter") return triggerPrecisionTargeter();
-  if (key === "precision-targeter") return triggerPrecisionTargeter();
+  if (key === "energy-leech") return triggerEnergyLeech();
   const found = (TECH_DOCK_ITEMS || []).find((t) => t.id === key);
   showToast(`${found?.label || "Tech"} : bientôt disponible`, 1.2);
 }
@@ -1907,16 +1995,27 @@ function cancelMovementAbilityByServer(abilityId, cooldown = 0) {
   // Techs : annule l'effet local, resync la recharge de la tech concernée
   // si le serveur en envoie une (une tech ne verrouille plus les autres).
   if (TECH_SKILL_DOCK_IDS[key] != null) {
+    if (key === FROST_FIELD_ID) player.frostFx = null;
+    if (key === CHAIN_IMPULSE_ID) player.chainImpFx = null;
     if (key === SPEED_BURST_ID) player.speedBurstT = 0;
     if (key === CHAIN_IMPULSE_ID) player.chainArmed = false;
     if (key === NPC_BOMB_ID) {
       techNpcBombFrom = 0;
+      player.npcBombFx = null;
       try { persistCdUntil("techAura:npc-bomb", 0, "global"); } catch {}
       if (!(Number(cooldown) > 0)) showToast("NPC Bomb déjà active.", 1.2);
     }
-    if (key === PRECISION_TARGETER_ID && !(Number(cooldown) > 0)) showToast("Precision Targeter déjà actif.", 1.2);
-    if (key === PRECISION_TARGETER_ID && !(Number(cooldown) > 0)) showToast("Precision Targeter déjà actif.", 1.2);
-    if (Number(cooldown) > 0) setTechCooldown(TECH_SKILL_DOCK_IDS[key], Number(cooldown));
+    if (key === ENERGY_LEECH_ID) {
+      player.energyLeechUntil = 0;
+      player.leechFx = null;
+      try { persistCdUntil("techAura:energy-leech", 0, "global"); } catch {}
+      if (!(Number(cooldown) > 0)) showToast("Energy Leech déjà actif.", 1.2);
+    }
+    if (key === PRECISION_TARGETER_ID) {
+      player.precisionUntil = 0;
+      try { persistCdUntil("techPrecisionFx", 0, "global"); } catch {}
+    }
+    setTechCooldown(TECH_SKILL_DOCK_IDS[key], Math.max(0, Number(cooldown) || 0));
     return;
   }
   const remaining = {
@@ -5779,7 +5878,7 @@ function restorePersistedCds() {
   // Une tech n'en verrouille plus une autre.
   try {
     if (!player.techCds || typeof player.techCds !== "object") player.techCds = {};
-    for (const tid of ["speed-burst", "shield-backup", "shield-backup-2", "battle-repair-bot", "battle-repair-bot-2", "chain-impulse", "frost-field", "npc-bomb", "precision-targeter"]) {
+    for (const tid of ["speed-burst", "shield-backup", "shield-backup-2", "battle-repair-bot", "battle-repair-bot-2", "chain-impulse", "frost-field", "npc-bomb", "precision-targeter", "energy-leech"]) {
       const left = persistedCdLeft(`tech:${tid}`, "global");
       if (left > 0) player.techCds[tid] = Date.now() + left * 1000;
     }
@@ -5790,6 +5889,9 @@ function restorePersistedCds() {
     // Precision Targeter : effet 60 min (pas un cooldown), restauré aussi.
     const precLeft = persistedCdLeft("techPrecisionFx", "global");
     if (precLeft > 0) player.precisionUntil = Date.now() + precLeft * 1000;
+    // Energy Leech : effet 30 min restauré aussi.
+    const leechLeft = persistedCdLeft("techAura:energy-leech", "global");
+    if (leechLeft > 0) player.energyLeechUntil = Date.now() + leechLeft * 1000;
   } catch {}
   // Voyage Yamato coupé par un refresh : même règle, état séparé.
   if (persistedCdLeft("yamatoFx") > 0) {
@@ -7855,7 +7957,7 @@ function initializeCustomActionBar() {
     if (t.id !== "speed-burst" && t.id !== "shield-backup" && t.id !== "shield-backup-2"
       && t.id !== "battle-repair-bot" && t.id !== "battle-repair-bot-2"
       && t.id !== "chain-impulse" && t.id !== "frost-field" && t.id !== "npc-bomb"
-      && t.id !== "precision-targeter") continue;
+      && t.id !== "precision-targeter" && t.id !== "energy-leech") continue;
     const button = document.createElement("button");
     button.type = "button";
     button.className = "rocketQuickAction techAction dockAction";
@@ -8652,7 +8754,7 @@ function initializeCustomActionBar() {
       // Techs branchées (clic + drag vers les slots) ; les autres restent
       // visuelles (Anti-AI et Burning Trail exclus).
       // Recharge 300 s individuelle, voile + compte à rebours comme le reste.
-      const wired = { "speed-burst": true, "shield-backup": true, "shield-backup-2": true, "battle-repair-bot": true, "battle-repair-bot-2": true, "chain-impulse": true, "frost-field": true, "npc-bomb": true, "precision-targeter": true };
+      const wired = { "speed-burst": true, "shield-backup": true, "shield-backup-2": true, "battle-repair-bot": true, "battle-repair-bot-2": true, "chain-impulse": true, "frost-field": true, "npc-bomb": true, "precision-targeter": true, "energy-leech": true };
       for (const t of TECH_DOCK_ITEMS) {
         if (wired[t.id]) {
           const original = byId.get(`tech:${t.id}`);
@@ -15651,7 +15753,10 @@ function getPortalFrameSrc(pack, index) {
 
   const first = Number(pack.firstNumber ?? 1);
   const ext = pack.ext || ".png";
-  const n = first + index;
+  // Some portal sequences (Kronos) have fewer than ten frames. The fixed
+  // frame used with animations disabled must stay inside the actual pack.
+  const last = Math.max(0, Math.floor(Number(pack.frames) || 1) - 1);
+  const n = first + Math.max(0, Math.min(last, Math.floor(Number(index) || 0)));
 
   // Exemple : ASSETS/PORTAL_JUMP_FX/1.png
   return `${pack.path}${n}${ext}`;
@@ -20903,6 +21008,12 @@ function syncActionDockState() {
       try { persistCdUntil("techPrecisionFx", 0, "global"); } catch {}
       setTechCooldown("precision-targeter", TECH_COOLDOWN);
     }
+    // Energy Leech : fin d'effet -> le CD de 900 s demarre (spécifique).
+    if (player.energyLeechUntil && Date.now() >= player.energyLeechUntil) {
+      player.energyLeechUntil = 0;
+      try { persistCdUntil("techAura:energy-leech", 0, "global"); } catch {}
+      setTechCooldown("energy-leech", ENERGY_LEECH_CD_S);
+    }
     const paintTechDock = (button) => {
       const entry = TECH_DOCK_ITEMS.find((t) => `tech:${t.id}` === button.dataset.actionId);
       if (!entry) return;
@@ -24017,7 +24128,7 @@ function drawRemoteNpcBomb(remote, ox, oy) {
   const fx = remote.npcBombFx;
   if (!fx) return;
   const age = (performance.now() - Number(fx.startedAt)) / 1000;
-  if (!(age >= 0) || age > NPC_BOMB_DURATION_MS / 1000) return;
+  if (!(age >= NPC_BOMB_TICK_SEC) || age > NPC_BOMB_DURATION_MS / 1000 + 0.7) return;
   const phase = age % NPC_BOMB_TICK_SEC;
   if (phase > 0.7) return;
   try {
@@ -33267,6 +33378,47 @@ function preloadDeferredFx() {
   } catch {}
 }
 
+// Barre rapide : précharge les icônes du dock (onglets normal/hover/select,
+// munitions, roquettes, techs, aptitudes, formations, gears PET...) en fond
+// pour éviter le clignotement au premier affichage (icônes pas encore en
+// cache navigateur). N'ajoute rien au chargement bloquant.
+const DOCK_TAB_ICON_NAMES = Object.freeze(["lasers", "rockets", "mines", "cpus", "tech_items", "ship_abilities", "pet", "cannons", "drives", "special_items", "rocket_launchers", "drone_formations", "buy_now"]);
+function actionDockIconUrls() {
+  const urls = new Set();
+  try {
+    for (const tab of DOCK_TAB_ICON_NAMES) {
+      for (const state of ["normal", "hover", "select"]) urls.add(`ASSETS/CONTROL_MENU/${tab}_${state}.png`);
+    }
+  } catch {}
+  try { for (const id of ROCKET_IDS || []) { const u = rocketDockIcon(id); if (u) urls.add(u); } } catch {}
+  try {
+    for (const f of DRONE_FORMATIONS || []) {
+      let u = null;
+      try { u = formationDockIcon(f) || f?.icon; } catch { u = f?.icon; }
+      if (u) urls.add(u);
+    }
+  } catch {}
+  try { for (const t of TECH_DOCK_ITEMS || []) if (t?.icon) urls.add(t.icon); } catch {}
+  try { for (const id of ABILITY_IDS || []) urls.add(`ASSETS/APTITUDES/ICONS/${abilityIconFile(id)}`); } catch {}
+  try { for (const u of Object.values(PET_GEAR_DROPDOWN_ICON || {})) if (u) urls.add(u); } catch {}
+  try { if (PET_MODE_PASSIVE_ICON) urls.add(PET_MODE_PASSIVE_ICON); } catch {}
+  try { if (PET_MODE_COMBAT_ICON) urls.add(PET_MODE_COMBAT_ICON); } catch {}
+  // Icones deja referencees dans le DOM du dock (slots, CPU camouflage, SMB...).
+  try {
+    document.querySelectorAll("#ammoBar img").forEach((img) => {
+      const s = img?.getAttribute?.("src");
+      if (s) urls.add(s);
+    });
+  } catch {}
+  return [...urls];
+}
+let actionDockIconsPreloaded = false;
+function preloadActionDockIcons() {
+  if (actionDockIconsPreloaded) return;
+  actionDockIconsPreloaded = true;
+  for (const src of actionDockIconUrls()) { try { loadImage(String(src)); } catch {} }
+}
+
 function preloadShipEffectBackground() {
   try {
     if (!GAME_SETTINGS.shipEffect) return;
@@ -34360,6 +34512,10 @@ function applyNetHeal(ev) {
     player[key] = Math.min(Number(player[maxKey]) || 0, Number.isFinite(ev[key]) ? ev[key] : before + amount);
   }
   const gain = amount;
+  if (Number(ev.healSeq) > 0) {
+    if (Number(ev.healSeq) <= Number(player._netAbilityHealFxSeq || 0)) return;
+    player._netAbilityHealFxSeq = Number(ev.healSeq);
+  }
   // Les Solace affichent déjà leur réparation instantanée au clic.
   if (String(ev.by) === String(netMyId()) && ev.skill.startsWith("ability_solace")) return;
   addFloatText(Number(player.x) + (Math.random() - 0.5) * 60,
@@ -34368,8 +34524,61 @@ function applyNetHeal(ev) {
     { text: `+${DMG_FMT.format(gain)}`, size: 21, pop: 0.3, shake: 0.6, life: 1, glow: 1, weight: 900, impact: true });
 }
 
+function applyTechVisualEvent(ev) {
+  const skill = String(ev.skill || "");
+  if (!skill.startsWith("ability_tech_")) return;
+  const local = String(ev.by) === String(netMyId());
+  const actor = local ? player : getNetplayRemotes()?.get(String(ev.by));
+  if (!actor) return;
+  const field = {
+    ability_tech_chain_impulse: "chainImpFx", ability_tech_frost_field: "frostFx",
+    ability_tech_npc_bomb: "npcBombFx", ability_tech_energy_leech: "leechFx",
+  }[skill];
+  if (ev.enabled === false) {
+    if (field) actor[field] = null;
+    if (local && skill === "ability_tech_energy_leech") player.energyLeechUntil = 0;
+    if (local && skill === "ability_tech_precision_targeter") player.precisionUntil = 0;
+    if (local && skill === "ability_tech_npc_bomb") techNpcBombFrom = 0;
+    return;
+  }
+  if (ev.phase === "heal") {
+    if (skill === "ability_tech_energy_leech" && !actor.dead && !actor.cloaked && !actor.cloakCpu) {
+      leechBeams.push({ ax: Number(ev.x) || 0, ay: Number(ev.y) || 0, by: String(ev.by), t0: performance.now() });
+    }
+    return; // Un soin ne relance jamais l'animation ou la durée de l'aura.
+  }
+  const at = Number(ev.at) || 0;
+  const serverNow = typeof netGameTimeMs === "function" ? netGameTimeMs() : Date.now();
+  const startedAt = performance.now() - Math.max(0, serverNow - at);
+  if (field && actor[field]?.at !== at) actor[field] = { at, startedAt, chain: ev.chain || [] };
+  if (local) {
+    if (skill === "ability_tech_energy_leech") player.energyLeechUntil = Date.now() + Math.max(0, Number(ev.until) - serverNow);
+    if (skill === "ability_tech_precision_targeter") player.precisionUntil = Date.now() + Math.max(0, Number(ev.until) - serverNow);
+    if (skill === "ability_tech_npc_bomb") techNpcBombFrom = actor.npcBombFx.startedAt;
+  }
+}
+
+function syncTechVisualSnapshot(actor, local = false) {
+  if (!actor) return;
+  const target = local ? player : actor;
+  if (actor.dead) {
+    target.leechFx = target.npcBombFx = target.frostFx = target.chainImpFx = null;
+    if (local) { player.energyLeechUntil = 0; player.precisionUntil = 0; }
+    return;
+  }
+  for (const entry of actor.afx || []) {
+    const skill = abilityIdForFxCode(entry[0]);
+    const duration = { ability_tech_energy_leech: 1800000, ability_tech_npc_bomb: 60000,
+      ability_tech_precision_targeter: 3600000 }[skill];
+    if (!(duration > 0) || !(Number(entry[1]) > 0) || !(Number(entry[5]) > 0)) continue;
+    applyTechVisualEvent({ skill, by: local ? netMyId() : actor.id, at: Number(entry[5]), until: Number(entry[5]) + duration });
+  }
+}
+
 function tickNetplayVisuals(dt) {
   const remotes = getNetplayRemotes();
+  for (const actor of remotes?.values() || []) syncTechVisualSnapshot(actor);
+  syncTechVisualSnapshot(getNetSelf(), true);
   for (const id of netHoloClonesSeen.keys()) if (!remotes?.has(id)) netHoloClonesSeen.delete(id);
   for (const [id, remote] of remotes || []) {
     if (!(remote.holoClones?.length > 0) && !netHoloClonesSeen.has(id)) continue;
@@ -34395,6 +34604,7 @@ function tickNetplayVisuals(dt) {
   try {
     for (const ev of drainNetSkillInbox()) {
       if (!ev?.by) continue;
+      applyTechVisualEvent(ev);
       if (ev.forced && ev.enabled === false && String(ev.by) === String(netMyId())) {
         cancelMovementAbilityByServer(ev.skill, Number(getAbilityInfo(ev.skill)?.cooldownSec) || 0);
         continue;
@@ -34466,18 +34676,6 @@ function tickNetplayVisuals(dt) {
       }
       if (remote && ev.skill === "ability_tempest_voltage-link" && ev.chain?.length) {
         remote.voltLinkFx = { at: ev.at, startedAt: performance.now(), chain: ev.chain };
-      }
-      // Chain Impulse distant : même éclair (lien HP) pour tous.
-      if (remote && ev.skill === CHAIN_IMPULSE_ID && ev.chain?.length) {
-        remote.chainImpFx = { at: ev.at, startedAt: performance.now(), chain: ev.chain.slice(0, 12) };
-      }
-      // Frost Field distant : halo cyan 700 pendant 2 s.
-      if (remote && ev.skill === FROST_FIELD_ID) {
-        remote.frostFx = { at: ev.at, startedAt: performance.now() };
-      }
-      // NPC Bomb distante : halo violet 700 pendant 60 s (même visuel).
-      if (remote && ev.skill === NPC_BOMB_ID) {
-        remote.npcBombFx = { at: ev.at, startedAt: performance.now() };
       }
       if (ev.phase === "heal") {
         showRemoteAbilityHeal(ev, remote);
@@ -34579,6 +34777,7 @@ const REMOTE_FX_PRELOAD = {
   55: [["SPEED_BUFF_EFFECT", 3]], 56: [["SPEED_BUFF_EFFECT", 3]],
   79: [["SPEED_BUFF_EFFECT", 3]],
   83: [["SPEED_BUFF_EFFECT", 3]],
+  92: [["ASSETS/LIFE_STEAL", 30]],
   17: [["SPECTRUM_PRISMATIC_SHIELDING", 35]],
   18: [["SPECTRUM_PRISMATIC_SHIELDING", 35]],
   19: [["SPECTRUM_PRISMATIC_SHIELDING", 35]],
@@ -35313,7 +35512,7 @@ function drawRemoteAbilityFx(r, shipFx) {
   if (Number(r.keresSprT) > 0) fxOutline("#3dff5e", 0.5 + 0.5 * Math.sin(nowMs / 1000 * 7));
   try {
     const afx = Array.isArray(r.afx) ? r.afx : [];
-    for (const entry of afx.slice(0, 8)) {
+    for (const entry of afx.slice(0, 32)) {
       if (!Array.isArray(entry)) continue;
       const code = Math.floor(Number(entry[0]) || 0);
       if (!(code > 0) || !(Number(entry[1]) > 0)) continue;
@@ -35396,11 +35595,12 @@ function drawNetplayAbilityEffects(ox, oy) {
   for (const r of remotes.values()) {
     if (!r || r.dead || r.cloaked || r.cloakCpu) continue;
     drawTbrClones(ox, oy, r);
-    if (!(r.afx?.length > 0) && !(Number(r.fxFlash?.until) > now) && !r.voltBackupReady && !r.lastStandReady && !(r.lastStandT > 0) && !r.voltLinkFx && !(Number(r.jamxT) > 0) && !(Number(r.keresSprT) > 0) && !(r.chainImpFx && now - Number(r.chainImpFx.startedAt) < CHAIN_IMPULSE_BEAM_MS) && !(r.frostFx && now - Number(r.frostFx.startedAt) < FROST_FIELD_PULSE_MS) && !(r.npcBombFx && performance.now() - Number(r.npcBombFx.startedAt) < NPC_BOMB_DURATION_MS)) continue;
+    if (!(r.afx?.length > 0) && !(Number(r.fxFlash?.until) > now) && !r.voltBackupReady && !r.lastStandReady && !(r.lastStandT > 0) && !r.voltLinkFx && !(Number(r.jamxT) > 0) && !(Number(r.keresSprT) > 0) && !(r.chainImpFx && now - Number(r.chainImpFx.startedAt) < CHAIN_IMPULSE_BEAM_MS) && !(r.frostFx && now - Number(r.frostFx.startedAt) < FROST_FIELD_PULSE_MS) && !(r.npcBombFx && performance.now() - Number(r.npcBombFx.startedAt) < NPC_BOMB_DURATION_MS + 700) && !(r.leechFx && performance.now() - Number(r.leechFx.startedAt) < ENERGY_LEECH_DURATION_MS)) continue;
     drawRemoteTempestChain(r, ox, oy);
     try { drawRemoteChainImpulse(r, ox, oy); } catch {}
     try { drawRemoteFrostHalo(r, ox, oy); } catch {}
     try { drawRemoteNpcBomb(r, ox, oy); } catch {}
+    try { drawRemoteEnergyLeech(r, ox, oy); } catch {}
     // Une aura sur une cible reste visible même si son lanceur est hors écran.
     ctx.save();
     try {
@@ -41391,18 +41591,20 @@ function drawBotMinimalScene(ox, oy) {
     }
     const x = Number(shot?.x) + ox, y = Number(shot?.y) + oy;
     if (!visible(x, y, 12)) return;
-    // Precision Targeter : cercle rouge sous chaque roquette (soi + autres).
+    // Precision Targeter : disque rouge plein sous chaque roquette en vol.
     if (shot?.isRocket === true && shot?.prec === true) {
       ctx.save();
       ctx.globalCompositeOperation = "lighter";
-      ctx.strokeStyle = "rgba(255,70,70,0.9)";
-      ctx.lineWidth = 2;
+      ctx.globalAlpha = 0.55;
+      ctx.fillStyle = "rgba(255,60,60,0.95)";
       ctx.beginPath();
-      ctx.arc(x, y, 11, 0, TAU);
-      ctx.stroke();
-      ctx.globalAlpha = 0.35;
+      ctx.arc(x, y, 15, 0, TAU);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+      ctx.strokeStyle = "rgba(255,150,150,1)";
+      ctx.lineWidth = 2.5;
       ctx.beginPath();
-      ctx.arc(x, y, 16, 0, TAU);
+      ctx.arc(x, y, 15, 0, TAU);
       ctx.stroke();
       ctx.restore();
     }
@@ -41558,6 +41760,7 @@ function draw() {
   try { drawChainImpulseFx(ox, oy); } catch {}
   try { drawFrostHaloFx(ox, oy); } catch {}
   try { drawNpcBombFx(ox, oy); } catch {}
+  try { drawLeechBeamsFx(ox, oy); } catch {}
   if (displayHalosOn()) drawTempestLinks(ox, oy);
   drawRepairLinks(ox, oy);
   if (displayHalosOn()) drawJamxHalos(ox, oy);
@@ -42229,6 +42432,9 @@ function draw() {
     // ✅ Halo de bouclier officiel rejoué à intervalle aléatoire
     drawShieldShimmer();
 
+    // ✅ Energy Leech : sprite LIFE_STEAL en boucle PAR-DESSUS le vaisseau.
+    try { drawEnergyLeechFx(); } catch {}
+
     // ✅ Ralenti Kamikaze : sprite SLOW_EFFECT officiel autour du vaisseau.
     if ((player.rocketSlowT || 0) > 0 || (player.freezeT || 0) > 0) drawRocketDebuffEffect(player);
 
@@ -42798,20 +43004,33 @@ async function prepareGameAssets() {
   try {
     const jobs = [
       ensurePackLoaded(ACTIVE_SHIP),
-      loadImage(MAP_BACKGROUND.src, { priority: true }),
+      loadImage(currentMapBackgroundSrc(), { priority: true }),
     ];
+    for (const entry of rules?.waveBackgrounds || []) {
+      if (entry?.src) jobs.push(loadImage(entry.src, { priority: true }));
+    }
     jobs.push(...preloadPlayerBulletSprites());
     jobs.push(...preloadPetSprites());
     // ✅ drones possédés uniquement au boot (le reste en fond) : DÉPART plus
     // rapide, leurs sprites étant déjà là aux premiers virages.
     jobs.push(...collectOwnedDroneSpriteJobs());
-    // ✅ bases mères : seule celle hors map actuelle part en fond (la map
-    // actuelle est déjà couverte ci-dessous) : retour base instantané, sans
-    // bloquer le DÉPART (préchargement ciblé à la mort toujours actif).
-    jobs.push(...await collectHomeBaseJobs({ skipCurrentMap: true }));
-    // ✅ FX essentiels au boot (laser/explosion/dégâts) ; les secondaires
-    // (pulse, réparation, boucliers, ralentissement, glace) en fond.
+    // Les autres bases sont préparées après DÉPART par startGame.
+    // Les effets de combat et high-tech sont prêts avant l'entrée en jeu.
     jobs.push(ensureLaserLoaded(), ensureExplosionLoaded(), ensureShipDamageLoaded());
+    // Icones du dock + FX des techs prets des l'entree (pas de clignotement
+    // au premier affichage) : petits fichiers, chargement bloquant.
+    try {
+      for (const src of actionDockIconUrls()) jobs.push(loadImage(src, { priority: true }));
+    } catch {}
+    jobs.push(ensureShieldShimmerLoaded(), ensureSlowFxLoaded(), ensureIceFxLoaded(), ensureRepairOrbitLoaded());
+    jobs.push(ensurePulseFxLoaded(), ensureInstaShieldLoaded(), ensureSmbFxLoaded());
+    // Auras tech restaurées après refresh (Energy Leech...) : boucle
+    // LIFE_STEAL + volée VOL_DE_VIE prêtes dès l'entrée, sinon l'effet
+    // actif met plusieurs secondes à se réafficher image par image.
+    try {
+      for (let f = 1; f <= 30; f++) jobs.push(loadImage(`ASSETS/LIFE_STEAL/${f}.png`, { priority: true }));
+      jobs.push(loadImage("ASSETS/VOL_DE_VIE_EFFET_INVERSE/1.png", { priority: true }));
+    } catch {}
     jobs.push(...preloadCollectables());
     jobs.push(...preloadSafeModuleSprites(rules, WORLD));
     for (const type of npcTypesForCurrentSector()) {
@@ -42844,20 +43063,7 @@ async function prepareGameAssets() {
   } finally {
     stopProgress();
   }
-  // ✅ charge en fond (sans bloquer le DÉPART) : maps mères, tous les drones,
-  // bases mères restantes, FX secondaires et effet de vaisseau. « Réparée à
-  // la base » sans rechargement, drones sans saccades, zéro pop-in.
-  // Le préchargement ciblé à chaque mort reste actif.
-  try {
-    const idle = window.requestIdleCallback || ((cb) => setTimeout(cb, 1500));
-    idle(() => {
-      preloadHomeMaps();
-      preloadAllDroneSprites();
-      preloadDeferredHomeBaseAssets();
-      preloadDeferredFx();
-      preloadShipEffectBackground();
-    });
-  } catch {}
+  // startGame programme les ressources secondaires après DÉPART.
   if (GAME_SETTINGS.autoStart) await startGame();
 }
 
@@ -42975,6 +43181,7 @@ if (ui.startHint) {
       preloadAllDroneSprites();
       preloadDeferredHomeBaseAssets();
       preloadDeferredFx();
+      preloadActionDockIcons();
       preloadShipEffectBackground();
     });
   } catch {}

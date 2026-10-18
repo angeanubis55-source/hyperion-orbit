@@ -4,6 +4,21 @@ import { profileAbilityCooldown } from "../DRONE/DRONE_DESIGNS.js";
 
 import { activeAbility, fortifyActive } from "../SRC/CORE/ABILITY_COMBAT_RULES.js";
 export { activeAbility, fortifyActive } from "../SRC/CORE/ABILITY_COMBAT_RULES.js";
+export function applyEnergyLeech(state, damage, now, emit, source = null) {
+  const skill = "ability_tech_energy_leech";
+  if (!state || state.dead || state.pvpDead || !(Number(state.hp) > 0)
+    || !(Number(damage) > 0) || !(now < Number(state._abilityFx?.[skill]?.until))) return 0;
+  const max = Math.max(0, Number(state.hpMax) || 0), before = Number(state.hp) || 0;
+  if (!(max > 0)) return 0;
+  const amount = now < Number(state._tempestBackupUntil) ? 0
+    : Math.max(0, Math.min(max - before, Math.floor(Number(damage) * 0.1)));
+  state.hp = Math.min(max, before + amount);
+  emit?.({ t: "skillFx", skill, phase: "heal", by: String(state.id), target: String(state.id),
+    amount, shield: false, hp: state.hp, at: now, until: now,
+    x: Number(source?.x ?? state.x) || 0, y: Number(source?.y ?? state.y) || 0 });
+  return amount;
+}
+
 export function triggerPaladin(state, now, emit) {
   if (state.hp > 0 || now < Number(state._jamUntil) || now < Number(state._lastStandCdUntil)
     || !shipOwnsAbility(state.shipId, "ability_paladin_last-stand")) return false;
@@ -156,7 +171,7 @@ export function tickAbilityStates(room, sim, now, emit, groupOf) {
       }
       // Tech Battle Repair Bot (10k HP/s, 15 s) / Battle Repair Bot 2
       // (30k HP/s, 10 s) : HoT serveur, +X par tick (soi + verrouilleurs).
-      if (active && (key === "ability_tech_battle_repair" || key === "ability_tech_battle_repair_2")) {
+      if (!(now < Number(state._jamUntil)) && (key === "ability_tech_battle_repair" || key === "ability_tech_battle_repair_2")) {
         const tick = Math.floor((now - fx.from) / 1000), last = Number(fx.selfHealTick) || 0;
         const total = Math.round((fx.until - fx.from) / 1000);
         if (tick > last && last < total) {
@@ -167,12 +182,11 @@ export function tickAbilityStates(room, sim, now, emit, groupOf) {
       }
       // Tech NPC Bomb : toutes les 10 s pendant 60 s, 100k dégâts aux NPC
       // dans 700 autour du lanceur (ni joueurs ni JPC). 6 x 100k = 600k.
-      if (active && key === "ability_tech_npc_bomb") {
-        const tick = Math.floor((now - fx.from) / 1000), last = Number(fx.selfHealTick) || 0;
-        const total = Math.round((fx.until - fx.from) / 1000);
-        if (tick > last && last < total) {
-          fx.selfHealTick = Math.min(tick, total);
-          if (tick > 0 && tick % 10 === 0 && sim && typeof sim.applyHit === "function") {
+      if (!(now < Number(state._jamUntil)) && key === "ability_tech_npc_bomb") {
+        const due = Math.min(6, Math.floor((now - fx.from) / 10000));
+        while ((Number(fx.bombTicks) || 0) < due) {
+          fx.bombTicks = (Number(fx.bombTicks) || 0) + 1;
+          if (sim && typeof sim.applyHit === "function") {
             let n = 0;
             try {
               for (const [uid, npc] of sim.entries || []) {
@@ -182,12 +196,15 @@ export function tickAbilityStates(room, sim, now, emit, groupOf) {
                 const dx = Number(npc.x) - Number(state.x), dy = Number(npc.y) - Number(state.y);
                 if (dx * dx + dy * dy > 700 * 700) continue;
                 n++;
-                try { sim.applyHit(String(state.id), { uid: String(uid), dmg: 100000, pen: 0, critChance: 0, critMult: 1, variance: 0 }); } catch {}
+                try {
+                  const damage = sim.applyHit(String(state.id), { uid: String(uid), dmg: 100000, pen: 0, critChance: 0, critMult: 1, variance: 0 });
+                  applyEnergyLeech(state, damage, now, emit, npc);
+                } catch {}
               }
             } catch {}
           }
           // 6e et dernier pulse (t=60 s) : le CD de 300 s démarre ici, pas au tir.
-          if (tick >= 60) {
+          if (fx.bombTicks >= 6) {
             const cds = (state._techCds && typeof state._techCds === "object") ? state._techCds : (state._techCds = {});
             if (!(Number(cds[key]) > now)) cds[key] = now + 300_000;
           }

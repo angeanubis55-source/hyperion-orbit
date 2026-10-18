@@ -18,9 +18,9 @@ try {
   const errors = [];
   let delayedImports = 0;
   page.on("pageerror", error => errors.push(error.message));
-  // Les imports arrivent plus tard que les premiers sprites : c'est le cas
-  // qui faisait grossir le total pendant que la barre avancait deja.
-  await page.route("**/MAPS/1-8/WORLD.js", async route => {
+  // Retarder l'import du secteur courant pour vérifier la progression même
+  // quand sa configuration met du temps à arriver, sans charger une autre map.
+  await page.route("**/MAPS/1-1/WORLD.js", async route => {
     delayedImports++;
     await new Promise(resolve => setTimeout(resolve, 700));
     await route.continue();
@@ -60,7 +60,7 @@ try {
     if (phase === "delayed imports") {
       assert.ok(delayedImports > 0, "un import doit avoir ete retarde");
       // Retirer l'interception pour verifier aussi le cache HTTP natif.
-      await page.unroute("**/MAPS/1-8/WORLD.js");
+      await page.unroute("**/MAPS/1-1/WORLD.js");
     }
   }
 } finally {

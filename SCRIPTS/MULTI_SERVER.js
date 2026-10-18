@@ -35,7 +35,7 @@ import { getAbilityInfo, HYPERION_QA_DAMAGE } from "../SHIP/SHIP_ABILITIES.js";
 import { ROCKET_TYPES } from "../COMBAT/ROCKET_TYPES.js";
 import { syncDisarrayShield, syncDisruptorEffects, laserDisrupted, redirectedPlayer } from "./DISRUPTOR_RULES.js";
 import { tempestBackupActive, tempestBackupReady, triggerTempestBackup, expireTempestBackup, validateVoltChain } from "./TEMPEST_RULES.js";
-import { abilityDamage, activeAbility, fortifyActive, triggerPaladin, tickAbilityStates, recordAbilityDamageDealt, recordAbilityNpcKill } from "./ABILITY_RUNTIME.js";
+import { abilityDamage, activeAbility, fortifyActive, triggerPaladin, tickAbilityStates, recordAbilityDamageDealt, recordAbilityNpcKill, applyEnergyLeech } from "./ABILITY_RUNTIME.js";
 
 // --- Auras d'aptitudes visibles par les autres (Phase 2) ---
 // Le serveur reste autoritaire : chaque cast ability_* est validé
@@ -2434,6 +2434,8 @@ wss.on("connection", (ws) => {
           if (laserDisrupted(shooter, msg, now)) return;
           const appliedHit = Number(sim.applyHit(id, msg)) || 0;
           if (appliedHit > 0) { recordAbilityDamageDealt(shooter, appliedHit, now); try { audOf(shooter).dmg += appliedHit; } catch {} }
+          applyEnergyLeech(shooter, appliedHit, now,
+            event => emitAbilityEvent(rooms.get(mapId), event), sim.entries?.get(String(msg.uid)));
           // Diagnostic multi (console serveur) : hits recus par map.
           hitStats.count++;
           hitStats.byMap.set(mapId, (hitStats.byMap.get(mapId) || 0) + 1);
@@ -2530,6 +2532,30 @@ wss.on("connection", (ws) => {
             amount: Math.round(amount), shield: true, at: now, until: now });
           return;
         }
+        // Tech Energy Leech : vol de vie 10 % pendant 30 min, CD 900 s
+        // (spécifique, pas 300 s comme les autres). Aura serveur + boucle
+        // LIFE_STEAL visible par tous (skillFx). Le soin est crédité à
+        // chaque dégât infligé (NPC + joueurs, JPC compris).
+        if (skill === "ability_tech_energy_leech" && msg.phase === "fire") {
+          const now = Date.now();
+          if (!state._abilityFx || typeof state._abilityFx !== "object") state._abilityFx = {};
+          const auraUntil = Number(state._abilityFx[skill]?.until) || 0;
+          const deny = (cooldown) => {
+            try { console.log(`[leech] deny ${state.pseudo || id} hp=${state.hp} auraUntil=${auraUntil} now=${now}`); } catch {}
+            if (ws.readyState === 1) ws.send(JSON.stringify({ t: "skillDenied", skill,
+              cooldown: Math.max(0, Number(cooldown) || 0) }));
+          };
+          if (state.pvpDead === true || !(Number(state.hp) > 0)) { deny(0); return; }
+          if (now < auraUntil) { deny(0); return; }
+          if (auraUntil > 0 && now < auraUntil + 900000) { deny((auraUntil + 900000 - now) / 1000); return; }
+          state._abilityFx[skill] = { from: now, until: now + 1800000, x: 0, y: 0, target: "" };
+          try { console.log(`[leech] fire ${state.pseudo || id} aura jusqu=${new Date(now + 1800000).toISOString()}`); } catch {}
+          try {
+            broadcastRoom(room, JSON.stringify({ t: "skillFx", skill, by: id,
+              at: now, until: now + 1800000 }));
+          } catch {}
+          return;
+        }
         if (msg.phase === "heal") {
           relayAbilityHealFx(state, skill, msg, room, id, Date.now());
           return;
@@ -2588,7 +2614,10 @@ wss.on("connection", (ws) => {
               const vid = String(uid);
               if (seen.has(vid) || !inRange(npc.x, npc.y)) continue;
               seen.add(vid);
-              try { sim.applyHit(String(id), { uid: vid, dmg: 30000, pen: 0, critChance: 0, critMult: 1, variance: 0 }); } catch {}
+              try {
+                const damage = sim.applyHit(String(id), { uid: vid, dmg: 30000, pen: 0, critChance: 0, critMult: 1, variance: 0 });
+                applyEnergyLeech(state, damage, now, event => emitAbilityEvent(room, event), npc);
+              } catch {}
               hits.push({ id: vid, x: Math.round(Number(npc.x)), y: Math.round(Number(npc.y)) });
             }
           }
@@ -2601,7 +2630,10 @@ wss.on("connection", (ws) => {
             if (s.firm && state.firm && String(s.firm) === String(state.firm)) continue;
             if (!inRange(s.x, s.y)) continue;
             seen.add(String(pid));
-            try { applyServerAbilityDamage(room, sim, s, 30000, 0, now, id, profile, 0); } catch {}
+            try {
+              const result = applyServerAbilityDamage(room, sim, s, 30000, 0, now, id, profile, 0);
+              applyEnergyLeech(state, result?.total, now, event => emitAbilityEvent(room, event), s);
+            } catch {}
             hits.push({ id: String(pid), x: Math.round(Number(s.x)), y: Math.round(Number(s.y)) });
           }
           cds[skill] = now + 300_000;
@@ -2885,6 +2917,9 @@ wss.on("connection", (ws) => {
           applied = Number(res?.total) || 0;
           foe.state.hp = Math.max(0, Number(foe.state.hp) || 0);
           foe.state.sh = Math.max(0, Number(foe.state.sh) || 0);
+          // Energy Leech : 10 % des dégâts PvP rendus en coque (+X comme
+          // les soins, visibles par le lanceur et ses verrouilleurs).
+          applyEnergyLeech(me.state, applied, now, event => emitAbilityEvent(room, event), foe.state);
         }
         foe.state.pvpAt = now;
         // Blackout remontées : un soin (pos) qui arrive juste après ce coup
