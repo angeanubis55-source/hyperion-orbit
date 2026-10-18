@@ -1,5 +1,9 @@
 ﻿"use strict";
 
+export function collectableBotRewardMultiplier(type, botActive) {
+  return botActive === true && String(type || "") === "Bonus_Box" ? 0.25 : 1;
+}
+
 // Toutes les ressources collectables du jeu sont centralisées ici.
 // Pour en ajouter une, duplique une entrée et adapte son sprite, ses cartes et ses récompenses.
 export const COLLECTABLE_TYPES = Object.freeze({

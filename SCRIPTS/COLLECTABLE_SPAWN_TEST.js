@@ -3,6 +3,14 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import vm from "node:vm";
 import { circleRectResolve, clamp } from "../SRC/CORE/COLLISION.js";
+import { collectableBotRewardMultiplier } from "../SRC/DATA/COLLECTABLES.js";
+
+test("bot : les Bonus Box donnent 25 %, les autres collectables restent à 100 %", () => {
+  assert.equal(collectableBotRewardMultiplier("Bonus_Box", true), 0.25);
+  assert.equal(collectableBotRewardMultiplier("Bonus_Box", false), 1);
+  for (const type of ["Cargo_Box", "Green_Booty_Box", "Astral_Prime_Box", "Pumpkin_Box", "Scrap_Box"])
+    assert.equal(collectableBotRewardMultiplier(type, true), 1, type);
+});
 
 // Exerce le spawn de box en zone collectable + le ban anti-freeze du bot,
 // sans démarrer une session ou un serveur réel.

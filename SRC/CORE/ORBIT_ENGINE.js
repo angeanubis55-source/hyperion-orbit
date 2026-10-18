@@ -214,6 +214,7 @@ import {
 import {
   COLLECTABLE_SPAWN as DEFAULT_COLLECTABLE_SPAWN,
   COLLECTABLE_TYPES as DEFAULT_COLLECTABLE_TYPES,
+  collectableBotRewardMultiplier,
 } from "../DATA/COLLECTABLES.js";
 import { getResourceName, getResourceIcon, isOreResource, cargoAdd, cargoUsed, CARGO_CAPACITY, REFINERY_RECIPES, refineOreOutput, ORE_SELL_PRICES, UPGRADE_SLOTS, UPGRADE_SLOT_ORES, UPGRADE_ORE_BONUS, UPGRADE_STOCK_MAX, upgradeOreCapacity } from "../DATA/RESOURCES.js";
 import { PALLADIUM_PER_GALAXY_ENERGY, palladiumExchangeForEnergy } from "./GALAXY_GATES.js";
@@ -26102,7 +26103,8 @@ function applyCollectableReward(c) {
       x1Mult = pilotLevel < 7 ? 1 : pilotLevel === 7 ? 0.5 : pilotLevel === 8 ? 0.25 : pilotLevel === 9 ? 0.13 : 0;
     }
   }
-  const boxMult = ((String(c?.type || "") === "Bonus_Box" || String(c?.type || "") === "Pumpkin_Box") ? playerBoosterMults().box * playerPilotMults().bonusLoot * playerPilotMults().luck : 1) * battleMult * salvageMult * x1Mult;
+  const botBoxMult = collectableBotRewardMultiplier(c?.type, Bot.active === true);
+  const boxMult = ((String(c?.type || "") === "Bonus_Box" || String(c?.type || "") === "Pumpkin_Box") ? playerBoosterMults().box * playerPilotMults().bonusLoot * playerPilotMults().luck : 1) * battleMult * salvageMult * x1Mult * botBoxMult;
 
   // X-1 + niveau 10 : box consommée mais vide (officiel).
   if (x1Mult <= 0 && String(c?.type || "") === "Bonus_Box") {
@@ -26206,7 +26208,8 @@ function applyCollectableReward(c) {
       account.user.inventory.resources ||= {};
       // Booster Ressources : +25 % sur les cargos venus de NPC (+ Rayon tracteur I).
       const resMult = (c?.fromNpc ? playerBoosterMults().res : 1) * battleMult
-        * ((String(c?.type || "") === "Cargo_Box" && c?.fromNpc) ? playerPilotMults().cargoLoot : 1);
+        * ((String(c?.type || "") === "Cargo_Box" && c?.fromNpc) ? playerPilotMults().cargoLoot : 1)
+        * botBoxMult;
       const fixedAmount = c?.fixedAmount != null ? Math.max(0, Math.floor(Number(c.fixedAmount))) : null;
       for (const [resourceId, range] of Object.entries(reward.resources)) {
         const wanted = Math.floor((fixedAmount ?? rollValue(range, 0)) * resMult);
