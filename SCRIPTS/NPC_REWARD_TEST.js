@@ -30,9 +30,10 @@ function rewardServer(size = 1, failOnce = false, sun = false, killerBot = false
     Date: { now: () => now }, console: { error: () => {} },
     setTimeout: () => { throw new Error("aucune mise en attente autorisée"); },
     rewardedNpcDeaths: new Map(), serverRunId: "test-run", isHalloweenBossVariant, isSundayBossVariant,
-    SUNDAY_MODULE_CHANCE: 0.10, SUNDAY_TICKET_CHANCE: 0.35, SUNDAY_TICKET_QTY: 1, SUNDAY_RARE_CHANCE: 0.25,
+    SUNDAY_MODULE_CHANCE: 0.25, SUNDAY_TICKET_CHANCE: 0.25, SUNDAY_TICKET_QTY: 1, SUNDAY_AMMO_CHANCE: 0.10, SUNDAY_AMMO_QTY: 50000, SUNDAY_RARE_CHANCE: 0.25,
     grantSundayModule: () => ({ ok: false }),
     grantSundayTickets: () => ({ ok: false }),
+    grantSundayAmmo: () => ({ ok: false }),
     sanitizeSundayModule: (m) => m,
     pumpSundayEvent: () => {},
     socialDescribeGroup: () => ({ members: members.slice() }), describePeer: () => null,
@@ -423,7 +424,7 @@ test("5000 kills, sauvegardes et comptes remplacés : quêtes, passe et gains re
   assert.equal(saved.stats.lifetimeKills, 2500);
 });
 
-test("UFONIT : loterie 10 % module / 35 % ticket du top 10, sans soute ni box", () => {
+test("UFONIT : loterie 25 % module / 25 % ticket / 10 % munitions du top 10, sans soute ni box", () => {
   const s = rewardServer(12);
   const grantedModules = [], grantedTickets = [];
   s.context.grantSundayModule = (accountId, rarity) => {
@@ -458,9 +459,9 @@ test("UFONIT : loterie 10 % module / 35 % ticket du top 10, sans soute ni box", 
   assert.equal(grantedModules.length, 10);
 });
 
-test("UFONIT : ticket pour la tranche 10-45 %, rien au-delà", () => {
+test("UFONIT : ticket pour la tranche 25-50 %, munitions 50-60 %, rien au-delà", () => {
   const s = rewardServer(4);
-  const grantedModules = [], grantedTickets = [];
+  const grantedModules = [], grantedTickets = [], grantedAmmo = [];
   s.context.grantSundayModule = (accountId, rarity) => {
     grantedModules.push([accountId, rarity]);
     return { ok: true, module: { id: "mod_test_2", kind: "shipModule", rarity } };
@@ -469,8 +470,12 @@ test("UFONIT : ticket pour la tranche 10-45 %, rien au-delà", () => {
     grantedTickets.push([accountId, qty]);
     return { ok: true, qty };
   };
-  // random 0.2 : 10 % < 0.2 < 45 % -> ticket.
-  vm.runInContext("Math.random = function () { return 0.2; };", s.context);
+  s.context.grantSundayAmmo = (accountId, qty) => {
+    grantedAmmo.push([accountId, qty]);
+    return { ok: true, qty };
+  };
+  // random 0.3 : 25 % <= 0.3 < 50 % -> ticket.
+  vm.runInContext("Math.random = function () { return 0.3; };", s.context);
   const deaths = [{ uid: "npc#ufonit2", seq: 1, type: "npc_Event_Ufonit", cause: "gun", killer: "u_0",
     at: 1000000, x: 500, y: 600, shares: s.members.map((member, i) => [member.id, 400 - i * 100]) }];
   s.context.awardNpcDeaths("4-4", deaths);
@@ -479,6 +484,26 @@ test("UFONIT : ticket pour la tranche 10-45 %, rien au-delà", () => {
   assert.ok(mods.every((m) => m.win === true && m.prize === "ticket" && m.ticketQty === 1));
   assert.equal(grantedModules.length, 0);
   assert.equal(grantedTickets.length, 4);
+  assert.equal(grantedAmmo.length, 0);
+  assert.equal(s.calls.length, 0);
+});
+
+test("UFONIT : munitions X4 x50000 pour la tranche 50-60 %", () => {
+  const s = rewardServer(2);
+  const grantedAmmo = [];
+  s.context.grantSundayAmmo = (accountId, qty) => {
+    grantedAmmo.push([accountId, qty]);
+    return { ok: true, qty };
+  };
+  // random 0.55 : 50 % <= 0.55 < 60 % -> munitions.
+  vm.runInContext("Math.random = function () { return 0.55; };", s.context);
+  const deaths = [{ uid: "npc#ufonit4", seq: 1, type: "npc_Event_Ufonit", cause: "gun", killer: "u_0",
+    at: 1000000, x: 500, y: 600, shares: s.members.map((member, i) => [member.id, 200 - i * 100]) }];
+  s.context.awardNpcDeaths("4-4", deaths);
+  const mods = s.messages.filter((m) => m.t === "sundayModule");
+  assert.equal(mods.length, 2);
+  assert.ok(mods.every((m) => m.win === true && m.prize === "ammo" && m.ammoQty === 50000));
+  assert.deepEqual(grantedAmmo, [["0", 50000], ["1", 50000]]);
   assert.equal(s.calls.length, 0);
 });
 

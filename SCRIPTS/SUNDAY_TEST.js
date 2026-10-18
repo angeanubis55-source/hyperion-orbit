@@ -6,6 +6,9 @@ import {
   SUNDAY_MODULE_CHANCE,
   SUNDAY_TICKET_CHANCE,
   SUNDAY_TICKET_QTY,
+  SUNDAY_AMMO_CHANCE,
+  SUNDAY_AMMO_QTY,
+  SUNDAY_DMG_MULT,
   SUNDAY_RARE_CHANCE,
   buildSundayCamp,
   isSundayBossVariant,
@@ -70,9 +73,12 @@ test("UFONIT : maps 4-1 à 4-4 uniquement, tirage équiprobable", () => {
   assert.deepEqual([...seen].sort(), ["4-1", "4-2", "4-3", "4-4"]);
   assert.equal(isSundayBossVariant(SUNDAY_UFONIT_TYPE), true);
   assert.equal(isSundayBossVariant("npc_UFONIT"), false);
-  assert.equal(SUNDAY_MODULE_CHANCE, 0.10);
-  assert.equal(SUNDAY_TICKET_CHANCE, 0.35);
+  assert.equal(SUNDAY_MODULE_CHANCE, 0.25);
+  assert.equal(SUNDAY_TICKET_CHANCE, 0.25);
   assert.equal(SUNDAY_TICKET_QTY, 1);
+  assert.equal(SUNDAY_AMMO_CHANCE, 0.10);
+  assert.equal(SUNDAY_AMMO_QTY, 50000);
+  assert.equal(SUNDAY_DMG_MULT, 15);
   assert.equal(SUNDAY_RARE_CHANCE, 0.25);
 });
 
@@ -82,10 +88,10 @@ test("UFONIT : 4-4 peuplée de 10 kamikazes", () => {
   assert.ok(camps.every((c) => c.type === "npc_Explosif" && c.maxAlive === 1));
 });
 
-test("UFONIT : type 100M/100M, vitesse 540, 0 dégât, sprite continu", () => {
+test("UFONIT : type 350M/350M, vitesse 540, 0 dégât, sprite continu", () => {
   const cfg = NPC_TYPES[SUNDAY_UFONIT_TYPE];
   assert.equal(cfg.name, "[ UFONIT ]");
-  assert.deepEqual([cfg.hp, cfg.shield, cfg.speed], [100000000, 100000000, 540]);
+  assert.deepEqual([cfg.hp, cfg.shield, cfg.speed], [350000000, 350000000, 540]);
   assert.equal(cfg.passiveNative, true);
   assert.equal(cfg.playSprite, true);
   assert.equal(cfg.spriteSpeed, 25);
@@ -105,7 +111,7 @@ test("UFONIT : camp unique instantané + entrée passive inoffensive", () => {
   const sim = new ZoneNpcSim("4-4", { w: 22000, h: 14000 }, [camp]);
   assert.equal(sim.spawnFor(camp, Date.now()), true);
   const npc = [...sim.entries.values()][0];
-  assert.deepEqual([npc.hpMax, npc.shMax, npc.speed], [100000000, 100000000, 540]);
+  assert.deepEqual([npc.hpMax, npc.shMax, npc.speed], [350000000, 350000000, 540]);
   assert.equal(npc.passive, true);
   assert.equal(npc.canShoot, false);
   assert.equal(npc.shootRange, 0);
@@ -118,8 +124,9 @@ test("UFONIT : tapé, il s'en fout et continue sa route (top dégâts intacts)",
   const npc = [...sim.entries.values()][0];
   const before = npc.hp + npc.sh;
   sim.setPlayer("u_1", npc.x + 100, npc.y, { dead: false });
-  const applied = sim.applyHit("u_1", { uid: npc.uid, dmg: 5000, kind: "laser" });
-  assert.ok(applied > 0);
+  // Dégâts x15 : 1000 -> 15000 nets (crit et variance neutralisés).
+  const applied = sim.applyHit("u_1", { uid: npc.uid, dmg: 1000, kind: "laser", critChance: 0, variance: 0 });
+  assert.equal(applied, 15000);
   assert.ok(npc.hp + npc.sh < before);
   // Dégâts comptés pour le top 10, mais aucune aggro ni poursuite.
   assert.ok(npc.dmgBy && npc.dmgBy.get("u_1") > 0);

@@ -23,7 +23,7 @@ const {
 } = AC;
 import { tickLowRaid, getLowRaidState } from "./LOW_RAID.js";
 import { damagePlayerLayers } from "../COMBAT/COMBAT_RULES.js";
-import { handleAccountApi, getAccountGameplayData, verifyWsToken, recordPvpKill, recordPvpPetKill, awardNpcKill, grantSundayModule, grantSundayTickets, listFriends, friendFollowers, findUserByPseudo, hasFriendRequest, clanIdOfUser, clanTagOfUser, clanMemberUserIds, recordClanWarKill, adminGiveCredits, adminGiveExperience, adminGiveHonor, adminGiveModule, adminGiveTitle, adminListAccounts, adminDeleteAccount, adminResetGalaxyGate, adminGiveGalaxyGate, adminDroneDesigns, adminGiveDroneDesign, adminShipFamilies } from "./ACCOUNT_SERVER.js";
+import { handleAccountApi, getAccountGameplayData, verifyWsToken, recordPvpKill, recordPvpPetKill, awardNpcKill, grantSundayModule, grantSundayTickets, grantSundayAmmo, listFriends, friendFollowers, findUserByPseudo, hasFriendRequest, clanIdOfUser, clanTagOfUser, clanMemberUserIds, recordClanWarKill, adminGiveCredits, adminGiveExperience, adminGiveHonor, adminGiveModule, adminGiveTitle, adminListAccounts, adminDeleteAccount, adminResetGalaxyGate, adminGiveGalaxyGate, adminDroneDesigns, adminGiveDroneDesign, adminShipFamilies } from "./ACCOUNT_SERVER.js";
 import { combatProfile, validateCombatHit } from "./COMBAT_PROFILE.js";
 import { profileAbilityCooldown } from "../DRONE/DRONE_DESIGNS.js";
 import { selectNpcSnapshot } from "./NPC_SNAPSHOT.js";
@@ -488,7 +488,7 @@ import { getAuctionSync, handleAuctionBid, pollAuctionCycle, auctionRoomStatus }
 import { GAME_VERSION } from "../SRC/DATA/VERSION.js";
 import { COLLECTABLE_TYPES } from "../SRC/DATA/COLLECTABLES.js";
 import { HALLOWEEN_END, HALLOWEEN_START, HALLOWEEN_TIME_ZONE, isHalloweenBossVariant, isHalloweenEventActive } from "../NPC/NPC_HALLOWEEN.js";
-import { SUNDAY_MODULE_CHANCE, SUNDAY_RARE_CHANCE, SUNDAY_TICKET_CHANCE, SUNDAY_TICKET_QTY, isSundayBossVariant } from "../NPC/NPC_SUNDAY.js";
+import { SUNDAY_MODULE_CHANCE, SUNDAY_RARE_CHANCE, SUNDAY_TICKET_CHANCE, SUNDAY_TICKET_QTY, SUNDAY_AMMO_CHANCE, SUNDAY_AMMO_TYPE, SUNDAY_AMMO_QTY, isSundayBossVariant } from "../NPC/NPC_SUNDAY.js";
 import { GROUP_BOOSTER_BONUS } from "../SRC/DATA/BOOSTERS.js";
 import { STARMAP_JUMP_REUSE_SEC } from "../SRC/DATA/STARMAP.js";
 
@@ -2028,7 +2028,7 @@ function awardNpcDeaths(mapId, deaths) {
           .sort((a, b) => b[1] - a[1]);
         const topSet = new Set(ranked.slice(0, 10).map((s) => s[0]));
         for (const [pid] of ranked) {
-          let win = false, prize = null, prizeRarity = null, prizeModule = null, prizeTickets = 0;
+          let win = false, prize = null, prizeRarity = null, prizeModule = null, prizeTickets = 0, prizeAmmo = 0;
           if (topSet.has(pid)) {
             let r = 1;
             try { r = Math.random(); } catch {}
@@ -2044,6 +2044,11 @@ function awardNpcDeaths(mapId, deaths) {
                 const res = grantSundayTickets(String(pid).slice(2), SUNDAY_TICKET_QTY);
                 if (res && res.ok) { win = true; prize = "ticket"; prizeTickets = res.qty || SUNDAY_TICKET_QTY; }
               } catch {}
+            } else if (r < SUNDAY_MODULE_CHANCE + SUNDAY_TICKET_CHANCE + SUNDAY_AMMO_CHANCE) {
+              try {
+                const res = grantSundayAmmo(String(pid).slice(2), SUNDAY_AMMO_QTY);
+                if (res && res.ok) { win = true; prize = "ammo"; prizeAmmo = res.qty || SUNDAY_AMMO_QTY; }
+              } catch {}
             }
           }
           try {
@@ -2052,7 +2057,7 @@ function awardNpcDeaths(mapId, deaths) {
               seq: Number(death.seq) || 0, win,
               prize, rarity: prizeRarity,
               module: prizeModule ? sanitizeSundayModule(prizeModule) : null,
-              ticketQty: prizeTickets,
+              ticketQty: prizeTickets, ammoQty: prizeAmmo,
             });
           } catch {}
         }

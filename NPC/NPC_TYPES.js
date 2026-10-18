@@ -1310,7 +1310,7 @@ export const NPC_TYPES = {
     passiveNative: true,
     spriteSpeed: 25,
     bulletSprite: { src: "COMBAT/MUNITIONS/SPECIAL8.png", w: 55, h: 17, glow: true, invert: true },
-    r: 18, hp: 100000000, shield: 100000000, speed: 540,
+    r: 18, hp: 350000000, shield: 350000000, speed: 540,
     bulletDmg: 0, bulletSpeed: 0, shootRange: 0, shootRate: 0, canShoot: false,
   },
   npc_Santa_1100101: {

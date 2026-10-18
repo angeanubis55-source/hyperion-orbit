@@ -1955,6 +1955,29 @@ export function grantSundayTickets(accountId, qty) {
   } catch { return { ok: false, error: "Erreur serveur." }; }
 }
 
+// Mini-event dominical [ UFONIT ] : munitions X4.
+// Compteur compte X4 (même clé que le jeu).
+export function grantSundayAmmo(accountId, qty) {
+  try {
+    initAccountDb();
+    const uid = String(accountId || "");
+    const n = Math.max(0, Math.floor(Number(qty) || 0));
+    if (!uid || !(n > 0)) return { ok: false, error: "Quantité invalide." };
+    const row = db.prepare("SELECT * FROM users WHERE id = ?").get(uid);
+    if (!row) return { ok: false, error: "Compte introuvable." };
+    let data = {};
+    try { data = JSON.parse(row.data || "{}") || {}; } catch { data = {}; }
+    data.ammo ||= {};
+    data.ammo.x4 = Math.max(0, Math.floor(Number(data.ammo.x4) || 0)) + n;
+    const newRev = Math.max(Math.floor(Number(data.revision) || 0), Number(row.revision) || 0) + 1;
+    data.revision = newRev;
+    data.updatedAt = Date.now();
+    db.prepare("UPDATE users SET data = ?, revision = ?, updated_at = ? WHERE id = ?")
+      .run(JSON.stringify(data), newRev, Date.now(), row.id);
+    return { ok: true, qty: n, revision: newRev };
+  } catch { return { ok: false, error: "Erreur serveur." }; }
+}
+
 // Admin : give un titre cadeau à un compte (panneau /api/admin/give-title).
 // Texte libre (32 car. max) + couleur hexadécimale. Visible dans la fenêtre
 // Titre du joueur (débloqué, sélectionnable, « Cadeau de l'admin ») et par

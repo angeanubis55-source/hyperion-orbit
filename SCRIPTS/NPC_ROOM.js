@@ -8,7 +8,7 @@ import { pickSpacedSpawnPosition } from "../NPC/NPC_SPAWN_POSITION.js";
 
 import { createUniverse, deserializeUniverse, ensureMapSlots, markDead, markAlive, getSlot, serializeUniverse, slotUid, applyNpcDensityToCamps } from "../SRC/SIM/UNIVERSE_SIM.js";
 import { appendHalloweenCamps, applyHalloweenKill, halloweenCampBlocked, halloweenRoleOf, isHalloweenBossVariant, isHalloweenMapActive, isHalloweenVariantType, normalizeHalloweenState } from "../NPC/NPC_HALLOWEEN.js";
-import { SUNDAY_MAPS, SUNDAY_UFONIT_TYPE, buildSundayCamp, isSundayBossVariant, isSundayEventActive, sundayPickMap } from "../NPC/NPC_SUNDAY.js";
+import { SUNDAY_DMG_MULT, SUNDAY_MAPS, SUNDAY_UFONIT_TYPE, buildSundayCamp, isSundayBossVariant, isSundayEventActive, sundayPickMap } from "../NPC/NPC_SUNDAY.js";
 import { NPC_TYPES } from "../NPC/NPC_TYPES.js";
 import { damageEnemyLayers } from "../COMBAT/COMBAT_RULES.js";
 import { JPC_LASER, jpcVolleyParts, tickJpcRepair, jpcTravel, jpcCombatMove, jpcCombatDistance, jpcEngageRange } from "../NPC/JPC_BEHAVIOR.js";
@@ -1798,8 +1798,10 @@ drainPlayerHits() {
     if (!Number.isFinite(raw) || raw < 0 || raw > rawCap) return;
     // Blacklight : dégâts joueurs x1.25 (sauf Orcus x1), comme en solo.
     // Strokelight Barrage : insensible (NPC normal en map BL).
+    // [ UFONIT ] dominical : dégâts joueurs x15.
     const strokNoBonus = String(entry.type || "") === "npc_Strokelight_Barrage";
-    const buffed = Math.max(0, raw) * (strokNoBonus ? 1 : blDamageMultFor(this.mapId, shooter?.shipId));
+    const sundayMult = isSundayBossVariant(entry.type) ? SUNDAY_DMG_MULT : 1;
+    const buffed = Math.max(0, raw) * (strokNoBonus ? 1 : blDamageMultFor(this.mapId, shooter?.shipId)) * sundayMult;
     // Premier attaquant = credit du kill (pas le coup de grace).
     if (entry.firstBy == null) entry.firstBy = String(clientId);
     entry.lastHitBy = String(clientId);

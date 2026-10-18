@@ -29676,6 +29676,21 @@ function processDeaths() {
             }
           } catch {}
           try { showNotification(`Vous avez reçu ${qty} ticket${qty > 1 ? "s" : ""} de relance module ! [ UFONIT ]`, 4, "info", { goldTerms: ["ticket"] }); } catch {}
+        } else if (ev.win === true && ev.prize === "ammo") {
+          const qty = Math.max(1, Math.floor(Number(ev.ammoQty) || 0));
+          try {
+            if (player && player.ammo) player.ammo.x4 = Math.max(0, Math.floor(Number(player.ammo.x4) || 0)) + qty;
+            const u = account?.user;
+            if (u) {
+              u.ammo ||= {};
+              u.ammo.x4 = Math.max(0, Math.floor(Number(u.ammo.x4) || 0)) + qty;
+              try { saveUser(account.user, { source: "progress" }); } catch {}
+              try { markProgressDirty(); } catch {}
+              if (netActive()) flushNetUser().catch(() => {});
+            }
+            try { updateAmmoUI(); } catch {}
+          } catch {}
+          try { showNotification(`Vous avez reçu ${qty} munitions X4 ! [ UFONIT ]`, 4, "info", { goldTerms: ["X4"] }); } catch {}
         } else {
           try { showNotification("Vous n'avez rien reçu, à la prochaine fois. [ UFONIT ]", 3, "info"); } catch {}
         }

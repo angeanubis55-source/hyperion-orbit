@@ -14,11 +14,17 @@ export const SUNDAY_MAPS = Object.freeze(["4-1", "4-2", "4-3", "4-4"]);
 
 export const SUNDAY_UFONIT_TYPE = "npc_Event_Ufonit";
 
-// Loterie (top 10 dégâts) : 10 % module, 35 % ticket de relance module,
-// 55 % rien. Module : 25 % rare, 75 % commun (comme la boutique du passe).
-export const SUNDAY_MODULE_CHANCE = 0.10;
-export const SUNDAY_TICKET_CHANCE = 0.35;
+// Loterie (top 10 dégâts) : 25 % module, 25 % ticket de relance module,
+// 10 % munitions X4 x50000, 40 % rien.
+// Module : 25 % rare, 75 % commun (comme la boutique du passe).
+// Dégâts des joueurs sur l'UFONIT : x15.
+export const SUNDAY_DMG_MULT = 15;
+export const SUNDAY_MODULE_CHANCE = 0.25;
+export const SUNDAY_TICKET_CHANCE = 0.25;
 export const SUNDAY_TICKET_QTY = 1;
+export const SUNDAY_AMMO_CHANCE = 0.10;
+export const SUNDAY_AMMO_TYPE = "x4";
+export const SUNDAY_AMMO_QTY = 50000;
 export const SUNDAY_RARE_CHANCE = 0.25;
 
 const PARIS_DAY_FMT = new Intl.DateTimeFormat("en-US", {

@@ -1285,9 +1285,10 @@ export function ensureNetplayConnection() {
         uid: String(msg.uid || ""),
         seq: Number(msg.seq) || 0,
         win: msg.win === true,
-        prize: msg.prize === "module" ? "module" : msg.prize === "ticket" ? "ticket" : null,
+        prize: msg.prize === "module" ? "module" : msg.prize === "ticket" ? "ticket" : msg.prize === "ammo" ? "ammo" : null,
         rarity: typeof msg.rarity === "string" ? String(msg.rarity).slice(0, 16) : "",
         ticketQty: Math.max(0, Math.min(99, Math.floor(Number(msg.ticketQty) || 0))),
+        ammoQty: Math.max(0, Math.min(1000000, Math.floor(Number(msg.ammoQty) || 0))),
         module: mod ? {
           id: String(mod.id || "").slice(0, 64),
           kind: "shipModule",
