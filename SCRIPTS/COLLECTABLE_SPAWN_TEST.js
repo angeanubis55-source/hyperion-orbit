@@ -5,10 +5,12 @@ import vm from "node:vm";
 import { circleRectResolve, clamp } from "../SRC/CORE/COLLISION.js";
 import { collectableBotRewardMultiplier } from "../SRC/DATA/COLLECTABLES.js";
 
-test("bot : tous les collectables donnent 25 %, sauf le Palladium", () => {
+test("bot : tous les collectables donnent 25 %, sauf le Palladium et les Sun Box", () => {
   for (const type of ["Bonus_Box", "Cargo_Box", "Green_Booty_Box", "Astral_Prime_Box", "Pumpkin_Box", "Scrap_Box"])
     assert.equal(collectableBotRewardMultiplier(type, true), 0.25, type);
   assert.equal(collectableBotRewardMultiplier("Palladium_Ore", true), 1);
+  assert.equal(collectableBotRewardMultiplier("Sun_Box", true), 1);
+  assert.equal(collectableBotRewardMultiplier("Mindfire_Sun_Box", true), 1);
   assert.equal(collectableBotRewardMultiplier("Palladium_Ore", false), 1);
 });
 

@@ -2,7 +2,8 @@
 
 export function collectableBotRewardMultiplier(type, botActive) {
   if (botActive !== true) return 1;
-  return String(type || "") === "Palladium_Ore" ? 1 : 0.25;
+  const exempt = new Set(["Palladium_Ore", "Sun_Box", "Mindfire_Sun_Box"]);
+  return exempt.has(String(type || "")) ? 1 : 0.25;
 }
 
 // Toutes les ressources collectables du jeu sont centralisées ici.

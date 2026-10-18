@@ -1,9 +1,14 @@
 import { parseHalloweenVariant, halloweenMapStats } from "./NPC_HALLOWEEN.js";
 
-// Cartes classiques des trois firmes : x-1 à x-8. Les cartes de bataille,
-// pirates, Blacklight, raids et Galaxy Gates gardent leur barème propre.
+// Cartes classiques des trois firmes : 200 % en x-1..x-4, 150 % en x-5,
+// puis 125 % en x-6..x-8. Les autres cartes gardent leur barème propre.
 export function npcMapCreditMultiplier(mapId) {
-  return /^[123]-[1-8]$/.test(String(mapId || "").trim().toLowerCase()) ? 2 : 1;
+  const match = /^([123])-([1-8])$/.exec(String(mapId || "").trim().toLowerCase());
+  if (!match) return 1;
+  const map = Number(match[2]);
+  if (map <= 4) return 2;
+  if (map === 5) return 1.5;
+  return 1.25;
 }
 
 export const NPC_REWARDS = Object.freeze({

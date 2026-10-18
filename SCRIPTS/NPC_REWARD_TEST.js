@@ -53,9 +53,11 @@ function rewardServer(size = 1, failOnce = false, sun = false, killerBot = false
   return { context, members, calls, messages, saved, deaths };
 }
 
-test("crédits NPC : seules les cartes classiques 1-1 à 3-8 sont doublées", () => {
+test("crédits NPC : bonus dégressif sur les cartes classiques", () => {
   for (const sector of [1, 2, 3]) {
-    for (let map = 1; map <= 8; map++) assert.equal(npcMapCreditMultiplier(`${sector}-${map}`), 2);
+    for (let map = 1; map <= 4; map++) assert.equal(npcMapCreditMultiplier(`${sector}-${map}`), 2);
+    assert.equal(npcMapCreditMultiplier(`${sector}-5`), 1.5);
+    for (let map = 6; map <= 8; map++) assert.equal(npcMapCreditMultiplier(`${sector}-${map}`), 1.25);
   }
   for (const map of ["4-1", "4-5", "5-1", "1-BL", "low", "alpha", "awakened"])
     assert.equal(npcMapCreditMultiplier(map), 1, map);
@@ -91,6 +93,14 @@ test("kill du bot : le groupe partage un pool réduit à 25 %", () => {
   assert.equal(rewards.reduce((sum, reward) => sum + reward.percent, 0), 25);
   assert.deepEqual(rewards.map(reward => reward.percent), [6.25, 6.25, 6.25, 6.25]);
   assert.equal(rewards.filter(reward => reward.ownsKill).length, 1);
+});
+
+test("kill du bot en BL : la récompense NPC reste réduite à 25 %", () => {
+  const s = rewardServer(1, false, false, true);
+  s.context.awardNpcDeaths("1-BL", s.deaths(1));
+  const rewards = s.messages.filter(message => message.t === "npcReward");
+  assert.equal(rewards.length, 1);
+  assert.equal(rewards[0].percent, 25);
 });
 
 test("kill manuel : le groupe conserve le pool normal à 100 %", () => {
