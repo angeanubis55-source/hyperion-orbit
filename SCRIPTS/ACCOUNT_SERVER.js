@@ -18,6 +18,7 @@ import { DRONE_DESIGNS, getDroneDesign } from "../DRONE/DRONE_DESIGNS.js";
 import { PET_XP_SHARE, getPetLevel } from "../PET/PET_TYPES.js";
 import { npcMapCreditMultiplier, resolveNpcReward } from "../NPC/NPC_BALANCE.js";
 import { rollNpcAssemblyDirect } from "../NPC/NPC_ASSEMBLY.js";
+import { MODULE_ALL_STATS, MODULE_PCT_BAN, MODULE_SPC_STATS, MODULE_TIER_MALUS, getModuleRarity, getStatMaxPct } from "../SRC/DATA/MODULE_DROPS.js";
 
 const DB_DIR = resolve(process.cwd(), "SERVER_DATA");
 const DB_PATH = join(DB_DIR, "orbit.db");
@@ -1856,6 +1857,101 @@ export function adminGiveModule(pseudo, shipId, stat, pct) {
     db.prepare("UPDATE users SET data = ?, revision = ?, updated_at = ? WHERE id = ?")
       .run(JSON.stringify(data), newRev, Date.now(), row.id);
     return { ok: true, id: String(row.id), pseudo: String(row.pseudo || "Pilote").slice(0, 20), module: mod, revision: newRev };
+  } catch { return { ok: false, error: "Erreur serveur." }; }
+}
+
+// Mini-event dominical [ UFONIT ] : loterie module du top 10 dégâts.
+// rarity "common" -> tier x1 / 1 stat, "rare" -> tier x2 / 2 stats (même
+// barème que la boutique du passe). Tirage intra-module identique à
+// generateShipModule (tables MODULE_DROPS). Aucune soute ni récompense.
+const SUNDAY_MODULE_SPEC = Object.freeze({
+  common: Object.freeze({ tier: "x1", statCount: 1 }),
+  rare: Object.freeze({ tier: "x2", statCount: 2 }),
+});
+const SUNDAY_MODULE_TYPES = Object.freeze(["hp", "shd", "dmg", "spc"]);
+function sundayRollPct(min, max) {
+  let value = 0, guard = 0;
+  while (value === MODULE_PCT_BAN && guard < 16) {
+    value = Math.floor(Math.random() * (Math.floor(max) - Math.ceil(min) + 1)) + Math.ceil(min);
+    guard++;
+  }
+  return value;
+}
+export function grantSundayModule(accountId, rarity) {
+  try {
+    initAccountDb();
+    const uid = String(accountId || "");
+    if (!uid) return { ok: false, error: "Compte manquant." };
+    const spec = SUNDAY_MODULE_SPEC[rarity] || SUNDAY_MODULE_SPEC.common;
+    const row = db.prepare("SELECT * FROM users WHERE id = ?").get(uid);
+    if (!row) return { ok: false, error: "Compte introuvable." };
+    let data = {};
+    try { data = JSON.parse(row.data || "{}") || {}; } catch { data = {}; }
+    const families = getShipFamilyIds().filter((f) => !/police/i.test(String(f || "")));
+    const family = String(families.length ? families[Math.floor(Math.random() * families.length)] : "goliath");
+    const type = SUNDAY_MODULE_TYPES[Math.floor(Math.random() * SUNDAY_MODULE_TYPES.length)];
+    const mainStat = type === "hp" ? "hp" : type === "shd" ? "shield" : type === "dmg" ? "damage"
+      : MODULE_SPC_STATS[Math.floor(Math.random() * MODULE_SPC_STATS.length)];
+    const mn = MODULE_TIER_MALUS[spec.tier] ?? -4;
+    const picked = new Set([mainStat]);
+    const bonuses = [{ stat: mainStat, pct: sundayRollPct(mn, getStatMaxPct(mainStat, type)) }];
+    const pool = MODULE_ALL_STATS.filter((s) => !picked.has(s));
+    while (bonuses.length < spec.statCount && pool.length) {
+      const s = pool.splice(Math.floor(Math.random() * pool.length), 1)[0];
+      picked.add(s);
+      bonuses.push({ stat: s, pct: sundayRollPct(mn, getStatMaxPct(s, type)) });
+    }
+    const now = Math.floor(Date.now() / 1000);
+    const mod = {
+      id: `mod_sun_${now}_${randomBytes(3).toString("hex")}`,
+      kind: "shipModule",
+      shipId: family,
+      familyId: family,
+      tier: spec.tier,
+      type,
+      bonuses,
+      rarity: getModuleRarity(bonuses.length),
+      iconKey: `${type}-${spec.tier}`,
+      rerolls: 0,
+      rerollCredits: 0,
+      createdAt: now,
+    };
+    data.inventory ||= {};
+    if (!Array.isArray(data.inventory.shipModules)) data.inventory.shipModules = [];
+    if (!Array.isArray(data.inventory.moduleRollHistory)) data.inventory.moduleRollHistory = [];
+    data.inventory.shipModules.push(mod);
+    data.inventory.moduleRollHistory.push({ ...mod, rollPayment: { type: "event", amount: 0 } });
+    const newRev = Math.max(Math.floor(Number(data.revision) || 0), Number(row.revision) || 0) + 1;
+    data.revision = newRev;
+    data.updatedAt = Date.now();
+    db.prepare("UPDATE users SET data = ?, revision = ?, updated_at = ? WHERE id = ?")
+      .run(JSON.stringify(data), newRev, Date.now(), row.id);
+    return { ok: true, module: mod, revision: newRev };
+  } catch { return { ok: false, error: "Erreur serveur." }; }
+}
+
+// Mini-event dominical [ UFONIT ] : tickets de relance module.
+// Compteur inventaire ticket_module_reroll (même clé que la boutique).
+export function grantSundayTickets(accountId, qty) {
+  try {
+    initAccountDb();
+    const uid = String(accountId || "");
+    const n = Math.max(0, Math.floor(Number(qty) || 0));
+    if (!uid || !(n > 0)) return { ok: false, error: "Quantité invalide." };
+    const row = db.prepare("SELECT * FROM users WHERE id = ?").get(uid);
+    if (!row) return { ok: false, error: "Compte introuvable." };
+    let data = {};
+    try { data = JSON.parse(row.data || "{}") || {}; } catch { data = {}; }
+    data.inventory ||= {};
+    data.inventory.counts ||= {};
+    data.inventory.counts.ticket_module_reroll =
+      Math.max(0, Math.floor(Number(data.inventory.counts.ticket_module_reroll) || 0)) + n;
+    const newRev = Math.max(Math.floor(Number(data.revision) || 0), Number(row.revision) || 0) + 1;
+    data.revision = newRev;
+    data.updatedAt = Date.now();
+    db.prepare("UPDATE users SET data = ?, revision = ?, updated_at = ? WHERE id = ?")
+      .run(JSON.stringify(data), newRev, Date.now(), row.id);
+    return { ok: true, qty: n, revision: newRev };
   } catch { return { ok: false, error: "Erreur serveur." }; }
 }
 

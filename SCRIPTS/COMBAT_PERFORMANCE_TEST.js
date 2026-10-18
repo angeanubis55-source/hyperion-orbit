@@ -19,6 +19,7 @@ import { CATALOG, findCatalogItem } from "../SRC/CORE/CATALOG.js";
 import { AMMO } from "../COMBAT/AMMO_TYPES.js";
 import { isJpcBotSheltered } from "../NPC/JPC_BOTS.js";
 import { isHalloweenBossVariant } from "../NPC/NPC_HALLOWEEN.js";
+import { isSundayBossVariant } from "../NPC/NPC_SUNDAY.js";
 import { HYPERION_QA_DAMAGE, HYPERION_QA_BURST_SEC, HYPERION_QA_SALVOS } from "../SHIP/SHIP_ABILITIES.js";
 
 // Exerce les fonctions livrées sans démarrer une session ou un serveur réel.
@@ -1052,7 +1053,7 @@ test('Maudite : Chaos Cubikon compte en contrats generaux, objectifs specifiques
 test('Maudite : parts groupe sur meme carte totalisent 100, hors carte et instances exclus', () => {
  const source=readFileSync(new URL('./MULTI_SERVER.js',import.meta.url),'utf8').replace(/\r\n/g,'\n');
  const members=[{id:'u_a',map:'MAUDITE',online:true},{id:'u_b',map:'maudite',online:true},{id:'u_c',map:'maudite',online:true},{id:'u_d',map:'1-7',online:true},{id:'u_e',map:'maudite',instance:true},{id:'u_f',map:'maudite',online:false}];
- const ctx=vm.createContext({isHalloweenBossVariant,socialDescribeGroup:()=>({members}),describePeer:()=>{},death:{uid:'cube',seq:1}});
+ const ctx=vm.createContext({isHalloweenBossVariant,isSundayBossVariant,socialDescribeGroup:()=>({members}),describePeer:()=>{},death:{uid:'cube',seq:1}});
  vm.runInContext(engineFunction('npcRewardShares',source),ctx);
  const shares=vm.runInContext('npcRewardShares("u_a","maudite",death)',ctx);
  assert.deepEqual(Array.from(shares,s=>s.pid),['u_a','u_b','u_c']);

@@ -8,6 +8,7 @@ import { pickSpacedSpawnPosition } from "../NPC/NPC_SPAWN_POSITION.js";
 
 import { createUniverse, deserializeUniverse, ensureMapSlots, markDead, markAlive, getSlot, serializeUniverse, slotUid, applyNpcDensityToCamps } from "../SRC/SIM/UNIVERSE_SIM.js";
 import { appendHalloweenCamps, applyHalloweenKill, halloweenCampBlocked, halloweenRoleOf, isHalloweenBossVariant, isHalloweenMapActive, isHalloweenVariantType, normalizeHalloweenState } from "../NPC/NPC_HALLOWEEN.js";
+import { SUNDAY_MAPS, SUNDAY_UFONIT_TYPE, buildSundayCamp, isSundayBossVariant, isSundayEventActive, sundayPickMap } from "../NPC/NPC_SUNDAY.js";
 import { NPC_TYPES } from "../NPC/NPC_TYPES.js";
 import { damageEnemyLayers } from "../COMBAT/COMBAT_RULES.js";
 import { JPC_LASER, jpcVolleyParts, tickJpcRepair, jpcTravel, jpcCombatMove, jpcCombatDistance, jpcEngageRange } from "../NPC/JPC_BEHAVIOR.js";
@@ -541,6 +542,33 @@ export class ZoneNpcSim {
       try { ensureMapSlots(this.universe, this.mapId, this.camps, nowMs); } catch {}
       this.halloween = normalizeHalloweenState(null);
     }
+  }
+
+  // --- Mini-event dominical [ UFONIT ] (multi) ---
+  // 1 seul UFONIT à la fois : purge locale + compteur, le placement
+  // cross-map est piloté par syncSundayEvent() (bas de fichier).
+  purgeSunday() {
+    const nowMs = Date.now();
+    for (const [uid, e] of [...this.entries]) {
+      if (!e || e.type !== SUNDAY_UFONIT_TYPE || !(e.hp > 0)) continue;
+      try { markDead(this.universe, this.mapId, uid, nowMs); } catch {}
+      this.entries.delete(uid);
+      if (this.recentGone.length < 200) this.recentGone.push(uid);
+    }
+    if (this.camps.some((c) => c?.event === "sunday")) {
+      this.camps = this.camps.filter((c) => c?.event !== "sunday");
+      try { ensureMapSlots(this.universe, this.mapId, this.camps, nowMs); } catch {}
+    }
+  }
+
+  sundayLiveCount() {
+    let n = 0;
+    try {
+      for (const e of this.entries.values()) {
+        if (e && e.type === SUNDAY_UFONIT_TYPE && e.hp > 0) n++;
+      }
+    } catch {}
+    return n;
   }
 
   // Nombre de NPC de la vague active encore en vie.
@@ -1849,7 +1877,9 @@ drainPlayerHits() {
       // menace (top dégâts + hystérésis).
       const holdUntil = nowMs + (Number(entry.aggroHoldMs) || 3500);
       const curBy = entry.aggroBy != null ? String(entry.aggroBy) : null;
-      if (!curBy || nowMs >= Number(entry.aggroUntil || 0) || curBy === String(clientId)) {
+      // [ UFONIT ] dominical : s'en fout, continue sa route (aucune aggro).
+      if (!isSundayBossVariant(entry.type)
+        && (!curBy || nowMs >= Number(entry.aggroUntil || 0) || curBy === String(clientId))) {
         entry.aggroBy = String(clientId);
         entry.aggroUntil = holdUntil;
       }
@@ -1905,9 +1935,10 @@ drainPlayerHits() {
       try { this.spawnOnKillWave(entry, nowMs); } catch {}
       try { markDead(this.universe, this.mapId, uid, Date.now()); } catch {}
       const death = { uid, type: entry.type, x: Math.round(entry.x), y: Math.round(entry.y), killer: entry.killer, cause: "gun", seq: entry.seq || 0, at: Date.now() };
-      // Invoke / Mindfire / Boss Halloween : classement dégâts pour les soleils
-      // (top 10) et la récompense de destruction proportionnelle (tous les tapeurs).
-      if (entry.type === "npc_Invoke_XVI" || entry.type === "npc_Mindfire_Behemoth" || isHalloweenBossVariant(entry.type)) {
+      // Invoke / Mindfire / Boss Halloween / UFONIT dominical : classement
+      // dégâts pour les soleils (top 10) et la récompense de destruction
+      // proportionnelle (tous les tapeurs).
+      if (entry.type === "npc_Invoke_XVI" || entry.type === "npc_Mindfire_Behemoth" || isHalloweenBossVariant(entry.type) || isSundayBossVariant(entry.type)) {
         try {
           const shares = [];
           if (entry.dmgBy && entry.dmgSeq === entry.seq) {
@@ -2306,8 +2337,10 @@ drainPlayerHits() {
       } else {
         chase = taunted || threat || attacker || jpcChase || close;
       }
+      // [ UFONIT ] dominical : jamais de poursuite, que du wander.
+      if (isSundayBossVariant(e.type)) chase = null;
       if (chase) e.retreating = false;
-      if (threat) {
+      if (threat && !isSundayBossVariant(e.type)) {
         e.aggroBy = threat.id;
         e.aggroUntil = nowMs + (Number(e.aggroHoldMs) || 3500);
       }
@@ -2629,4 +2662,67 @@ drainPlayerHits() {
       return JSON.stringify(base);
     } catch { return serializeUniverse(this.universe); }
   }
+}
+
+// --- Contrôleur global du mini-event dominical [ UFONIT ] ---
+// 1 seul UFONIT à la fois sur 4-1 / 4-2 / 4-3 / 4-4 (map tirée au hasard à
+// chaque apparition), respawn instantané après sa mort. getSim(mapId) doit
+// retourner la sim de la map ou null. Throttle interne 2 s.
+// Retourne { events, liveMap, active } ou null (throttle) ;
+// events = [{ t: "start" | "spawn" | "end", map? }].
+const SUNDAY_CTRL = { at: 0, wasActive: false };
+export function syncSundayEvent(getSim, nowMs = Date.now()) {
+  if (nowMs - SUNDAY_CTRL.at < 2000) return null;
+  SUNDAY_CTRL.at = nowMs;
+  const events = [];
+  const sims = new Map();
+  for (const m of SUNDAY_MAPS) {
+    try {
+      const s = getSim(m);
+      if (s && typeof s.tick === "function" && Array.isArray(s.camps) && s.entries instanceof Map) sims.set(m, s);
+    } catch {}
+  }
+  let active = false;
+  try { active = isSundayEventActive(new Date(nowMs)); } catch {}
+  if (!active) {
+    for (const [, sim] of sims) { try { sim.purgeSunday(); } catch {} }
+    if (SUNDAY_CTRL.wasActive) events.push({ t: "end" });
+    SUNDAY_CTRL.wasActive = false;
+    return { events, liveMap: null, active: false };
+  }
+  if (!SUNDAY_CTRL.wasActive) events.push({ t: "start" });
+  SUNDAY_CTRL.wasActive = true;
+  for (const [m, sim] of sims) {
+    try { if (sim.sundayLiveCount() > 0) return { events, liveMap: m, active: true }; } catch {}
+  }
+  const ready = [...sims.keys()];
+  if (!ready.length) return { events, liveMap: null, active: true };
+  const pick = sundayPickMap(Math.random);
+  const finalMap = ready.includes(pick) ? pick : ready[0];
+  const sim = sims.get(finalMap);
+  for (const [m, s] of sims) {
+    if (m === finalMap) continue;
+    try {
+      if (s.camps.some((c) => c?.event === "sunday")) {
+        s.camps = s.camps.filter((c) => c?.event !== "sunday");
+        ensureMapSlots(s.universe, s.mapId, s.camps, nowMs);
+      }
+    } catch {}
+  }
+  try {
+    let camp = sim.camps.find((c) => c?.event === "sunday");
+    if (!camp) {
+      let nextId = 0;
+      for (const c of sim.camps) nextId = Math.max(nextId, Number(c?.id) || 0);
+      camp = { id: nextId + 1, ...buildSundayCamp(sim.world, Math.random) };
+      sim.camps.push(camp);
+      ensureMapSlots(sim.universe, sim.mapId, sim.camps, nowMs);
+    }
+    const alive = [...sim.entries.values()].filter((e) => e && e.campId === camp.id && e.hp > 0).length;
+    if (!alive && sim.spawnFor(camp, nowMs)) {
+      try { sim.campT.set(camp.id, 0); } catch {}
+      events.push({ t: "spawn", map: finalMap });
+    }
+  } catch {}
+  return { events, liveMap: finalMap, active: true };
 }

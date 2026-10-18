@@ -3,7 +3,7 @@ const dist2 = (ax,ay,bx,by)=>{ const dx=ax-bx, dy=ay-by; return dx*dx+dy*dy; };
 
 export function getZoneSpawns(WORLD) {
   const pad = 300;
-  const N = 0;
+  const N = 10;
 
   const minDist = 0;
   const minDist2 = minDist * minDist;
@@ -12,9 +12,9 @@ export function getZoneSpawns(WORLD) {
   let tries = 0;
   const maxTries = 6000;
 
-  // ✅ Quotas EXACTS : 100 Cubikon + 400 Protegit
+  // ✅ Quotas EXACTS : 10 Kamikaze
   const quota = [
-    { type: "npc_Explosif", left: 1 },
+    { type: "npc_Explosif", left: 10 },
   ];
 
   function pickQuotaType() {

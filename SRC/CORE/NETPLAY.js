@@ -541,6 +541,13 @@ export function drainNetSunInbox() {
   if (!netSunInbox.length) return [];
   return netSunInbox.splice(0, netSunInbox.length);
 }
+// Mini-event dominical [ UFONIT ] : loterie module du top 10 dégâts
+// ({ map, uid, seq, win, rarity, module }). Aucune soute ni récompense.
+const netSundayInbox = [];
+export function drainNetSundayInbox() {
+  if (!netSundayInbox.length) return [];
+  return netSundayInbox.splice(0, netSundayInbox.length);
+}
 // Halos Mindfire : camouflage dissipé par le serveur ({ uid }).
 const netDecloakInbox = [];
 export function drainNetDecloakInbox() {
@@ -1263,6 +1270,38 @@ export function ensureNetplayConnection() {
         sunType: typeof msg.sunType === "string" ? String(msg.sunType).slice(0, 40) : null,
         x: Number.isFinite(Number(msg.x)) ? Math.round(Number(msg.x)) : 0,
         y: Number.isFinite(Number(msg.y)) ? Math.round(Number(msg.y)) : 0,
+      });
+      return;
+    }
+    if (msg.t === "sundayModule" && msg && typeof msg === "object") {
+      if (netSundayInbox.length > 16) netSundayInbox.shift();
+      const mod = msg.module && typeof msg.module === "object" ? msg.module : null;
+      const bonuses = mod && Array.isArray(mod.bonuses) ? mod.bonuses.slice(0, 4).map((b) => ({
+        stat: String(b?.stat || "").slice(0, 24),
+        pct: Math.max(-100, Math.min(100, Math.floor(Number(b?.pct) || 0))),
+      })) : [];
+      netSundayInbox.push({
+        map: String(msg.map || "").toLowerCase(),
+        uid: String(msg.uid || ""),
+        seq: Number(msg.seq) || 0,
+        win: msg.win === true,
+        prize: msg.prize === "module" ? "module" : msg.prize === "ticket" ? "ticket" : null,
+        rarity: typeof msg.rarity === "string" ? String(msg.rarity).slice(0, 16) : "",
+        ticketQty: Math.max(0, Math.min(99, Math.floor(Number(msg.ticketQty) || 0))),
+        module: mod ? {
+          id: String(mod.id || "").slice(0, 64),
+          kind: "shipModule",
+          shipId: String(mod.shipId || "").slice(0, 64),
+          familyId: String(mod.familyId || "").slice(0, 64),
+          tier: String(mod.tier || "").slice(0, 8),
+          type: String(mod.type || "").slice(0, 8),
+          bonuses,
+          rarity: String(mod.rarity || "").slice(0, 16),
+          iconKey: String(mod.iconKey || "").slice(0, 32),
+          rerolls: 0,
+          rerollCredits: 0,
+          createdAt: Math.floor(Number(mod.createdAt) || 0),
+        } : null,
       });
       return;
     }

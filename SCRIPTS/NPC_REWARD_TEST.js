@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import vm from "node:vm";
 import { isHalloweenBossVariant, appendHalloweenCamps, halloweenRoleOf } from "../NPC/NPC_HALLOWEEN.js";
+import { isSundayBossVariant } from "../NPC/NPC_SUNDAY.js";
 import { NPC_TYPES } from "../NPC/NPC_TYPES.js";
 import { ZoneNpcSim } from "./NPC_ROOM.js";
 import { npcMapCreditMultiplier } from "../NPC/NPC_BALANCE.js";
@@ -28,7 +29,12 @@ function rewardServer(size = 1, failOnce = false, sun = false, killerBot = false
   const context = vm.createContext({
     Date: { now: () => now }, console: { error: () => {} },
     setTimeout: () => { throw new Error("aucune mise en attente autorisée"); },
-    rewardedNpcDeaths: new Map(), serverRunId: "test-run", isHalloweenBossVariant,
+    rewardedNpcDeaths: new Map(), serverRunId: "test-run", isHalloweenBossVariant, isSundayBossVariant,
+    SUNDAY_MODULE_CHANCE: 0.10, SUNDAY_TICKET_CHANCE: 0.35, SUNDAY_TICKET_QTY: 1, SUNDAY_RARE_CHANCE: 0.25,
+    grantSundayModule: () => ({ ok: false }),
+    grantSundayTickets: () => ({ ok: false }),
+    sanitizeSundayModule: (m) => m,
+    pumpSundayEvent: () => {},
     socialDescribeGroup: () => ({ members: members.slice() }), describePeer: () => null,
     rooms: new Map([["1-3", new Map(members.map(member => [member.id, {}]))]]),
     findPeerState: pid => ({ bot: killerBot === true && pid === "u_0" }), audOf: () => ({}), recordAbilityNpcKill: () => {},
@@ -415,4 +421,87 @@ test("5000 kills, sauvegardes et comptes remplacés : quêtes, passe et gains re
   assert.equal(saved.stats.exp, 100000);
   assert.equal(saved.stats.honor, 10000);
   assert.equal(saved.stats.lifetimeKills, 2500);
+});
+
+test("UFONIT : loterie 10 % module / 35 % ticket du top 10, sans soute ni box", () => {
+  const s = rewardServer(12);
+  const grantedModules = [], grantedTickets = [];
+  s.context.grantSundayModule = (accountId, rarity) => {
+    grantedModules.push([accountId, rarity]);
+    return { ok: true, module: { id: "mod_test_1", kind: "shipModule", rarity } };
+  };
+  s.context.grantSundayTickets = (accountId, qty) => {
+    grantedTickets.push([accountId, qty]);
+    return { ok: true, qty };
+  };
+  // random 0.05 < 10 % -> module (rare : 0.05 < 25 %).
+  vm.runInContext("Math.random = function () { return 0.05; };", s.context);
+  const deaths = [{ uid: "npc#ufonit", seq: 1, type: "npc_Event_Ufonit", cause: "gun", killer: "u_0",
+    at: 1000000, x: 500, y: 600, shares: s.members.map((member, i) => [member.id, 1200 - i * 100]) }];
+  s.context.awardNpcDeaths("4-4", deaths);
+  // 12 tapeurs -> top 10 gagnants module rare + rangs 11-12 notifiés perdants.
+  const mods = s.messages.filter((m) => m.t === "sundayModule");
+  assert.equal(mods.length, 12);
+  assert.ok(mods.slice(0, 10).every((m) => m.win === true && m.prize === "module" && m.rarity === "rare" && m.module && m.module.id === "mod_test_1"));
+  assert.ok(mods.slice(10).every((m) => m.win === false && m.prize === null));
+  assert.equal(grantedModules.length, 10);
+  assert.deepEqual(grantedModules.map((g) => g[0]).sort(), ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"]);
+  assert.ok(grantedModules.every((g) => g[1] === "rare"));
+  assert.equal(grantedTickets.length, 0);
+  // Aucune récompense classique : pas d'awardNpcKill, ni npcReward, ni npcSun.
+  assert.equal(s.calls.length, 0);
+  assert.equal(s.messages.filter((m) => m.t === "npcReward").length, 0);
+  assert.equal(s.messages.filter((m) => m.t === "npcSun").length, 0);
+  // Rejoué : aucune deuxième loterie (dedup).
+  s.context.awardNpcDeaths("4-4", deaths);
+  assert.equal(s.messages.filter((m) => m.t === "sundayModule").length, 12);
+  assert.equal(grantedModules.length, 10);
+});
+
+test("UFONIT : ticket pour la tranche 10-45 %, rien au-delà", () => {
+  const s = rewardServer(4);
+  const grantedModules = [], grantedTickets = [];
+  s.context.grantSundayModule = (accountId, rarity) => {
+    grantedModules.push([accountId, rarity]);
+    return { ok: true, module: { id: "mod_test_2", kind: "shipModule", rarity } };
+  };
+  s.context.grantSundayTickets = (accountId, qty) => {
+    grantedTickets.push([accountId, qty]);
+    return { ok: true, qty };
+  };
+  // random 0.2 : 10 % < 0.2 < 45 % -> ticket.
+  vm.runInContext("Math.random = function () { return 0.2; };", s.context);
+  const deaths = [{ uid: "npc#ufonit2", seq: 1, type: "npc_Event_Ufonit", cause: "gun", killer: "u_0",
+    at: 1000000, x: 500, y: 600, shares: s.members.map((member, i) => [member.id, 400 - i * 100]) }];
+  s.context.awardNpcDeaths("4-4", deaths);
+  const mods = s.messages.filter((m) => m.t === "sundayModule");
+  assert.equal(mods.length, 4);
+  assert.ok(mods.every((m) => m.win === true && m.prize === "ticket" && m.ticketQty === 1));
+  assert.equal(grantedModules.length, 0);
+  assert.equal(grantedTickets.length, 4);
+  assert.equal(s.calls.length, 0);
+});
+
+test("UFONIT : perdants et 11e+ notifiés sans gain", () => {
+  const s = rewardServer(12);
+  const grantedModules = [], grantedTickets = [];
+  s.context.grantSundayModule = (accountId, rarity) => {
+    grantedModules.push([accountId, rarity]);
+    return { ok: true, module: { id: "mod_test_3", kind: "shipModule", rarity } };
+  };
+  s.context.grantSundayTickets = (accountId, qty) => {
+    grantedTickets.push([accountId, qty]);
+    return { ok: true, qty };
+  };
+  // random 0.9 : au-delà de 45 % -> rien, mais tout le monde est notifié.
+  vm.runInContext("Math.random = function () { return 0.9; };", s.context);
+  const deaths = [{ uid: "npc#ufonit3", seq: 1, type: "npc_Event_Ufonit", cause: "gun", killer: "u_0",
+    at: 1000000, x: 500, y: 600, shares: s.members.map((member, i) => [member.id, 1200 - i * 100]) }];
+  s.context.awardNpcDeaths("4-4", deaths);
+  const mods = s.messages.filter((m) => m.t === "sundayModule");
+  assert.equal(mods.length, 12);
+  assert.ok(mods.every((m) => m.win === false && m.prize === null));
+  assert.equal(grantedModules.length, 0);
+  assert.equal(grantedTickets.length, 0);
+  assert.equal(s.calls.length, 0);
 });

@@ -494,7 +494,7 @@ body.phoneDockEditorOpen #gameWindowDock .sessionDockMenu { visibility:visible !
 body.phoneJoystickLayoutOpen #sessionMenu > :not(#btnLogout),
 body.phoneDockEditorOpen #sessionMenu > :not(#btnLogout) { display:none !important; }
 #settingsWindow .phoneOnlySettingsBtn { display:none; }
-body:has(> #phoneControls:not([hidden])) #settingsWindow .phoneOnlySettingsBtn { display:block; }
+body.phoneModeOn #settingsWindow .phoneOnlySettingsBtn { display:block; }
 .phoneJoystickKnob {
   position:absolute;
   inset:auto;

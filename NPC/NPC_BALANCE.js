@@ -158,6 +158,9 @@ export const NPC_REWARDS = Object.freeze({
   npc_Interceptor: { credits: 37500, exp: 11250, honor: 40 },
   npc_Battleray: { credits: 450000, exp: 32000, honor: 75 },
   npc_UFONIT: { credits: 50000, exp: 25000, honor: 100 },
+  // Mini-event dominical [ UFONIT ] : barème indicatif uniquement (aucune
+  // soute ni récompense versée, seule la loterie module du top 10).
+  npc_Event_Ufonit: { credits: 5000000, exp: 1000000, honor: 10000 },
   npc_Santa_1100101: { credits: 50000, exp: 25000, honor: 100 },
   npc_Super_Ice_Meteoroid: { credits: 4300000, exp: 1300000, honor: 5250 },
   npc_Disguisor: { credits: 50000, exp: 25000, honor: 100 },

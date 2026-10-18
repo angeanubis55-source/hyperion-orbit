@@ -4,7 +4,7 @@ import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, extname, join, normalize, resolve } from "node:path";
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import { WebSocketServer } from "ws";
-import { ZoneNpcSim } from "./NPC_ROOM.js";
+import { ZoneNpcSim, syncSundayEvent } from "./NPC_ROOM.js";
 import {
   ANTICHEAT as AC,
   acBucket,
@@ -23,7 +23,7 @@ const {
 } = AC;
 import { tickLowRaid, getLowRaidState } from "./LOW_RAID.js";
 import { damagePlayerLayers } from "../COMBAT/COMBAT_RULES.js";
-import { handleAccountApi, getAccountGameplayData, verifyWsToken, recordPvpKill, recordPvpPetKill, awardNpcKill, listFriends, friendFollowers, findUserByPseudo, hasFriendRequest, clanIdOfUser, clanTagOfUser, clanMemberUserIds, recordClanWarKill, adminGiveCredits, adminGiveExperience, adminGiveHonor, adminGiveModule, adminGiveTitle, adminListAccounts, adminDeleteAccount, adminResetGalaxyGate, adminGiveGalaxyGate, adminDroneDesigns, adminGiveDroneDesign, adminShipFamilies } from "./ACCOUNT_SERVER.js";
+import { handleAccountApi, getAccountGameplayData, verifyWsToken, recordPvpKill, recordPvpPetKill, awardNpcKill, grantSundayModule, grantSundayTickets, listFriends, friendFollowers, findUserByPseudo, hasFriendRequest, clanIdOfUser, clanTagOfUser, clanMemberUserIds, recordClanWarKill, adminGiveCredits, adminGiveExperience, adminGiveHonor, adminGiveModule, adminGiveTitle, adminListAccounts, adminDeleteAccount, adminResetGalaxyGate, adminGiveGalaxyGate, adminDroneDesigns, adminGiveDroneDesign, adminShipFamilies } from "./ACCOUNT_SERVER.js";
 import { combatProfile, validateCombatHit } from "./COMBAT_PROFILE.js";
 import { profileAbilityCooldown } from "../DRONE/DRONE_DESIGNS.js";
 import { selectNpcSnapshot } from "./NPC_SNAPSHOT.js";
@@ -488,6 +488,7 @@ import { getAuctionSync, handleAuctionBid, pollAuctionCycle, auctionRoomStatus }
 import { GAME_VERSION } from "../SRC/DATA/VERSION.js";
 import { COLLECTABLE_TYPES } from "../SRC/DATA/COLLECTABLES.js";
 import { HALLOWEEN_END, HALLOWEEN_START, HALLOWEEN_TIME_ZONE, isHalloweenBossVariant, isHalloweenEventActive } from "../NPC/NPC_HALLOWEEN.js";
+import { SUNDAY_MODULE_CHANCE, SUNDAY_RARE_CHANCE, SUNDAY_TICKET_CHANCE, SUNDAY_TICKET_QTY, isSundayBossVariant } from "../NPC/NPC_SUNDAY.js";
 import { GROUP_BOOSTER_BONUS } from "../SRC/DATA/BOOSTERS.js";
 import { STARMAP_JUMP_REUSE_SEC } from "../SRC/DATA/STARMAP.js";
 
@@ -1927,10 +1928,11 @@ function removeFromAllRooms(id) {
   instancePeers.delete(String(id));
 }
 
-// Top 10 dégâts Invoke / Mindfire / Boss Halloween (box perso, même partis).
+// Top 10 dégâts Invoke / Mindfire / Boss Halloween / UFONIT (box perso,
+// même partis).
 function sunTopIds(death) {
   try {
-    if (death?.type !== "npc_Invoke_XVI" && death?.type !== "npc_Mindfire_Behemoth" && !isHalloweenBossVariant(death?.type)) return [];
+    if (death?.type !== "npc_Invoke_XVI" && death?.type !== "npc_Mindfire_Behemoth" && !isHalloweenBossVariant(death?.type) && !isSundayBossVariant(death?.type)) return [];
     if (!Array.isArray(death?.shares) || !death.shares.length) return [];
     return death.shares
       .filter((s) => Array.isArray(s) && String(s[0]).startsWith("u_") && Number(s[1]) > 0)
@@ -1946,12 +1948,13 @@ function npcRewardShares(killerId, mapId, death) {
   if (death?.type === "npc_Strokelight_Barrage") {
     return [{ pid: String(killerId), percent: 100 }];
   }
-  // Invoke / Mindfire / Boss Halloween : pas de partage de groupe.
+  // Invoke / Mindfire / Boss Halloween / UFONIT : pas de partage de groupe.
   // - Destruction (credits/EXP/honneur) : TOUS les tapeurs présents sur la
   //   map, au prorata exact des dégâts, y compris une part inférieure à 1 %.
   // - Invoke / Mindfire / Boss Halloween : box perso au top 10 dégâts.
+  // - UFONIT : loterie module du top 10 (voir awardNpcDeaths, sans box).
   if ((death?.type === "npc_Invoke_XVI" || death?.type === "npc_Mindfire_Behemoth"
-    || isHalloweenBossVariant(death?.type))
+    || isHalloweenBossVariant(death?.type) || isSundayBossVariant(death?.type))
     && Array.isArray(death?.shares) && death.shares.length) {
     try {
       const ranked = death.shares
@@ -2013,12 +2016,59 @@ function awardNpcDeaths(mapId, deaths) {
     if (!killerId.startsWith("u_") || death.cause !== "gun") continue;
     const deathKey = npcDeathKey(mapId, death);
     if (rewardedNpcDeaths.has(deathKey)) continue;
+    // Mini-event dominical [ UFONIT ] : aucune soute ni récompense.
+    // Top 10 dégâts : 10 % module (25 % rare), 35 % ticket de relance,
+    // 55 % rien. Rangs 11+ (tapeurs) : message "rien reçu" uniquement.
+    if (isSundayBossVariant(death.type)) {
+      const modKey = `sunmod:${deathKey}`;
+      if (!rewardedNpcDeaths.has(modKey)) {
+        const ranked = (Array.isArray(death.shares) ? death.shares : [])
+          .filter((s) => Array.isArray(s) && String(s[0]).startsWith("u_") && Number(s[1]) > 0)
+          .map((s) => [String(s[0]), Math.max(0, Number(s[1]) || 0)])
+          .sort((a, b) => b[1] - a[1]);
+        const topSet = new Set(ranked.slice(0, 10).map((s) => s[0]));
+        for (const [pid] of ranked) {
+          let win = false, prize = null, prizeRarity = null, prizeModule = null, prizeTickets = 0;
+          if (topSet.has(pid)) {
+            let r = 1;
+            try { r = Math.random(); } catch {}
+            if (r < SUNDAY_MODULE_CHANCE) {
+              let rare = false;
+              try { rare = Math.random() < SUNDAY_RARE_CHANCE; } catch {}
+              try {
+                const res = grantSundayModule(String(pid).slice(2), rare ? "rare" : "common");
+                if (res && res.ok && res.module) { win = true; prize = "module"; prizeModule = res.module; prizeRarity = res.module.rarity; }
+              } catch {}
+            } else if (r < SUNDAY_MODULE_CHANCE + SUNDAY_TICKET_CHANCE) {
+              try {
+                const res = grantSundayTickets(String(pid).slice(2), SUNDAY_TICKET_QTY);
+                if (res && res.ok) { win = true; prize = "ticket"; prizeTickets = res.qty || SUNDAY_TICKET_QTY; }
+              } catch {}
+            }
+          }
+          try {
+            sendToPeer(pid, {
+              t: "sundayModule", map: String(mapId), uid: String(death.uid),
+              seq: Number(death.seq) || 0, win,
+              prize, rarity: prizeRarity,
+              module: prizeModule ? sanitizeSundayModule(prizeModule) : null,
+              ticketQty: prizeTickets,
+            });
+          } catch {}
+        }
+        rewardedNpcDeaths.set(modKey, now);
+      }
+      rewardedNpcDeaths.set(deathKey, now);
+      try { pumpSundayEvent(); } catch {}
+      continue;
+    }
     const killerPseudo = String(findPeerState(killerId)?.pseudo || "");
-    const isSunBoss = death.type === "npc_Invoke_XVI" || death.type === "npc_Mindfire_Behemoth" || isHalloweenBossVariant(death.type);
+    const isSunBoss = death.type === "npc_Invoke_XVI" || death.type === "npc_Mindfire_Behemoth" || isHalloweenBossVariant(death.type) || isSundayBossVariant(death.type);
     const sunType = death.type === "npc_Mindfire_Behemoth" ? "Mindfire_Sun_Box"
       : death.type === "npc_Invoke_XVI" ? "Sun_Box"
       : isHalloweenBossVariant(death.type) ? "Boss_Cucurbitor_Box" : null;
-    if (isSunBoss && !announcedNpcSuns.has(deathKey)) {
+    // UFONIT : pas de box perso (loterie module dédiée plus bas).
+    if (isSunBoss && sunType && !announcedNpcSuns.has(deathKey)) {
       announcedNpcSuns.set(deathKey, now);
       const sunMsg = { t: "npcSun", map: String(mapId), uid: String(death.uid), seq: Number(death.seq) || 0,
         sunType, x: Math.round(Number(death.x) || 0), y: Math.round(Number(death.y) || 0) };
@@ -2060,6 +2110,59 @@ function awardNpcDeaths(mapId, deaths) {
     if (complete) rewardedNpcDeaths.set(deathKey, now);
   }
 }
+
+// Module UFONIT transmis au gagnant : champs connus uniquement.
+function sanitizeSundayModule(mod) {
+  if (!mod || typeof mod !== "object") return null;
+  const bonuses = Array.isArray(mod.bonuses) ? mod.bonuses.slice(0, 4).map((b) => ({
+    stat: String(b?.stat || "").slice(0, 24),
+    pct: Math.max(-100, Math.min(100, Math.floor(Number(b?.pct) || 0))),
+  })) : [];
+  return {
+    id: String(mod.id || "").slice(0, 64),
+    kind: "shipModule",
+    shipId: String(mod.shipId || "").slice(0, 64),
+    familyId: String(mod.familyId || "").slice(0, 64),
+    tier: String(mod.tier || "").slice(0, 8),
+    type: String(mod.type || "").slice(0, 8),
+    bonuses,
+    rarity: String(mod.rarity || "").slice(0, 16),
+    iconKey: String(mod.iconKey || "").slice(0, 32),
+    rerolls: 0,
+    rerollCredits: 0,
+    createdAt: Math.floor(Number(mod.createdAt) || 0),
+  };
+}
+
+// --- Mini-event dominical [ UFONIT ] : 1 seul sur 4-1 / 4-2 / 4-3 / 4-4 ---
+const SUNDAY_MAP_IDS = ["4-1", "4-2", "4-3", "4-4"];
+function sundaySimGetter(mapId) {
+  try {
+    const s = npcSims.get(String(mapId || "").toLowerCase());
+    return s && typeof s.tick === "function" ? s : null;
+  } catch { return null; }
+}
+function announceSunday(mapId, text) {
+  try {
+    const room = rooms.get(String(mapId || "").toLowerCase());
+    if (!room || !room.size) return;
+    broadcastRoom(room, JSON.stringify({ t: "chatMsg", from: "[EVENT]", text: String(text || "").slice(0, 160), at: Date.now(), by: "event" }));
+  } catch {}
+}
+function pumpSundayEvent() {
+  try { for (const m of SUNDAY_MAP_IDS) { try { ensureNpcSim(m); } catch {} } } catch {}
+  let res = null;
+  try { res = syncSundayEvent(sundaySimGetter, Date.now()); } catch { res = null; }
+  if (!res || !Array.isArray(res.events)) return;
+  for (const ev of res.events) {
+    try {
+      if (ev?.t === "spawn" && ev.map) announceSunday(ev.map, `[ UFONIT ] est apparu en ${String(ev.map).toUpperCase()} !`);
+      else if (ev?.t === "start") { for (const m of SUNDAY_MAP_IDS) announceSunday(m, "[ UFONIT ] rôde sur 4-1 / 4-2 / 4-3 / 4-4 jusqu'à 22h30 !"); }
+      else if (ev?.t === "end") { for (const m of SUNDAY_MAP_IDS) announceSunday(m, "L'[ UFONIT ] a disparu... à dimanche prochain !"); }
+    } catch {}
+  }
+}
+setInterval(() => { try { pumpSundayEvent(); } catch {} }, 2000).unref?.();
 // --- Audit anticheat périodique (10 s) + sanction (kick + gel, JAMAIS de
 // ban auto : l'admin tranche après inspection). Voir ANTICHEAT.js.
 const CHEAT_KICK_MESSAGE = "Vous avez triché. La modération étudie actuellement votre cas. Si cela est avéré, vous serez définitivement banni.";

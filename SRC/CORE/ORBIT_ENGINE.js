@@ -145,7 +145,7 @@ import { createRadiationSystem } from "./RADIATION_SYSTEM.js";
 import { renderSpeedGuard } from "./SPEED_GUARD_UI.js";
 import { netServerMessageAge, netSimulationStep, netGameTimeMs, netSpeedGuardActive } from "./NETPLAY.js";
   import { pushNetplayLocal, sendNetplayBackgroundState, netplayLocalUpdateDue, getNetplayRemotes, tickNetplayRemotes, getNetNpcs, getNetDeaths, drainNetGone, getNetBoxes, drainNetBoxInbox, drainNetDmgInbox, drainNetHealInbox, drainNetShotEvents, drainNetSkillInbox, drainNetSkillDenied, clearNetShots, clearNetplayGameplay, sendShotEvent, sendSkillUse, sendHealAlly, sendPvpHit, sendPvpPetHit, getNetSelf, setNetInstanceMode, clearNetBoxes, claimNetBox, requestBoxSync, netBoxSyncAgeMs, netBoxSnapshotReady, netInInstance, sendNetHit, netMyId, netNpcFresh, netplayStatus, sendPing, netLatencyMs, netPongAge, netHelloAckAge, netServerVersion, netConnected, forceNetReconnect, ensureNetplayConnection, drainNetPvpKillInbox, drainNetPvpPetKillInbox, takeNetNpcReward, sendPvpLoot, sendPvpLootTake, drainNetPvpLootInbox,
-  drainNetPvpLootTakeInbox, drainNetAdminKickInbox, drainNetAdminBoomInbox, drainNetBannedInbox, drainNetCheatInbox, netDisconnect, drainNetSunInbox, drainNetDecloakInbox, drainNetIemHitInbox,
+  drainNetPvpLootTakeInbox, drainNetAdminKickInbox, drainNetAdminBoomInbox, drainNetBannedInbox, drainNetCheatInbox, netDisconnect, drainNetSunInbox, drainNetSundayInbox, drainNetDecloakInbox, drainNetIemHitInbox,
   getNetGroup, getNetLowRaid, takeNetLowRaidReward, setNetNpcRewardHandler, getNetServerRestartAt, consumeNetServerRestart, getMyClanTag, getClanRelation, requestStarJumpArrival, requestHangarArrival, finishHangarArrival } from "./NETPLAY.js";
 import {
   createGatePortalState,
@@ -9917,6 +9917,7 @@ function loadGameSettings() {
 }
 
 const GAME_SETTINGS = loadGameSettings();
+try { document.body.classList.toggle("phoneModeOn", GAME_SETTINGS.phoneMode === true); } catch {}
 setBackgroundRefresh(GAME_SETTINGS.backgroundRefresh);
 
 function saveGameSettings() {
@@ -10424,6 +10425,7 @@ function renderSettingsWindow() {
   if (doubleClickAttack) doubleClickAttack.checked = GAME_SETTINGS.doubleClickAttack !== false;
   const phoneMode = document.getElementById("optPhoneMode");
   if (phoneMode) phoneMode.checked = GAME_SETTINGS.phoneMode === true;
+  try { document.body.classList.toggle("phoneModeOn", GAME_SETTINGS.phoneMode === true); } catch {}
   syncPhoneControls();
   const fpsLimit = document.getElementById("optFpsLimit");
   if (fpsLimit) fpsLimit.value = String(normalizeFpsLimit(GAME_SETTINGS.fpsLimit));
@@ -29629,6 +29631,57 @@ function updateBossEncounters() {
 
 function processDeaths() {
   try { drainPendingPersonalSuns(); } catch {}
+  // Mini-event dominical [ UFONIT ] : loterie module du top 10 (25 % chacun).
+  // Aucune soute ni récompense, juste les messages + le module éventuel.
+  try {
+    let sundayEvs = null;
+    try { sundayEvs = drainNetSundayInbox(); } catch { sundayEvs = null; }
+    if (sundayEvs && sundayEvs.length) {
+      for (const ev of sundayEvs) {
+        if (!ev || typeof ev !== "object") continue;
+        const key = `sunmod:${String(ev.uid || "")}:${Number(ev.seq) || 0}`;
+        if (claimedSunKeys.has(key)) continue;
+        claimedSunKeys.add(key);
+        if (claimedSunKeys.size > 64) claimedSunKeys.delete(claimedSunKeys.keys().next().value);
+        if (ev.win === true && ev.prize === "module" && ev.module && typeof ev.module === "object") {
+          try {
+            const u = account?.user;
+            if (u) {
+              u.inventory ||= {};
+              if (!Array.isArray(u.inventory.shipModules)) u.inventory.shipModules = [];
+              if (!Array.isArray(u.inventory.moduleRollHistory)) u.inventory.moduleRollHistory = [];
+              if (!u.inventory.shipModules.some((m) => String(m?.id || "") === String(ev.module.id || ""))) {
+                u.inventory.shipModules.push({ ...ev.module, rerolls: 0, rerollCredits: 0 });
+                u.inventory.moduleRollHistory.push({ ...ev.module, rollPayment: { type: "event", amount: 0 } });
+                try { saveUser(account.user, { source: "progress" }); } catch {}
+                try { markProgressDirty(); } catch {}
+                if (netActive()) flushNetUser().catch(() => {});
+              }
+            }
+          } catch {}
+          const rare = String(ev.rarity || ev.module?.rarity || "").toLowerCase() === "rare";
+          try { showNotification(`Vous avez reçu un module ${rare ? "Rare" : "Commun"} ! [ UFONIT ]`, 4, "info", { goldTerms: [rare ? "Rare" : "Commun"] }); } catch {}
+        } else if (ev.win === true && ev.prize === "ticket") {
+          const qty = Math.max(1, Math.floor(Number(ev.ticketQty) || 0));
+          try {
+            const u = account?.user;
+            if (u) {
+              u.inventory ||= {};
+              u.inventory.counts ||= {};
+              u.inventory.counts.ticket_module_reroll =
+                Math.max(0, Math.floor(Number(u.inventory.counts.ticket_module_reroll) || 0)) + qty;
+              try { saveUser(account.user, { source: "progress" }); } catch {}
+              try { markProgressDirty(); } catch {}
+              if (netActive()) flushNetUser().catch(() => {});
+            }
+          } catch {}
+          try { showNotification(`Vous avez reçu ${qty} ticket${qty > 1 ? "s" : ""} de relance module ! [ UFONIT ]`, 4, "info", { goldTerms: ["ticket"] }); } catch {}
+        } else {
+          try { showNotification("Vous n'avez rien reçu, à la prochaine fois. [ UFONIT ]", 3, "info"); } catch {}
+        }
+      }
+    }
+  } catch {}
   // Soleils personnels via message dédié (top 10 parti avant la mort, ou
   // présent : dédupliqué avec le spawn du npcReward par clé uid:seq).
   try {

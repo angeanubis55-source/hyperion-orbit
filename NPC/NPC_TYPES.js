@@ -1301,6 +1301,18 @@ export const NPC_TYPES = {
     bulletSprite: { src: "COMBAT/MUNITIONS/SPECIAL8.png", w: 55, h: 17, glow: true, invert: true },
     r: 18, hp: 250000, shield: 150000, speed: 250, bulletDmg: 3000, bulletSpeed: 4500, shootRange: 550,
   },
+  // Mini-event dominical [ UFONIT ] : 0 dégât, passif total. Si attaqué,
+  // s'en fout et continue sa route (aucune aggro, voir applyHit).
+  npc_Event_Ufonit: {
+    name: "[ UFONIT ]",
+    sprite: { path: "NPC/NPC_SPRITES/UFONIT/", frames: 16, firstNumber: 1, ext: ".png", w: 60, h: 54 },
+    playSprite: true,
+    passiveNative: true,
+    spriteSpeed: 25,
+    bulletSprite: { src: "COMBAT/MUNITIONS/SPECIAL8.png", w: 55, h: 17, glow: true, invert: true },
+    r: 18, hp: 100000000, shield: 100000000, speed: 540,
+    bulletDmg: 0, bulletSpeed: 0, shootRange: 0, shootRate: 0, canShoot: false,
+  },
   npc_Santa_1100101: {
     name: "-=[ Santa-1100101 ]=-",
     sprite: { path: "NPC/NPC_SPRITES/SANTA_1100101/", frames: 32, firstNumber: 1, ext: ".png", w: 289, h: 256 },
