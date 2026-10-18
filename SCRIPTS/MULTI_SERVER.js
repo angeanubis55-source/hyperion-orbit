@@ -68,6 +68,34 @@ function clearAbilityFx(state) {
   state._freeRocketCast = null;
   state.holoClones = [];
 }
+// Techs (buffs perso : Energy Leech, Precision Targeter, etc.) : traversent
+// les changements de map tant qu'elles sont valides, contrairement aux
+// auras posées et aux aptitudes de vaisseau (toujours purgées).
+// Le client garde déjà ses timers locaux : sans ça, affichage actif mais
+// aucun effet serveur. Les entrées restaurées viennent de l'état serveur
+// lui-même (pas du client).
+function preserveTechAurasAcrossMapChange(state) {
+  let saved = null;
+  try {
+    const fx = state?._abilityFx;
+    if (fx && typeof fx === "object") {
+      saved = {};
+      for (const [key, entry] of Object.entries(fx)) {
+        if (!String(key || "").startsWith("ability_tech_")) continue;
+        if (entry && Number(entry.until) > Date.now()) saved[key] = { ...entry };
+      }
+      if (!Object.keys(saved).length) saved = null;
+    }
+  } catch { saved = null; }
+  try { clearAbilityFx(state); } catch {}
+  if (saved) {
+    try {
+      if (!state._abilityFx || typeof state._abilityFx !== "object") state._abilityFx = {};
+      Object.assign(state._abilityFx, saved);
+    } catch {}
+  }
+  return state;
+}
 function jamPlayerAbilities(state, room, now, durationMs) {
   const active = new Set([
     ...Object.keys(state._abilityFx || {}).filter(key => state._abilityFx[key]?.until > now),
@@ -3585,7 +3613,8 @@ wss.on("connection", (ws) => {
         removeFromAllRooms(id);
         mapId = requestedMap;
         // Changement de map : les auras posées ne traversent pas.
-        clearAbilityFx(state);
+        // Techs (buffs perso) : conservées si encore valides.
+        preserveTechAurasAcrossMapChange(state);
         roomFor(mapId).set(id, { ws, state });
         ensureNpcSim(mapId);
         sendBoxSync(ws, mapId);

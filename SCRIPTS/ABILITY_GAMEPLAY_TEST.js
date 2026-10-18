@@ -423,3 +423,44 @@ test("JAMX : coupe auras, passifs, liens, clones et charges sans relance", () =>
   f.caster.hp = 0; assert.equal(triggerPaladin(f.caster, NOW + 1), false);
   assert.equal(triggerTempestBackup(f.caster, f.room, NOW + 1), false);
 });
+
+function multiFn(src, name) {
+  const start = src.indexOf(`function ${name}(`);
+  assert.ok(start >= 0, name);
+  for (let end = src.indexOf("\n}", start); end >= 0; end = src.indexOf("\n}", end + 2)) {
+    const candidate = src.slice(start, end + 2);
+    try { new vm.Script(candidate); return candidate; } catch {}
+  }
+  assert.fail(`Fonction incomplète : ${name}`);
+}
+
+test("Techs traversent le changement de map, le reste est purgé", () => {
+  const ctx = vm.createContext({});
+  vm.runInContext(multiFn(source, "clearAbilityFx") + "\n" + multiFn(source, "preserveTechAurasAcrossMapChange"), ctx);
+  const now = Date.now();
+  ctx.state = { id: "u_1",
+    _abilityFx: {
+      "ability_tech_energy_leech": { from: now - 1000, until: now + 1000000, x: 1, y: 2, target: "" },
+      "ability_tech_precision_targeter": { from: now - 1000, until: now + 2000000 },
+      "ability_tech_speed_burst": { from: now, until: now + 2000 },
+      "ability_sentinel": { from: now, until: now + 5000 },
+    } };
+  vm.runInContext("preserveTechAurasAcrossMapChange(state)", ctx);
+  assert.equal(ctx.state._abilityFx["ability_tech_energy_leech"].until, now + 1000000);
+  assert.equal(ctx.state._abilityFx["ability_tech_precision_targeter"].until, now + 2000000);
+  assert.equal(ctx.state._abilityFx["ability_tech_speed_burst"].until, now + 2000);
+  assert.equal(ctx.state._abilityFx["ability_sentinel"], undefined);
+  // Expirées : purgées comme le reste.
+  ctx.state = { id: "u_2",
+    _abilityFx: {
+      "ability_tech_energy_leech": { from: now - 2000000, until: now - 1000 },
+      "ability_tech_npc_bomb": { from: now, until: now + 5000 },
+    } };
+  vm.runInContext("preserveTechAurasAcrossMapChange(state)", ctx);
+  assert.equal(ctx.state._abilityFx["ability_tech_energy_leech"], undefined);
+  assert.equal(ctx.state._abilityFx["ability_tech_npc_bomb"].until, now + 5000);
+  // Sans tech : purge normale, pas d'erreur.
+  ctx.state = { id: "u_3", _abilityFx: { "ability_tech_frost_field": {} } };
+  vm.runInContext("preserveTechAurasAcrossMapChange(state)", ctx);
+  assert.deepEqual(Object.keys(ctx.state._abilityFx), []);
+});
