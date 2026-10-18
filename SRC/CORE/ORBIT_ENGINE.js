@@ -9330,14 +9330,8 @@ function initializeCustomActionBar() {
   };
   const usePhonePrimaryAction = button => {
     const category = String(button.dataset.phoneActionCategory || "");
-    const selected = String(button.dataset.phoneSelectedAction || "");
-    // Slots secondaires vides : le tap ouvre le choix au lieu de tirer un
-    // défaut que l'utilisateur n'y a jamais mis.
-    if (!selected && phoneSlotFamily(category) !== category) {
-      openPhoneActionCategory(button);
-      return;
-    }
-    const actionId = String(selected || defaultPhoneActionId(category));
+    // Tap court = tire (sélection ou défaut). Seul l'appui long ouvre le menu.
+    const actionId = String(button.dataset.phoneSelectedAction || defaultPhoneActionId(category));
     const action = byId.get(actionId);
     if (action) action.click();
   };
