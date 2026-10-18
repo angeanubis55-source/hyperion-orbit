@@ -440,7 +440,8 @@ export const COLLECTABLE_TYPES = Object.freeze({
     name: "Pumpkin Box",
     maps: "*",
     // Mêmes exclusions que les Bonus Box (GG / Low / QZ / 5-2 / BL...).
-    denyMaps: ["alpha", "beta", "gamma", "delta", "epsilon", "zeta", "kappa", "lambda", "kronos", "awakened", "low", "qz", "5-2", "1-bl", "2-bl", "3-bl"],
+    // MAUDITE exclue : pas de box Halloween sur la map maudite.
+    denyMaps: ["alpha", "beta", "gamma", "delta", "epsilon", "zeta", "kappa", "lambda", "kronos", "awakened", "low", "qz", "5-2", "1-bl", "2-bl", "3-bl", "maudite"],
     event: "halloween",
     qty: 50,
     spawnBatch: 50,
@@ -480,9 +481,11 @@ export const COLLECTABLE_TYPES = Object.freeze({
 
   // Box de Cucurbitors : drop des Curcubitors normaux (100 %), bonbons uniquement.
   // Reste au sol indéfiniment (pas de timer).
+  // Jamais sur la map maudite.
   Cucurbitor_Box: {
     name: "Box de Cucurbitors",
     maps: "*",
+    denyMaps: ["maudite"],
     qty: 0,
     spawnBatch: 1,
     minSpacing: 100,
@@ -508,9 +511,11 @@ export const COLLECTABLE_TYPES = Object.freeze({
 
   // Box de Boss Cucurbitors : drop des Boss Curcubitors (100 %), bonbons uniquement.
   // Reste au sol indéfiniment (pas de timer).
+  // Jamais sur la map maudite.
   Boss_Cucurbitor_Box: {
     name: "Box de Boss Cucurbitors",
     maps: "*",
+    denyMaps: ["maudite"],
     qty: 0,
     spawnBatch: 1,
     minSpacing: 100,

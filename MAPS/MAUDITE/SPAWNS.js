@@ -3,7 +3,7 @@ const dist2 = (ax,ay,bx,by)=>{ const dx=ax-bx, dy=ay-by; return dx*dx+dy*dy; };
 
 export function getZoneSpawns(WORLD) {
   const pad = 300;
-  const N = 250;
+  const N = 600;
 
   const minDist = 0;
   const minDist2 = minDist * minDist;
@@ -16,10 +16,10 @@ export function getZoneSpawns(WORLD) {
   const quota = [
     { type: "npc_Cubikon", left: 100 },
     { type: "npc_Cubikon_maudite", left: 50 },
-    { type: "npc_Protegit", left: 100 },
-    { type: "npc_Protegit_maudite", left: 75 },
-    { type: "npc_Protegit_maudite2", left: 50 },
-    { type: "npc_Protegit_maudite3", left: 25 },
+    { type: "npc_Protegit", left: 200 },
+    { type: "npc_Protegit_maudite", left: 100 },
+    { type: "npc_Protegit_maudite2", left: 75 },
+    { type: "npc_Protegit_maudite3", left: 50 },
   ];
 
   function pickQuotaType() {
