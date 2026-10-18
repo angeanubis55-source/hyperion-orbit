@@ -412,13 +412,13 @@ body.phoneDockEditorOpen #ammoBar {
   right:auto !important;
   top:auto !important;
   bottom:calc(350px + env(safe-area-inset-bottom, 0px)) !important;
-  width:min(540px,calc(50vw - 12px)) !important;
-  max-width:calc(50vw - 12px) !important;
+  width:min(540px,calc(80vw - 12px)) !important;
+  max-width:calc(80vw - 12px) !important;
   height:auto !important;
   z-index:100101 !important;
   padding:5px !important;
   overflow:visible !important;
-  transform:translateX(-50%) scale(2) !important;
+  transform:translateX(-50%) scale(1.25) !important;
   transform-origin:center bottom !important;
   border-color:transparent !important;
   background:transparent !important;
