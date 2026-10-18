@@ -1377,7 +1377,8 @@ export async function logout() {
     prepareCurrentUserMutation();
     if (netActive()) {
       const userId = netCurrent()?.id;
-      for (let attempt = 0; attempt < 3; attempt++) {
+      let confirmed = false;
+      for (let attempt = 0; attempt < 2; attempt++) {
         const saved = await flushNetUser();
         if (!netActive() || netCurrent()?.id !== userId) {
           return { ok: false, error: "La session a changé pendant la sauvegarde." };
@@ -1387,10 +1388,16 @@ export async function logout() {
         }
         // Des gains peuvent arriver pendant la requête : confirmer également
         // ce dernier état avant d'effacer le cache et de révoquer la session.
-        prepareCurrentUserMutation();
-        if (saved?.ok && !netHasPendingSave()) break;
+        if (saved?.ok) {
+          confirmed = true;
+          if (attempt === 0) {
+            prepareCurrentUserMutation();
+            if (netHasPendingSave()) continue;
+          }
+          break;
+        }
       }
-      if (netHasPendingSave()) {
+      if (!confirmed) {
         return { ok: false, error: "La sauvegarde est encore en attente. Réessaie dans quelques instants." };
       }
     }

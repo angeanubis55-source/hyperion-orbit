@@ -5,6 +5,7 @@ import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
 import { chromium } from "playwright-core";
+import { resolve, sep } from "node:path";
 
 const current = await readFile(new URL("../SRC/CORE/ACCOUNT_NET.js", import.meta.url), "utf8");
 const sources = { current };
@@ -38,6 +39,13 @@ const server = createServer(async (req, res) => {
       const response = saved?.compactSave ? { ok: true, snapshotAccepted: true, saveId: saved.saveId,
         user: { id: user.id, revision: user.revision, pseudo: user.pseudo } } : { ok: true, user };
       res.end(JSON.stringify(response)); return;
+    }
+    if (path.endsWith(".js")) {
+      const root = process.cwd();
+      const file = resolve(root, decodeURIComponent(path).replace(/^\/+/, ""));
+      if (!file.startsWith(root + sep)) throw new Error("Invalid path");
+      res.writeHead(200, { "content-type": "text/javascript; charset=utf-8" });
+      res.end(await readFile(file)); return;
     }
     res.writeHead(200, { "content-type": "text/html; charset=utf-8" }); res.end("<!doctype html><title>Module save test</title>");
   } catch (error) { res.writeHead(500); res.end(error.message); }

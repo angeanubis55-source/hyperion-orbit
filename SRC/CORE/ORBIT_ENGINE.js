@@ -1393,7 +1393,7 @@ const PRECISION_DURATION_MS = 3600000;
 function techPrecisionActive() {
   try { return Date.now() < Number(player?.precisionUntil || 0); } catch { return false; }
 }
-// Tech Frost Field : même déclenchement (armé, prochain tir), -50 % vitesse
+// Tech Frost Field : déclenchement immédiat au clic, -50 % vitesse
 // 2 s dans 700 + halo cyan clair de 700 visible par tous (2 s).
 const FROST_FIELD_ID = "ability_tech_frost_field";
 const FROST_FIELD_RADIUS = 700;
@@ -1422,6 +1422,16 @@ const BATTLE_REPAIR_ID = "ability_tech_battle_repair";
 const BATTLE_REPAIR_2_ID = "ability_tech_battle_repair_2";
 const BATTLE_REPAIR_DURATION = 15;
 const BATTLE_REPAIR_2_DURATION = 10;
+function techInLocalInstance() {
+  try { return typeof netInInstance === "function" ? netInInstance() : rules?.mode === "gate"; } catch { return false; }
+}
+function showTechLocalHeal(amount, shield = false) {
+  try {
+    addFloatText(player.x + (Math.random() - 0.5) * 60, player.y - (shield ? 110 : 90), amount,
+      shield ? "rgba(70,180,255,0.98)" : "rgba(80,255,125,0.98)",
+      { text: `+${DMG_FMT.format(amount)}`, size: 21, pop: 0.3, shake: 0.6, life: 1, glow: 1, weight: 900, impact: true });
+  } catch {}
+}
 // Correspondance skill serveur <-> bouton dock.
 const TECH_SKILL_DOCK_IDS = Object.freeze({
   [SPEED_BURST_ID]: "speed-burst",
@@ -1706,7 +1716,13 @@ function triggerShieldBackup(level) {
       return;
     }
     setTechCooldown(id, TECH_COOLDOWN);
-    try { sendSkillUse(level >= 2 ? SHIELD_BACKUP_2_ID : SHIELD_BACKUP_ID); } catch {}
+    if (techInLocalInstance()) {
+      const before = Number(player.sh) || 0;
+      player.sh = Math.min(Number(player.shMax) || 0, before + (level >= 2 ? SHIELD_BACKUP_2_AMOUNT : SHIELD_BACKUP_AMOUNT));
+      showTechLocalHeal(Math.max(0, Math.round(player.sh - before)), true);
+    } else {
+      try { sendSkillUse(level >= 2 ? SHIELD_BACKUP_2_ID : SHIELD_BACKUP_ID); } catch {}
+    }
   } catch {}
 }
 // Tech Battle Repair Bot (niveau 1 = 10k HP/s pendant 15 s, 2 = 30k HP/s
@@ -1725,7 +1741,13 @@ function triggerBattleRepair(level) {
       return;
     }
     setTechCooldown(id, TECH_COOLDOWN);
-    try { sendSkillUse(level >= 2 ? BATTLE_REPAIR_2_ID : BATTLE_REPAIR_ID); } catch {}
+    if (techInLocalInstance()) {
+      player.techRepairT = level >= 2 ? BATTLE_REPAIR_2_DURATION : BATTLE_REPAIR_DURATION;
+      player.techRepairAcc = 0;
+      player.techRepairAmount = level >= 2 ? 30000 : 10000;
+    } else {
+      try { sendSkillUse(level >= 2 ? BATTLE_REPAIR_2_ID : BATTLE_REPAIR_ID); } catch {}
+    }
   } catch {}
 }
 // Tech Chain Impulse : arme (clic = toggle). Le prochain tir laser déclenche
@@ -1758,11 +1780,11 @@ function gatherTechVictims() {
   try {
     for (const e of enemies) {
       if (!e || !(Number(e.hp) > 0)) continue;
-      const uid = String(e._netUid || "");
+      const uid = String(e._netUid || (techInLocalInstance() ? e.id : ""));
       if (!uid) continue;
       const dx = Number(e.x) - player.x, dy = Number(e.y) - player.y;
       if (dx * dx + dy * dy > CHAIN_IMPULSE_RADIUS * CHAIN_IMPULSE_RADIUS) continue;
-      victims.push({ id: uid, x: Math.round(Number(e.x)), y: Math.round(Number(e.y)) });
+      victims.push({ id: uid, x: Math.round(Number(e.x)), y: Math.round(Number(e.y)), entity: e });
       if (victims.length >= CHAIN_IMPULSE_MAX_TARGETS) break;
     }
   } catch {}
@@ -1793,9 +1815,18 @@ function fireChainImpulse() {
     const victims = gatherTechVictims();
     if (!victims.length) return;
     player.chainArmed = false;
-    if (!netActive()) player.chainImpFx = { startedAt: performance.now(), chain: victims };
+    if (!netActive() || techInLocalInstance()) player.chainImpFx = { startedAt: performance.now(), chain: victims };
+    if (techInLocalInstance()) {
+      for (const victim of victims) {
+        const e = victim.entity;
+        if (!e || !(Number(e.hp) > 0)) continue;
+        e.rocketSlowPct = Math.max(Number(e.rocketSlowPct || 0), 50);
+        e.rocketSlowT = Math.max(Number(e.rocketSlowT || 0), 2);
+        damageEnemy(e, CHAIN_IMPULSE_DAMAGE, undefined, { chance: 0, mult: 1 }, { ability: CHAIN_IMPULSE_ID, fixedDamage: true });
+      }
+    }
     setTechCooldown("chain-impulse", TECH_COOLDOWN);
-    try { sendSkillUse(CHAIN_IMPULSE_ID, { phase: "fire" }); } catch {}
+    if (!techInLocalInstance()) { try { sendSkillUse(CHAIN_IMPULSE_ID, { phase: "fire" }); } catch {} }
   } catch {}
 }
 function drawChainImpulseFx(ox, oy) {
@@ -1830,7 +1861,7 @@ function drawLeechBeamsFx(ox, oy) {
     } catch { try { ctx.restore(); } catch {} }
   }
 }
-// Frost Field : même déclenchement (armé, prochain tir), halo cyan clair de
+// Frost Field : déclenchement immédiat au clic, halo cyan clair de
 // 700 pendant 2 s + slow serveur. Le serveur revalide et applique.
 function fireFrostField() {
   try {
@@ -1839,9 +1870,17 @@ function fireFrostField() {
       showToast("Aucun ennemi à portée.", 1.2);
       return;
     }
-    if (!netActive()) player.frostFx = { startedAt: performance.now() };
+    if (!netActive() || techInLocalInstance()) player.frostFx = { startedAt: performance.now() };
+    if (techInLocalInstance()) {
+      for (const victim of victims) {
+        const e = victim.entity;
+        if (!e || !(Number(e.hp) > 0)) continue;
+        e.rocketSlowPct = Math.max(Number(e.rocketSlowPct || 0), FROST_FIELD_SLOW_PCT);
+        e.rocketSlowT = Math.max(Number(e.rocketSlowT || 0), FROST_FIELD_SLOW_SEC);
+      }
+    }
     setTechCooldown("frost-field", TECH_COOLDOWN);
-    try { sendSkillUse(FROST_FIELD_ID, { phase: "fire" }); } catch {}
+    if (!techInLocalInstance()) { try { sendSkillUse(FROST_FIELD_ID, { phase: "fire" }); } catch {} }
   } catch {}
 }
 function drawFrostHaloFx(ox, oy) {
@@ -1865,6 +1904,7 @@ function triggerFrostField() {
 // Entre les pulses : recharge de 10 s affichée ; le CD de 300 s ne démarre
 // qu'après le 6e et dernier pulse.
 let techNpcBombFrom = 0;
+let techNpcBombPulse = 0;
 function triggerNpcBomb() {
   try {
     if (player.dead) return;
@@ -1878,9 +1918,10 @@ function triggerNpcBomb() {
       return;
     }
     techNpcBombFrom = performance.now();
-    if (!netActive()) player.npcBombFx = { startedAt: techNpcBombFrom };
+    techNpcBombPulse = 0;
+    if (!netActive() || techInLocalInstance()) player.npcBombFx = { startedAt: techNpcBombFrom };
     try { persistCdUntil("techAura:npc-bomb", NPC_BOMB_DURATION_MS / 1000, "global"); } catch {}
-    try { sendSkillUse(NPC_BOMB_ID, { phase: "fire" }); } catch {}
+    if (!techInLocalInstance()) { try { sendSkillUse(NPC_BOMB_ID, { phase: "fire" }); } catch {} }
     showToast("NPC Bomb : 100k / 10 s pendant 60 s", 1.5);
   } catch {}
 }
@@ -5885,7 +5926,11 @@ function restorePersistedCds() {
     // NPC Bomb : restaure l'aura en cours (les pulses reprennent, le CD
     // de 300 s démarrera à la fin comme sans refresh).
     const auraLeft = persistedCdLeft("techAura:npc-bomb", "global");
-    if (auraLeft > 0) techNpcBombFrom = performance.now() - (NPC_BOMB_DURATION_MS - auraLeft * 1000);
+    if (auraLeft > 0) {
+      const elapsed = NPC_BOMB_DURATION_MS - auraLeft * 1000;
+      techNpcBombFrom = performance.now() - elapsed;
+      techNpcBombPulse = Math.min(6, Math.floor(elapsed / (NPC_BOMB_TICK_SEC * 1000)));
+    }
     // Precision Targeter : effet 60 min (pas un cooldown), restauré aussi.
     const precLeft = persistedCdLeft("techPrecisionFx", "global");
     if (precLeft > 0) player.precisionUntil = Date.now() + precLeft * 1000;
@@ -20999,6 +21044,7 @@ function syncActionDockState() {
     // NPC Bomb : fin d'aura -> le CD de 300 s démarre (après le 6e pulse).
     if (techNpcBombFrom && performance.now() - techNpcBombFrom >= NPC_BOMB_DURATION_MS) {
       techNpcBombFrom = 0;
+      techNpcBombPulse = 0;
       try { persistCdUntil("techAura:npc-bomb", 0, "global"); } catch {}
       setTechCooldown("npc-bomb", TECH_COOLDOWN);
     }
@@ -27914,6 +27960,17 @@ function damageEnemy(e, dmg, shieldPenetration, crit, opts = {}) {
   // Reallocate (Hammerclaw Plus) : 20 % de nos dégâts alimentent le pot commun.
   if ((player.reallocT || 0) > 0 && result.total > 0 && opts.fromJpc !== true) {
     try { player.reallocPool = Number(player.reallocPool || 0) + result.total * REALLOC_SHARE; } catch {}
+  }
+  // En Galaxy Gate il n'y a pas de serveur de combat pour confirmer le vol
+  // de vie : applique exactement les 10 % sur les dégâts locaux validés.
+  if (typeof techInLocalInstance === "function" && techInLocalInstance()
+    && techEnergyLeechActive() && result.total > 0 && opts.fromJpc !== true && !player.dead) {
+    const before = Number(player.hp) || 0;
+    player.hp = Math.min(Number(player.hpMax) || 0, before + Math.round(result.total * ENERGY_LEECH_PCT));
+    showTechLocalHeal(Math.max(0, Math.round(player.hp - before)));
+    if (!player.cloaked && !player.cloakCpu) {
+      leechBeams.push({ ax: Number(e.x) || 0, ay: Number(e.y) || 0, by: String(netMyId()), t0: performance.now() });
+    }
   }
   const shD = result.sh;
   const hpD = result.hp;
@@ -38433,6 +38490,29 @@ function update(dt) {
   if ((player.speedBurstT || 0) > 0) {
     player.speedBurstT = Math.max(0, player.speedBurstT - dt);
     if (player.speedBurstT <= 0) showNotification("Speed Burst terminé", 1.5, "info");
+  }
+  // High-techs autoritaires en multijoueur, simulées localement dans les
+  // Galaxy Gates où le gameplay réseau est volontairement désactivé.
+  if (techInLocalInstance() && !player.dead && (player.techRepairT || 0) > 0) {
+    player.techRepairT = Math.max(0, Number(player.techRepairT) - dt);
+    player.techRepairAcc = Number(player.techRepairAcc || 0) + dt;
+    while (player.techRepairAcc >= 1) {
+      player.techRepairAcc -= 1;
+      const before = Number(player.hp) || 0;
+      player.hp = Math.min(Number(player.hpMax) || 0, before + Math.max(0, Number(player.techRepairAmount) || 0));
+      showTechLocalHeal(Math.max(0, Math.round(player.hp - before)));
+    }
+  }
+  if (techInLocalInstance() && !player.dead && techNpcBombFrom) {
+    const age = performance.now() - techNpcBombFrom;
+    while (techNpcBombPulse < 6 && age >= (techNpcBombPulse + 1) * NPC_BOMB_TICK_SEC * 1000) {
+      techNpcBombPulse += 1;
+      for (const e of enemies) {
+        if (!e || !(Number(e.hp) > 0) || e.isJpcBot === true) continue;
+        if (dist2(player.x, player.y, Number(e.x), Number(e.y)) > NPC_BOMB_RADIUS * NPC_BOMB_RADIUS) continue;
+        damageEnemy(e, NPC_BOMB_TICK_DMG, undefined, { chance: 0, mult: 1 }, { ability: NPC_BOMB_ID, fixedDamage: true });
+      }
+    }
   }
   // Voyage Yamato : même effet, état séparé.
   if ((player.yamatoT || 0) > 0) {

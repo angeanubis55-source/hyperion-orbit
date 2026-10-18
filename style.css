@@ -154,6 +154,16 @@ body:has(> #phoneControls:not([hidden])) #ammoBar .actionPalette nav button {
   body:has(> #phoneControls:not([hidden])) #ammoBar .actionPalette {
     max-width:calc(100vw - 240px) !important;
   }
+  body:has(> #phoneControls:not([hidden])):has(#ammoBar .actionPalette:not([hidden])) #gameWindowDock,
+  body:has(> #phoneControls:not([hidden])):has(#ammoBar .actionPalette:not([hidden])) #gameWindowDock * {
+    pointer-events:none !important;
+  }
+  body:has(> #phoneControls:not([hidden])) #gameWindowDock {
+    flex-wrap:nowrap !important;
+    max-width:calc(100vw - 24px) !important;
+    overflow-x:auto !important;
+    overflow-y:hidden !important;
+  }
 }
 #hud {
   position:fixed;
