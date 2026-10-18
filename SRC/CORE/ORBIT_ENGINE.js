@@ -26257,7 +26257,9 @@ function applyCollectableReward(c) {
       if (account.user) {
         account.user.inventory ||= {};
         account.user.inventory.resources ||= {};
-        const resMult = playerBoosterMults().res;
+        // Le reliquat a déjà été réduit lors de la première collecte : ne pas
+        // appliquer une seconde fois le malus du bot quand la soute se libère.
+        const resMult = playerBoosterMults().res * (c?.oreRemainder ? 1 : botBoxMult);
         const remainder = {};
         let granted = false;
         for (const resourceId of ids) {
@@ -26300,7 +26302,7 @@ function applyCollectableReward(c) {
     cargoRefused = true;
   }
 
-  const hpFlat = Math.floor(rollValue(reward.hp, 0) * salvageMult);
+  const hpFlat = Math.floor(rollValue(reward.hp, 0) * salvageMult * botBoxMult);
   // Volt Back-up actif : les box ne soignent pas la coque.
   if (hpFlat > 0 && (player.tempestBackupT || 0) <= 0) {
     player.hp = Math.min(player.hpMax, player.hp + hpFlat);
@@ -26310,13 +26312,13 @@ function applyCollectableReward(c) {
 
   const hpPct = Number(reward.hpPct || 0);
   if (hpPct > 0 && (player.tempestBackupT || 0) <= 0) {
-    const amount = Math.floor(player.hpMax * hpPct * salvageMult);
+    const amount = Math.floor(player.hpMax * hpPct * salvageMult * botBoxMult);
     player.hp = Math.min(player.hpMax, player.hp + amount);
     parts.push(`+${amount} HP`);
     changed = true;
   }
 
-  const shFlat = Math.floor(rollValue(reward.shield ?? reward.sh, 0) * salvageMult);
+  const shFlat = Math.floor(rollValue(reward.shield ?? reward.sh, 0) * salvageMult * botBoxMult);
   if (shFlat > 0) {
     player.sh = Math.min(player.shMax, player.sh + shFlat);
     parts.push(`+${shFlat} bouclier`);
@@ -26325,7 +26327,7 @@ function applyCollectableReward(c) {
 
   const shPct = Number(reward.shieldPct ?? reward.shPct ?? 0);
   if (shPct > 0) {
-    const amount = Math.floor(player.shMax * shPct * salvageMult);
+    const amount = Math.floor(player.shMax * shPct * salvageMult * botBoxMult);
     player.sh = Math.min(player.shMax, player.sh + amount);
     parts.push(`+${amount} bouclier`);
     changed = true;

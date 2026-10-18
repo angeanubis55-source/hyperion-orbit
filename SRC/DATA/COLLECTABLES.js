@@ -1,7 +1,8 @@
 ﻿"use strict";
 
 export function collectableBotRewardMultiplier(type, botActive) {
-  return botActive === true && String(type || "") === "Bonus_Box" ? 0.25 : 1;
+  if (botActive !== true) return 1;
+  return String(type || "") === "Palladium_Ore" ? 1 : 0.25;
 }
 
 // Toutes les ressources collectables du jeu sont centralisées ici.

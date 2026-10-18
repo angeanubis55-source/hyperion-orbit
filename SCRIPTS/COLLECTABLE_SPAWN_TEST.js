@@ -5,11 +5,11 @@ import vm from "node:vm";
 import { circleRectResolve, clamp } from "../SRC/CORE/COLLISION.js";
 import { collectableBotRewardMultiplier } from "../SRC/DATA/COLLECTABLES.js";
 
-test("bot : les Bonus Box donnent 25 %, les autres collectables restent à 100 %", () => {
-  assert.equal(collectableBotRewardMultiplier("Bonus_Box", true), 0.25);
-  assert.equal(collectableBotRewardMultiplier("Bonus_Box", false), 1);
-  for (const type of ["Cargo_Box", "Green_Booty_Box", "Astral_Prime_Box", "Pumpkin_Box", "Scrap_Box"])
-    assert.equal(collectableBotRewardMultiplier(type, true), 1, type);
+test("bot : tous les collectables donnent 25 %, sauf le Palladium", () => {
+  for (const type of ["Bonus_Box", "Cargo_Box", "Green_Booty_Box", "Astral_Prime_Box", "Pumpkin_Box", "Scrap_Box"])
+    assert.equal(collectableBotRewardMultiplier(type, true), 0.25, type);
+  assert.equal(collectableBotRewardMultiplier("Palladium_Ore", true), 1);
+  assert.equal(collectableBotRewardMultiplier("Palladium_Ore", false), 1);
 });
 
 // Exerce le spawn de box en zone collectable + le ban anti-freeze du bot,
