@@ -1,5 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import vm from "node:vm";
+import { readFileSync } from "node:fs";
 import {
   SUNDAY_MAPS,
   SUNDAY_UFONIT_TYPE,
@@ -187,4 +189,18 @@ test("UFONIT : 1 seul sur les 4 maps, respawn instant, purge hors fenêtre", () 
     assert.equal(sim.camps.some((c) => c?.event === "sunday"), false);
   }
   assert.ok(res.events.some((e) => e.t === "end"));
+});
+
+test("UFONIT : affichage local x15, autres NPC x1 (envoi base intact)", () => {
+  const src = readFileSync(new URL("../SRC/CORE/ORBIT_ENGINE.js", import.meta.url), "utf8").replace(/\r\n/g, "\n");
+  const start = src.indexOf("function sundayDamageMult(");
+  assert.ok(start >= 0);
+  let fn = null;
+  for (let end = src.indexOf("\n}", start); end >= 0; end = src.indexOf("\n}", end + 2)) {
+    try { new vm.Script(src.slice(start, end + 2)); fn = src.slice(start, end + 2); break; } catch {}
+  }
+  assert.ok(fn);
+  const ctx = vm.createContext({ SUNDAY_DMG_MULT, SUNDAY_UFONIT_TYPE });
+  vm.runInContext(`${fn}\nresult = [sundayDamageMult("npc_Event_Ufonit"), sundayDamageMult("npc_Streuner"), sundayDamageMult("")];`, ctx);
+  assert.deepEqual([...ctx.result], [15, 1, 1]);
 });

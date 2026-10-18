@@ -1867,6 +1867,11 @@ drainPlayerHits() {
       const key = `${uid}|${clientId}`;
       this.feed.set(key, { uid, by: String(clientId), total: Math.round((this.feed.get(key)?.total || 0) + applied) });
     }
+    // Preuve console : le x15 dominical est bien appliqué (une fois par UFONIT).
+    if (applied > 0 && isSundayBossVariant(entry.type) && !entry._sunLogged) {
+      entry._sunLogged = true;
+      try { console.info(`[sunday] ${uid} degats x15 : brut=${Math.round(Number(raw) || 0)} -> appliques=${Math.round(applied)}`); } catch {}
+    }
     // Provoque : poursuit son agresseur quelques secondes (comme en solo),
     // même si le tir part depuis une ZNA (seul le NPC visé riposte : les
     // autres ignorent le tireur protégé via validTarget, pas de rancune).

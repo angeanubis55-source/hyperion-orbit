@@ -223,6 +223,7 @@ import { createStarMapLayout, findStarMapItinerary } from "./STARMAP_LAYOUT.js";
 import { getNpcCargoOres } from "../../NPC/NPC_CARGO.js";
 import { rollNpcAssemblyBox, rollNpcAssemblyDirect } from "../../NPC/NPC_ASSEMBLY.js";
 import { appendHalloweenCamps, applyHalloweenKill, halloweenCampBlocked, halloweenCountdown, halloweenPreloadTypes, halloweenRoleOf, isHalloweenBossVariant, isHalloweenEventActive, isHalloweenMap, isHalloweenMapActive, isHalloweenVariantType, normalizeHalloweenState, stripInactiveEventSlots, HALLOWEEN_DROP_NORMAL_RATE } from "../../NPC/NPC_HALLOWEEN.js";
+import { SUNDAY_DMG_MULT, SUNDAY_UFONIT_TYPE } from "../../NPC/NPC_SUNDAY.js";
 import { ROCKET_IDS, ROCKET_TYPES, getRocketType, rocketDockIcon, rocketFlightLife, rocketLaunchSpeed, rocketShopIcon } from "../../COMBAT/ROCKET_TYPES.js";
 import { SFX_SOUND_NAMES } from "./SFX.js";
 import { createWorldClock } from "../SIM/WORLD_CLOCK.js";
@@ -26021,6 +26022,16 @@ function blMapDamageMult() {
   return isOrcusBase() ? 1 : 1.25;
 }
 
+// [ UFONIT ] dominical : affichage local x15 (nombres + prédiction).
+// L'envoi réseau reste en base (le serveur rejette > maxDamage) : c'est
+// le serveur qui applique le x15, comme pour Blacklight.
+function sundayDamageMult(type) {
+  try {
+    if (String(type || "") === String(SUNDAY_UFONIT_TYPE || "")) return SUNDAY_DMG_MULT;
+  } catch {}
+  return 1;
+}
+
 // Maps doublées (1-BL / 2-BL / 3-BL / 4-5 : 22000x14000 vs 11000x7000
 // standard) : distance d'aggro et de poursuite x2.
 const DOUBLE_RANGE_MAP_IDS = new Set(["1-bl", "2-bl", "3-bl", "4-5"]);
@@ -28590,13 +28601,15 @@ function drainShieldFromEnemy(e, amount, recipient = player, transferPct) {
   }
 
   try { recordDps({ total: stolen }, { sab: true }); } catch {}
+  const sundayMult = sundayDamageMult(e?.type);
+  const shown = sundayMult !== 1 && stolen > 0 ? Math.round(stolen * sundayMult) : stolen;
   return {
-    total: stolen,
-    sh: stolen,
+    total: shown,
+    sh: shown,
     hp: 0,
     bypass: 0,
     isCrit,
-    rawDamage: stolen,
+    rawDamage: shown,
     sab: true,
   };
 }
@@ -28835,6 +28848,14 @@ e._pendingSpawn = Math.max(1, Math.floor(Number(e.cubikonMinions?.refill) || 20)
 
   try { recordDps(result, opts); } catch {}
   try { noteBattlepassDamage(e, result, opts); } catch {}
+  const sundayMult = sundayDamageMult(e?.type);
+  if (sundayMult !== 1 && result.total > 0) {
+    result.sh = Math.round(result.sh * sundayMult);
+    result.hp = Math.round(result.hp * sundayMult);
+    result.bypass = Math.round((result.bypass || 0) * sundayMult);
+    result.total = result.sh + result.hp + result.bypass;
+    result.rawDamage = Math.round((result.rawDamage || 0) * sundayMult);
+  }
   return result;
 }
 
