@@ -1219,6 +1219,84 @@ const ui = {
 
 const ACTION_BAR_LAYOUT_KEY = "orbit_action_bar_layout_v2";
 
+function syncPhoneQuickWheelItems() {
+  const wheel = document.querySelector(".phoneJoystickQuick .phoneQuickItems");
+  if (!wheel) return;
+  const slots = [...document.querySelectorAll("#ammoBar .actionSlot")].slice(0, 20);
+  const quantityText = action => String(action?.querySelector(".ammoCount, .rocketCount, .launcherCount, small")?.textContent || "").trim();
+  const signature = slots.map(slot => slot.querySelector("[data-action-id]")?.dataset.actionId || "").join("|");
+  if (wheel.dataset.signature === signature && wheel.querySelectorAll(".phoneQuickItem").length === 20) {
+    const wheelItems = [...wheel.querySelectorAll(".phoneQuickItem")];
+    slots.forEach((slot, index) => {
+      const quantity = wheelItems[index]?.querySelector(".phoneQuickQuantity");
+      const value = quantityText(slot.querySelector("[data-action-id]"));
+      if (quantity) quantity.textContent = value;
+      if (wheelItems[index]) wheelItems[index].dataset.quickQuantity = value;
+    });
+    const control = wheel.closest(".phoneJoystickQuick");
+    const selectedIndex = Number(control?.dataset.quickIndex);
+    const selected = Number.isInteger(selectedIndex) ? wheelItems[selectedIndex] : null;
+    if (control && selected?.dataset.quickLaser === "1") {
+      const label = selected.dataset.quickLabel || `Case ${selectedIndex % 10 + 1}`;
+      const quantity = selected.dataset.quickQuantity || "";
+      control.dataset.quickSlot = `Barre ${control.dataset.quickBar || (selectedIndex < 10 ? 1 : 2)} : ${label}${quantity ? ` : quantité ${quantity}` : ""}`;
+    }
+    return;
+  }
+  wheel.dataset.signature = signature;
+  const items = Array.from({ length: 20 }, (_, index) => {
+    const item = document.createElement("span");
+    item.className = `phoneQuickItem phoneQuickBar${index < 10 ? 1 : 2}`;
+    item.dataset.index = String(index);
+    const angle = -Math.PI / 2 + (index % 10) * Math.PI * 2 / 10;
+    // Les deux barres partagent exactement les mêmes dix positions : une seule
+    // couronne est visible à la fois et sa couleur indique la barre active.
+    const radius = 45;
+    item.style.setProperty("--quick-x", `${50 + Math.cos(angle) * radius}%`);
+    item.style.setProperty("--quick-y", `${50 + Math.sin(angle) * radius}%`);
+    const action = slots[index]?.querySelector("[data-action-id]");
+    if (!action) {
+      item.classList.add("empty");
+      item.dataset.quickLabel = "Vide";
+      item.textContent = String(index % 10 + 1);
+      return item;
+    }
+    item.title = action.title || `Barre ${index < 10 ? 1 : 2}, case ${index % 10 + 1}`;
+    item.dataset.quickLaser = action.dataset.ammo ? "1" : "0";
+    item.dataset.quickLabel = (action.title
+      || action.dataset.ammo?.toUpperCase()
+      || action.querySelector("strong")?.textContent?.trim()
+      || `Case ${index % 10 + 1}`).replace(/\s*[:\-–—]?\s*quantit[ée]\s*:?\s*[\d\s.,]+.*$/i, "").trim();
+    const sourceImage = action.querySelector("img[src]");
+    if (sourceImage) {
+      const preview = document.createElement("img");
+      preview.src = sourceImage.currentSrc || sourceImage.src;
+      preview.alt = "";
+      item.appendChild(preview);
+    } else {
+      const style = getComputedStyle(action);
+      const pseudo = getComputedStyle(action, "::before");
+      item.style.backgroundImage = pseudo.backgroundImage !== "none" ? pseudo.backgroundImage : style.backgroundImage;
+      const label = action.querySelector("strong")?.textContent?.trim()
+        || action.dataset.ammo?.toUpperCase() || String(index % 10 + 1);
+      if (!item.style.backgroundImage || item.style.backgroundImage === "none") item.textContent = label;
+    }
+    const quantity = document.createElement("small");
+    quantity.className = "phoneQuickQuantity";
+    quantity.textContent = quantityText(action);
+    item.dataset.quickQuantity = quantity.textContent;
+    item.appendChild(quantity);
+    return item;
+  });
+  const cancelItems = [1, 2].map(bar => {
+    const cancel = document.createElement("span");
+    cancel.className = `phoneQuickCancel phoneQuickCancelBar${bar}`;
+    cancel.textContent = "Annuler";
+    return cancel;
+  });
+  wheel.replaceChildren(...items, ...cancelItems);
+}
+
 // Valeurs proposées dans le dock rapide (jamais Passif) : Combat + gears.
 // (Défini ici car initializeCustomActionBar() s'exécute avant la suite du module.)
 const PET_DOCK_MODE_VALUES = Object.freeze(["combat", "gear:al", "gear:ar", "gear:el", "gear:rep", "gear:kk", "gear:tra", "gear:fs", "gear:hpl", "gear:bc", "gear:bh"]);
@@ -7924,9 +8002,12 @@ function initializeCustomActionBar() {
   try { saved = JSON.parse(localStorage.getItem(ACTION_BAR_LAYOUT_KEY) || "[]"); } catch {}
   const layout = Array.from({ length: 20 }, (_, index) => saved[index] || null);
   bar.replaceChildren();
-  const persist = () => localStorage.setItem(ACTION_BAR_LAYOUT_KEY, JSON.stringify(
-    [...bar.querySelectorAll(".actionSlot")].map(slot => slot.querySelector(".ammoBtn, .rocketQuickAction")?.dataset.actionId || null)
-  ));
+  const persist = () => {
+    localStorage.setItem(ACTION_BAR_LAYOUT_KEY, JSON.stringify(
+      [...bar.querySelectorAll(".actionSlot")].map(slot => slot.querySelector(".ammoBtn, .rocketQuickAction")?.dataset.actionId || null)
+    ));
+    queueMicrotask(syncPhoneQuickWheelItems);
+  };
   const slots = document.createElement("div"); slots.className = "actionSlots"; bar.appendChild(slots);
   const formationButtons = DRONE_FORMATIONS.map(formation => {
     const button = document.createElement("button");
@@ -8952,6 +9033,71 @@ function initializeCustomActionBar() {
   };
   toggle.onclick = flipActionPalette;
   toggleActionDockMenu = flipActionPalette;
+
+  // Éditeur tactile plein écran : le bouton Modifier sous la roue centrale
+  // l'ouvre. En plus du drag & drop existant, toucher une action
+  // puis un slot permet une configuration fiable sur tous les téléphones.
+  let phoneEditorActionId = "";
+  const phoneSave = document.createElement("button");
+  phoneSave.type = "button";
+  phoneSave.className = "phoneDockSave";
+  phoneSave.textContent = "Sauvegarder";
+  phoneSave.hidden = true;
+  bar.appendChild(phoneSave);
+  function closePhoneDockEditor() {
+    persist();
+    phoneEditorActionId = "";
+    bar.querySelectorAll(".phoneEditorSelected").forEach(node => node.classList.remove("phoneEditorSelected"));
+    document.body.classList.remove("phoneDockEditorOpen");
+    phoneSave.hidden = true;
+    palette.hidden = true;
+    toggle.classList.remove("active");
+    toggle.textContent = "⌃";
+    updateHudKeyHints();
+    try { syncPhoneControls(); } catch {}
+  }
+  phoneSave.onclick = closePhoneDockEditor;
+  window.__CLOSE_PHONE_DOCK_EDITOR__ = closePhoneDockEditor;
+  window.__OPEN_PHONE_DOCK_EDITOR__ = () => {
+    // Le dock compact s'affiche au-dessus de la roue. La palette reste fermée
+    // jusqu'au bouton du menu, comme sur PC.
+    palette.hidden = true;
+    toggle.classList.remove("active");
+    toggle.textContent = "⌃";
+    phoneSave.hidden = true;
+    document.body.classList.add("phoneDockEditorOpen");
+    try { syncPhoneControls(); } catch {}
+  };
+  bar.addEventListener("click", event => {
+    if (!document.body.classList.contains("phoneDockEditorOpen")) return;
+    if (event.target.closest(".phoneDockSave, .actionPalette nav")) return;
+    const paletteAction = event.target.closest(".actionPaletteItems [data-action-id]");
+    if (paletteAction) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      phoneEditorActionId = String(paletteAction.dataset.actionId || "");
+      bar.querySelectorAll(".phoneEditorSelected").forEach(node => node.classList.remove("phoneEditorSelected"));
+      paletteAction.classList.add("phoneEditorSelected");
+      return;
+    }
+    const slot = event.target.closest(".actionSlot");
+    if (!slot || !phoneEditorActionId) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    const original = byId.get(phoneEditorActionId);
+    if (!original) return;
+    const instance = original.cloneNode(true);
+    instance.removeAttribute("id");
+    instance.classList.remove("ready", "phoneEditorSelected");
+    instance.dataset.actionId = phoneEditorActionId;
+    instance.draggable = true;
+    instance.onclick = () => original.click();
+    slot.replaceChildren(instance);
+    persist();
+    updateHudKeyHints();
+    phoneEditorActionId = "";
+    bar.querySelectorAll(".phoneEditorSelected").forEach(node => node.classList.remove("phoneEditorSelected"));
+  }, true);
   document.addEventListener("dragover", event => {
     if (event.dataTransfer?.types?.includes("application/x-orbit-action")) event.preventDefault();
   });
@@ -8963,7 +9109,7 @@ function initializeCustomActionBar() {
     updateHudKeyHints();
   });
   // Fermeture au clic ailleurs désactivée : seul le toggle ouvre/ferme.
-  bar.append(toggle, palette);
+  bar.append(toggle, palette, phoneSave);
   paletteItems.addEventListener("wheel", event => {
     if (Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return;
     event.preventDefault();
@@ -8990,6 +9136,9 @@ function initializeCustomActionBar() {
     }, 300);
   } else restorePalette();
   persist();
+  if (typeof MutationObserver !== "undefined") {
+    new MutationObserver(syncPhoneQuickWheelItems).observe(slots, { childList: true, subtree: true, characterData: true });
+  }
   queueMicrotask(updateHudKeyHints);
 }
 
@@ -14560,7 +14709,14 @@ function craftingRecipeDescription(recipe) {
   }
   if (output.pet) return "Compagnon de combat et de collecte, à équiper de matériel P.E.T.";
   if (output.drones) return "Drone à deux emplacements pour lasers et générateurs de bouclier.";
-  if (output.formations) return "Formation de drones modifiant les bonus de votre vaisseau.";
+  if (output.formations) {
+    const formationId = Object.keys(output.formations || {})[0];
+    try {
+      const formation = DRONE_FORMATIONS.find(entry => entry.id === formationId);
+      if (formation?.description) return formation.description;
+    } catch {}
+    return "Formation de drones modifiant les bonus de votre vaisseau.";
+  }
   return "Composant utilisé dans les recettes d’assemblage.";
 }
 
@@ -21680,8 +21836,9 @@ const DRAG_THRESHOLD = 8;
 
 function syncPhoneControls() {
   if (!phoneControls) return;
+  const movingJoysticks = document.body.classList.contains("phoneJoystickLayoutOpen");
   phoneControls.configure(GAME_SETTINGS.phoneMode === true && started && !player.dead && !document.hidden,
-    isPlayerMovementLocked());
+    isPlayerMovementLocked() && !movingJoysticks);
 }
 
 function phoneAimTarget(angle) {
@@ -21690,15 +21847,27 @@ function phoneAimTarget(angle) {
     enemy => shouldDetectNpc(player, enemy, NPC_SENSOR_RANGES.visibility, locked));
 }
 
-function releasePhoneAim(angle) {
+function releasePhoneAim(angle, ring = 0) {
   if (GAME_SETTINGS.phoneMode !== true || !started || player.dead || isPlayerMovementLocked()) return;
-  // Un simple toucher de la poignee droite bascule le tir du NPC deja locke.
-  // Une visee dans le vide conserve le lock et ne lance aucun tir.
-  const target = Number.isFinite(angle) ? phoneAimTarget(angle) : Target.get();
+  // Centre = annulation ; couronne 1 = sélection ; couronne 2 = attaque.
+  if (!(ring > 0) || !Number.isFinite(angle)) return;
+  const target = phoneAimTarget(angle);
   if (!target || !(target.hp > 0) || target._netPlayer || target._netPet || target.isPetTarget) return;
   Target.set(target);
   try { botNotifyManual(); } catch {}
-  toggleAttack();
+  if (ring >= 2) toggleAttack();
+}
+
+function releasePhoneQuickSlot(index) {
+  if (GAME_SETTINGS.phoneMode !== true || !started || player.dead || isPlayerMovementLocked()) return;
+  const slot = document.querySelectorAll("#ammoBar .actionSlot")[Number(index)];
+  const action = slot?.querySelector(".ammoBtn, .rocketQuickAction, .launcherAutoBtn");
+  if (action) action.click();
+}
+
+function openPhoneDockEditor() {
+  if (GAME_SETTINGS.phoneMode !== true || !started) return;
+  try { window.__OPEN_PHONE_DOCK_EDITOR__?.(); } catch {}
 }
 
 function drawPhoneAim(ox, oy) {
@@ -21722,6 +21891,56 @@ if (phoneControlsRoot) {
       player.vy = 0;
     },
     onAimRelease: releasePhoneAim,
+    onQuickRelease: releasePhoneQuickSlot,
+  });
+  const dockEditButton = document.getElementById("phoneQuickEditBtn");
+  dockEditButton?.addEventListener("click", () => {
+    if (document.body.classList.contains("phoneDockEditorOpen")) {
+      try { window.__CLOSE_PHONE_DOCK_EDITOR__?.(); } catch {}
+      dockEditButton.textContent = "Modifier le dock";
+      return;
+    }
+    openPhoneDockEditor();
+    if (document.body.classList.contains("phoneDockEditorOpen")) dockEditButton.textContent = "Sauvegarder";
+  });
+  const layoutButton = document.getElementById("phoneJoystickLayoutBtn");
+  const sizeControls = [...document.querySelectorAll(".phoneJoystickSizeControl[data-phone-size]")];
+  sizeControls.forEach(control => control.querySelector("input")?.addEventListener("input", event => {
+    const name = control.dataset.phoneSize;
+    phoneControls.setLayoutScale(name, event.target.value);
+    const output = control.querySelector("output");
+    if (output) output.textContent = `${event.target.value} %`;
+  }));
+  const resetPhoneJoystickLayout = () => {
+    phoneControls.resetLayout();
+    sizeControls.forEach(control => {
+      const input = control.querySelector("input"), output = control.querySelector("output");
+      if (input) input.value = "100";
+      if (output) output.textContent = "100 %";
+    });
+    showToast("Joysticks réinitialisés", 1.2);
+  };
+  document.getElementById("phoneJoystickResetBtn")?.addEventListener("click", resetPhoneJoystickLayout);
+  document.getElementById("btnResetPhoneJoysticks")?.addEventListener("click", resetPhoneJoystickLayout);
+  layoutButton?.addEventListener("click", () => {
+    const opening = !document.body.classList.contains("phoneJoystickLayoutOpen");
+    if (opening) {
+      moveTarget.active = false;
+      player.vx = 0;
+      player.vy = 0;
+      try { stopAttack(); } catch {}
+      try { phoneControls.cancel(); } catch {}
+    }
+    document.body.classList.toggle("phoneJoystickLayoutOpen", opening);
+    phoneControls.setLayoutEditing(opening);
+    if (opening) sizeControls.forEach(control => {
+      const input = control.querySelector("input"), output = control.querySelector("output");
+      const value = String(phoneControls.layoutScale(control.dataset.phoneSize));
+      if (input) input.value = value;
+      if (output) output.textContent = `${value} %`;
+    });
+    layoutButton.textContent = opening ? "Sauvegarder" : "Déplacer les joysticks";
+    syncPhoneControls();
   });
 }
 // Mode téléphone : bloque le menu d'appui long ("Ouvrir dans un nouvel
@@ -21765,6 +21984,26 @@ function setMoveTargetFromEvent(e) {
   setMoveTargetFromScreen(e.clientX, e.clientY);
 }
 
+// Repli pour les navigateurs qui annulent le cycle pointer du bouton droit
+// en ouvrant leur menu contextuel. Le bouton droit sélectionne les cibles et
+// collectables, mais ne donne jamais d'ordre de déplacement dans le vide.
+window.__ORBIT_RIGHT_CLICK_AS_LEFT__ = (clientX, clientY) => {
+  if (!started || player.dead || isPlayerMovementLocked()) return false;
+  const enemy = pickEnemyAtScreen(clientX, clientY);
+  if (enemy) {
+    Target.set(enemy);
+    try { botNotifyManual(); } catch {}
+    return true;
+  }
+  const collectable = pickCollectableAtScreen(clientX, clientY);
+  if (collectable) {
+    selectCollectable(collectable);
+    try { botNotifyManual(); } catch {}
+    return true;
+  }
+  return false;
+};
+
 // ✅ Recalcule la cible chaque frame tant que le clic est maintenu
 function refreshHoldMoveTarget() {
   if (!pointer.down) return;
@@ -21781,11 +22020,9 @@ canvas.addEventListener(
   (e) => {
     SFX.resume();
 
-    if (e.button === 2) {
-      return;
-    }
-
-    if (e.button !== 0) return;
+    // Le clic droit utilise les mêmes interactions monde que le clic gauche.
+    if (e.button !== 0 && e.button !== 2) return;
+    if (e.button === 2 && e.cancelable) e.preventDefault();
 
     // Le toucher est gere par le jeu : pas de selection native du canvas.
     if (e.pointerType === "touch" && e.cancelable) e.preventDefault();
@@ -21879,6 +22116,12 @@ if (collectable) {
   pointer.downOnEnemy = false;
   pointer.followWhileDown = false;
 
+  return;
+}
+if (e.button === 2) {
+  pointer.dragArmed = false;
+  pointer.dragging = false;
+  pointer.followWhileDown = false;
   return;
 }
 cancelCollectableTarget();
@@ -39622,10 +39865,8 @@ if (movementLocked) {
 
   if (!movementLocked) {
     updatePlayerVelocity(player, { x: mx, y: my }, dt);
-    if (phoneMove) {
-      player.vx *= phoneMove.strength;
-      player.vy *= phoneMove.strength;
-    }
+    // Téléphone : déplacement numérique, toujours à pleine vitesse dès que
+    // le joystick sort de sa zone morte (aucun avantage de vitesse analogique).
   }
 
   // Fortification (officiel) : vitesse plafonnée à 200 pendant l'effet.
@@ -44580,7 +44821,9 @@ function cancelStarJump(reason) {
 }
 
 function isPlayerMovementLocked() {
-  return !!(hangarSwapFx || StarJump.channel || isPortalJumpInProgress());
+  return !!(document.body.classList.contains("phoneDockEditorOpen")
+    || document.body.classList.contains("phoneJoystickLayoutOpen")
+    || hangarSwapFx || StarJump.channel || isPortalJumpInProgress());
 }
 
 function startStarJump() {

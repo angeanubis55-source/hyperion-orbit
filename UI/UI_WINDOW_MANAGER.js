@@ -8,6 +8,17 @@
   function bringWindowToFront(card) {
     if (!card || card.classList.contains("gameWinMinimized")) return;
 
+    // L'éditeur mobile utilise un voile au-dessus du HUD. Paramètres doit
+    // rester manipulable pendant toute l'édition : ne jamais le rabattre dans
+    // la pile HUD normale au premier pointerdown (sinon seul le premier clic
+    // passe, puis la fenêtre retombe sous le voile).
+    if (card.id === "settingsWindow"
+      && (document.body.classList.contains("phoneDockEditorOpen")
+        || document.body.classList.contains("phoneJoystickLayoutOpen"))) {
+      card.style.setProperty("z-index", "2147483646", "important");
+      return;
+    }
+
     // La Boutique vit dans #shopOverlay et les Hangars dans
     // #hangarOverlay : on remonte le conteneur avec la carte, sinon son
     // z-index fixe (90000) le garderait toujours derrière les fenêtres HUD

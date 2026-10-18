@@ -667,6 +667,7 @@ export const CRAFTING_RECIPES = Object.freeze([
   Object.freeze({
     id: "craft_formation_bat",
     name: "Formation Chauve-Souris",
+    description: "+8 % dégâts NPC · +8 % expérience uniquement sur la cible détruite · -15 % vitesse",
     rarity: "legendary",
     event: "halloween",
     costs: { credits: 50000000, resources: { candy: 400, candy_golden: 80 } },

@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
-import { createPhoneControls, joystickVector, pickPhoneAimTarget, placePhoneJoystick, PHONE_AIM_HALF_ANGLE } from '../SRC/CORE/PHONE_CONTROLS.js';
+import { createPhoneControls, joystickVector, phoneAimRing, phoneQuickRing, phoneQuickSlot, pickPhoneAimTarget, placePhoneJoystick, PHONE_AIM_HALF_ANGLE } from '../SRC/CORE/PHONE_CONTROLS.js';
 import { advancePlayerToTarget, updatePlayerVelocity } from '../SRC/CORE/FRAME_SYSTEMS.js';
 
 function eventTarget() {
@@ -16,19 +16,31 @@ function eventTarget() {
     classList: { add: c => classes.add(c), remove: c => classes.delete(c),
       toggle(c, on) { if (on) classes.add(c); else classes.delete(c); }, contains: c => classes.has(c) },
     getBoundingClientRect: () => ({ left: 0, top: 0, width: 120, height: 120 }),
+    querySelectorAll: () => [],
+    dataset: {},
+    style: { removeProperty(name) { delete this[name]; } },
     setPointerCapture() {}, releasePointerCapture() {},
   };
 }
 function controlsHarness() {
   const document = eventTarget(); document.defaultView = eventTarget(); document.hidden = false;
-  const move = eventTarget(), aim = eventTarget(), root = eventTarget();
-  for (const side of [move, aim]) { const knob = { style: {} }; side.querySelector = () => knob; }
+  const saved = new Map();
+  Object.assign(document.defaultView, { innerWidth: 400, innerHeight: 300,
+    requestAnimationFrame: callback => { callback(); return 1; },
+    localStorage: { getItem: key => saved.get(key) || null, setItem: (key, value) => saved.set(key, value), removeItem: key => saved.delete(key) } });
+  const move = eventTarget(), aim = eventTarget(), quick = eventTarget(), root = eventTarget();
+  for (const side of [move, aim, quick]) {
+    const knob = { style: {} };
+    const quickItem = { dataset: { quickLabel: 'Munition UCB-100', quickQuantity: '200', quickLaser: '1' } };
+    side.querySelector = selector => selector.includes('.phoneQuickItem') ? quickItem : knob;
+  }
   root.ownerDocument = document;
-  root.querySelector = selector => selector.includes('"move"') ? move : aim;
-  const shots = [], moves = [];
-  const controls = createPhoneControls(root, { onMoveStart: () => moves.push('start'), onMoveStop: () => moves.push('stop'), onAimRelease: a => shots.push(a) });
+  root.querySelector = selector => selector.includes('data-phone-size') ? null
+    : selector.includes('"move"') ? move : selector.includes('"aim"') ? aim : quick;
+  const shots = [], moves = [], quickSlots = [];
+  const controls = createPhoneControls(root, { onMoveStart: () => moves.push('start'), onMoveStop: () => moves.push('stop'), onAimRelease: (a, ring) => shots.push([a, ring]), onQuickRelease: slot => quickSlots.push(slot) });
   controls.configure(true);
-  return { controls, move, aim, root, document, shots, moves };
+  return { controls, move, aim, quick, root, document, shots, moves, quickSlots, saved };
 }
 
 test('joystick : zone morte, vitesse progressive et limite circulaire', () => {
@@ -41,6 +53,66 @@ test('joystick : zone morte, vitesse progressive et limite circulaire', () => {
   assert.equal(Math.hypot(full.knobX, full.knobY), 40);
 });
 
+test('roue droite : centre, première couronne et seconde couronne', () => {
+  assert.equal(phoneAimRing(0), 0);
+  assert.equal(phoneAimRing(0.4), 1);
+  assert.equal(phoneAimRing(0.89), 1);
+  assert.equal(phoneAimRing(0.90), 2);
+  assert.equal(phoneAimRing(1), 2);
+});
+
+test('roue centrale : dix directions par barre, barre 1 puis barre 2', () => {
+  assert.equal(phoneQuickSlot(-Math.PI / 2, 1), 0);
+  assert.equal(phoneQuickSlot(-Math.PI / 2, 2), 10);
+  assert.equal(phoneQuickSlot(-Math.PI / 2 + Math.PI * 2 / 10, 1), 1);
+  assert.equal(phoneQuickSlot(-Math.PI / 2 - Math.PI * 2 / 10, 2), 19);
+  assert.equal(phoneQuickSlot(NaN, 1), -1);
+  assert.equal(phoneQuickSlot(0, 0), -1);
+});
+
+test('roue centrale : passage stable entre les deux barres', () => {
+  assert.equal(phoneQuickRing(0, 0), 1, 'la barre 1 apparaît dès la prise en main');
+  assert.equal(phoneQuickRing(0.95, 1), 1, 'une poussée presque complète reste en barre 1');
+  assert.equal(phoneQuickRing(0.96, 1), 2, 'la poussée franche atteint la barre 2');
+  assert.equal(phoneQuickRing(0.90, 2), 2, 'un petit tremblement conserve la barre 2');
+  assert.equal(phoneQuickRing(0.77, 2), 1, 'il faut revenir nettement pour retrouver la barre 1');
+});
+
+test('roue centrale : relacher confirme la case visible de la seconde barre', () => {
+  const h = controlsHarness();
+  h.quick.emit('pointerdown', { clientX: 60, clientY: 0 });
+  h.quick.emit('pointerup', { clientX: 60, clientY: 0 });
+  assert.deepEqual(h.quickSlots, [10]);
+  assert.equal(h.quick.dataset.quickSlot, 'Barre 2 : Munition UCB-100 : quantité 200');
+});
+
+test('roue centrale : revenir sur Annuler ne déclenche aucun raccourci', () => {
+  const h = controlsHarness();
+  h.quick.emit('pointerdown', { clientX: 60, clientY: 0 });
+  h.quick.emit('pointermove', { clientX: 60, clientY: 60 });
+  h.quick.emit('pointerup', { clientX: 60, clientY: 60 });
+  assert.deepEqual(h.quickSlots, []);
+  assert.equal(h.quick.dataset.quickSlot, 'Sélection annulée');
+});
+
+test('placement téléphone : déplacer puis sauvegarder les trois joysticks sans action de jeu', () => {
+  const h = controlsHarness();
+  h.controls.setLayoutEditing(true);
+  h.quick.emit('pointerdown', { clientX: 60, clientY: 60 });
+  h.quick.emit('pointermove', { clientX: 200, clientY: 150 });
+  h.quick.emit('pointerup', { clientX: 200, clientY: 150 });
+  assert.equal(h.quick.style.left, '140px');
+  assert.equal(h.quick.style.top, '90px');
+  assert.deepEqual(h.quickSlots, []);
+  h.controls.setLayoutScale('quick', 150);
+  assert.equal(h.quick.style.width, '180px');
+  assert.equal(h.controls.layoutScale('quick'), 150);
+  h.controls.setLayoutEditing(false);
+  assert.ok(h.saved.has('orbit_phone_joystick_layout_v1'));
+  h.controls.resetLayout();
+  assert.equal(h.saved.has('orbit_phone_joystick_layout_v1'), false);
+});
+
 test('deux doigts : viser et tirer ne coupe pas le joystick de deplacement', () => {
   const h = controlsHarness();
   h.move.emit('pointerdown', { pointerId: 10, clientX: 120 });
@@ -49,7 +121,7 @@ test('deux doigts : viser et tirer ne coupe pas le joystick de deplacement', () 
   assert.equal(h.controls.aimAngle(), -Math.PI / 2);
   assert.equal(h.shots.length, 0, 'le tir attend le relachement');
   h.aim.emit('pointerup', { pointerId: 20, clientY: 0 });
-  assert.deepEqual(h.shots, [-Math.PI / 2]);
+  assert.deepEqual(h.shots, [[-Math.PI / 2, 2]]);
   assert.equal(h.controls.movement().strength, 1);
   h.move.emit('pointerup', { pointerId: 10, clientX: 500 });
   assert.equal(h.controls.movement(), null);
@@ -97,11 +169,11 @@ test('poignee bloquee et mode desactive ignorent les nouvelles pressions', () =>
   }
 });
 
-test('retour au centre conserve la direction choisie ; toucher sans viser renvoie null', () => {
+test('retour au centre annule la roue ; relâcher sur une couronne confirme', () => {
   const h = controlsHarness();
   h.aim.emit('pointerdown', { clientX: 120 }); h.aim.emit('pointerup');
   h.aim.emit('pointerdown'); h.aim.emit('pointerup');
-  assert.deepEqual(h.shots, [0, null]);
+  assert.deepEqual(h.shots, [[0, 0], [null, 0]]);
 });
 
 const rect = (left, top, width, height = width) => ({ left, top, width, height, right: left + width, bottom: top + height });
@@ -163,23 +235,23 @@ function engineFunction(name) {
   assert.ok(start >= 0 && end > start, name);
   return source.slice(start, end + 2);
 }
-test('relachement moteur : lock + commande habituelle, jamais en portail ou sur joueur/PET', () => {
+test('relachement moteur : couronne 1 sélectionne, couronne 2 attaque', () => {
   const commands = [], candidate = npc('npc', 100, 0);
   const context = vm.createContext({ GAME_SETTINGS: { phoneMode: true }, started: true, player: { dead: false },
     isPlayerMovementLocked: () => false, phoneAimTarget: () => candidate,
     Target: { get: () => candidate, set: value => commands.push(value.id) },
     botNotifyManual() {}, toggleAttack: () => commands.push('toggle') });
   vm.runInContext(engineFunction('releasePhoneAim'), context);
-  context.releasePhoneAim(0); context.releasePhoneAim(null);
-  assert.deepEqual(commands, ['npc', 'toggle', 'npc', 'toggle']);
+  context.releasePhoneAim(0, 1); context.releasePhoneAim(0, 2); context.releasePhoneAim(null, 2);
+  assert.deepEqual(commands, ['npc', 'npc', 'toggle']);
   for (const value of [null, npc('dead', 0, 0, { hp: 0 }), npc('player', 0, 0, { _netPlayer: true }), npc('pet', 0, 0, { _netPet: true })]) {
-    context.phoneAimTarget = () => value; context.releasePhoneAim(0);
+    context.phoneAimTarget = () => value; context.releasePhoneAim(0, 2);
   }
   context.phoneAimTarget = () => candidate;
-  context.isPlayerMovementLocked = () => true; context.releasePhoneAim(0);
-  context.isPlayerMovementLocked = () => false; context.player.dead = true; context.releasePhoneAim(0);
-  context.player.dead = false; context.GAME_SETTINGS.phoneMode = false; context.releasePhoneAim(0);
-  assert.equal(commands.length, 4);
+  context.isPlayerMovementLocked = () => true; context.releasePhoneAim(0, 2);
+  context.isPlayerMovementLocked = () => false; context.player.dead = true; context.releasePhoneAim(0, 2);
+  context.player.dead = false; context.GAME_SETTINGS.phoneMode = false; context.releasePhoneAim(0, 2);
+  assert.equal(commands.length, 3);
 });
 
 const moveStart = source.indexOf('  refreshHoldMoveTarget();\n');
@@ -194,9 +266,9 @@ function movementHarness(vector, extra = {}) {
     FORTIFY_MAX_SPEED: 200, isZoneMap: true, resolvePlayerWalls: () => { walls++; } });
   return { context, step: () => vm.runInContext(`{${source.slice(moveStart, moveEnd)}}`, context), walls: () => walls };
 }
-for (const [name, extra, speed] of [['normal', {}, 200], ['ralenti', { rocketSlowT: 5, rocketSlowPct: 50 }, 100],
+for (const [name, extra, speed] of [['normal', {}, 400], ['ralenti', { rocketSlowT: 5, rocketSlowPct: 50 }, 200],
   ['gele', { freezeT: 5 }, 0], ['fortification', { fortifyT: 5, baseSpeed: 1000 }, 200]]) {
-  test(`deplacement ${name} : vitesse analogique et collisions du moteur`, () => {
+  test(`deplacement ${name} : vitesse maximale et collisions du moteur`, () => {
     const h = movementHarness({ x: 1, y: 0, strength: 0.5 }, extra); h.step();
     assert.equal(h.context.player.vx, speed); assert.equal(h.context.player.x, 100 + speed);
     assert.equal(h.context.moveTarget.active, false, 'aucune ancienne destination ne reprend la main');

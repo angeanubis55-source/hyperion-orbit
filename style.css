@@ -96,6 +96,11 @@ body:has(> #phoneControls:not([hidden])) textarea,
 body:has(> #phoneControls:not([hidden])) [contenteditable="true"] {
   -webkit-touch-callout:default;
 }
+/* Sur téléphone, la roue centrale remplace entièrement le dock PC et son
+   bouton d'ouverture. Le dock ne revient que dans l'éditeur mobile. */
+body:not(.phoneDockEditorOpen):has(> #phoneControls:not([hidden])) #ammoBar {
+  display:none !important;
+}
 #phoneControls {
   position:fixed;
   inset:0;
@@ -123,9 +128,232 @@ body:has(> #phoneControls:not([hidden])) [contenteditable="true"] {
 }
 .phoneJoystickMove { left:calc(18px + env(safe-area-inset-left, 0px)); }
 .phoneJoystickAim { right:calc(18px + env(safe-area-inset-right, 0px)); border-color:rgba(255,174,110,.55); }
+.phoneJoystickQuick {
+  container-type:inline-size;
+  left:50%;
+  width:clamp(190px,38vw,240px);
+  height:clamp(190px,38vw,240px);
+  transform:translateX(-50%);
+  border-color:rgba(192,142,255,.62);
+  background:radial-gradient(circle,rgba(65,34,100,.72),rgba(10,16,35,.86));
+}
+.phoneJoystickQuick::after {
+  content:attr(data-quick-slot);
+  position:absolute;
+  left:50%;
+  top:calc(100% + 14px);
+  z-index:3;
+  width:min(310px,80vw);
+  transform:translateX(-50%);
+  color:#f2e8ff;
+  font:900 10px/1.2 ui-sans-serif,system-ui;
+  text-align:center;
+  text-shadow:0 1px 4px #000;
+  pointer-events:none;
+}
+.phoneJoystickQuick .phoneJoystickKnob {
+  inset:auto;
+  left:50%;
+  top:50%;
+  width:min(46px,24%);
+  height:min(46px,24%);
+  translate:-50% -50%;
+  z-index:2;
+}
+.phoneJoystickQuick .phoneJoystickLabel { display:none; }
+.phoneQuickItems { position:absolute; inset:0; z-index:2; pointer-events:none; }
+.phoneJoystickQuick .phoneAimRing,
+.phoneJoystickQuick .phoneQuickItems { opacity:0; transition:opacity .12s ease; }
+.phoneJoystickQuick.ringOne .phoneAimRingOne,
+.phoneJoystickQuick.ringTwo .phoneAimRingTwo,
+.phoneJoystickQuick.ringOne .phoneQuickItems,
+.phoneJoystickQuick.ringTwo .phoneQuickItems { opacity:1; }
+.phoneQuickItem {
+  position:absolute;
+  left:var(--quick-x);
+  top:var(--quick-y);
+  width:clamp(28px,16cqw,52px);
+  height:clamp(28px,16cqw,52px);
+  box-sizing:border-box;
+  display:grid;
+  place-items:center;
+  overflow:visible;
+  transform:translate(-50%,-50%);
+  border:1px solid rgba(124,240,255,.7);
+  border-radius:clamp(6px,2.5cqw,9px);
+  background-color:rgba(4,20,34,.92);
+  background-position:center;
+  background-repeat:no-repeat;
+  background-size:contain;
+  box-shadow:0 1px 5px #000;
+  color:#dffaff;
+  font:800 clamp(7px,3cqw,10px)/1 ui-sans-serif,system-ui;
+}
+.phoneQuickItem.phoneQuickBar2 { border-color:rgba(212,156,255,.8); background-color:rgba(33,13,55,.94); }
+.phoneQuickItem img { width:100%; height:100%; object-fit:contain; border-radius:6px; }
+.phoneQuickQuantity {
+  position:absolute;
+  left:50%;
+  top:calc(100% + 2px);
+  min-width:80%;
+  padding:max(1px,.4cqw) max(3px,1.1cqw);
+  transform:translateX(-50%);
+  border-radius:4px;
+  color:#fff;
+  background:rgba(0,0,0,.82);
+  font:900 clamp(7px,3cqw,10px)/1.1 ui-sans-serif,system-ui;
+  text-align:center;
+  white-space:nowrap;
+  text-shadow:0 1px 2px #000;
+}
+.phoneQuickQuantity:empty { display:none; }
+.phoneQuickCancel {
+  position:absolute;
+  left:50%;
+  top:50%;
+  z-index:3;
+  display:none;
+  width:48px;
+  height:30px;
+  place-items:center;
+  transform:translate(-50%,-50%);
+  border:1px solid #ff8989;
+  border-radius:8px;
+  color:#fff;
+  background:rgba(115,22,35,.94);
+  font:900 8px/1 ui-sans-serif,system-ui;
+  box-shadow:0 2px 8px #000;
+}
+.phoneJoystickQuick.ringOne .phoneQuickCancelBar1,
+.phoneJoystickQuick.ringTwo .phoneQuickCancelBar2 { display:grid; }
+.phoneQuickCancel.selected {
+  border-color:#fff178;
+  box-shadow:0 0 0 2px rgba(255,241,120,.45),0 0 14px #fff178;
+}
+.phoneQuickItem.empty { opacity:.38; }
+.phoneJoystickQuick .phoneQuickItem { opacity:0; visibility:hidden; transition:opacity .1s ease,visibility .1s; }
+.phoneJoystickQuick.ringOne .phoneQuickBar1,
+.phoneJoystickQuick.ringTwo .phoneQuickBar2 { opacity:1; visibility:visible; }
+.phoneJoystickQuick.ringOne .phoneQuickBar1.empty,
+.phoneJoystickQuick.ringTwo .phoneQuickBar2.empty { opacity:.38; }
+.phoneQuickItem.selected {
+  z-index:4;
+  border-color:#fff178;
+  box-shadow:0 0 0 2px rgba(255,241,120,.45),0 0 16px #fff178;
+  transform:translate(-50%,-50%) scale(1.18);
+}
+.phoneQuickEditBtn {
+  position:absolute;
+  left:calc(10px + env(safe-area-inset-left, 0px));
+  right:auto;
+  bottom:calc(8px + env(safe-area-inset-bottom, 0px));
+  z-index:5;
+  min-width:92px;
+  padding:8px 16px;
+  transform:none;
+  border:1px solid rgba(216,176,255,.9);
+  border-radius:999px;
+  color:#f8efff;
+  background:linear-gradient(#603a87,#321b4e);
+  box-shadow:0 3px 12px rgba(0,0,0,.65);
+  font-weight:900;
+  pointer-events:auto;
+  touch-action:manipulation;
+}
+.phoneJoystickLayoutBtn {
+  position:absolute;
+  right:calc(10px + env(safe-area-inset-right, 0px));
+  bottom:calc(8px + env(safe-area-inset-bottom, 0px));
+  z-index:5;
+  padding:8px 12px;
+  border:1px solid rgba(124,240,255,.75);
+  border-radius:999px;
+  color:#eaffff;
+  background:linear-gradient(#174b64,#092a3c);
+  box-shadow:0 3px 12px rgba(0,0,0,.65);
+  font-weight:900;
+  pointer-events:auto;
+  touch-action:manipulation;
+}
+.phoneJoystickSizeControl {
+  display:none;
+  position:absolute;
+  z-index:6;
+  width:150px;
+  grid-template-columns:1fr;
+  align-items:center;
+  gap:10px;
+  padding:9px 12px;
+  border:1px solid rgba(255,241,120,.75);
+  border-radius:10px;
+  color:#fff;
+  background:rgba(8,18,28,.92);
+  box-shadow:0 4px 18px rgba(0,0,0,.7);
+  font:900 11px/1 ui-sans-serif,system-ui;
+  pointer-events:auto;
+}
+.phoneJoystickSizeControl input { width:100%; accent-color:#fff178; touch-action:manipulation; }
+.phoneJoystickResetBtn {
+  display:none;
+  position:absolute;
+  left:50%;
+  bottom:calc(8px + env(safe-area-inset-bottom, 0px));
+  z-index:7;
+  padding:8px 14px;
+  transform:translateX(-50%);
+  border:1px solid rgba(255,137,137,.8);
+  border-radius:999px;
+  color:#fff;
+  background:linear-gradient(#71303a,#39151d);
+  box-shadow:0 3px 12px rgba(0,0,0,.65);
+  font-weight:900;
+  pointer-events:auto;
+  touch-action:manipulation;
+}
+body.phoneJoystickLayoutOpen::before {
+  content:"";
+  position:fixed;
+  inset:0;
+  z-index:100000;
+  background:rgba(0,0,0,.72);
+  pointer-events:auto;
+}
+body.phoneJoystickLayoutOpen #settingsWindow,
+body.phoneDockEditorOpen #settingsWindow {
+  z-index:2147483646 !important;
+  visibility:visible !important;
+  pointer-events:auto !important;
+}
+body.phoneJoystickLayoutOpen #phoneControls { z-index:100100; }
+body.phoneJoystickLayoutOpen .phoneJoystickSizeControl { display:grid; }
+body.phoneJoystickLayoutOpen .phoneJoystickResetBtn { display:block; }
+body.phoneJoystickLayoutOpen .phoneJoystick {
+  opacity:1;
+  border-color:#fff178;
+  box-shadow:0 0 0 3px rgba(255,241,120,.35),0 0 22px rgba(255,241,120,.6);
+}
+body.phoneJoystickLayoutOpen .phoneJoystick.layoutDragging { cursor:grabbing; }
+body.phoneJoystickLayoutOpen .phoneQuickEditBtn { display:none; }
+body.phoneJoystickLayoutOpen #gameWindowDock,
+body.phoneDockEditorOpen #gameWindowDock { z-index:100102 !important; }
+body.phoneJoystickLayoutOpen #gameWindowDock > :not(.sessionDockMenu):not(#btnSettingsHub),
+body.phoneDockEditorOpen #gameWindowDock > :not(.sessionDockMenu):not(#btnSettingsHub) { visibility:hidden !important; }
+body.phoneJoystickLayoutOpen #gameWindowDock #btnSettingsHub,
+body.phoneJoystickLayoutOpen #gameWindowDock .sessionDockMenu,
+body.phoneDockEditorOpen #gameWindowDock #btnSettingsHub,
+body.phoneDockEditorOpen #gameWindowDock .sessionDockMenu { visibility:visible !important; }
+body.phoneJoystickLayoutOpen #sessionMenu > :not(#btnLogout),
+body.phoneDockEditorOpen #sessionMenu > :not(#btnLogout) { display:none !important; }
+#settingsWindow .phoneOnlySettingsBtn { display:none; }
+body:has(> #phoneControls:not([hidden])) #settingsWindow .phoneOnlySettingsBtn { display:block; }
 .phoneJoystickKnob {
   position:absolute;
-  inset:30%;
+  inset:auto;
+  left:50%;
+  top:50%;
+  width:min(58px,40%);
+  height:min(58px,40%);
+  translate:-50% -50%;
   border:1px solid rgba(174,237,255,.75);
   border-radius:50%;
   background:radial-gradient(circle at 35% 30%,rgba(143,224,248,.8),rgba(35,110,154,.85));
@@ -138,22 +366,113 @@ body:has(> #phoneControls:not([hidden])) [contenteditable="true"] {
 .phoneJoystickLabel { position:absolute; left:0; right:0; bottom:-23px; font-size:11px; font-weight:800; text-shadow:0 1px 3px #000; pointer-events:none; }
 .phoneJoystick.active { border-color:#b4f2ff; cursor:grabbing; }
 .phoneJoystickAim.active { border-color:#ffcc92; }
+.phoneAimRing {
+  position:absolute;
+  left:50%;
+  top:50%;
+  border:1px solid rgba(255,255,255,.24);
+  border-radius:50%;
+  transform:translate(-50%,-50%);
+  pointer-events:none;
+  transition:border-color .1s,box-shadow .1s,background .1s;
+}
+.phoneAimRingOne { width:72%; height:72%; }
+.phoneAimRingTwo { width:92%; height:92%; }
+.phoneJoystickQuick .phoneAimRingOne { width:92%; height:92%; }
+.phoneJoystickAim.ringOne .phoneAimRingOne {
+  border-color:#7cf0ff;
+  background:rgba(70,200,255,.12);
+  box-shadow:0 0 12px rgba(70,200,255,.65);
+}
+.phoneJoystickAim.ringTwo .phoneAimRingTwo {
+  border-color:#ffb264;
+  background:rgba(255,130,60,.13);
+  box-shadow:0 0 15px rgba(255,130,60,.75);
+}
+.phoneJoystickQuick.active { border-color:#d8b0ff; }
+.phoneJoystickQuick.ringOne .phoneAimRingOne {
+  border-color:#7cf0ff;
+  background:rgba(70,200,255,.12);
+  box-shadow:0 0 12px rgba(70,200,255,.65);
+}
+.phoneJoystickQuick.ringTwo .phoneAimRingTwo {
+  border-color:#d49cff;
+  background:rgba(166,80,255,.15);
+  box-shadow:0 0 15px rgba(166,80,255,.72);
+}
 #phoneControls.blocked { opacity:.35; }
 @media (max-height:500px) {
   .phoneJoystick { width:112px; height:112px; bottom:calc(34px + env(safe-area-inset-bottom, 0px)); }
+  .phoneJoystickQuick { width:190px; height:190px; bottom:calc(42px + env(safe-area-inset-bottom, 0px)); }
+  .phoneQuickEditBtn { bottom:calc(8px + env(safe-area-inset-bottom, 0px)); }
 }
-body:has(> #phoneControls:not([hidden])) #ammoBar .actionPalette nav {
-  display:grid;
-  grid-template-columns:repeat(3, minmax(0, 1fr));
+body.phoneDockEditorOpen #ammoBar {
+  position:fixed !important;
+  left:50% !important;
+  right:auto !important;
+  top:auto !important;
+  bottom:calc(350px + env(safe-area-inset-bottom, 0px)) !important;
+  width:min(540px,calc(50vw - 12px)) !important;
+  max-width:calc(50vw - 12px) !important;
+  height:auto !important;
+  z-index:100101 !important;
+  padding:5px !important;
+  overflow:visible !important;
+  transform:translateX(-50%) scale(2) !important;
+  transform-origin:center bottom !important;
+  border-color:transparent !important;
+  background:transparent !important;
+  box-shadow:none !important;
 }
-body:has(> #phoneControls:not([hidden])) #ammoBar .actionPalette nav button {
-  width:auto;
-  min-width:0;
+body.phoneDockEditorOpen #ammoBar .actionSlots {
+  width:100% !important;
+  grid-template-columns:repeat(auto-fill,46px) !important;
+  grid-template-rows:none !important;
+  justify-content:center !important;
 }
-@media (min-width:681px), (orientation:landscape) {
-  body:has(> #phoneControls:not([hidden])) #ammoBar .actionPalette {
-    max-width:calc(100vw - 240px) !important;
-  }
+body.phoneDockEditorOpen::before {
+  content:"";
+  position:fixed;
+  inset:0;
+  z-index:100000;
+  background:rgba(0,0,0,.68);
+  pointer-events:none;
+}
+body.phoneDockEditorOpen #ammoBar .actionPalette {
+  width:100% !important;
+  max-width:100% !important;
+  max-height:none !important;
+  overflow:visible !important;
+}
+body.phoneDockEditorOpen #ammoBar .actionPaletteItems,
+body.phoneDockEditorOpen #ammoBar .actionPalette nav {
+  flex-wrap:wrap !important;
+  justify-content:center !important;
+}
+body.phoneDockEditorOpen #phoneControls { z-index:100101; opacity:1; }
+body.phoneDockEditorOpen .phoneJoystick,
+body.phoneDockEditorOpen .phoneJoystickLayoutBtn { visibility:hidden; }
+body.phoneDockEditorOpen .phoneQuickEditBtn { pointer-events:auto; }
+.phoneDockSave {
+  position:absolute;
+  right:0;
+  top:calc(100% + 6px);
+  z-index:5;
+  display:none !important;
+  margin:0;
+  padding:8px 10px;
+  border:1px solid #76f6bd;
+  border-radius:10px;
+  color:#04140e;
+  background:#76f6bd;
+  font-weight:900;
+}
+@media (max-height:500px) {
+  body.phoneDockEditorOpen #ammoBar { bottom:calc(285px + env(safe-area-inset-bottom, 0px)) !important; }
+}
+body.phoneDockEditorOpen #ammoBar .phoneEditorSelected {
+  outline:3px solid #ffd36b !important;
+  box-shadow:0 0 18px rgba(255,211,107,.75) !important;
 }
 #hud {
   position:fixed;
