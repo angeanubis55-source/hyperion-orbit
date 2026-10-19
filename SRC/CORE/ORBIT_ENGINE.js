@@ -58,8 +58,12 @@ import {
   consumeCurrentUserGalaxyGate,
   isEternalGateDeployed,
   deployEternalGateWithCpu,
+  normalizeEternalGateState,
   recordEternalGateLoopDone,
   recordEternalGateWaveCleared,
+  resetEternalGateWaveProgress,
+  saveEternalGateWave,
+  recordEternalGateWaveKill,
   clearEternalGateRun,
   completeCurrentUserGalaxyGate,
   loseCurrentUserGalaxyGateLife,
@@ -16268,10 +16272,12 @@ document.querySelectorAll("[data-gg-cat]").forEach((button) => {  button.addEven
 });
 
 // ✅ bouton Eternal : 1 CPU = gate posée immédiatement (pas de stock).
-document.getElementById("ggEternalUseBtn")?.addEventListener("click", () => {
+// Synchro serveur immédiate : un refresh juste après doit retrouver la gate.
+document.getElementById("ggEternalUseBtn")?.addEventListener("click", async () => {
   const res = deployEternalGateWithCpu();
   if (res.ok) {
     account.user = res.user;
+    try { await flushNetUser(); } catch {}
     showNotification("Gate Eternal posée sur ta map X-1 — 1 CPU utilisé", 4, "info", { log: false });
     renderGalaxyGateWindow();
     return;
@@ -17017,12 +17023,17 @@ function startZonePortalJump(ptl, entryConfirmed = false) {
   }
 
   // ✅ Gate Eternal : la gate reste posée pendant le run (elle ne
-  // disparaît qu'à la mort). L'entrée est juste vérifiée ici.
+  // disparaît qu'à la mort). L'entrée est juste vérifiée ici, et la
+  // vague repart de 1 (le refresh, lui, reprend la vague sauvée).
   if (targetMapId === "eternal") {
     if (!isEternalGateDeployed()) {
       showToast("Gate Eternal non posée — utilise un CPU depuis le panneau Galaxy Gate", 1.8);
       return false;
     }
+    try {
+      const rst = resetEternalGateWaveProgress();
+      if (rst.ok) account.user = rst.user;
+    } catch {}
     renderGalaxyGateWindow("Eternal activée");
     try { sessionStorage.setItem("orbit_gate_jump", "1"); } catch {}
   }
@@ -30298,6 +30309,23 @@ if ((e.type === "npc_Cubikon" || e.cubikonMinions) && e.cubikonMinions?.fleeOnDe
         }
       }
     } catch {}
+    // ✅ progression intra-vague Eternal : comme les GG (reprise refresh
+    // sans respawn des NPC déjà tués). Seuls les types du plan comptent.
+    try {
+      const killedEternalId = String(window.__CURRENT_MAP_ID__ || "").toLowerCase();
+      if (rules?.mode === "gate" && killedEternalId === "eternal" && !betweenWaves && e._gateWave === wave) {
+        const planTypes = currentWavePlan?.spawns;
+        if (Array.isArray(planTypes)) {
+          for (const spawn of planTypes) {
+            if (spawn && String(spawn.type) === String(e.type)) {
+              const recorded = recordEternalGateWaveKill(e.type, wave);
+              if (recorded.ok) account.user = recorded.user;
+              break;
+            }
+          }
+        }
+      }
+    } catch {}
 
     // Le dernier kill est recompense et la vague est enregistree avant la
     // cloture : le bonus final et le Cubikon forment une seule transaction.
@@ -32550,6 +32578,19 @@ function beginWave() {
       if (progress && Number(progress.wave) === wave) spawns = remainingWaveSpawns(spawns, progress);
     }
   } catch {}
+  try {
+    // ✅ Gate Eternal : mémorise la vague (reprise refresh) et retire les
+    // NPC déjà tués de la vague en cours (comme les GG classiques).
+    if (rules?.mode === "gate" && gateId === "eternal") {
+      const eu = getCurrentUserFull();
+      if (Math.max(1, Math.floor(Number(eu?.eternalGate?.wave) || 1)) !== wave) {
+        const sw = saveEternalGateWave(wave);
+        if (sw.ok) account.user = sw.user;
+      }
+      const wk = normalizeEternalGateState((account.user || getCurrentUserFull())?.eternalGate).waveKills;
+      if (wk && Number(wk.wave) === wave) spawns = remainingWaveSpawns(spawns, wk);
+    }
+  } catch {}
   waveSpawns.load(spawns);
   betweenWaves = false;
   waveStartCountdown = rules?.mode === "gate" ? GATE_WAVE_COUNTDOWN_SECONDS : 0;
@@ -32592,9 +32633,11 @@ function onWaveCleared() {
       // ✅ vague Eternal terminée : compteur total persisté aussitôt
       // (le classement se met à jour à chaque vague). Objet frais
       // (pas account.user, potentiellement périmé en multi).
+      // Synchro serveur immédiate : un refresh juste après ne doit rien perdre.
       try {
         const cleared = recordEternalGateWaveCleared();
         if (cleared.ok) account.user = cleared.user;
+        if (netActive()) flushNetUser().catch(() => {});
       } catch {}
     }
     const nextPlan = getWavePlan(wave + 1);
@@ -32612,6 +32655,7 @@ function onWaveCleared() {
       try {
         const done = recordEternalGateLoopDone();
         if (done.ok) account.user = done.user;
+        if (netActive()) flushNetUser().catch(() => {});
       } catch {}
       player.x = clamp(WORLD.w / 2, 80, WORLD.w - 80);
       player.y = clamp(WORLD.h / 2, 80, WORLD.h - 80);
@@ -34220,7 +34264,10 @@ jumpBaseFade: 1,
   const activeGateId = String(window.__CURRENT_MAP_ID__ || "").toLowerCase();
   const savedGateWave = (rules?.mode === "gate" && account.user?.galaxyGates?.active === activeGateId)
     ? account.user.galaxyGates.activeWave
-    : 1;
+    // ✅ Eternal : reprend la vague sauvée (refresh), comme les GG classiques.
+    : (rules?.mode === "gate" && activeGateId === "eternal")
+      ? Math.max(1, Math.floor(Number(getCurrentUserFull()?.eternalGate?.wave) || 1))
+      : 1;
   wave = Math.max(1, Math.floor(Number(savedGateWave) || 1));
   if (!isZoneMap) beginWave();
 

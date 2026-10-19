@@ -2359,6 +2359,16 @@ export function consumeCurrentUserGalaxyGate(gateId) {
 // Boucles : loopsDone = cycles de 11 vagues terminés (multiplicateur ×N).
 export function normalizeEternalGateState(raw) {
   const source = raw && typeof raw === "object" ? raw : {};
+  const wk = source.waveKills && typeof source.waveKills === "object" ? source.waveKills : null;
+  const byType = {};
+  if (wk && typeof wk.byType === "object") {
+    for (const [type, count] of Object.entries(wk.byType)) {
+      if (typeof type === "string" && type.startsWith("npc_") && type.length <= 128
+        && Number.isFinite(Number(count)) && Number(count) > 0) {
+        byType[type] = Math.floor(Number(count));
+      }
+    }
+  }
   return {
     deployed: source.deployed === true,
     loopsDone: Math.max(0, Math.floor(Number(source.loopsDone) || 0)),
@@ -2367,6 +2377,12 @@ export function normalizeEternalGateState(raw) {
     // ✅ record persistant : meilleur total, jamais réinitialisé (que la mort).
     // Remplacé uniquement si le joueur fait mieux.
     bestWaves: Math.max(0, Math.floor(Number(source.bestWaves) || 0)),
+    // ✅ vague en cours + kills intra-vague (reprise refresh comme les GG).
+    wave: Math.max(1, Math.floor(Number(source.wave) || 1)),
+    waveKills: wk && Number.isFinite(Number(wk.wave)) && Number(wk.wave) >= 1
+      ? { wave: Math.min(32, Math.max(1, Math.floor(Number(wk.wave)))),
+          killed: Math.max(0, Math.floor(Number(wk.killed) || 0)), byType }
+      : { wave: 0, killed: 0 },
   };
 }
 
@@ -2386,9 +2402,12 @@ export function deployEternalGateWithCpu(currentUser = null) {
   const stock = Math.max(0, Math.floor(Number(u.inventory.resources.eternal_cpu) || 0));
   if (stock < 1) return { ok: false, error: "Aucun CPU Eternal Classique en stock.", user: u };
   u.inventory.resources.eternal_cpu = stock - 1;
-  // ✅ le record survit aux nouvelles poses (seule la progression du run repart).
+  // ✅ la repose ne remet JAMAIS les compteurs à zéro (seule la mort efface).
+  // Ça protège d'une repose après désynchro (le run n'est pas perdu).
   const prevDeploy = normalizeEternalGateState(u.eternalGate);
-  u.eternalGate = { deployed: true, loopsDone: 0, wavesDone: 0, bestWaves: prevDeploy.bestWaves };
+  u.eternalGate = { deployed: true, loopsDone: prevDeploy.loopsDone,
+    wavesDone: prevDeploy.wavesDone, bestWaves: prevDeploy.bestWaves,
+    wave: 1, waveKills: { wave: 0, killed: 0 } };
   ensureUserShape(u);
   saveUser(u);
   return { ok: true, user: u };
@@ -2400,9 +2419,10 @@ export function recordEternalGateLoopDone(currentUser = null) {
   const u = currentUser || getCurrentUserForMutation();
   if (!u) return { ok: false, error: "Aucun utilisateur connecté." };
   const previous = normalizeEternalGateState(u.eternalGate);
-  // ✅ conserve vagues + record (sinon le compteur retomberait à 1).
+  // ✅ conserve vague + kills + record (sinon les compteurs retomberaient).
   u.eternalGate = { deployed: previous.deployed, loopsDone: previous.loopsDone + 1,
-    wavesDone: previous.wavesDone, bestWaves: previous.bestWaves };
+    wavesDone: previous.wavesDone, bestWaves: previous.bestWaves,
+    wave: previous.wave, waveKills: previous.waveKills };
   ensureUserShape(u);
   saveUser(u);
   return { ok: true, user: u, loopsDone: previous.loopsDone + 1 };
@@ -2416,10 +2436,55 @@ export function recordEternalGateWaveCleared(currentUser = null) {
   const previous = normalizeEternalGateState(u.eternalGate);
   const wavesDone = previous.wavesDone + 1;
   u.eternalGate = { deployed: previous.deployed, loopsDone: previous.loopsDone,
-    wavesDone, bestWaves: Math.max(previous.bestWaves, wavesDone) };
+    wavesDone, bestWaves: Math.max(previous.bestWaves, wavesDone),
+    wave: previous.wave, waveKills: previous.waveKills };
   ensureUserShape(u);
   saveUser(u);
   return { ok: true, user: u, wavesDone };
+}
+
+// ✅ Entrée dans la gate (portail X-1) : la vague repart de 1.
+// Le refresh (boot) ne passe pas par ici : il reprend la vague sauvée.
+export function resetEternalGateWaveProgress(currentUser = null) {
+  const u = currentUser || getCurrentUserForMutation();
+  if (!u) return { ok: false, error: "Aucun utilisateur connecté." };
+  const st = normalizeEternalGateState(u.eternalGate);
+  u.eternalGate = { ...st, wave: 1, waveKills: { wave: 0, killed: 0 } };
+  ensureUserShape(u);
+  saveUser(u);
+  return { ok: true, user: u };
+}
+
+// ✅ Mémorise la vague en cours (reprise refresh comme les GG).
+export function saveEternalGateWave(wave, currentUser = null) {
+  const u = currentUser || getCurrentUserForMutation();
+  if (!u) return { ok: false, error: "Aucun utilisateur connecté." };
+  const st = normalizeEternalGateState(u.eternalGate);
+  const w = Math.max(1, Math.floor(Number(wave) || 1));
+  u.eternalGate = { ...st, wave: w,
+    waveKills: (st.waveKills && Number(st.waveKills.wave) === w) ? st.waveKills : { wave: w, killed: 0 } };
+  ensureUserShape(u);
+  saveUser(u);
+  return { ok: true, user: u };
+}
+
+// ✅ Incrémente les kills intra-vague (NPC du plan éliminé), comme les GG.
+export function recordEternalGateWaveKill(npcType, wave, currentUser = null) {
+  const u = currentUser || getCurrentUserForMutation();
+  if (!u) return { ok: false, error: "Aucun utilisateur connecté." };
+  const st = normalizeEternalGateState(u.eternalGate);
+  const w = Math.max(1, Math.floor(Number(wave) || 1));
+  const prev = st.waveKills;
+  const entry = (prev && Number(prev.wave) === w)
+    ? { wave: w, killed: Math.max(0, Math.floor(Number(prev.killed) || 0)) + 1, byType: { ...(prev.byType || {}) } }
+    : { wave: w, killed: 1, byType: {} };
+  if (typeof npcType === "string" && npcType.startsWith("npc_") && npcType.length <= 128) {
+    entry.byType[npcType] = (Number(entry.byType[npcType]) || 0) + 1;
+  }
+  u.eternalGate = { ...st, waveKills: entry };
+  ensureUserShape(u);
+  saveUser(u);
+  return { ok: true, user: u, ...entry };
 }
 
 // ✅ Mort dans la gate : le portail ET la progression disparaissent.
@@ -2428,7 +2493,8 @@ export function clearEternalGateRun(currentUser = null) {
   if (!u) return { ok: false, error: "Aucun utilisateur connecté." };
   // ✅ mort : portail + progression effacés, RECORD CONSERVÉ.
   const previous = normalizeEternalGateState(u.eternalGate);
-  u.eternalGate = { deployed: false, loopsDone: 0, wavesDone: 0, bestWaves: previous.bestWaves };
+  u.eternalGate = { deployed: false, loopsDone: 0, wavesDone: 0, bestWaves: previous.bestWaves,
+    wave: 1, waveKills: { wave: 0, killed: 0 } };
   ensureUserShape(u);
   saveUser(u);
   return { ok: true, user: u };
