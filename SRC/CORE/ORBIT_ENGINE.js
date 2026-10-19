@@ -44410,6 +44410,9 @@ async function startGame() {
     }
     setDepartStatus("Connexion au serveur…");
     try {
+      // Au boot direct dans une Gate, le tout premier hello doit deja porter
+      // instance:true. La boucle de jeu ne tourne pas encore a ce stade.
+      setNetInstanceMode(!isZoneMap);
       ensureNetplayConnection();
     } catch {}
     const linked = await waitNetLink(15000);

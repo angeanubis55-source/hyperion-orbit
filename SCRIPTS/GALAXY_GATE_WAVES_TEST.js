@@ -96,11 +96,23 @@ test('Kronos : migration conserve le total acquis et normalization preserve les 
 
 const engine = readFileSync(new URL("../SRC/CORE/ORBIT_ENGINE.js", import.meta.url), "utf8").replace(/\r\n/g, "\n");
 const mainSource = readFileSync(new URL("../SRC/MAIN.js", import.meta.url), "utf8").replace(/\r\n/g, "\n");
+const multiServerSource = readFileSync(new URL("../SCRIPTS/MULTI_SERVER.js", import.meta.url), "utf8").replace(/\r\n/g, "\n");
 
 test("Eternal : le boot restaure l'instance et le garde lit bien la map du hangar", () => {
   assert.match(mainSource, /eternalGate\?\.inRun === true[\s\S]*mapName = "eternal"/);
   assert.match(engine, /String\(hs\?\.map \|\| ""\)\.toLowerCase\(\) === "eternal"/);
   assert.doesNotMatch(engine, /String\(hs\?\.mapId \|\| ""\)\.toLowerCase\(\) === "eternal"/);
+});
+
+test("Eternal : une reprise apres redemarrage est annoncee et autorisee comme instance", () => {
+  const start = engine.indexOf("async function startGame()");
+  const wait = engine.indexOf("const linked = await waitNetLink", start);
+  const instance = engine.indexOf("setNetInstanceMode(!isZoneMap)", start);
+  assert.ok(start >= 0 && instance > start && instance < wait,
+    "instance:true doit etre configure avant le premier hello");
+  assert.match(multiServerSource,
+    /nextMap === "eternal"[\s\S]*eternalGate\?\.deployed === true[\s\S]*eternalGate\?\.inRun === true/);
+  assert.match(multiServerSource, /\|\| eternalRun\)\) arrival = \{ instance: true \}/);
 });
 test('Kronos : recompenses de base et ressources proportionnelles aux 75 millions de credits', () => {
   const reward = GALAXY_GATE_DEFINITIONS.kronos.completion;

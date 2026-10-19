@@ -2332,8 +2332,13 @@ wss.on("connection", (ws) => {
       arrival = mapTransition(serverMaps, state, mapId, nextMap, state._account?.faction, now);
       // Reprise d'une instance sauvegardée : son économie reste locale.
       const savedMap = state._account?.hangars?.find(h => h?.active)?.lastMap;
-      if (!arrival && !state._joined && instance && String(savedMap).toLowerCase() === nextMap
-        && ["alpha", "beta", "gamma", "delta", "epsilon", "zeta", "kappa", "lambda", "kronos", "awakened", "qz"].includes(nextMap)) arrival = { instance: true };
+      const eternalRun = nextMap === "eternal"
+        && state._account?.eternalGate?.deployed === true
+        && state._account?.eternalGate?.inRun === true;
+      if (!arrival && !state._joined && instance
+        && ((String(savedMap).toLowerCase() === nextMap
+          && ["alpha", "beta", "gamma", "delta", "epsilon", "zeta", "kappa", "lambda", "kronos", "awakened", "qz"].includes(nextMap))
+          || eternalRun)) arrival = { instance: true };
     }
     if (!arrival || instance !== (arrival.instance === true)) return false;
     if (instance) {
