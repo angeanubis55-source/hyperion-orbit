@@ -7973,14 +7973,14 @@ html body #profileOverlay .profileHeaderTop .profileTitle, html body #profileOve
   position:fixed !important;
   top:12px !important;
   left:12px !important;
-  right:auto !important;
+  right:12px !important;
   bottom:auto !important;
   z-index:96000 !important;
   display:flex !important;
   flex-direction:row !important;
   flex-wrap:nowrap !important;
   align-items:center !important;
-  justify-content:flex-start !important;
+  justify-content:center !important;
   gap:2px !important;
   padding:6px !important;
   width:auto !important;
@@ -7995,11 +7995,19 @@ html body #profileOverlay .profileHeaderTop .profileTitle, html body #profileOve
   box-shadow:none !important;
   pointer-events:auto !important;
 }
-/* Écrans étroits : retour au passage à la ligne (comme avant). */
+/* Écrans étroits : une seule ligne avec défilement horizontal (pas d'enrobage). */
 @media (max-width:1150px) {
   #gameWindowDock {
-    flex-wrap:wrap !important;
+    flex-wrap:nowrap !important;
+    overflow-x:auto !important;
   }
+  /* Le libellé sous le bouton serait rogné par le défilement : masqué en étroit. */
+  #gameWindowDock .gameDockIcon::after {
+    display:none !important;
+  }
+}
+#gameWindowDock::-webkit-scrollbar {
+  display:none !important;
 }
 #gameWindowDock:empty {
   display:none !important;
