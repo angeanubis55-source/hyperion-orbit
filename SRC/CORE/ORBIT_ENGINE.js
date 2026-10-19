@@ -16000,8 +16000,8 @@ function renderEternalGatePanel(user, state) {
     const waveLabel = eternalWaveCell.querySelector("span");
     if (waveLabel) waveLabel.textContent = "Cycle";
   }
-  // ✅ Vague : boucles de 11 vagues terminées (0 au départ).
-  ui.ggWave.textContent = `${Math.max(0, Math.floor(Number(user?.eternalGate?.loopsDone) || 0))}`;
+  // ✅ Cycle : numéro du cycle en cours (1 au départ, pas de Cycle 0).
+  ui.ggWave.textContent = `${Math.max(0, Math.floor(Number(user?.eternalGate?.loopsDone) || 0)) + 1}`;
   ui.ggMultiplier.textContent = "x1";
   if (ui.ggMultiplierBtn) {
     ui.ggMultiplierBtn.disabled = true;
@@ -28190,10 +28190,11 @@ function makeEnemy(type, x, y) {
     factoryEntity.exp = Math.max(0, Math.floor(Number(baseRewards?.exp ?? 0) * eternalMult));
     factoryEntity.honor = Math.max(0, Math.floor(Number(baseRewards?.honor ?? 0) * eternalMult));
   }
-  // ✅ Gate Eternal : étoile + numéro dynamiques (★ vague × boucle : ★10, ★20, ★30...).
+  // ✅ Gate Eternal : compteur continu (11 vagues + 1 interlude par boucle :
+  // boucle 1 = ★1-11, boucle 2 = ★13-23, etc.).
   if (String(window.__CURRENT_MAP_ID__ || "").toLowerCase() === "eternal") {
     const baseName = String(NPC_TYPES[type]?.name || type).replace(/\s*★\s*\d+\s*$/, "");
-    factoryEntity.name = `${baseName} ★ ${wave * eternalMult}`;
+    factoryEntity.name = `${baseName} ★ ${wave + (eternalMult - 1) * 12}`;
   }
   enemiesById.set(factoryEntity.id, factoryEntity);
   const encounter = rules?.bossEncounter;
@@ -32584,8 +32585,20 @@ function onWaveCleared() {
   if (rules?.autoChainWaves && !mapSwitchInProgress && !player.dead) {
     const nextPlan = getWavePlan(wave + 1);
     if (nextPlan && Array.isArray(nextPlan.spawns) && nextPlan.spawns.length) {
+      // ✅ pas de recentrage entre les vagues : ça enchaîne sur place.
       betweenWaves = false;
       wave++;
+      beginWave();
+      return;
+    }
+    // ✅ dernière vague Eternal : boucle bouclée -> compteur de boucles
+    // persisté aussitôt, recentrage au centre, puis portails de choix
+    // (continuer = boucle suivante ×N, retour = base, gate conservée).
+    if (String(window.__CURRENT_MAP_ID__ || "").toLowerCase() === "eternal" && wave > 1) {
+      try {
+        const done = recordEternalGateLoopDone(account.user);
+        if (done.ok) account.user = done.user;
+      } catch {}
       player.x = clamp(WORLD.w / 2, 80, WORLD.w - 80);
       player.y = clamp(WORLD.h / 2, 80, WORLD.h - 80);
       player.vx = 0;
@@ -32593,17 +32606,6 @@ function onWaveCleared() {
       moveTarget.active = false;
       camera.x = player.x;
       camera.y = player.y;
-      beginWave();
-      return;
-    }
-    // ✅ dernière vague Eternal : boucle bouclée -> compteur de boucles
-    // persisté aussitôt, puis portails de choix (continuer = boucle suivante
-    // ×N, retour = base, gate conservée dans les deux cas).
-    if (String(window.__CURRENT_MAP_ID__ || "").toLowerCase() === "eternal" && wave > 1) {
-      try {
-        const done = recordEternalGateLoopDone(account.user);
-        if (done.ok) account.user = done.user;
-      } catch {}
     }
   }
   betweenWaves = true;
@@ -38148,13 +38150,16 @@ function tickGatePortalJumps(dt) {
     // ✅ portail "continuer" : la vague suivante démarre pile au centre de
     // la carte (même règle que l'entrée en GG). Stoppe le déplacement en
     // cours et recale la caméra pour éviter un panoramique.
-    player.x = clamp(WORLD.w / 2, 80, WORLD.w - 80);
-    player.y = clamp(WORLD.h / 2, 80, WORLD.h - 80);
-    player.vx = 0;
-    player.vy = 0;
-    moveTarget.active = false;
-    camera.x = player.x;
-    camera.y = player.y;
+    // Eternal exclu : seul l'après-Lordakium recentre (voir onWaveCleared).
+    if (currentGateId !== "eternal") {
+      player.x = clamp(WORLD.w / 2, 80, WORLD.w - 80);
+      player.y = clamp(WORLD.h / 2, 80, WORLD.h - 80);
+      player.vx = 0;
+      player.vy = 0;
+      moveTarget.active = false;
+      camera.x = player.x;
+      camera.y = player.y;
+    }
     // ✅ fin du saut vers la vague suivante : mêmes sons qu'une arrivée portail.
     SFX.stop("swJump");
     SFX.stop("swReady");

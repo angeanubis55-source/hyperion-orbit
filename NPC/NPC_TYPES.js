@@ -655,7 +655,7 @@ export const NPC_TYPES = {
     passiveNative: true,
     spriteSpeed: 20,
     bulletSprite: { src: "COMBAT/MUNITIONS/LORDAKIUM.png", w: 97, h: 37, glow: true, invert: true },
-    r: 18, hp: 300000, shield: 200000, speed: 230, bulletDmg: 3000, bulletSpeed: 4500, shootRange: 690,
+    r: 18, hp: 300000, shield: 200000, speed: 230, bulletDmg: 3000, bulletSpeed: 4500, shootRange: 700,
   },
   npc_Mordon_eternal: {
     name: "-=[ Mordon ]=- ★ 3",
@@ -718,7 +718,7 @@ export const NPC_TYPES = {
     passiveNative: false,
     spriteSpeed: 20,
     bulletSprite: { src: "COMBAT/MUNITIONS/KRISTALLON.png", w: 46, h: 16, glow: true, invert: true },
-    r: 18, hp: 400000, shield: 300000, speed: 200, bulletDmg: 4500, bulletSpeed: 4500, shootRange: 690,
+    r: 18, hp: 400000, shield: 300000, speed: 200, bulletDmg: 4500, bulletSpeed: 4500, shootRange: 700,
   },
   npc_Protegit_eternal: {
     name: "-=[ Protegit ]=- ★ 10",
