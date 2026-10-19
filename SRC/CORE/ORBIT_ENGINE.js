@@ -15994,7 +15994,12 @@ function renderEternalGatePanel(user, state) {
   const eternalInRun = String(window.__CURRENT_MAP_ID__ || "").toLowerCase() === ETERNAL_GATE_ID;
   ui.ggParts.textContent = (eternalInRun || isEternalGateDeployed(user)) ? "1 / 1" : "0 / 1";
   const eternalWaveCell = ui.ggWave?.closest("div");
-  if (eternalWaveCell) eternalWaveCell.style.display = "";
+  if (eternalWaveCell) {
+    eternalWaveCell.style.display = "";
+    // ✅ "Cycle" au lieu de "Vague" (compteur de boucles terminées).
+    const waveLabel = eternalWaveCell.querySelector("span");
+    if (waveLabel) waveLabel.textContent = "Cycle";
+  }
   // ✅ Vague : boucles de 11 vagues terminées (0 au départ).
   ui.ggWave.textContent = `${Math.max(0, Math.floor(Number(user?.eternalGate?.loopsDone) || 0))}`;
   ui.ggMultiplier.textContent = "x1";
@@ -16128,7 +16133,11 @@ function renderGalaxyGateWindow(message = "") {
     if (partsLabel) partsLabel.textContent = "Pièces";
   }
   const classicWaveCell = ui.ggWave?.closest("div");
-  if (classicWaveCell) classicWaveCell.style.display = "";
+  if (classicWaveCell) {
+    classicWaveCell.style.display = "";
+    const waveLabel = classicWaveCell.querySelector("span");
+    if (waveLabel) waveLabel.textContent = "Vague";
+  }
   // ✅ plus de bouton "Préparer" : le placement sur la map est automatique.
   if (ui.ggDeployBtn) ui.ggDeployBtn.remove();
   ui.ggDeployBtn = null;
@@ -16552,7 +16561,7 @@ const TRADE_BUTTON = {
 // 4-1..4-4 utilisent BATTLE/4-x, comme chaque map utilise son propre skin.
 function getPortalSpriteSet(ptl = null) {
   const gateId = String(window.__CURRENT_MAP_ID__ || rules?.mapLabel || "").toLowerCase();
-  const isGalaxyGate = ["alpha", "beta", "gamma", "delta", "epsilon", "zeta", "kappa", "lambda", "kronos", "awakened"].includes(gateId);
+  const isGalaxyGate = ["alpha", "beta", "gamma", "delta", "epsilon", "zeta", "kappa", "lambda", "kronos", "awakened", "eternal"].includes(gateId);
   const destination = isGalaxyGate && ptl === portal ? gateId
     : isGalaxyGate && ptl === gateReturnPortal
       ? getFactionHomeMap((account.user || getCurrentUserFull())?.faction)
@@ -16575,6 +16584,7 @@ function getPortalSpriteSet(ptl = null) {
       ...(!ptl?.sprites?.jumpFx && skin?.jumpFxPath ? { path: skin.jumpFxPath } : {}),
       // ✅ nombre/frames/taille/forcage propres au skin (ex. Kronos : 18/6 frames, tailles réelles).
       ...(!ptl?.sprites?.jumpFx && Number(skin?.jumpFxFrames) > 0 ? { frames: Math.floor(Number(skin.jumpFxFrames)) } : {}),
+      ...(!ptl?.sprites?.jumpFx && Number(skin?.jumpFxFps) > 0 ? { fps: Math.floor(Number(skin.jumpFxFps)) } : {}),
       ...(!ptl?.sprites?.jumpFx && Number(skin?.jumpFxW) > 0 ? { w: Math.floor(Number(skin?.jumpFxW)) } : {}),
       ...(!ptl?.sprites?.jumpFx && Number(skin?.jumpFxH) > 0 ? { h: Math.floor(Number(skin?.jumpFxH)) } : {}),
       ...(ptl?.sprites?.jumpFx || {}),
@@ -26654,6 +26664,9 @@ function initCollectableWorld(mapId) {
     }
   } catch {}
   const defs = [];
+  // ✅ types autorisés ici/maintenant (exclut les slots périmés : box
+  // retirées d'une map comme Bonus/Pumpkin en Eternal).
+  const allowedCollectableTypes = new Set(collectableDefsList().map(([t]) => String(t)));
   for (const [type, cfg] of collectableDefsList()) {
     const target = collectableTargetCount(cfg);
     if (target <= 0) continue;
@@ -26672,10 +26685,21 @@ function initCollectableWorld(mapId) {
   // sur de NOUVELLES positions aléatoires.
   const spawned = new Set();
   for (const slot of dueCollectableSlots(collectableStore, mapId, now)) {
+    if (!allowedCollectableTypes.has(String(slot?.type))) continue;
     try { respawnAmbientSlot(slot, mapId); spawned.add(String(slot.uid)); } catch {}
   }
   for (const slot of slots) {
+    if (!allowedCollectableTypes.has(String(slot?.type))) continue;
     if (slot && slot.alive !== false && !spawned.has(String(slot.uid))) pushAmbientCollectableInstance(slot, mapId);
+  }
+  // ✅ purge immédiate des instances déjà présentes d'un type retiré.
+  for (let i = collectables.length - 1; i >= 0; i--) {
+    const c = collectables[i];
+    if (!c || !c.slotUid || c.dropUid) continue;
+    if (String(c.map || mapId) !== String(mapId)) continue;
+    if (allowedCollectableTypes.has(String(c.type))) continue;
+    collectables.splice(i, 1);
+    try { indexCollectableRemoved(c); } catch {}
   }
   restoreCollectableDrops(mapId, now);
   persistCollectables();
@@ -27601,8 +27625,10 @@ function tickCollectables(dt) {
       }
       let spawned = 0;
       const spawnCap = Math.max(1, Number(COLLECTABLE_CFG.spawnBatch ?? 5));
+      const allowedTickTypes = new Set(collectableDefsList().map(([t]) => String(t)));
       // Respawn aléatoire des slots dus (nouvelle position à chaque fois).
       for (const slot of dueCollectableSlots(collectableStore, curMap, now)) {
+        if (!allowedTickTypes.has(String(slot?.type))) continue;
         if (spawned >= spawnCap) break;
         if (!slot || liveUids.has(String(slot.uid))) continue;
         respawnAmbientSlot(slot, curMap);
@@ -27611,6 +27637,7 @@ function tickCollectables(dt) {
       }
       // Filet de sécurité : slot vivant sans instance.
       for (const slot of listCollectableSlots(collectableStore, curMap)) {
+        if (!allowedTickTypes.has(String(slot?.type))) continue;
         if (!slot || slot.alive === false || liveUids.has(String(slot.uid))) continue;
         if (spawned >= spawnCap) break;
         pushAmbientCollectableInstance(slot, curMap);
@@ -28163,9 +28190,9 @@ function makeEnemy(type, x, y) {
     factoryEntity.exp = Math.max(0, Math.floor(Number(baseRewards?.exp ?? 0) * eternalMult));
     factoryEntity.honor = Math.max(0, Math.floor(Number(baseRewards?.honor ?? 0) * eternalMult));
   }
-  // ✅ Gate Eternal : nom de vague dynamique (★ vague × boucle : ★10, ★20, ★30...).
+  // ✅ Gate Eternal : étoile + numéro dynamiques (★ vague × boucle : ★10, ★20, ★30...).
   if (String(window.__CURRENT_MAP_ID__ || "").toLowerCase() === "eternal") {
-    const baseName = String(NPC_TYPES[type]?.name || type).replace(/\s*(?:Vague|★)\s*\d+\s*$/, "");
+    const baseName = String(NPC_TYPES[type]?.name || type).replace(/\s*★\s*\d+\s*$/, "");
     factoryEntity.name = `${baseName} ★ ${wave * eternalMult}`;
   }
   enemiesById.set(factoryEntity.id, factoryEntity);
@@ -42679,8 +42706,13 @@ function drawBgCover(img, alpha) {
 }
 
 function drawMapBackground() {
-  // getCachedImage déclenche le chargement si besoin : aucun flash noir
-  // prolongé quand on change de tranche (préchargé à l'entrée de toute façon).
+  // ✅ maps sans fond (ex. Gate Eternal) : espace noir pur, ni fond global
+  // ni fond Halloween/event. Reset du fondu pour une réapparition propre.
+  if (rules?.noBackground === true) {
+    bgCrossfade.from = null;
+    bgCrossfade.to = null;
+    return;
+  }
   const target = currentMapBackgroundSrc();
   const now = performance.now();
   // Nouveau fond prêt : fondu enchaîné (ex : Halloween qui tombe en direct).

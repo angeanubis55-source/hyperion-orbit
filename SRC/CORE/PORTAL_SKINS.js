@@ -126,6 +126,17 @@ const SPECIAL_SKINS = Object.freeze({
     jump: { src: "ASSETS/PIRATES_PORTAL/JUMP.png", w: 362, h: 387, yOff: 0, scale: 1, spinSpeed: 0, alpha: 1 },
     jumpFxPath: null,
   }),
+  // ✅ Gate Eternal (pas de spin) : même structure que les autres gates.
+  eternal: Object.freeze({
+    idle: { src: "ASSETS/ETERNAL_PORTAL/DESACTIVE.png", w: 320, h: 320, yOff: 0 },
+    open: { src: "ASSETS/ETERNAL_PORTAL/ACTIVE.png", w: 320, h: 320, yOff: 0 },
+    jump: { src: "ASSETS/ETERNAL_PORTAL/JUMP.png", w: 320, h: 320, yOff: 0, scale: 1, spinSpeed: 0, alpha: 1 },
+    jumpFxPath: "ASSETS/ETERNAL_PORTAL/JUMP_FX/",
+    jumpFxFrames: 78,
+    jumpFxFps: 40,
+    jumpFxW: 350,
+    jumpFxH: 350,
+  }),
 });
 
 // Destination utilisant le skin pirates : le portail vers 5-2.
@@ -184,6 +195,7 @@ export function getPortalSkinForMap(toMap) {
   if (lower === "lambda") return SPECIAL_SKINS.lambda;
   if (lower === "kronos") return SPECIAL_SKINS.kronos;
   if (lower === "awakened") return SPECIAL_SKINS.awakened;
+  if (lower === "eternal") return SPECIAL_SKINS.eternal;
   if (PIRATES_DESTINATIONS.includes(lower)) return SPECIAL_SKINS.pirates;
   // Portails par map : NORMAUX / BATTLE / BL / QZ.
   const dir = SKIN_DIR_BY_MAP.get(id);

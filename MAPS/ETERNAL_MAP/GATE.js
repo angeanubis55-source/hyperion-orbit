@@ -32,6 +32,8 @@ export function init() {
       mode: "gate",
       // ✅ vagues enchaînées automatiquement (pas de portails continuer/retour).
       autoChainWaves: true,
+      // ✅ pas de fond de map (espace noir), même pendant les events.
+      noBackground: true,
     },
   });
 }

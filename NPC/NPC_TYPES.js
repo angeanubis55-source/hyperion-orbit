@@ -4,7 +4,7 @@ import { HALLOWEEN_VARIANT_SPECS, buildHalloweenVariant, halloweenVariantKey } f
 export const NPC_TYPES = {
 
   npc_Streuner: {
-    name: "-=[ Streuner ]=-",
+    name: "-=[ Streuner ]=- ★ 1",
     sprite: { path: "NPC/NPC_SPRITES/STREUNER/", frames: 32, firstNumber: 1, ext: ".png", w: 109, h: 96 },
     playSprite: false,
     passiveNative: false,
@@ -31,7 +31,7 @@ export const NPC_TYPES = {
     r: 18, hp: 6400, shield: 3200, speed: 280, bulletDmg: 160, bulletSpeed: 4500, shootRange: 500,
   },
   npc_Lordakia: {
-    name: "-=[ Lordakia ]=-",
+    name: "-=[ Lordakia ]=- ★ 2",
     sprite: { path: "NPC/NPC_SPRITES/LORDAKIA/", frames: 32, firstNumber: 1, ext: ".png", w: 71, h: 64 },
     playSprite: true,
     passiveNative: false,
@@ -58,7 +58,7 @@ export const NPC_TYPES = {
     r: 18, hp: 16000, shield: 16000, speed: 360, bulletDmg: 640, bulletSpeed: 4500, shootRange: 500,
   },
   npc_Saimon: {
-    name: "-=[ Saimon ]=-",
+    name: "-=[ Saimon ]=- ★ 4",
     sprite: { path: "NPC/NPC_SPRITES/SAIMON/", frames: 32, firstNumber: 1, ext: ".png", w: 90, h: 80 },
     playSprite: false,
     passiveNative: false,
@@ -85,7 +85,7 @@ export const NPC_TYPES = {
     r: 18, hp: 48000, shield: 24000, speed: 360, bulletDmg: 1600, bulletSpeed: 4500, shootRange: 600,
   },
   npc_Mordon: {
-    name: "-=[ Mordon ]=-",
+    name: "-=[ Mordon ]=- ★ 3",
     sprite: { path: "NPC/NPC_SPRITES/MORDON/", frames: 16, firstNumber: 1, ext: ".png", w: 150, h: 120 },
     playSprite: true,
     passiveNative: false,
@@ -112,7 +112,7 @@ export const NPC_TYPES = {
     r: 18, hp: 160000, shield: 80000, speed: 165, bulletDmg: 3200, bulletSpeed: 4500, shootRange: 600,
   },
   npc_Sibelon: {
-    name: "-=[ Sibelon ]=-",
+    name: "-=[ Sibelon ]=- ★ 7",
     sprite: { path: "NPC/NPC_SPRITES/SIBELON/", frames: 32, firstNumber: 1, ext: ".png", w: 338, h: 300 },
     playSprite: false,
     passiveNative: false,
@@ -139,7 +139,7 @@ export const NPC_TYPES = {
     r: 18, hp: 1600000, shield: 1600000, speed: 140, bulletDmg: 20000, bulletSpeed: 4500, shootRange: 600,
   },
   npc_Devolarium: {
-    name: "-=[ Devolarium ]=-",
+    name: "-=[ Devolarium ]=- ★ 5",
     sprite: { path: "NPC/NPC_SPRITES/DEVOLARIUM/", frames: 32, firstNumber: 1, ext: ".png", w: 228, h: 228 },
     playSprite: false,
     passiveNative: false,
@@ -166,7 +166,7 @@ export const NPC_TYPES = {
     r: 18, hp: 800000, shield: 800000, speed: 240, bulletDmg: 9600, bulletSpeed: 4500, shootRange: 550,
   },
   npc_Sibelonit: {
-    name: "-=[ Sibelonit ]=-",
+    name: "-=[ Sibelonit ]=- ★ 8",
     sprite: { path: "NPC/NPC_SPRITES/SIBELONIT/", frames: 32, firstNumber: 1, ext: ".png", w: 90, h: 80 },
     playSprite: true,
     passiveNative: false,
@@ -193,7 +193,7 @@ export const NPC_TYPES = {
     r: 18, hp: 320000, shield: 320000, speed: 360, bulletDmg: 10000, bulletSpeed: 4500, shootRange: 500,
   },
   npc_Lordakium: {
-    name: "-=[ Lordakium ]=-",
+    name: "-=[ Lordakium ]=- ★ 11",
     sprite: { path: "NPC/NPC_SPRITES/LORDAKIUM/", frames: 32, firstNumber: 1, ext: ".png", w: 244, h: 218 },
     playSprite: true,
     passiveNative: true,
@@ -223,7 +223,7 @@ export const NPC_TYPES = {
     onKill: { spawn: [ { type: "npc_Uber_Lordakia", count: 5, radius: 120 } ] },
   },
   npc_Kristallin: {
-    name: "-=[ Kristallin ]=-",
+    name: "-=[ Kristallin ]=- ★ 6",
     sprite: { path: "NPC/NPC_SPRITES/KRISTALLIN/", frames: 83, firstNumber: 1, ext: ".png", w: 113, h: 113 },
     playSprite: true,
     passiveNative: false,
@@ -250,7 +250,7 @@ export const NPC_TYPES = {
     r: 18, hp: 400000, shield: 320000, speed: 360, bulletDmg: 12000, bulletSpeed: 4500, shootRange: 600,
   },
   npc_Kristallon: {
-    name: "-=[ Kristallon ]=-",
+    name: "-=[ Kristallon ]=- ★ 9",
     sprite: { path: "NPC/NPC_SPRITES/KRISTALLON/", frames: 83, firstNumber: 1, ext: ".png", w: 188, h: 188 },
     playSprite: true,
     passiveNative: true,
@@ -371,7 +371,7 @@ export const NPC_TYPES = {
     ai: "kamikaze", explodeOnTouch: true, explodeRadius: 220, explodeDmg: 1000, touchDmg: 0,
   },
   npc_Protegit: {
-    name: "-=[ Protegit ]=-",
+    name: "-=[ Protegit ]=- ★ 10",
     sprite: { path: "NPC/NPC_SPRITES/PROTEGIT/", frames: 32, firstNumber: 1, ext: ".png", w: 75, h: 66 },
     playSprite: false,
     passiveNative: false,
@@ -631,7 +631,7 @@ export const NPC_TYPES = {
   },
   // ✅ NPC old-school de la Gate Eternal (sprites OLD GAME).
   npc_Streuner_eternal: {
-    name: "---===[[ Streuner ]]===--- ★ 1",
+    name: "-=[ Streuner ]=- ★ 1",
     sprite: { path: "NPC/NPC_SPRITES/OLD_STREUNER/", frames: 32, firstNumber: 1, ext: ".png", w: 109, h: 95 },
     playSprite: false,
     passiveNative: false,
@@ -640,7 +640,7 @@ export const NPC_TYPES = {
     r: 18, hp: 800, shield: 400, speed: 300, bulletDmg: 20, bulletSpeed: 4500, shootRange: 500,
   },
   npc_Lordakia_eternal: {
-    name: "---===[[ Lordakia ]]===--- ★ 2",
+    name: "-=[ Lordakia ]=- ★ 2",
     sprite: { path: "NPC/NPC_SPRITES/OLD_LORDAKIA/", frames: 32, firstNumber: 1, ext: ".png", w: 84, h: 75 },
     playSprite: true,
     passiveNative: false,
@@ -649,7 +649,7 @@ export const NPC_TYPES = {
     r: 18, hp: 2000, shield: 2000, speed: 320, bulletDmg: 80, bulletSpeed: 4500, shootRange: 500,
   },
   npc_Lordakium_eternal: {
-    name: "---===[[ Lordakium ]]===--- ★ 11",
+    name: "-=[ Lordakium ]=- ★ 11",
     sprite: { path: "NPC/NPC_SPRITES/OLD_LORDAKIUM/", frames: 32, firstNumber: 1, ext: ".png", w: 256, h: 230 },
     playSprite: true,
     passiveNative: true,
@@ -658,7 +658,7 @@ export const NPC_TYPES = {
     r: 18, hp: 300000, shield: 200000, speed: 230, bulletDmg: 3000, bulletSpeed: 4500, shootRange: 690,
   },
   npc_Mordon_eternal: {
-    name: "---===[[ Mordon ]]===--- ★ 3",
+    name: "-=[ Mordon ]=- ★ 3",
     sprite: { path: "NPC/NPC_SPRITES/OLD_MORDON/", frames: 32, firstNumber: 1, ext: ".png", w: 130, h: 119 },
     playSprite: true,
     passiveNative: false,
@@ -667,7 +667,7 @@ export const NPC_TYPES = {
     r: 18, hp: 20000, shield: 10000, speed: 150, bulletDmg: 350, bulletSpeed: 4500, shootRange: 500,
   },
   npc_Saimon_eternal: {
-    name: "---===[[ Saimon ]]===--- ★ 4",
+    name: "-=[ Saimon ]=- ★ 4",
     sprite: { path: "NPC/NPC_SPRITES/OLD_SAIMON/", frames: 32, firstNumber: 1, ext: ".png", w: 91, h: 70 },
     playSprite: false,
     passiveNative: false,
@@ -676,7 +676,7 @@ export const NPC_TYPES = {
     r: 18, hp: 6000, shield: 3000, speed: 280, bulletDmg: 200, bulletSpeed: 4500, shootRange: 500,
   },
   npc_Devolarium_eternal: {
-    name: "---===[[ Devolarium ]]===--- ★ 5",
+    name: "-=[ Devolarium ]=- ★ 5",
     sprite: { path: "NPC/NPC_SPRITES/OLD_DEVOLARIUM/", frames: 32, firstNumber: 1, ext: ".png", w: 428, h: 374 },
     playSprite: false,
     passiveNative: false,
@@ -685,7 +685,7 @@ export const NPC_TYPES = {
     r: 18, hp: 100000, shield: 100000, speed: 140, bulletDmg: 1000, bulletSpeed: 4500, shootRange: 500,
   },
   npc_Kristallin_eternal: {
-    name: "---===[[ Kristallin ]]===--- ★ 6",
+    name: "-=[ Kristallin ]=- ★ 6",
     sprite: { path: "NPC/NPC_SPRITES/OLD_KRISTALLIN/", frames: 1, firstNumber: 1, ext: ".png", w: 82, h: 80 },
     playSprite: true,
     passiveNative: false,
@@ -694,7 +694,7 @@ export const NPC_TYPES = {
     r: 18, hp: 50000, shield: 40000, speed: 320, bulletDmg: 1000, bulletSpeed: 4500, shootRange: 500,
   },
   npc_Sibelon_eternal: {
-    name: "---===[[ Sibelon ]]===--- ★ 7",
+    name: "-=[ Sibelon ]=- ★ 7",
     sprite: { path: "NPC/NPC_SPRITES/OLD_SIBELON/", frames: 32, firstNumber: 1, ext: ".png", w: 490, h: 414 },
     playSprite: false,
     passiveNative: false,
@@ -703,7 +703,7 @@ export const NPC_TYPES = {
     r: 18, hp: 200000, shield: 200000, speed: 100, bulletDmg: 2500, bulletSpeed: 4500, shootRange: 500,
   },
   npc_Sibelonit_eternal: {
-    name: "---===[[ Sibelonit ]]===--- ★ 8",
+    name: "-=[ Sibelonit ]=- ★ 8",
     sprite: { path: "NPC/NPC_SPRITES/OLD_SIBELONIT/", frames: 10, firstNumber: 1, ext: ".png", w: 82, h: 61 },
     playSprite: true,
     passiveNative: false,
@@ -712,7 +712,7 @@ export const NPC_TYPES = {
     r: 18, hp: 40000, shield: 40000, speed: 320, bulletDmg: 800, bulletSpeed: 4500, shootRange: 500,
   },
   npc_Kristallon_eternal: {
-    name: "---===[[ Kristallon ]]===--- ★ 9",
+    name: "-=[ Kristallon ]=- ★ 9",
     sprite: { path: "NPC/NPC_SPRITES/OLD_KRISTALLON/", frames: 1, firstNumber: 1, ext: ".png", w: 256, h: 234 },
     playSprite: true,
     passiveNative: false,
@@ -721,7 +721,7 @@ export const NPC_TYPES = {
     r: 18, hp: 400000, shield: 300000, speed: 200, bulletDmg: 4500, bulletSpeed: 4500, shootRange: 690,
   },
   npc_Protegit_eternal: {
-    name: "---===[[ Protegit ]]===--- ★ 10",
+    name: "-=[ Protegit ]=- ★ 10",
     sprite: { path: "NPC/NPC_SPRITES/OLD_PROTEGIT/", frames: 32, firstNumber: 1, ext: ".png", w: 120, h: 120 },
     playSprite: false,
     passiveNative: false,
