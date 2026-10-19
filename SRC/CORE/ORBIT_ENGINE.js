@@ -64,6 +64,7 @@ import {
   resetEternalGateWaveProgress,
   saveEternalGateWave,
   recordEternalGateWaveKill,
+  leaveEternalGateRun,
   clearEternalGateRun,
   completeCurrentUserGalaxyGate,
   loseCurrentUserGalaxyGateLife,
@@ -9715,7 +9716,9 @@ const DEFAULT_GAME_SETTINGS = {
   smoothRender: true,
   drones: true,
   remoteDrones: true,
-  autoStart: false,
+  // Les nouveaux joueurs lancent directement la partie apres le chargement.
+  // Une valeur deja enregistree (true ou false) reste prioritaire.
+  autoStart: true,
   shipEffect: true,
   shipSmoke: true,
   npcEngineEffects: true,
@@ -17033,6 +17036,7 @@ function startZonePortalJump(ptl, entryConfirmed = false) {
     try {
       const rst = resetEternalGateWaveProgress();
       if (rst.ok) account.user = rst.user;
+      if (netActive()) flushNetUser().catch(() => {});
     } catch {}
     renderGalaxyGateWindow("Eternal activée");
     try { sessionStorage.setItem("orbit_gate_jump", "1"); } catch {}
@@ -30318,8 +30322,14 @@ if ((e.type === "npc_Cubikon" || e.cubikonMinions) && e.cubikonMinions?.fleeOnDe
         if (Array.isArray(planTypes)) {
           for (const spawn of planTypes) {
             if (spawn && String(spawn.type) === String(e.type)) {
-              const recorded = recordEternalGateWaveKill(e.type, wave);
-              if (recorded.ok) account.user = recorded.user;
+              // Conserve l'etat moteur courant (gains du kill inclus), puis
+              // pousse le checkpoint afin qu'un redemarrage serveur reprenne
+              // aussi exactement les NPC deja elimines.
+              const recorded = recordEternalGateWaveKill(e.type, wave, account.user);
+              if (recorded.ok) {
+                account.user = recorded.user;
+                if (netActive()) flushNetUser().catch(() => {});
+              }
               break;
             }
           }
@@ -38236,6 +38246,13 @@ function tickGatePortalJumps(dt) {
         account.user = saved.user;
         renderGalaxyGateWindow();
       }
+    }
+    if (gateId === "eternal") {
+      try {
+        const left = leaveEternalGateRun();
+        if (left.ok) account.user = left.user;
+        if (netActive()) flushNetUser().catch(() => {});
+      } catch {}
     }
     // ✅ retour base sans rechargement quand c'est possible (même pattern
     // que les portails de zone / téléportations), fallback = reload classique.
@@ -46589,7 +46606,8 @@ if (rules?.mode === "gate" && currentGateMapId === "eternal" && !isEternalGateDe
   let wasInsideEternal = false;
   try {
     const hs = getActiveHangarState();
-    wasInsideEternal = String(hs?.mapId || "").toLowerCase() === "eternal";
+    wasInsideEternal = String(hs?.map || "").toLowerCase() === "eternal"
+      || normalizeEternalGateState(cur?.eternalGate).inRun === true;
   } catch {}
   if (!wasInsideEternal) {
     const homeMap = getFactionHomeMap(cur.faction);

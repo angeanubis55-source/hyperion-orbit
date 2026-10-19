@@ -4,7 +4,7 @@ import vm from "node:vm";
 import { readFileSync } from "node:fs";
 import { getCurrentUserFull, buyItem, sellCurrentUserOre, setPetMode, updateCurrentUserProgress,
   loadSkylabFromShip, chargeShipUpgradesAutomatically, craftCurrentUserRecipe, completeCurrentUserGalaxyGate,
-  saveUser, saveHangarLoadout, saveCurrentUserDroneFits, getDroneFit } from "../SRC/CORE/ACCOUNT.js";
+  saveUser, saveHangarLoadout, saveCurrentUserDroneFits, getDroneFit, normalizeEternalGateState } from "../SRC/CORE/ACCOUNT.js";
 import { createDrone } from '../DRONE/DRONE_TYPES.js';
 import { GALAXY_GATE_DEFINITIONS, normalizeGalaxyGateState } from "../SRC/CORE/GALAXY_GATES.js";
 import { GALAXY_GATE_DRONE_DESIGN_DROPS } from '../SRC/CORE/GALAXY_GATES.js';
@@ -22,6 +22,20 @@ function engineFunction(name) {
   assert.ok(start >= 0 && end > start, name);
   return engine.slice(start, end + 1);
 }
+
+test("Eternal : le checkpoint de run et les kills par type survivent a la normalisation", () => {
+  const restored = normalizeEternalGateState({
+    deployed: true, inRun: true, loopsDone: 1, wave: 5,
+    waveKills: { wave: 5, killed: 7, byType: { npc_Mordon_eternal: 7 } },
+  });
+  assert.equal(restored.inRun, true);
+  assert.equal(restored.wave, 5);
+  assert.deepEqual(restored.waveKills, {
+    wave: 5, killed: 7, byType: { npc_Mordon_eternal: 7 },
+  });
+  assert.equal(normalizeEternalGateState({ deployed: true }).inRun, false,
+    "une gate seulement posee ne force pas l'entree au boot");
+});
 
 function session(t) {
   const original = { schemaVersion: 4, id: `mutation-test-${t.name}`, pseudo: "MutationTest", email: "mutation@example.test",

@@ -62,7 +62,12 @@ try {
 if (!mapName) {
   const state = getActiveHangarState();
 
-  if (state.map) {
+  // Le run Eternal est une instance persistante. Ce marqueur couvre aussi
+  // le cas ou lastMap n'a pas atteint le serveur avant son redemarrage.
+  if (getCurrentUserFull()?.eternalGate?.inRun === true) {
+    mapName = "eternal";
+    usedSavedMap = true;
+  } else if (state.map) {
     mapName = state.map;
     usedSavedMap = true;
   } else {
@@ -70,7 +75,7 @@ if (!mapName) {
   }
 } else if (!urlTokenOk) {
   const state = getActiveHangarState();
-  mapName = state.map || DEFAULT_MAP;
+  mapName = getCurrentUserFull()?.eternalGate?.inRun === true ? "eternal" : (state.map || DEFAULT_MAP);
   usedSavedMap = true;
   try {
     const cleanUrl = new URL(location.href);

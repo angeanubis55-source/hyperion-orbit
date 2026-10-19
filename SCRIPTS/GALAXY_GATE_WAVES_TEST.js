@@ -95,6 +95,13 @@ test('Kronos : migration conserve le total acquis et normalization preserve les 
 });
 
 const engine = readFileSync(new URL("../SRC/CORE/ORBIT_ENGINE.js", import.meta.url), "utf8").replace(/\r\n/g, "\n");
+const mainSource = readFileSync(new URL("../SRC/MAIN.js", import.meta.url), "utf8").replace(/\r\n/g, "\n");
+
+test("Eternal : le boot restaure l'instance et le garde lit bien la map du hangar", () => {
+  assert.match(mainSource, /eternalGate\?\.inRun === true[\s\S]*mapName = "eternal"/);
+  assert.match(engine, /String\(hs\?\.map \|\| ""\)\.toLowerCase\(\) === "eternal"/);
+  assert.doesNotMatch(engine, /String\(hs\?\.mapId \|\| ""\)\.toLowerCase\(\) === "eternal"/);
+});
 test('Kronos : recompenses de base et ressources proportionnelles aux 75 millions de credits', () => {
   const reward = GALAXY_GATE_DEFINITIONS.kronos.completion;
   assert.equal(reward.credits, 75000000);
