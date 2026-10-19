@@ -28401,6 +28401,7 @@ const petTargetProxy = {
   get x() { return petState.x; },
   get y() { return petState.y; },
   get hp() { return Number(account.user?.pet?.hp) || 0; },
+  set hp(v) { const pet = account.user?.pet; if (pet) pet.hp = Math.max(0, Number(v) || 0); },
   get hpMax() { return petMaxHpWithHeat(account.user?.pet); },
   get shMax() { return petShieldMaxForHud(account.user?.pet, account.user); },
   get sh() {
@@ -28409,6 +28410,7 @@ const petTargetProxy = {
     const max = petShieldMaxForHud(pet, account.user);
     return pet.sh != null && Number.isFinite(Number(pet.sh)) ? Number(pet.sh) : max;
   },
+  set sh(v) { const pet = account.user?.pet; if (pet) pet.sh = Math.max(0, Number(v) || 0); },
 };
 
 function petLockValid() {
@@ -28720,6 +28722,25 @@ function drainShieldFromEnemy(e, amount, recipient = player, transferPct) {
   if (!e || e.hp <= 0 || e._bossEncounter?.invulnerable) {
     return { total: 0, sh: 0, hp: 0, bypass: 0, isCrit: false, rawDamage: 0, sab: true };
   }
+  // REX du joueur (proxy en lecture seule) : drain sur le vrai pet, jamais sur le proxy.
+  // Garde la SAB fonctionnelle sans CRASH (getter seul).
+  if (e.isPetTarget === true) {
+    const pet = account.user?.pet;
+    const shMax = petShieldMaxForHud(pet, account.user);
+    const avail = pet?.sh != null && Number.isFinite(Number(pet.sh)) ? Number(pet.sh) : shMax;
+    const rawPet = Math.max(0, Number(amount) || 0);
+    const drained = Math.min(Math.max(0, avail), rawPet);
+    if (pet && drained > 0) {
+      pet.sh = Math.max(0, avail - drained);
+      try { onPetTookDamage(); } catch {}
+      try { markProgressDirty(); } catch {}
+      const gain = drained * (Number(transferPct) >= 0 ? Number(transferPct) : SAB50.transferPct);
+      if (recipient?.hp > 0) {
+        recipient.sh = Math.min(recipient.shMax, recipient.sh + gain);
+      }
+    }
+    return { total: drained, sh: drained, hp: 0, bypass: 0, isCrit: false, rawDamage: drained, sab: true };
+  }
   // Bots JPC : même protection ZNA que les joueurs — pas de vol de bouclier à l'abri.
   if (e.isJpcBot === true) {
     try {
@@ -28908,6 +28929,11 @@ function jpcPreyClaimedByLiveBot(e) {
 
 function damageEnemy(e, dmg, shieldPenetration, crit, opts = {}) {
   if (!e || e.hp <= 0) return { total: 0, sh: 0, hp: 0, bypass: 0, isCrit: false, rawDamage: 0 };
+  // REX du joueur : dégâts via le vrai pet (proxy lecture seule).
+  if (e.isPetTarget === true) {
+    try { return damagePetFromPlayer(dmg); } catch {}
+    return { total: 0, sh: 0, hp: 0, bypass: 0, isCrit: false, rawDamage: 0 };
+  }
   // Bots JPC : bulle ISH (invulnérable, ne tire plus — comme un vrai joueur).
   if (e.isJpcBot === true && (e.ishT || 0) > 0) return emptyEnemyDamageResult();
   // Bots JPC : même protection ZNA que les joueurs (portail/base). Un bot à
