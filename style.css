@@ -7978,14 +7978,14 @@ html body #profileOverlay .profileHeaderTop .profileTitle, html body #profileOve
   z-index:96000 !important;
   display:flex !important;
   flex-direction:row !important;
-  flex-wrap:nowrap !important;
+  flex-wrap:wrap !important;
   align-items:center !important;
   justify-content:center !important;
   gap:2px !important;
   padding:6px !important;
   width:auto !important;
   height:auto !important;
-  max-width:calc(100vw - 24px) !important;
+  max-width:none !important;
   overflow:visible !important;
   scrollbar-width:none;
   -ms-overflow-style:none;
@@ -7995,13 +7995,14 @@ html body #profileOverlay .profileHeaderTop .profileTitle, html body #profileOve
   box-shadow:none !important;
   pointer-events:auto !important;
 }
-/* Écrans étroits : une seule ligne avec défilement horizontal (pas d'enrobage). */
-@media (max-width:1150px) {
+/* Écrans étroits : passage sur 2 lignes (pas de défilement).
+   Seuil au-dessus de la largeur réelle d'une rangée (~28 icônes × 44px). */
+@media (max-width:1300px) {
   #gameWindowDock {
-    flex-wrap:nowrap !important;
-    overflow-x:auto !important;
+    flex-wrap:wrap !important;
+    overflow-x:visible !important;
   }
-  /* Le libellé sous le bouton serait rogné par le défilement : masqué en étroit. */
+  /* Le libellé sous le bouton chevaucherait la 2e ligne : masqué en étroit. */
   #gameWindowDock .gameDockIcon::after {
     display:none !important;
   }
@@ -20187,22 +20188,28 @@ input[type=number] {
 }
 #gameWindowDock .dockLayoutBtn {
   order:9999 !important;
-  align-self:flex-end !important;
+  align-self:center !important;
   flex:0 0 auto !important;
-  width:24px !important;
-  height:24px !important;
-  min-width:24px !important;
+  width:42px !important;
+  height:42px !important;
+  min-width:42px !important;
   padding:0 !important;
+  box-sizing:border-box !important;
   display:grid !important;
   place-items:center !important;
-  border:1px solid rgba(124,240,255,.30) !important;
-  border-radius:6px !important;
-  background:rgba(3,8,20,.55) !important;
+  border:1px solid rgba(124,240,255,.34) !important;
+  border-radius:8px !important;
+  background:
+    radial-gradient(circle at 30% 20%, rgba(255,255,255,.18), transparent 34%),
+    linear-gradient(135deg, rgba(0,217,255,.16), rgba(4,9,24,.92)) !important;
+  box-shadow:
+    0 10px 22px rgba(0,0,0,.42),
+    0 0 14px rgba(0,217,255,.10) !important;
   cursor:pointer !important;
 }
 #gameWindowDock .dockLayoutBtn svg {
-  width:14px !important;
-  height:14px !important;
+  width:22px !important;
+  height:22px !important;
   display:block !important;
   pointer-events:none !important;
 }
@@ -20210,27 +20217,32 @@ input[type=number] {
   border-color:rgba(124,240,255,.62) !important;
   box-shadow:0 0 12px rgba(0,217,255,.15) !important;
 }
-#gameWindowDock.mode-honey-row {
-  display:grid !important;
-  grid-template-columns:repeat(5,42px) !important;
-  justify-content:start !important;
-  align-content:start !important;
-  gap:2px !important;
+/* Dispositions du dock (bouton disposition) : départ = ligne centrée. */
+#gameWindowDock.mode-left {
+  justify-content:flex-start !important;
+  flex-wrap:wrap !important;
 }
-#gameWindowDock.mode-honey-col {
-  display:grid !important;
-  grid-template-rows:repeat(4,42px) !important;
-  grid-auto-flow:column !important;
-  justify-content:start !important;
-  align-content:start !important;
-  gap:2px !important;
+#gameWindowDock.mode-right {
+  justify-content:flex-end !important;
+  flex-wrap:wrap !important;
 }
-#gameWindowDock.mode-honey-row .dockLayoutBtn, #gameWindowDock.mode-honey-col .dockLayoutBtn {
-  place-self:center !important;
+#gameWindowDock.mode-left3 {
+  justify-content:flex-start !important;
+  flex-wrap:wrap !important;
+  align-content:flex-start !important;
+  left:12px !important;
+  right:auto !important;
+  width:460px !important;
+  max-width:calc(100vw - 24px) !important;
 }
-#gameWindowDock.mode-col {
-  flex-direction:column !important;
-  align-items:flex-start !important;
+#gameWindowDock.mode-right3 {
+  justify-content:flex-end !important;
+  flex-wrap:wrap !important;
+  align-content:flex-start !important;
+  left:auto !important;
+  right:12px !important;
+  width:460px !important;
+  max-width:calc(100vw - 24px) !important;
 }
 #fitOverlay #fitCard button {
   border:1px solid rgba(124,240,255,.38) !important;

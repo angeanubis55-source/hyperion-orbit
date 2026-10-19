@@ -1064,15 +1064,16 @@ restore(id) {
     }
   });
 
-  // Disposition du dock : ligne -> nid d'abeille ligne -> nid d'abeille
-  // colonne -> colonne -> ligne... Bouton SVG en bas à droite du dock,
-  // préférence persistée. Les boutons s'animent vers leur nouvelle place.
+  // Disposition du dock : ligne centrée (départ) -> ligne à gauche ->
+  // 3 lignes à gauche -> ligne à droite -> 3 lignes à droite -> départ...
+  // Bouton SVG en fin de dock, préférence persistée.
+  // Les boutons s'animent vers leur nouvelle place.
   (() => {
     const dock = document.getElementById("gameWindowDock");
     if (!dock) return;
     const KEY = "orbit_dock_layout";
-    const MODES = ["line", "honey-row", "honey-col", "col"];
-    const LABELS = { "line": "ligne", "honey-row": "nid d'abeille ligne", "honey-col": "nid d'abeille colonne", "col": "colonne" };
+    const MODES = ["center", "left", "left3", "right", "right3"];
+    const LABELS = { "center": "centrée", "left": "ligne à gauche", "left3": "3 lignes à gauche", "right": "ligne à droite", "right3": "3 lignes à droite" };
     const btn = document.createElement("button");
     btn.type = "button";
     btn.id = "btnDockLayout";
@@ -1080,33 +1081,14 @@ restore(id) {
     btn.setAttribute("aria-label", "Changer la disposition du dock");
     btn.innerHTML = '<svg viewBox="0 0 16 16" aria-hidden="true"><g fill="#9eeeff"><circle cx="3.5" cy="4" r="1.7"/><circle cx="8" cy="4" r="1.7"/><circle cx="12.5" cy="4" r="1.7"/><circle cx="5.75" cy="8.5" r="1.7"/><circle cx="10.25" cy="8.5" r="1.7"/><circle cx="3.5" cy="13" r="1.7"/><circle cx="8" cy="13" r="1.7"/><circle cx="12.5" cy="13" r="1.7"/></g></svg>';
     dock.appendChild(btn);
-    const kids = () => [...dock.children].filter((el) => !el.classList.contains("dockLayoutBtn") && el.getAttribute("aria-hidden") !== "true" && getComputedStyle(el).display !== "none");
-    const clearInline = (el) => { el.style.gridRow = ""; el.style.gridColumn = ""; el.style.placeSelf = ""; };
-    // Placement explicite : chaque bouton a sa case, aucun chevauchement.
-    // Le bouton de disposition suit comme une case normale, centré dedans.
-    const placeHoney = (flow) => {
-      const per = flow === "row" ? 4 : 3;
-      const put = (el, i, centered) => {
-        const a = Math.floor(i / per);
-        const b = (i % per) + (a % 2 === 1 ? 1 : 0);
-        if (flow === "row") { el.style.gridRow = String(a + 1); el.style.gridColumn = String(b + 1); }
-        else { el.style.gridColumn = String(a + 1); el.style.gridRow = String(b + 1); }
-        el.style.placeSelf = centered ? "center" : "";
-      };
-      const list = kids();
-      list.forEach((el, i) => put(el, i, false));
-      put(btn, list.length, true);
-    };
     const apply = (mode, animate) => {
       const all = [...dock.children];
       const first = new Map();
       if (animate) for (const el of all) { try { first.set(el, el.getBoundingClientRect()); } catch {} }
-      dock.classList.toggle("mode-honey-row", mode === "honey-row");
-      dock.classList.toggle("mode-honey-col", mode === "honey-col");
-      dock.classList.toggle("mode-col", mode === "col");
-      if (mode === "honey-row") placeHoney("row");
-      else if (mode === "honey-col") placeHoney("col");
-      else all.forEach(clearInline);
+      dock.classList.toggle("mode-left", mode === "left");
+      dock.classList.toggle("mode-left3", mode === "left3");
+      dock.classList.toggle("mode-right", mode === "right");
+      dock.classList.toggle("mode-right3", mode === "right3");
       try { localStorage.setItem(KEY, mode); } catch {}
       btn.title = `Disposition du dock : ${LABELS[mode] || mode}`;
       if (!animate) return;
@@ -1128,15 +1110,15 @@ restore(id) {
         setTimeout(() => { if (el._dockFlip === tk) { el.style.transition = ""; el.style.transform = ""; } }, 320);
       }
     };
-    let cur = "line";
-    try { cur = localStorage.getItem(KEY) || "line"; } catch {}
-    if (!MODES.includes(cur)) cur = "line";
+    let cur = "center";
+    try { cur = localStorage.getItem(KEY) || "center"; } catch {}
+    if (!MODES.includes(cur)) cur = "center";
     apply(cur, false);
     btn.addEventListener("click", () => {
       cur = MODES[(MODES.indexOf(cur) + 1) % MODES.length];
       apply(cur, true);
     });
     // Reset externe (bouton "Réinitialiser le dock" des paramètres).
-    window.resetDockLayout = () => { cur = "line"; apply(cur, true); };
+    window.resetDockLayout = () => { cur = "center"; apply(cur, true); };
   })();
 })();
