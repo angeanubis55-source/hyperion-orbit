@@ -512,6 +512,64 @@ export function adminListAccounts() {
   } catch { return []; }
 }
 
+// Remise en etat de secours sans perte d'inventaire ni de progression.
+export function adminDebugAccount(target) {
+  try {
+    initAccountDb();
+    const raw = String(target || "").trim();
+    if (!raw) return { ok: false, error: "Compte manquant." };
+    const accountId = raw.startsWith("u_") ? raw.slice(2) : raw;
+    const row = db.prepare("SELECT * FROM users WHERE id = ? OR pseudo_norm = ?").get(accountId, norm(raw));
+    if (!row) return { ok: false, error: "Compte introuvable." };
+    let data = {};
+    try { data = JSON.parse(row.data || "{}") || {}; } catch { data = {}; }
+    const faction = FACTIONS.has(norm(data.faction || row.faction)) ? norm(data.faction || row.faction) : "mmo";
+    const home = { mmo: { map: "1-1", x: 1500, y: 1500 }, eic: { map: "2-1", x: 9500, y: 1500 }, vru: { map: "3-1", x: 9500, y: 5500 } }[faction];
+    const starterId = "phoenix_bleu";
+    data.inventory ||= {};
+    data.inventory.ships = Array.isArray(data.inventory.ships) ? data.inventory.ships : [];
+    if (!data.inventory.ships.some(id => /^phoenix_?bleu$/i.test(String(id)))) data.inventory.ships.push(starterId);
+    data.hangars = Array.isArray(data.hangars) ? data.hangars.filter(h => h && typeof h === "object") : [];
+    let starter = data.hangars.find(h => /^phoenix_?bleu$/i.test(String(h.shipId || "")));
+    if (!starter) { starter = { id: `h_${starterId}_debug`, shipId: starterId }; data.hangars.push(starter); }
+    const emptyShipFit = () => ({ lasers: [], gens: [], extras: [], shipMods: [] });
+    for (const hangar of data.hangars) {
+      hangar.active = hangar === starter;
+      hangar.activeConfig = 1;
+      hangar.fits = { "1": emptyShipFit(), "2": emptyShipFit() };
+      hangar.fit = hangar.fits["1"];
+      hangar.modules = { speed: null, shield: null, laser: null, extras: [] };
+    }
+    Object.assign(starter, { shipId: starterId, lastMap: home.map, lastPos: { x: home.x, y: home.y }, lastHpPct: 1, lastShPct: 1 });
+    data.ship = starterId;
+    const emptyDroneFit = () => ({ equipment: [], ability: null });
+    data.drones ||= {};
+    data.drones.items = Array.isArray(data.drones.items) ? data.drones.items : [];
+    for (const drone of data.drones.items) {
+      drone.fitsByHangar = {};
+      for (const hangar of data.hangars) drone.fitsByHangar[String(hangar.id)] = { "1": emptyDroneFit(), "2": emptyDroneFit() };
+      drone.fits = drone.fitsByHangar[String(starter.id)];
+      drone.fit = drone.fits["1"];
+    }
+    const emptyPetFit = () => ({ lasers: [], generators: [], gears: [], protocols: [], ability: null });
+    if (data.pet && typeof data.pet === "object") {
+      data.pet.active = false;
+      data.pet.fitsByHangar = {};
+      for (const hangar of data.hangars) data.pet.fitsByHangar[String(hangar.id)] = { "1": emptyPetFit(), "2": emptyPetFit() };
+      data.pet.fits = data.pet.fitsByHangar[String(starter.id)];
+      data.pet.fit = data.pet.fits["1"];
+    }
+    if (data.eternalGate && typeof data.eternalGate === "object") data.eternalGate.inRun = false;
+    const now = Date.now();
+    const revision = Math.max(Math.floor(Number(data.revision) || 0), Number(row.revision) || 0) + 1;
+    data._adminWriteToken = randomBytes(12).toString("hex");
+    data.revision = revision;
+    data.updatedAt = now;
+    db.prepare("UPDATE users SET data = ?, revision = ?, updated_at = ? WHERE id = ?").run(JSON.stringify(data), revision, now, row.id);
+    return { ok: true, id: String(row.id), pid: `u_${String(row.id)}`, pseudo: String(row.pseudo || "Pilote").slice(0, 20), ship: starterId, map: home.map, revision };
+  } catch { return { ok: false, error: "Erreur serveur." }; }
+}
+
 // Admin (panneau /api/admin/reset-gg + /api/admin/give-gg) : retire/ajoute
 // la complétion d'une Galaxy Gate d'un compte par pseudo ("all" = toutes).
 // L'anneau doré apparaît/disparaît : le client adopte la version serveur à

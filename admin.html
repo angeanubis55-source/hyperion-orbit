@@ -405,6 +405,26 @@
   }
   // Mêmes fonctions pour connectés et hors ligne. Kick uniquement si en ligne.
   // Mute/ban/give par id/pseudo. Supprimer = comptes uniquement (pas invités).
+  function openDebugModal(p) {
+    openModal({
+      title: `Debloquer ${p.pseudo} ?`,
+      sub: "Le compte sera replace en Phoenix sur sa map mere. Les deux configurations du vaisseau, des drones et du P.E.T seront videes. Les objets restent dans l'inventaire.",
+      bodyHTML: `<p>Le joueur sera deconnecte s'il est en ligne, puis devra se reconnecter.</p>`,
+      danger: true,
+      actions: [
+        { label: "Annuler", onClick: closeModal },
+        { label: "Debug", danger: true, onClick: async () => {
+          try {
+            const out = await call("/api/admin/debug-account", { method: "POST", body: JSON.stringify({ id: p.id, pseudo: p.pseudo }) });
+            if (!out || out.ok !== true) throw new Error(out?.error || "Echec.");
+            closeModal();
+            toast(`${out.pseudo} replace en ${out.map} avec un Phoenix vide.`, "ok");
+          } catch (e) { modalError(e?.message || "Erreur."); return; }
+          refresh();
+        } },
+      ],
+    });
+  }
   function appendAdminActions(td, p, online, isGuest) {
     let first = true;
     const add = (b) => { if (!first) b.style.marginLeft = "6px"; first = false; td.appendChild(b); };
@@ -420,6 +440,9 @@
     ban.onclick = () => openBanModal(p);
     add(ban);
     if (!isGuest) {
+      const debug = mkBtn("Debug", true);
+      debug.onclick = () => openDebugModal(p);
+      add(debug);
       const give = mkBtn("Crédits");
       give.onclick = () => openGiveModal("credits", p);
       add(give);

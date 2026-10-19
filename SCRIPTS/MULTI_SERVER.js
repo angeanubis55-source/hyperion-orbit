@@ -23,7 +23,7 @@ const {
 } = AC;
 import { tickLowRaid, getLowRaidState } from "./LOW_RAID.js";
 import { damagePlayerLayers } from "../COMBAT/COMBAT_RULES.js";
-import { handleAccountApi, getAccountGameplayData, verifyWsToken, recordPvpKill, recordPvpPetKill, awardNpcKill, grantSundayModule, grantSundayTickets, grantSundayAmmo, listFriends, friendFollowers, findUserByPseudo, hasFriendRequest, clanIdOfUser, clanTagOfUser, clanMemberUserIds, recordClanWarKill, adminGiveCredits, adminGiveExperience, adminGiveHonor, adminGiveModule, adminGiveTitle, adminListAccounts, adminDeleteAccount, adminResetGalaxyGate, adminGiveGalaxyGate, adminDroneDesigns, adminGiveDroneDesign, adminShipFamilies } from "./ACCOUNT_SERVER.js";
+import { handleAccountApi, getAccountGameplayData, verifyWsToken, recordPvpKill, recordPvpPetKill, awardNpcKill, grantSundayModule, grantSundayTickets, grantSundayAmmo, listFriends, friendFollowers, findUserByPseudo, hasFriendRequest, clanIdOfUser, clanTagOfUser, clanMemberUserIds, recordClanWarKill, adminGiveCredits, adminGiveExperience, adminGiveHonor, adminGiveModule, adminGiveTitle, adminListAccounts, adminDebugAccount, adminDeleteAccount, adminResetGalaxyGate, adminGiveGalaxyGate, adminDroneDesigns, adminGiveDroneDesign, adminShipFamilies } from "./ACCOUNT_SERVER.js";
 import { combatProfile, validateCombatHit } from "./COMBAT_PROFILE.js";
 import { profileAbilityCooldown } from "../DRONE/DRONE_DESIGNS.js";
 import { selectNpcSnapshot } from "./NPC_SNAPSHOT.js";
@@ -933,9 +933,34 @@ function handleAdminApi(request, response, pathname) {
     adminJson(response, 200, { ok: true, accounts: out, guests, onlineCount, total: out.length });
     return true;
   }
-  if ((pathname === "/api/admin/broadcast" || pathname === "/api/admin/kick" || pathname === "/api/admin/mute" || pathname === "/api/admin/give" || pathname === "/api/admin/give-exp" || pathname === "/api/admin/give-honor" || pathname === "/api/admin/give-module" || pathname === "/api/admin/give-title" || pathname === "/api/admin/reset-gg" || pathname === "/api/admin/give-gg" || pathname === "/api/admin/give-drone-design" || pathname === "/api/admin/ban" || pathname === "/api/admin/unban" || pathname === "/api/admin/delete" || pathname === "/api/admin/cheat-hold") && request.method === "POST") {
+  if ((pathname === "/api/admin/broadcast" || pathname === "/api/admin/kick" || pathname === "/api/admin/mute" || pathname === "/api/admin/debug-account" || pathname === "/api/admin/give" || pathname === "/api/admin/give-exp" || pathname === "/api/admin/give-honor" || pathname === "/api/admin/give-module" || pathname === "/api/admin/give-title" || pathname === "/api/admin/reset-gg" || pathname === "/api/admin/give-gg" || pathname === "/api/admin/give-drone-design" || pathname === "/api/admin/ban" || pathname === "/api/admin/unban" || pathname === "/api/admin/delete" || pathname === "/api/admin/cheat-hold") && request.method === "POST") {
     readJsonBody(request).then((body) => {
       try {
+        if (pathname === "/api/admin/debug-account") {
+          const res = adminDebugAccount(String(body?.id || body?.pseudo || ""));
+          if (!res || res.ok !== true) {
+            adminJson(response, res?.error === "Compte introuvable." ? 404 : 400, res || { ok: false, error: "Correction impossible." });
+            return;
+          }
+          const pid = String(res.pid || "");
+          let victimWs = null;
+          for (const [, room] of rooms) {
+            const entry = room.get(pid);
+            if (entry?.ws) { victimWs = entry.ws; break; }
+          }
+          if (!victimWs) victimWs = instancePeers.get(pid)?.ws || null;
+          if (pid) {
+            peerNoGrace.set(pid, Date.now());
+            removeFromAllRooms(pid);
+            securityStates.delete(pid);
+          }
+          if (victimWs) {
+            try { victimWs.send(JSON.stringify({ t: "adminKick", reason: "Compte remis en etat par l'admin. Reconnecte-toi." })); } catch {}
+            setTimeout(() => { try { victimWs.close(); } catch {} }, 400);
+          }
+          adminJson(response, 200, res);
+          return;
+        }
         if (pathname === "/api/admin/delete") {
           // Suppression DEFINITIVE d'un compte : users, sessions, pvp_stats,
           // npc_reward_tx, amis + demandes (les deux sens). Le classement et
