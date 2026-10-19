@@ -11,7 +11,7 @@ export const WAVE_PLANS = [
   [{ type: "npc_Kristallin_eternal", count: 80 }],
   [{ type: "npc_Sibelon_eternal", count: 20 }],
   [{ type: "npc_Sibelonit_eternal", count: 80 }],
-  [{ type: "npc_Kristallon_eternal", count: 16 }],
+  [{ type: "npc_Kristallon_eternal", count: 2 }],
   [{ type: "npc_Protegit_eternal", count: 30 }],
   // ✅ Dernière vague : 2 Lordakium (fin de gate = retour base auto, voir moteur).
   [{ type: "npc_Lordakium_eternal", count: 2 }],

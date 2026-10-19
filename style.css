@@ -4585,13 +4585,64 @@ html body #profileOverlay .profileHeaderTop .profileTitle, html body #profileOve
 }
 /* ✅ vues Kronos / Eternal : bouton multiplicateur masqué, "GG construite"
    remontée alignée avec "Récompenses des NPC" (le reste du bloc suit). */
-#galaxyGateWindow.kronosView .ggDetails,
-#galaxyGateWindow.eternalView .ggDetails {
+#galaxyGateWindow.kronosView .ggDetails {
   display:none;
+}
+/* ✅ Eternal : même masquage mais espace conservé (hauteur fixe). */
+#galaxyGateWindow.eternalView .ggDetails {
+  visibility:hidden;
 }
 #galaxyGateWindow.kronosView .ggBuiltLine,
 #galaxyGateWindow.eternalView .ggBuiltLine {
   top:14px;
+}
+/* ✅ vue Eternal : "Portail Eternal Classique unique" seul (sans "GG construite"). */
+#galaxyGateWindow.eternalView .ggBuiltLabel {
+  display:none;
+}
+/* ✅ vue Eternal : colonne latérale conservée (vagues visibles).
+   Lignes Crédits, Énergie et titre "Historique des spins" invisibles
+   MAIS espaces conservés (visibility) pour garder la hauteur fixe.
+   Les vagues remontent en haut via l'ordre flex (même hauteur totale). */
+#galaxyGateWindow.eternalView .ggBalances {
+  visibility:hidden;
+}
+#galaxyGateWindow.eternalView .ggHistorySection h3 {
+  visibility:hidden;
+}
+#galaxyGateWindow.eternalView .ggHistorySection {
+  display:flex;
+  flex-direction:column;
+  gap:9px;
+}
+#galaxyGateWindow.eternalView .ggHistory {
+  order:-1;
+  display:flex;
+  flex-direction:column;
+}
+/* ✅ titre en haut, vagues centrées au milieu (marges auto : hauteur inchangée). */
+#galaxyGateWindow.eternalView .ggHistoryRow {
+  flex:1;
+  min-height:0;
+  display:flex;
+  flex-direction:column;
+  /* ✅ titre aligné avec "GG construite" (14 px). */
+  margin-top:9px;
+}
+#galaxyGateWindow.eternalView .ggHistoryRow > span {
+  flex:none;
+}
+#galaxyGateWindow.eternalView .ggHistoryGains {
+  margin:auto 0;
+}
+/* ✅ vagues centrées (le titre reste à sa place au-dessus). */
+#galaxyGateWindow.eternalView .ggHistoryGains {
+  justify-items:center;
+  text-align:center;
+}
+#galaxyGateWindow.eternalView .ggHistoryGains small {
+  width:100%;
+  text-align:center;
 }
 .ggRewardsHelp {
   position:absolute;

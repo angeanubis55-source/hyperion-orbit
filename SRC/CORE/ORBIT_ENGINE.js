@@ -15958,7 +15958,7 @@ const ETERNAL_GATE_INFO = Object.freeze({
   waveList: Object.freeze([
     "Vague 1 — 40 Streuner", "Vague 2 — 40 Lordakia", "Vague 3 — 40 Mordon",
     "Vague 4 — 80 Saimon", "Vague 5 — 20 Devolarium", "Vague 6 — 80 Kristallin",
-    "Vague 7 — 20 Sibelon", "Vague 8 — 80 Sibelonit", "Vague 9 — 16 Kristallon",
+    "Vague 7 — 20 Sibelon", "Vague 8 — 80 Sibelonit", "Vague 9 — 2 Kristallon",
     "Vague 10 — 30 Protegit", "Vague 11 — 2 Lordakium",
   ]),
 });
@@ -15978,7 +15978,7 @@ function renderEternalGatePanel(user, state) {
     + `<span>Portail permanent au centre des maps X-1</span>`;
   ui.ggNpcRewardScale.innerHTML = `Récompenses des NPC <em>×1</em>`;
   ui.ggParts.textContent = "—";
-  ui.ggBuilt.textContent = "Portail permanent · X-1";
+  ui.ggBuilt.textContent = "Portail Eternal Classique unique";
   if (ui.ggCompleted) ui.ggCompleted.textContent = "—";
   // ✅ Eternal : calqué sur Kronos (Vies 1/1, Vague 0/11, Pièces 0/0,
   // zone basse vide de 48 px comme la liste des pièces).
@@ -16020,7 +16020,7 @@ function renderEternalGatePanel(user, state) {
   ui.ggTabs.innerHTML = `<div class="ggTabsGroup" data-gg-group="special"><div class="ggTabsButtons">`
     + `<button type="button" data-gg-gate="${ETERNAL_GATE_ID}" class="active">Eternal Classique</button>`
     + `</div></div>`;
-  ui.ggHistory.innerHTML = `<div class="ggHistoryRow"><span><b>Gate ${escapeHtml(ETERNAL_GATE_INFO.name)}</b> · entrée CPU</span>`
+  ui.ggHistory.innerHTML = `<div class="ggHistoryRow"><span>Ordre des vagues Eternal Classique</span>`
     + `<div class="ggHistoryGains">${ETERNAL_GATE_INFO.waveList.map((line) => `<small>${escapeHtml(line)}</small>`).join("")}</div></div>`;
 }
 
@@ -28163,6 +28163,11 @@ function makeEnemy(type, x, y) {
     factoryEntity.exp = Math.max(0, Math.floor(Number(baseRewards?.exp ?? 0) * eternalMult));
     factoryEntity.honor = Math.max(0, Math.floor(Number(baseRewards?.honor ?? 0) * eternalMult));
   }
+  // ✅ Gate Eternal : nom de vague dynamique (★ vague × boucle : ★10, ★20, ★30...).
+  if (String(window.__CURRENT_MAP_ID__ || "").toLowerCase() === "eternal") {
+    const baseName = String(NPC_TYPES[type]?.name || type).replace(/\s*(?:Vague|★)\s*\d+\s*$/, "");
+    factoryEntity.name = `${baseName} ★ ${wave * eternalMult}`;
+  }
   enemiesById.set(factoryEntity.id, factoryEntity);
   const encounter = rules?.bossEncounter;
   if (encounter?.bossType === type) {
@@ -29663,7 +29668,7 @@ function killRewards(e) {
   const honorText = `${formatInteger(gainedHonor)} honneur`;
   const whiteTerms = [];
   const violetTerms = [];
-  const npcName = String(NPC_TYPES[e.type]?.name || e.type || "NPC").replace(/^npc_/i, "");
+  const npcName = String(e.name || NPC_TYPES[e.type]?.name || e.type || "NPC").replace(/^npc_/i, "");
   const isSharedGroupKill = !!e._netUid && (serverReward ? serverReward.ownsKill !== true : e._netLootOwner !== true);
   const groupKiller = isSharedGroupKill
     ? getNetGroup()?.members?.find(member => String(member.id) === String(e._netKillerId || ""))
