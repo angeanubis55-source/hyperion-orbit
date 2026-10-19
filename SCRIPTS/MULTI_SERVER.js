@@ -54,7 +54,7 @@ const ABILITY_CLOAK_SILENT = new Set([
 // Camouflage interdit par carte : GG + QZ + Low + Maudite. Le client grise
 // les boutons, le serveur tranche en autorité (anti-contournement).
 const NO_CLOAK_MAPS = new Set(["alpha", "beta", "gamma", "delta", "epsilon",
-  "zeta", "kappa", "lambda", "kronos", "awakened", "qz", "low", "maudite"]);
+  "zeta", "kappa", "lambda", "kronos", "awakened", "eternal", "qz", "low", "maudite"]);
 function ownsAbility(profile, skill) {
   // Source unique : MOVEMENT_RULES.shipOwnsAbility (Police + designs).
   try { return shipOwnsAbility(profile?.shipId, skill); } catch { return false; }
