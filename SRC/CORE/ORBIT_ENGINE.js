@@ -15388,12 +15388,14 @@ function describeCraftingCosts(user, recipe, quantity) {
   });
   rows.push(...ammoRows);
   const creditRequired = Number(recipe.costs?.credits || 0) * quantity;
-  const creditOwned = Number(user.credits || 0);
-  const creditOk = creditOwned >= creditRequired;
-  rows.push(`<li class="assemblyCostRow${creditOk ? " enough" : " missing"}">`
-    + `<span class="assemblyCreditIcon">¢</span>`
-    + `<span class="assemblyCostMeta"><span class="assemblyCostName">Crédits</span></span>`
-    + `<strong>${formatInteger(creditOwned)} / ${formatInteger(creditRequired)}</strong></li>`);
+  if (creditRequired > 0) {
+    const creditOwned = Number(user.credits || 0);
+    const creditOk = creditOwned >= creditRequired;
+    rows.push(`<li class="assemblyCostRow${creditOk ? " enough" : " missing"}">`
+      + `<span class="assemblyCreditIcon">¢</span>`
+      + `<span class="assemblyCostMeta"><span class="assemblyCostName">Crédits</span></span>`
+      + `<strong>${formatInteger(creditOwned)} / ${formatInteger(creditRequired)}</strong></li>`);
+  }
   return rows.join("");
 }
 
@@ -37848,6 +37850,8 @@ const SAFE_MODULE_SPR = {
   QUEST_VRU: { src: "ASSETS/VRU/QUEST.png" },
 
   CENTRE_PIRATE: { src: "ASSETS/PIRATES/CENTRE.webp" },
+
+  QUEST_BL: { src: "ASSETS/BL/QUEST.png" },
 };
 
 function preloadSafeModuleSprites(sectorRules, world) {

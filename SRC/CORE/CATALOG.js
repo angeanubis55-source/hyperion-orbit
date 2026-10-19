@@ -207,6 +207,20 @@ export const CATALOG = {
     { id: "extra_loot",  name: "Extra: Loot +",  price: 500000, module: { type: "extra", key: "loot_plus" } },
   ],
 
+  // Base de Combat : pièces achetées en ressources (mêmes prix qu'aux enchères).
+  station: [
+    { id: "station_laser_1", name: "Laser station Niv. 1", price: 20000000, icon: "/ASSETS/BATTLESTATION/LASER_STATION_NIV_1.png", give: { resources: { station_laser_1: 1 } }, desc: "Canon pour base de combat, niveau 1." },
+    { id: "station_rocket_1", name: "Roquette station Niv. 1", price: 30000000, icon: "/ASSETS/BATTLESTATION/ROQUETTE_STATION_NIV_1.png", give: { resources: { station_rocket_1: 1 } }, desc: "Lance-roquettes pour base de combat, niveau 1." },
+    { id: "station_module_dmg", name: "Module DMG", price: 40000000, icon: "/ASSETS/BATTLESTATION/MODULE_DMG.png", give: { resources: { station_module_dmg: 1 } }, desc: "Module pour base de combat : dégâts." },
+    { id: "station_module_exp", name: "Module EXP", price: 40000000, icon: "/ASSETS/BATTLESTATION/MODULE_EXP.png", give: { resources: { station_module_exp: 1 } }, desc: "Module pour base de combat : expérience." },
+    { id: "station_module_hon", name: "Module HON", price: 40000000, icon: "/ASSETS/BATTLESTATION/MODULE_HON.png", give: { resources: { station_module_hon: 1 } }, desc: "Module pour base de combat : honneur." },
+    { id: "station_module_rep", name: "Module REP", price: 40000000, icon: "/ASSETS/BATTLESTATION/MODULE_REP.png", give: { resources: { station_module_rep: 1 } }, desc: "Module pour base de combat : réparation." },
+    { id: "station_laser_2", name: "Laser station Niv. 2", price: 80000000, icon: "/ASSETS/BATTLESTATION/LASER_STATION_NIV_2.png", give: { resources: { station_laser_2: 1 } }, desc: "Canon pour base de combat, niveau 2." },
+    { id: "station_rocket_2", name: "Roquette station Niv. 2", price: 90000000, icon: "/ASSETS/BATTLESTATION/ROQUETTE_STATION_NIV_2.png", give: { resources: { station_rocket_2: 1 } }, desc: "Lance-roquettes pour base de combat, niveau 2." },
+    { id: "station_laser_3", name: "Laser station Niv. 3", price: 200000000, icon: "/ASSETS/BATTLESTATION/LASER_STATION_NIV_3.png", give: { resources: { station_laser_3: 1 } }, desc: "Canon pour base de combat, niveau 3." },
+    { id: "station_core", name: "Cœur de base", price: 600000000, icon: "/ASSETS/BATTLESTATION/CENTRE.png", give: { resources: { station_core: 1 } }, desc: "Cœur pour base de combat, à poser en premier." },
+  ],
+
   drones: [
     { id: "drone_iris", name: "Drone Iris", price: 15000000, drone: { type: "iris" }, icon: getDroneShopStillPath("iris") },
     { id: "drone_apis", name: "Drone Apis", price: SPECIAL_DRONE_PRICE, drone: { type: "apis" }, icon: getDroneShopStillPath("apis") },

@@ -13,16 +13,17 @@
 //   14-17. boosters B01 x10 (10 h) : Expérience / Dégâts / Coque / Bouclier
 //   18-20. vaisseaux Goliath / Vengeance / Leonov (masqués si possédés)
 //   21. 1 design aléatoire par heure, déterministe (même pour tous)
-//   22. 1 ticket relance module, 25 M SANS décote (toujours dernier)
+//   22-31. Base de Combat : cœur, canons laser/roquette, modules (lots ressources)
+//   32. 1 ticket relance module, 25 M SANS décote (toujours dernier)
 // Mise de départ à -70 % du prix boutique. Pas d'enchérisseurs fantômes :
 // la mise est réservée aussitôt, le plus offrant (joueur ou personne) clôt
 // le lot. L'orchestration (crédits, gains) vit dans ACCOUNT.js ; ce module
 // ne touche ni DOM ni stockage.
 
 export const AUCTION_DURATION_MS = 60 * 60 * 1000; // un cycle = 1 heure pile de Paris
-export const AUCTION_ACTIVE_LOTS = 22;
-// Historique "Dernières enchères" : 1 cycle complet (22 lots).
-export const AUCTION_HISTORY_LEN = 22;
+export const AUCTION_ACTIVE_LOTS = 32;
+// Historique "Dernières enchères" : 1 cycle complet (32 lots).
+export const AUCTION_HISTORY_LEN = 32;
 // Fuseau du cycle : réinitialisation à chaque heure pile de Paris (:00).
 export const AUCTION_TZ = "Europe/Paris";
 
@@ -70,7 +71,8 @@ export function parisHourSeed(nowMs = Date.now()) {
 // Les sauvegardes avec une autre version voient leurs lots purgés
 // (avec remboursement des mises réservées) puis reconstruits en fixe.
 // v10 : retrait du laser Xénocide (LF-6) des enchères.
-export const AUCTION_CYCLE_VERSION = 10;
+// v11 : ajout des 10 lots Base de Combat (cœur + canons + modules).
+export const AUCTION_CYCLE_VERSION = 11;
 
 // Prix de départ : -70 % (30 % du prix).
 export const AUCTION_START_RATIO = 0.3;
@@ -91,6 +93,20 @@ function rand(rng) {
   return typeof rng === "function" ? rng() : Math.random();
 }
 
+// Prix boutique des lots Base de Combat (mise de départ = -70 %).
+// Utilisé à la génération + au correctif des lots déjà en cours.
+export const AUCTION_STATION_PRICES = Object.freeze({
+  station_core: 600000000,
+  station_laser_1: 20000000,
+  station_laser_2: 80000000,
+  station_laser_3: 200000000,
+  station_rocket_1: 30000000,
+  station_rocket_2: 90000000,
+  station_module_dmg: 40000000,
+  station_module_exp: 40000000,
+  station_module_hon: 40000000,
+  station_module_rep: 40000000,
+});
 // PRNG déterministe (mulberry32) : même graine = même tirage.
 // Sert au design horaire (identique pour tous, stable entre les ticks).
 function mulberry32(seed) {
@@ -252,10 +268,46 @@ export function buildHourlyLots(catalog, filters = {}, nowMs = Date.now(), rng =
     }
   }
 
-  // 22. Ticket relance module (décote normale des -70 % comme les autres).
+  // 22-31. Base de Combat : cœur, canons laser/roquette, modules.
+  // Prix boutique calibrés sur l'atelier (mise de départ = -70 %) :
+  // cœur légendaire ~ ticket, canons ~ LF-3/LF-4, modules ~ B02.
+  // catalogId = id ressource (clé de dédup stable, voir auctionLotKey).
+  for (const [resId, lotName, iconFile] of [
+    ["station_core", "Cœur de base", "CENTRE.png"],
+    ["station_laser_1", "Laser station Niv. 1", "LASER_STATION_NIV_1.png"],
+    ["station_laser_2", "Laser station Niv. 2", "LASER_STATION_NIV_2.png"],
+    ["station_laser_3", "Laser station Niv. 3", "LASER_STATION_NIV_3.png"],
+    ["station_rocket_1", "Roquette station Niv. 1", "ROQUETTE_STATION_NIV_1.png"],
+    ["station_rocket_2", "Roquette station Niv. 2", "ROQUETTE_STATION_NIV_2.png"],
+    ["station_module_dmg", "Module DMG", "MODULE_DMG.png"],
+    ["station_module_exp", "Module EXP", "MODULE_EXP.png"],
+    ["station_module_hon", "Module HON", "MODULE_HON.png"],
+    ["station_module_rep", "Module REP", "MODULE_REP.png"],
+  ]) {
+    lots.push(createAuctionLot(
+      {
+        catalogId: resId, name: lotName, icon: `/ASSETS/BATTLESTATION/${iconFile}`,
+        shopTotal: AUCTION_STATION_PRICES[resId], qty: 1, kind: "resources", resourcesGive: { [resId]: 1 },
+      },
+      now, rng,
+    ));
+  }
+
+  // 32. Ticket relance module (décote normale des -70 % comme les autres).
   pushCatalog("ticket_module_reroll", 1);
 
   return lots.slice(0, AUCTION_ACTIVE_LOTS);
+}
+
+// Clé de dédup des lots : les lots ressources n'ont pas d'entrée catalogue,
+// on les distingue par leur gain (un ancien lot "" rejoint ainsi son
+// successeur catalogId = id ressource, sans doublon).
+export function auctionLotKey(lot) {
+  if (lot?.kind === "resources" && lot.resourcesGive && typeof lot.resourcesGive === "object") {
+    const ids = Object.keys(lot.resourcesGive).sort().join("+");
+    if (ids) return `res:${ids}`;
+  }
+  return `cat:${String(lot?.catalogId || "")}`;
 }
 
 // Enchère suivante minimale : prix de départ sans mise, sinon +2 % (plancher +1000).

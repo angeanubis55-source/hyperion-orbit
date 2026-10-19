@@ -24,7 +24,10 @@ import {
   AUCTION_ACTIVE_LOTS,
   AUCTION_CYCLE_VERSION,
   AUCTION_HISTORY_LEN,
+  AUCTION_STATION_PRICES,
+  auctionLotKey,
   auctionMinNextBid,
+  auctionStartPrice,
   auctionTimeLeftMs,
   buildHourlyLots,
   normalizeAuctionState,
@@ -1917,6 +1920,18 @@ export function buyItem(itemId, requestedQuantity = 1, options = {}) {
       u.rockets[k] = Math.max(0, Math.floor(Number(u.rockets[k] || 0) + add));
     }
     incCount(u, item.id, quantity);
+  }
+
+  // ressources (ex : pièces Base de Combat : pas de compteur, le stock
+  // réel vit dans inventory.resources et s'affiche dans l'aperçu).
+  if (item.give?.resources) {
+    u.inventory ||= {};
+    u.inventory.resources ||= {};
+    for (const k of Object.keys(item.give.resources)) {
+      const add = Number(item.give.resources[k] || 0) * quantity;
+      u.inventory.resources[k] = Math.max(0, Number(u.inventory.resources[k] || 0) + add);
+      if (!isOreResource(k) && add > 0) noteNetResourceGain({ [k]: Math.floor(add) });
+    }
   }
 
   // modules (multi)
@@ -4520,6 +4535,34 @@ function ensureAuction(u) {
       saveUser(u);
     }
   } catch {}
+  // Correctif prix Base de Combat : aligne les lots déjà générés sur la
+  // table en vigueur (sinon l'ancien prix reste jusqu'au prochain cycle).
+  // Même règle que le ticket : mise sous le nouveau départ = remboursée.
+  try {
+    let stationPatched = false;
+    for (const lot of u.auction.lots) {
+      if (String(lot?.kind) !== "resources") continue;
+      const give = lot?.resourcesGive && typeof lot.resourcesGive === "object" ? Object.keys(lot.resourcesGive)[0] : "";
+      const base = AUCTION_STATION_PRICES[String(give) || ""];
+      if (!Number.isFinite(base)) continue;
+      const start = auctionStartPrice(base);
+      if (Number(lot.shopPrice) === base && Number(lot.startPrice) === start) continue;
+      lot.shopPrice = base;
+      lot.startPrice = start;
+      const my = Math.max(0, Math.floor(Number(lot.myBid) || 0));
+      if (my > 0 && my < start) {
+        u.credits = Math.max(0, Math.floor(Number(u.credits || 0)) + my);
+        lot.myBid = 0;
+        lot.topBid = 0;
+        lot.topBidder = "";
+      }
+      stationPatched = true;
+    }
+    if (stationPatched) {
+      ensureUserShape(u);
+      saveUser(u);
+    }
+  } catch {}
   return u.auction;
 }
 
@@ -4537,19 +4580,19 @@ function auctionFiltersFor(u) {
 function fillAuctionLots(auction, u, now) {
   if (auction.lots.length >= AUCTION_ACTIVE_LOTS) return false;
   const fresh = buildHourlyLots(CATALOG, auctionFiltersFor(u), now);
-  const used = new Set(auction.lots.map((lot) => lot.catalogId));
+  const used = new Set(auction.lots.map((lot) => auctionLotKey(lot)));
   // Garde-fou : un seul lot design max (le design est déterministe par heure,
   // mais on ne doit jamais accumuler de designs au fil des ticks).
   let hasDesign = auction.lots.some((lot) => String(lot?.catalogId || "").startsWith("design_"));
   let added = false;
   for (const lot of fresh) {
     if (auction.lots.length >= AUCTION_ACTIVE_LOTS) break;
-    if (used.has(lot.catalogId)) continue;
+    if (used.has(auctionLotKey(lot))) continue;
     if (String(lot.catalogId).startsWith("design_")) {
       if (hasDesign) continue;
       hasDesign = true;
     }
-    used.add(lot.catalogId);
+    used.add(auctionLotKey(lot));
     auction.lots.push(lot);
     added = true;
   }

@@ -47,6 +47,17 @@ export const RESOURCE_TYPES = Object.freeze({
   // Composants CPU Eternels (portails : 1 Eternal Classique CPU = 1 entrée Gate Eternal).
   eternal_cpu: Object.freeze({ id: "eternal_cpu", name: "Eternal Classique CPU", plural: "Eternal Classique CPU", icon: "/ASSETS/CPU/EternalCPU_100X100.png" }),
   eternal_backlight_cpu: Object.freeze({ id: "eternal_backlight_cpu", name: "Eternal Blacklight CPU", plural: "Eternal Blacklight CPU", icon: "/ASSETS/CPU/EternalBlacklightCPU_100X100.webp" }),
+  // Base de Combat (atelier) : canons et modules assemblés puis posés sur station.
+  station_core: Object.freeze({ id: "station_core", name: "Cœur de base", plural: "Cœurs de base", icon: "/ASSETS/BATTLESTATION/CENTRE.png" }),
+  station_laser_1: Object.freeze({ id: "station_laser_1", name: "Laser station Niv. 1", plural: "Lasers station Niv. 1", icon: "/ASSETS/BATTLESTATION/LASER_STATION_NIV_1.png" }),
+  station_laser_2: Object.freeze({ id: "station_laser_2", name: "Laser station Niv. 2", plural: "Lasers station Niv. 2", icon: "/ASSETS/BATTLESTATION/LASER_STATION_NIV_2.png" }),
+  station_laser_3: Object.freeze({ id: "station_laser_3", name: "Laser station Niv. 3", plural: "Lasers station Niv. 3", icon: "/ASSETS/BATTLESTATION/LASER_STATION_NIV_3.png" }),
+  station_rocket_1: Object.freeze({ id: "station_rocket_1", name: "Roquette station Niv. 1", plural: "Roquettes station Niv. 1", icon: "/ASSETS/BATTLESTATION/ROQUETTE_STATION_NIV_1.png" }),
+  station_rocket_2: Object.freeze({ id: "station_rocket_2", name: "Roquette station Niv. 2", plural: "Roquettes station Niv. 2", icon: "/ASSETS/BATTLESTATION/ROQUETTE_STATION_NIV_2.png" }),
+  station_module_dmg: Object.freeze({ id: "station_module_dmg", name: "Module DMG", plural: "Modules DMG", icon: "/ASSETS/BATTLESTATION/MODULE_DMG.png" }),
+  station_module_exp: Object.freeze({ id: "station_module_exp", name: "Module EXP", plural: "Modules EXP", icon: "/ASSETS/BATTLESTATION/MODULE_EXP.png" }),
+  station_module_hon: Object.freeze({ id: "station_module_hon", name: "Module HON", plural: "Modules HON", icon: "/ASSETS/BATTLESTATION/MODULE_HON.png" }),
+  station_module_rep: Object.freeze({ id: "station_module_rep", name: "Module REP", plural: "Modules REP", icon: "/ASSETS/BATTLESTATION/MODULE_REP.png" }),
 });
 
 export function getResourceName(resourceId, quantity = 1) {

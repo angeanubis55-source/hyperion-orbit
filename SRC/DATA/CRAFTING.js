@@ -486,6 +486,117 @@ export const CRAFTING_RECIPES = Object.freeze([
     },
     output: { ships: { sentinel: 1 } },
   }),
+  // ---- Base de Combat (canons + modules, visuels ASSETS/BATTLESTATION) ----
+  Object.freeze({
+    id: "craft_station_core",
+    name: "Cœur de base",
+    description: "Cœur pour base de combat, à poser en premier.",
+    rarity: "legendary",
+    costs: {
+      credits: 0,
+      resources: { scrap: 310, plasmide: 140, prismatium: 25 },
+    },
+    output: { resources: { station_core: 1 } },
+  }),
+  Object.freeze({
+    id: "craft_station_laser_1",
+    name: "Laser station Niv. 1",
+    description: "Canon pour base de combat, niveau 1.",
+    rarity: "epic",
+    costs: {
+      credits: 0,
+      resources: { scrap: 30, prismatium: 15, plasmide: 10 },
+    },
+    output: { resources: { station_laser_1: 1 } },
+  }),
+  Object.freeze({
+    id: "craft_station_laser_2",
+    name: "Laser station Niv. 2",
+    description: "Canon pour base de combat, niveau 2.",
+    rarity: "epic",
+    costs: {
+      credits: 0,
+      resources: { scrap: 100, prismatium: 10 },
+    },
+    output: { resources: { station_laser_2: 1 } },
+  }),
+  Object.freeze({
+    id: "craft_station_laser_3",
+    name: "Laser station Niv. 3",
+    description: "Canon pour base de combat, niveau 3.",
+    rarity: "epic",
+    costs: {
+      credits: 0,
+      resources: { scrap: 240, mucosum: 180 },
+    },
+    output: { resources: { station_laser_3: 1 } },
+  }),
+  Object.freeze({
+    id: "craft_station_rocket_1",
+    name: "Roquette station Niv. 1",
+    description: "Lance-roquettes pour base de combat, niveau 1.",
+    rarity: "epic",
+    costs: {
+      credits: 0,
+      resources: { plasmide: 40, prismatium: 5 },
+    },
+    output: { resources: { station_rocket_1: 1 } },
+  }),
+  Object.freeze({
+    id: "craft_station_rocket_2",
+    name: "Roquette station Niv. 2",
+    description: "Lance-roquettes pour base de combat, niveau 2.",
+    rarity: "epic",
+    costs: {
+      credits: 0,
+      resources: { prismatium: 15, plasmide: 10 },
+    },
+    output: { resources: { station_rocket_2: 1 } },
+  }),
+  Object.freeze({
+    id: "craft_station_module_dmg",
+    name: "Module DMG",
+    description: "Module pour base de combat : dégâts.",
+    rarity: "rare",
+    costs: {
+      credits: 0,
+      resources: { scrap: 70, plasmide: 60 },
+    },
+    output: { resources: { station_module_dmg: 1 } },
+  }),
+  Object.freeze({
+    id: "craft_station_module_exp",
+    name: "Module EXP",
+    description: "Module pour base de combat : expérience.",
+    rarity: "rare",
+    costs: {
+      credits: 0,
+      resources: { mucosum: 300, plasmide: 40 },
+    },
+    output: { resources: { station_module_exp: 1 } },
+  }),
+  Object.freeze({
+    id: "craft_station_module_hon",
+    name: "Module HON",
+    description: "Module pour base de combat : honneur.",
+    rarity: "rare",
+    costs: {
+      credits: 0,
+      resources: { plasmide: 40, prismatium: 8 },
+    },
+    output: { resources: { station_module_hon: 1 } },
+  }),
+  Object.freeze({
+    id: "craft_station_module_rep",
+    name: "Module REP",
+    description: "Module pour base de combat : réparation.",
+    rarity: "rare",
+    costs: {
+      credits: 0,
+      resources: { mucosum: 120, prismatium: 15 },
+    },
+    output: { resources: { station_module_rep: 1 } },
+  }),
   // ---- Blacklight (quêtes BL) ----
   Object.freeze({
     id: "craft_seprom_5000",

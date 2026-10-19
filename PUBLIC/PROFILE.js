@@ -3017,7 +3017,9 @@ const isBoosterPreview = !groupRef && !!it?.booster?.id;
 const isFuelPreview = !groupRef && !!it?.petFuel;
 // Coque+ P.E.T : même mise en page que les munitions (prix ×2 à chaque achat).
 const isHullPreview = !groupRef && !!it?.petHull;
-const useAmmoLayout = !isUnique && !groupRef && (isAmmo || isGeneratorCat || isLaserCat || isBoosterPreview || isFuelPreview || isHullPreview);
+// Base de Combat (give.resources) : même mise en page que les munitions lasers.
+const isStationPreview = !groupRef && !!it?.give?.resources;
+const useAmmoLayout = !isUnique && !groupRef && (isAmmo || isGeneratorCat || isLaserCat || isBoosterPreview || isFuelPreview || isHullPreview || isStationPreview);
 
 let stockLine = "";
 let statLine = "";
@@ -3106,6 +3108,8 @@ if (isShipLike) {
 } else if (it?.give?.rockets) {
   const rocket = getRocketType(ammoKey);
   statLine = `<p class="shopItemStat ammoDesc">${highlightShopDescNumbers(escapeHtml(it?.desc || rocketDescription(rocket))).replace(/\n/g, "<br>")}</p>`;
+} else if (it?.give?.resources) {
+  statLine = `<p class="shopItemStat ammoDesc">${highlightShopDescNumbers(escapeHtml(it?.desc || "Pièce pour base de combat")).replace(/\n/g, "<br>")}</p>`;
 } else if (it?.petProtocol) {
   const req = Math.max(0, Number(it.petLevel) || 0);
   statLine = `<p class="shopItemStat ammoDesc singleline"><strong>+${Number(it.petProtocol.pct) || 0} % ${escapeHtml(petProtocolStatLabel(it.petProtocol.key))}</strong></p>`;
@@ -3226,7 +3230,7 @@ if (isDrone) {
   } else {
     const previewFallback = it?.preview ? ` onerror="this.onerror=null;this.src='${iconForItem(it, cat)}'"` : "";
     previewHtml = `
-      <img src="${imgSrc}" alt="${it?.name || it?.id}"${previewFallback} class="${(isDrone || isPet) ? "stillPreviewImg" : `bigImg ${isFormation ? "formationShopImage" : ""}${["ammo", "rockets", "launchers", "speedGen", "shieldGen", "generators", "lasers", "extras", "pets", "petGears", "petProtocols", "petEquipment", "boosters"].includes(cat) ? " equipShopImage" : ""}`}" />
+      <img src="${imgSrc}" alt="${it?.name || it?.id}"${previewFallback} class="${(isDrone || isPet) ? "stillPreviewImg" : `bigImg ${isFormation ? "formationShopImage" : ""}${["ammo", "rockets", "launchers", "speedGen", "shieldGen", "generators", "lasers", "extras", "station", "pets", "petGears", "petProtocols", "petEquipment", "boosters"].includes(cat) ? " equipShopImage" : ""}`}" />
     `;
   }
   // Preview uniforme : card 105x105, item 100x100 centré (hors vaisseaux,
@@ -3252,9 +3256,12 @@ if (isDrone) {
     : isLaserCat ? "Canon(s) Laser"
     : isFuelPreview ? "carburants"
     : isHullPreview ? "Coque+"
+    : isStationPreview ? "Pièce(s)"
     : it?.module?.type === "speed" ? "Générateur(s) de Vitesse"
     : "Générateur(s) de Bouclier";
-  const previewCurrentQty = isAmmo ? (ammoQty?.qty || 0) : isFuelPreview ? fuelNow : isHullPreview ? hullBuys : countOwned;
+  const stationResKey = isStationPreview ? Object.keys(it?.give?.resources || {})[0] || "" : "";
+  const stationResStock = isStationPreview ? Math.max(0, Math.floor(Number(user?.inventory?.resources?.[stationResKey]) || 0)) : 0;
+  const previewCurrentQty = isAmmo ? (ammoQty?.qty || 0) : isFuelPreview ? fuelNow : isHullPreview ? hullBuys : isStationPreview ? stationResStock : countOwned;
   // Coque+ : total géométrique (prix ×2 à chaque achat).
   const hullTotalFor = (start, qty) => {
     let t = 0;
@@ -3282,7 +3289,7 @@ if (isDrone) {
   // Titre preview : préfixe catégorie, sans doublon quand le nom contient
   // déjà le mot ("Roquette Roquette R-310", "Canon Laser laser LF-3").
   const rawTitleName = it?.name || it?.id;
-  let titlePrefix = (useAmmoLayout && !isBoosterPreview && !isFuelPreview && !isHullPreview) ? previewUnitWord.replace("(s)", "") : "";
+  let titlePrefix = (useAmmoLayout && !isBoosterPreview && !isFuelPreview && !isHullPreview && !isStationPreview) ? previewUnitWord.replace("(s)", "") : "";
   let titleName = rawTitleName;
   if (titlePrefix) {
     const lowerName = String(rawTitleName).toLowerCase();
@@ -3313,7 +3320,7 @@ if (isDrone) {
     <div class="tile">
       ${previewCard}
 
-      <h3${(isAmmo || isGeneratorCat || isLaserCat || isBoosterPreview || isFuelPreview || isHullPreview || isShipLike || isDrone || isFormation || isPet || cat === "petEquipment") ? ` class="ammoTitle"` : ""}>
+      <h3${(isAmmo || isGeneratorCat || isLaserCat || isBoosterPreview || isFuelPreview || isHullPreview || isStationPreview || isShipLike || isDrone || isFormation || isPet || cat === "petEquipment") ? ` class="ammoTitle"` : ""}>
         ${titlePrefix ? `${escapeHtml(titlePrefix)} ` : ""}${escapeHtml(titleName)}
         ${owned ? ` <span class="previewOwnedWord">Possédé</span> <span class="previewOwnedCheck">✓</span>` : ""}
       </h3>

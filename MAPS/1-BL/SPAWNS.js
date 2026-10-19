@@ -160,7 +160,15 @@ export function getZonePortals(WORLD) {
 }
 
 export function getZoneSafeModules(WORLD) {
-  return { zone: null, beacons: [], modules: [] };
+  // Terminal de quêtes neutre au centre (accessible toutes firmes :
+  // id PIRATE => canUseFactionModule() == true pour MMO/EIC/VRU).
+  const cx = WORLD.w / 2;
+  const cy = WORLD.h / 2;
+  const modules = [
+    { id: "QUEST_MMO_1BL", x: cx, y: cy, w: 600, h: 443, spr: "QUEST_BL", questTerminal: true, safeRadius: 600 },
+  ];
+  const zone = { kind: "circle", x: cx, y: cy, r: 800 };
+  return { zone, beacons: [], modules };
 }
 
 // Murs extraits de la minimap officielle (18 cadres).
