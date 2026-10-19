@@ -42,6 +42,16 @@ const mimeTypes = {
   ".woff2": "font/woff2",
 };
 
+function cacheControlFor(file) {
+  // Le client est une application sans bundler : index.html importe directement
+  // les modules JS. Garder l'un de ces fichiers en cache peut donc mélanger deux
+  // versions de l'interface après un déploiement.
+  const extension = extname(file).toLowerCase();
+  return extension === ".html" || extension === ".js" || extension === ".css"
+    ? "no-store"
+    : "no-cache";
+}
+
 const server = createServer(async (request, response) => {
   try {
     setSecurityHeaders(response);
@@ -55,7 +65,8 @@ const server = createServer(async (request, response) => {
     // Revalidate on refresh: unchanged resources return 304 without their body.
     // Changed files remain immediately visible during local development.
     response.setHeader("etag", etag);
-    response.setHeader("cache-control", "no-cache");
+    const cacheControl = cacheControlFor(file);
+    response.setHeader("cache-control", cacheControl);
     if (request.headers["if-none-match"]?.split(/\s*,\s*/).includes(etag)) {
       response.writeHead(304);
       response.end();
@@ -63,7 +74,7 @@ const server = createServer(async (request, response) => {
     }
     response.writeHead(200, {
       "content-type": mimeTypes[extname(file).toLowerCase()] || "application/octet-stream",
-      "cache-control": "no-cache",
+      "cache-control": cacheControl,
     });
     response.end(request.method === "HEAD" ? undefined : await readFile(file));
   } catch {

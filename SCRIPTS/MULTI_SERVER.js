@@ -1394,7 +1394,14 @@ const server = createServer(async (request, response) => {
     if (!info.isFile()) throw new Error("Not a file");
     const etag = `W/"${info.size.toString(16)}-${info.mtimeMs.toString(16)}"`;
     response.setHeader("etag", etag);
-    response.setHeader("cache-control", "no-cache");
+    const extension = extname(file).toLowerCase();
+    // index.html et ses modules doivent toujours provenir du même déploiement.
+    // `no-cache` autorisait encore leur stockage et certains navigateurs/proxys
+    // reprenaient alors une ancienne interface après une reconnexion.
+    const cacheControl = extension === ".html" || extension === ".js" || extension === ".css"
+      ? "no-store"
+      : "no-cache";
+    response.setHeader("cache-control", cacheControl);
     if (request.headers["if-none-match"]?.split(/\s*,\s*/).includes(etag)) {
       response.writeHead(304);
       response.end();
@@ -1402,7 +1409,7 @@ const server = createServer(async (request, response) => {
     }
     response.writeHead(200, {
       "content-type": mimeTypes[extname(file).toLowerCase()] || "application/octet-stream",
-      "cache-control": "no-cache",
+      "cache-control": cacheControl,
     });
     response.end(request.method === "HEAD" ? undefined : await readFile(file));
   } catch {

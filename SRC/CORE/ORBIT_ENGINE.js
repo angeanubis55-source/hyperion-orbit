@@ -10706,7 +10706,7 @@ function registerHudWindows() {
   reg("minimap", "Mini-carte", menuIcon("minimap"));
   reg("settingsWindow", "Paramètres", menuIcon("settings"), false);
   reg("questWindow", "Missions", menuIcon("quests"), false);
-  reg("questOfferWindow", "Terminal de quêtes", menuIcon("quests"), false, { dock: false });
+  reg("questOfferWindow", "Terminal de quêtes", menuIcon("diminish_quests"), false, { dock: false });
   window.GameWindowManager?.close?.("questOfferWindow");
   reg("galaxyGateWindow", "Galaxy Gates", menuIcon("ggBuilder"), false);
   reg("starMapWindow", "Carte Stellaire", menuIcon("spacemap"), false);
@@ -10729,8 +10729,8 @@ function registerHudWindows() {
   window.GameWindowManager?.close?.("oreTradeWindow");
   reg("refineryWindow", "Raffinage", menuIcon("refinement"), false);
   reg("skylabWindow", "Skylab", menuIcon("skylab"), false);
-  reg("auctionWindow", "Enchères", menuIcon("mileageMarket"), false);
-  reg("pilotWindow", "Arbre des compétences", menuIcon("update_engine"), false);
+  reg("auctionWindow", "Enchères", menuIcon("auction"), false);
+  reg("pilotWindow", "Arbre des compétences", menuIcon("ship_boost_event"), false);
   reg("boosterWindow", "Boosters", menuIcon("booster"), false);
   reg("botWindow", "BOT", menuIcon("payload_escort"), false);
   reg("wikiWindow", "Wiki / Aide", menuIcon("help"), false);
