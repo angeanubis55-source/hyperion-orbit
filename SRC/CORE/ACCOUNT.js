@@ -2428,13 +2428,15 @@ export function recordEternalGateLoopDone(currentUser = null) {
   return { ok: true, user: u, loopsDone: previous.loopsDone + 1 };
 }
 
-// ✅ Vague Eternal terminée : +1 au compteur total (persisté aussitôt,
-// le classement se met à jour à chaque vague).
-export function recordEternalGateWaveCleared(currentUser = null) {
+// ✅ Vague Eternal terminée : compteur aligné sur la numérotation ★
+// (11 vagues + 1 interlude par boucle : ★13, ★14...). Idempotent :
+// re-valider la même vague ne fait pas monter le compteur.
+export function recordEternalGateWaveCleared(wave, currentUser = null) {
   const u = currentUser || getCurrentUserForMutation();
   if (!u) return { ok: false, error: "Aucun utilisateur connecté." };
   const previous = normalizeEternalGateState(u.eternalGate);
-  const wavesDone = previous.wavesDone + 1;
+  const w = Math.max(1, Math.floor(Number(wave) || 1));
+  const wavesDone = Math.max(previous.wavesDone, w + previous.loopsDone * 12);
   u.eternalGate = { deployed: previous.deployed, loopsDone: previous.loopsDone,
     wavesDone, bestWaves: Math.max(previous.bestWaves, wavesDone),
     wave: previous.wave, waveKills: previous.waveKills };

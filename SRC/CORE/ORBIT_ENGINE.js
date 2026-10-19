@@ -32635,7 +32635,7 @@ function onWaveCleared() {
       // (pas account.user, potentiellement périmé en multi).
       // Synchro serveur immédiate : un refresh juste après ne doit rien perdre.
       try {
-        const cleared = recordEternalGateWaveCleared();
+        const cleared = recordEternalGateWaveCleared(wave);
         if (cleared.ok) account.user = cleared.user;
         if (netActive()) flushNetUser().catch(() => {});
       } catch {}
