@@ -314,6 +314,13 @@ function ensureWindowBar(card, title, icon, minimizable = true) {
   function wireDockIconButton(btn) {
     if (!btn || btn.__dockIconWired) return;
     btn.__dockIconWired = true;
+    // Libellé custom sous le bouton : migre title -> data-docklabel
+    // pour ne plus afficher l'infobulle native du navigateur.
+    try {
+      const t = btn.getAttribute("title");
+      if (t && !btn.hasAttribute("data-docklabel")) btn.setAttribute("data-docklabel", t);
+      if (t) btn.removeAttribute("title");
+    } catch {}
     const name = dockMenuIconName(btn);
     if (name) {
       // Précharge les 3 états pour un survol sans flash.
