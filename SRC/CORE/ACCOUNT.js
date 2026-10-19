@@ -2364,6 +2364,9 @@ export function normalizeEternalGateState(raw) {
     loopsDone: Math.max(0, Math.floor(Number(source.loopsDone) || 0)),
     // ✅ total des vagues terminées (run en cours, affiché au classement).
     wavesDone: Math.max(0, Math.floor(Number(source.wavesDone) || 0)),
+    // ✅ record persistant : meilleur total, jamais réinitialisé (que la mort).
+    // Remplacé uniquement si le joueur fait mieux.
+    bestWaves: Math.max(0, Math.floor(Number(source.bestWaves) || 0)),
   };
 }
 
@@ -2383,7 +2386,9 @@ export function deployEternalGateWithCpu(currentUser = null) {
   const stock = Math.max(0, Math.floor(Number(u.inventory.resources.eternal_cpu) || 0));
   if (stock < 1) return { ok: false, error: "Aucun CPU Eternal Classique en stock.", user: u };
   u.inventory.resources.eternal_cpu = stock - 1;
-  u.eternalGate = { deployed: true, loopsDone: 0, wavesDone: 0 };
+  // ✅ le record survit aux nouvelles poses (seule la progression du run repart).
+  const prevDeploy = normalizeEternalGateState(u.eternalGate);
+  u.eternalGate = { deployed: true, loopsDone: 0, wavesDone: 0, bestWaves: prevDeploy.bestWaves };
   ensureUserShape(u);
   saveUser(u);
   return { ok: true, user: u };
@@ -2395,7 +2400,9 @@ export function recordEternalGateLoopDone(currentUser = null) {
   const u = currentUser || getCurrentUserForMutation();
   if (!u) return { ok: false, error: "Aucun utilisateur connecté." };
   const previous = normalizeEternalGateState(u.eternalGate);
-  u.eternalGate = { deployed: previous.deployed, loopsDone: previous.loopsDone + 1 };
+  // ✅ conserve vagues + record (sinon le compteur retomberait à 1).
+  u.eternalGate = { deployed: previous.deployed, loopsDone: previous.loopsDone + 1,
+    wavesDone: previous.wavesDone, bestWaves: previous.bestWaves };
   ensureUserShape(u);
   saveUser(u);
   return { ok: true, user: u, loopsDone: previous.loopsDone + 1 };
@@ -2407,18 +2414,21 @@ export function recordEternalGateWaveCleared(currentUser = null) {
   const u = currentUser || getCurrentUserForMutation();
   if (!u) return { ok: false, error: "Aucun utilisateur connecté." };
   const previous = normalizeEternalGateState(u.eternalGate);
+  const wavesDone = previous.wavesDone + 1;
   u.eternalGate = { deployed: previous.deployed, loopsDone: previous.loopsDone,
-    wavesDone: previous.wavesDone + 1 };
+    wavesDone, bestWaves: Math.max(previous.bestWaves, wavesDone) };
   ensureUserShape(u);
   saveUser(u);
-  return { ok: true, user: u, wavesDone: previous.wavesDone + 1 };
+  return { ok: true, user: u, wavesDone };
 }
 
 // ✅ Mort dans la gate : le portail ET la progression disparaissent.
 export function clearEternalGateRun(currentUser = null) {
   const u = currentUser || getCurrentUserForMutation();
   if (!u) return { ok: false, error: "Aucun utilisateur connecté." };
-  u.eternalGate = { deployed: false, loopsDone: 0, wavesDone: 0 };
+  // ✅ mort : portail + progression effacés, RECORD CONSERVÉ.
+  const previous = normalizeEternalGateState(u.eternalGate);
+  u.eternalGate = { deployed: false, loopsDone: 0, wavesDone: 0, bestWaves: previous.bestWaves };
   ensureUserShape(u);
   saveUser(u);
   return { ok: true, user: u };

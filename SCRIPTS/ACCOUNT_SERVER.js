@@ -2252,8 +2252,9 @@ export function handleAccountApi(req, res) {
           if (Number.isFinite(th) && th >= 0) totalHonneur = th;
           const fa = String(data?.faction || "").toLowerCase();
           if (fa === "mmo" || fa === "eic" || fa === "vru") faction = fa;
-          // ✅ vagues Eternal terminées (run en cours, synchro via le compte).
-          const ew = Math.floor(Number(data?.eternalGate?.wavesDone));
+          // ✅ record Eternal : meilleur total de vagues (jamais réinitialisé,
+          // remplacé uniquement si le joueur fait mieux).
+          const ew = Math.floor(Number(data?.eternalGate?.bestWaves));
           if (Number.isFinite(ew) && ew > 0) eternalWaves = ew;
         } catch {}
         list.push({
