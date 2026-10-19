@@ -46583,11 +46583,20 @@ if (rules?.mode === "gate" && GALAXY_GATE_DEFINITIONS[currentGateMapId] && cur.g
     return;
   }}
 // ✅ Gate Eternal : accès direct (URL) refusé si pas posée via CPU.
+// Tolérance refresh/restart : si le hangar était déjà dedans, on reste
+// (la synchro du flag peut avoir une seconde de retard).
 if (rules?.mode === "gate" && currentGateMapId === "eternal" && !isEternalGateDeployed(cur)) {
-  const homeMap = getFactionHomeMap(cur.faction);
-  showToast("Gate Eternal non posée", 1.5);
-  window.__GO_TO_MAP__?.(homeMap);
-  return;
+  let wasInsideEternal = false;
+  try {
+    const hs = getActiveHangarState();
+    wasInsideEternal = String(hs?.mapId || "").toLowerCase() === "eternal";
+  } catch {}
+  if (!wasInsideEternal) {
+    const homeMap = getFactionHomeMap(cur.faction);
+    showToast("Gate Eternal non posée", 1.5);
+    window.__GO_TO_MAP__?.(homeMap);
+    return;
+  }
 }
 // Démarrage direct (URL/refresh) sur Low, Maudite ou QZ : pas de camouflage.
 try { stripCloakForNoCloakMap(); } catch {}
