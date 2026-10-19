@@ -8016,6 +8016,8 @@ html body #profileOverlay .profileHeaderTop .profileTitle, html body #profileOve
   width:42px !important;
   height:42px !important;
   flex:none !important;
+  padding:0 !important;
+  box-sizing:border-box !important;
   border-radius:8px !important;
   border:1px solid rgba(124,240,255,.34) !important;
   background:
@@ -8054,8 +8056,8 @@ html body #profileOverlay .profileHeaderTop .profileTitle, html body #profileOve
   place-items:center !important;
   align-content:center !important;
   justify-content:center !important;
-  width:34px !important;
-  height:34px !important;
+  width:100% !important;
+  height:100% !important;
   flex:none !important;
   line-height:0 !important;
 }
@@ -8086,7 +8088,7 @@ html body #profileOverlay .profileHeaderTop .profileTitle, html body #profileOve
   content:attr(data-docklabel);
   position:absolute;
   top:calc(100% + 6px);
-  left:0;
+  left:50%;
   display:block;
   white-space:nowrap;
   font-size:12px !important;
@@ -8099,7 +8101,7 @@ html body #profileOverlay .profileHeaderTop .profileTitle, html body #profileOve
   border-radius:6px !important;
   padding:4px 10px !important;
   opacity:0;
-  transform:translateY(-4px);
+  transform:translateX(-50%) translateY(-4px);
   pointer-events:none !important;
   transition:opacity .15s ease, transform .18s ease !important;
   z-index:97000 !important;
@@ -8107,7 +8109,7 @@ html body #profileOverlay .profileHeaderTop .profileTitle, html body #profileOve
 #gameWindowDock .gameDockIcon:hover::after,
 #gameWindowDock .gameDockIcon:focus-visible::after {
   opacity:1;
-  transform:translateY(0);
+  transform:translateX(-50%) translateY(0);
 }
 #gameWindowDock .gameDockIcon:not([data-docklabel])::after {
   display:none !important;
