@@ -17019,7 +17019,7 @@ function startZonePortalJump(ptl, entryConfirmed = false) {
   // ✅ Gate Eternal : la gate reste posée pendant le run (elle ne
   // disparaît qu'à la mort). L'entrée est juste vérifiée ici.
   if (targetMapId === "eternal") {
-    if (!isEternalGateDeployed(account.user || getCurrentUserFull())) {
+    if (!isEternalGateDeployed()) {
       showToast("Gate Eternal non posée — utilise un CPU depuis le panneau Galaxy Gate", 1.8);
       return false;
     }
@@ -18482,7 +18482,7 @@ function isZonePortalAvailable(ptl) {
   const gateId = String(ptl?.toMap || "").toLowerCase();
   // ✅ Gate Eternal : visible sur la map mère uniquement si posée via CPU (pas de stock).
   if (gateId === "eternal") {
-    const eternalUser = account.user || getCurrentUserFull();
+    const eternalUser = getCurrentUserFull();
     if (String(window.__CURRENT_MAP_ID__ || "").toLowerCase() !== getFactionHomeMap(eternalUser?.faction)) return false;
     return isEternalGateDeployed(eternalUser);
   }
@@ -28159,7 +28159,8 @@ function drawPetLocator(ox, oy) {
 function getEternalLoopMultiplier() {
   try {
     if (String(window.__CURRENT_MAP_ID__ || "").toLowerCase() !== "eternal") return 1;
-    const user = account.user || getCurrentUserFull();
+    // ✅ lecture fraîche (pas account.user, potentiellement périmé en multi).
+    const user = getCurrentUserFull();
     return Math.max(1, Math.floor(Number(user?.eternalGate?.loopsDone) || 0) + 1);
   } catch { return 1; }
 }
@@ -32589,9 +32590,10 @@ function onWaveCleared() {
     const isEternalRun = String(window.__CURRENT_MAP_ID__ || "").toLowerCase() === "eternal";
     if (isEternalRun) {
       // ✅ vague Eternal terminée : compteur total persisté aussitôt
-      // (le classement se met à jour à chaque vague).
+      // (le classement se met à jour à chaque vague). Objet frais
+      // (pas account.user, potentiellement périmé en multi).
       try {
-        const cleared = recordEternalGateWaveCleared(account.user);
+        const cleared = recordEternalGateWaveCleared();
         if (cleared.ok) account.user = cleared.user;
       } catch {}
     }
@@ -32608,7 +32610,7 @@ function onWaveCleared() {
     // (continuer = boucle suivante ×N, retour = base, gate conservée).
     if (String(window.__CURRENT_MAP_ID__ || "").toLowerCase() === "eternal" && wave > 1) {
       try {
-        const done = recordEternalGateLoopDone(account.user);
+        const done = recordEternalGateLoopDone();
         if (done.ok) account.user = done.user;
       } catch {}
       player.x = clamp(WORLD.w / 2, 80, WORLD.w - 80);
@@ -34368,7 +34370,7 @@ function die() {
   // (seule fin possible d'un run, avec la sortie manuelle).
   if (rules?.mode === "gate" && defeatedGateId === "eternal") {
     try {
-      const cleared = clearEternalGateRun(account.user);
+      const cleared = clearEternalGateRun();
       if (cleared.ok) {
         account.user = cleared.user;
         showNotificationGroup(["Gate Eternal perdue", "Le portail a disparu de ta map X-1."]);
@@ -45308,7 +45310,7 @@ function paintStarMapNode(n) {
       if (/^[123]-1$/.test(key) && GALAXY_GATE_DEFINITIONS[String(p.toMap).toLowerCase()]) continue;
       // ✅ Gate Eternal : point masqué tant qu'elle n'est pas posée via CPU.
       if (/^[123]-1$/.test(key) && String(p.toMap).toLowerCase() === "eternal"
-        && !isEternalGateDeployed(account.user || getCurrentUserFull())) continue;
+        && !isEternalGateDeployed(getCurrentUserFull())) continue;
       let stroke = "rgba(124,240,255,0.9)";
       try { stroke = getMinimapPortalColors(p).stroke || stroke; } catch {}
       ctx.strokeStyle = stroke;
