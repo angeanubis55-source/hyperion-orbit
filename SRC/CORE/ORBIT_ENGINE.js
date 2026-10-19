@@ -59,6 +59,7 @@ import {
   isEternalGateDeployed,
   deployEternalGateWithCpu,
   recordEternalGateLoopDone,
+  recordEternalGateWaveCleared,
   clearEternalGateRun,
   completeCurrentUserGalaxyGate,
   loseCurrentUserGalaxyGateLife,
@@ -30135,6 +30136,8 @@ if (
   !e.noRewards &&
   e.type !== "npc_Protegit" &&
   e.type !== "npc_Barrage_Seeker_Rocket" &&
+  // ✅ Gate Eternal : aucun cargo (ni minerais ni box).
+  !String(e.type || "").endsWith("_eternal") &&
   // Event uniquement (même les retardataires d'après-event ne droppent pas).
   (hwDropRole == null || isHalloweenMapActive(currentMapId())) &&
   // Tous à 100 % (boss comme normaux, voir HALLOWEEN_DROP_*_RATE).
@@ -32583,6 +32586,15 @@ function onWaveCleared() {
   // seules, sans portails de choix continuer/retour. La suivante démarre
   // après le compte à rebours standard (recentrage comme le portail continuer).
   if (rules?.autoChainWaves && !mapSwitchInProgress && !player.dead) {
+    const isEternalRun = String(window.__CURRENT_MAP_ID__ || "").toLowerCase() === "eternal";
+    if (isEternalRun) {
+      // ✅ vague Eternal terminée : compteur total persisté aussitôt
+      // (le classement se met à jour à chaque vague).
+      try {
+        const cleared = recordEternalGateWaveCleared(account.user);
+        if (cleared.ok) account.user = cleared.user;
+      } catch {}
+    }
     const nextPlan = getWavePlan(wave + 1);
     if (nextPlan && Array.isArray(nextPlan.spawns) && nextPlan.spawns.length) {
       // ✅ pas de recentrage entre les vagues : ça enchaîne sur place.

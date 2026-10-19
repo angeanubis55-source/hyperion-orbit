@@ -16,6 +16,7 @@ export function initRankingsUI() {
     board: { body: document.getElementById("rankingRows"), status: document.getElementById("rankingStatus") },
     exp: { body: document.getElementById("rankingRowsExp"), status: document.getElementById("rankingStatusExp") },
     honor: { body: document.getElementById("rankingRowsHonor"), status: document.getElementById("rankingStatusHonor") },
+    eternal: { body: document.getElementById("rankingRowsEternal"), status: document.getElementById("rankingStatusEternal") },
   };
   if (!boards.board.body) return;
 
@@ -30,6 +31,11 @@ export function initRankingsUI() {
       sorted.sort((a, b) => valueOf(b) - valueOf(a));
     } else if (kind === "honor") {
       valueOf = (row) => Number(row.honor) || 0;
+      sorted.sort((a, b) => valueOf(b) - valueOf(a));
+    } else if (kind === "eternal") {
+      // ✅ vagues Eternal terminées (triées côté serveur, seules les >0 sont envoyées).
+      valueOf = (row) => Number(row.eternalWaves) || 0;
+      sorted = sorted.filter((row) => valueOf(row) > 0);
       sorted.sort((a, b) => valueOf(b) - valueOf(a));
     } else {
       valueOf = (row) => Number(row.points) || 0;
@@ -75,6 +81,7 @@ export function initRankingsUI() {
       renderBoard("board", out.list);
       renderBoard("exp", out.list);
       renderBoard("honor", out.list);
+      renderBoard("eternal", Array.isArray(out.eternal) ? out.eternal : []);
     } catch {
       if (!shouldRefreshWindow("rankingWindow")) return;
       Object.values(boards).forEach((t) => { if (t.status) t.status.textContent = "Hors ligne (serveur injoignable)"; });
@@ -115,7 +122,7 @@ export function initRankingsUI() {
         document.querySelectorAll("#rankingWindow [data-ranking-pane]").forEach((pane) => {
           pane.classList.toggle("active", pane.dataset.rankingPane === next);
         });
-        if (next === "board" || next === "exp" || next === "honor") load();
+        if (next === "board" || next === "exp" || next === "honor" || next === "eternal") load();
         else try { window.dispatchEvent(new CustomEvent("orbit:ranking-npcs-shown")); } catch {}
       });
     });

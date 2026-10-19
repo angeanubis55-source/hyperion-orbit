@@ -2362,6 +2362,8 @@ export function normalizeEternalGateState(raw) {
   return {
     deployed: source.deployed === true,
     loopsDone: Math.max(0, Math.floor(Number(source.loopsDone) || 0)),
+    // ✅ total des vagues terminées (run en cours, affiché au classement).
+    wavesDone: Math.max(0, Math.floor(Number(source.wavesDone) || 0)),
   };
 }
 
@@ -2381,7 +2383,7 @@ export function deployEternalGateWithCpu(currentUser = null) {
   const stock = Math.max(0, Math.floor(Number(u.inventory.resources.eternal_cpu) || 0));
   if (stock < 1) return { ok: false, error: "Aucun CPU Eternal Classique en stock.", user: u };
   u.inventory.resources.eternal_cpu = stock - 1;
-  u.eternalGate = { deployed: true, loopsDone: 0 };
+  u.eternalGate = { deployed: true, loopsDone: 0, wavesDone: 0 };
   ensureUserShape(u);
   saveUser(u);
   return { ok: true, user: u };
@@ -2399,11 +2401,24 @@ export function recordEternalGateLoopDone(currentUser = null) {
   return { ok: true, user: u, loopsDone: previous.loopsDone + 1 };
 }
 
+// ✅ Vague Eternal terminée : +1 au compteur total (persisté aussitôt,
+// le classement se met à jour à chaque vague).
+export function recordEternalGateWaveCleared(currentUser = null) {
+  const u = currentUser || getCurrentUserForMutation();
+  if (!u) return { ok: false, error: "Aucun utilisateur connecté." };
+  const previous = normalizeEternalGateState(u.eternalGate);
+  u.eternalGate = { deployed: previous.deployed, loopsDone: previous.loopsDone,
+    wavesDone: previous.wavesDone + 1 };
+  ensureUserShape(u);
+  saveUser(u);
+  return { ok: true, user: u, wavesDone: previous.wavesDone + 1 };
+}
+
 // ✅ Mort dans la gate : le portail ET la progression disparaissent.
 export function clearEternalGateRun(currentUser = null) {
   const u = currentUser || getCurrentUserForMutation();
   if (!u) return { ok: false, error: "Aucun utilisateur connecté." };
-  u.eternalGate = { deployed: false, loopsDone: 0 };
+  u.eternalGate = { deployed: false, loopsDone: 0, wavesDone: 0 };
   ensureUserShape(u);
   saveUser(u);
   return { ok: true, user: u };

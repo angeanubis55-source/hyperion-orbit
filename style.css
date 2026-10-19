@@ -7031,6 +7031,11 @@ html body #profileOverlay .profileHeaderTop .profileTitle, html body #profileOve
 .rankingPane[data-ranking-pane="board"] {
   padding-bottom:10px;
 }
+.rankingPane[data-ranking-pane="exp"],
+.rankingPane[data-ranking-pane="honor"],
+.rankingPane[data-ranking-pane="eternal"] {
+  padding-bottom:10px;
+}
 .rankingPane[data-ranking-pane="npcs"] {
   overflow-y:auto;
   overflow-x:hidden;

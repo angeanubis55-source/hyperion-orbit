@@ -2240,6 +2240,7 @@ export function handleAccountApi(req, res) {
         let totalExp = 0;
         let totalHonneur = 0;
         let faction = "";
+        let eternalWaves = 0;
         try {
           const data = JSON.parse(r.data || "{}");
           rankPoints = Math.max(0, Math.floor(Number(data?.stats?.rankPoints) || 0));
@@ -2251,6 +2252,9 @@ export function handleAccountApi(req, res) {
           if (Number.isFinite(th) && th >= 0) totalHonneur = th;
           const fa = String(data?.faction || "").toLowerCase();
           if (fa === "mmo" || fa === "eic" || fa === "vru") faction = fa;
+          // ✅ vagues Eternal terminées (run en cours, synchro via le compte).
+          const ew = Math.floor(Number(data?.eternalGate?.wavesDone));
+          if (Number.isFinite(ew) && ew > 0) eternalWaves = ew;
         } catch {}
         list.push({
           pseudo: String(r.pseudo || "Pilote").slice(0, 20),
@@ -2258,11 +2262,18 @@ export function handleAccountApi(req, res) {
           exp: totalExp,
           honor: totalHonneur,
           rankPoints, faction,
+          eternalWaves,
           _kills: kills,
         });
       }
       list.sort((a, b) => b.points - a.points || b._kills - a._kills);
-      return json(res, 200, { ok: true, list: list.slice(0, 100).map(({ pseudo, points, exp, rankPoints, honor, faction }) => ({ pseudo, points, exp: exp || 0, rankPoints, honor, faction })) });
+      const rowFields = ({ pseudo, points, exp, rankPoints, honor, faction, eternalWaves }) =>
+        ({ pseudo, points, exp: exp || 0, rankPoints, honor, faction, eternalWaves: eternalWaves || 0 });
+      // ✅ classement Eternal : top 100 par vagues terminées (indépendant du top points).
+      const eternalTop = list.filter((row) => row.eternalWaves > 0)
+        .sort((a, b) => b.eternalWaves - a.eternalWaves)
+        .slice(0, 100).map(rowFields);
+      return json(res, 200, { ok: true, list: list.slice(0, 100).map(rowFields), eternal: eternalTop });
     } catch {
       return json(res, 500, { ok: false, error: "Erreur serveur." });
     }
