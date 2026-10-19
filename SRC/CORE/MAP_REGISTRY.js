@@ -13,6 +13,7 @@ export const MAP_LOADERS = Object.freeze({
   lambda: () => import("../../MAPS/LAMBDA_MAP/GATE.js"),
   kronos: () => import("../../MAPS/KRONOS_MAP/GATE.js"),
   awakened: () => import("../../MAPS/AWAKENED_MAP/GATE.js"),
+  eternal: () => import("../../MAPS/ETERNAL_MAP/GATE.js"),
   low: () => import("../../MAPS/LOW_MAP/MAP.js"),
   qz: () => import("../../MAPS/BLIGHTED_MAP/GATE.js"),
   "1-1": () => import("../../MAPS/1-1/MAP.js"),

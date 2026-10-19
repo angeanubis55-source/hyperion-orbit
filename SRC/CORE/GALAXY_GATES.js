@@ -90,9 +90,9 @@ export const GALAXY_GATE_DEFINITIONS = Object.freeze({
   lambda: Object.freeze({ id: "lambda", name: "Lambda", group: "lambda", requiredParts: 45, maxWaves: 7, maxLives: 5, image: "ASSETS/LAMBDA_PORTAL/DESACTIVE.png", completion: defineCompletionReward({ exp: 4125000, honor: 150000, credits: 15000000, x4: 15000 }), rewardScale: 1 }),
   // ✅ Kronos : PAS de roue (construction fidèle via complétions des autres gates), 21 pièces / 13 vagues Saturn.
   kronos: Object.freeze({ id: "kronos", name: "Kronos", group: null, requiredParts: 21, maxWaves: 13, maxLives: 5, image: "ASSETS/KRONOS_PORTAL/DESACTIVE.png", completion: defineCompletionReward({ exp: 75000000, honor: 1000000, credits: 75000000, x4: 100000, energy: 300 }), rewardScale: 1 }),
-  // ✅ Awakened : roue de spin isolée (groupe "awakened"), 1 seule pièce, 17 vagues.
+  // ✅ Awakened : roue de spin isolée (groupe "awakened"), 67 pièces / 17 vagues.
   // Récompense finale = x10 Kronos.
-  awakened: Object.freeze({ id: "awakened", name: "Awakened", group: "awakened", requiredParts: 1, maxWaves: 17, maxLives: 1, image: "ASSETS/PORTAL/AWAKENED/DESACTIVE.png", completion: defineCompletionReward({ exp: 750000000, honor: 10000000, credits: 750000000, x4: 1000000, energy: 3000 }), rewardScale: 1 }),
+  awakened: Object.freeze({ id: "awakened", name: "Awakened", group: "awakened", requiredParts: 67, maxWaves: 17, maxLives: 1, image: "ASSETS/PORTAL/AWAKENED/DESACTIVE.png", completion: defineCompletionReward({ exp: 750000000, honor: 10000000, credits: 750000000, x4: 1000000, energy: 3000 }), rewardScale: 1 }),
 });
 
 // Groupes de spin : "ensemble" (Alpha/Beta/Gamma, une seule roue), "delta",

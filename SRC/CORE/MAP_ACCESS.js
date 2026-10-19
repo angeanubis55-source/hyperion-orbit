@@ -48,6 +48,7 @@ const SPECIAL_MAP_LEVELS = Object.freeze({
   kappa: 1,
   lambda: 1,
   kronos: 1,
+  eternal: 1,
 });
 
 export function getMapRequiredLevel(mapId, playerSector = null) {

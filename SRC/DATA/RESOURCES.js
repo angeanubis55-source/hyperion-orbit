@@ -44,6 +44,9 @@ export const RESOURCE_TYPES = Object.freeze({
   hybrid_processor: Object.freeze({ id: "hybrid_processor", name: "Processeur hybride", plural: "Processeurs hybrides", icon: "/ASSETS/CPU/HYBRID_PROCESSOR_100X100.png" }),
   nano_case: Object.freeze({ id: "nano_case", name: "Boîte nano", plural: "Boîtes nano", icon: "/ASSETS/CPU/NANO_CASE_100X100.png" }),
   micro_transistor: Object.freeze({ id: "micro_transistor", name: "Micro transistor", plural: "Micro transistors", icon: "/ASSETS/CPU/MICRO_TRANSISTORS_100X100.png" }),
+  // Composants CPU Eternels (portails : 1 Eternal Classique CPU = 1 entrée Gate Eternal).
+  eternal_cpu: Object.freeze({ id: "eternal_cpu", name: "Eternal Classique CPU", plural: "Eternal Classique CPU", icon: "/ASSETS/CPU/EternalCPU_100X100.png" }),
+  eternal_backlight_cpu: Object.freeze({ id: "eternal_backlight_cpu", name: "Eternal Blacklight CPU", plural: "Eternal Blacklight CPU", icon: "/ASSETS/CPU/EternalBlacklightCPU_100X100.webp" }),
 });
 
 export function getResourceName(resourceId, quantity = 1) {

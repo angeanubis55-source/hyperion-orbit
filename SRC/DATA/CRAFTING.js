@@ -168,6 +168,28 @@ export const CRAFTING_RECIPES = Object.freeze([
     output: { resources: { micro_transistor: 1 } },
   }),
   Object.freeze({
+    id: "craft_eternal_cpu",
+    name: "Eternal Classique CPU",
+    description: "Composant nécessaire pour ouvrir des portails. Sans effet pour le moment.",
+    rarity: "epic",
+    costs: {
+      credits: 15000000,
+      resources: { eternal_fragment: 500, rinusk: 500 },
+    },
+    output: { resources: { eternal_cpu: 1 } },
+  }),
+  Object.freeze({
+    id: "craft_eternal_backlight_cpu",
+    name: "Eternal Blacklight CPU",
+    description: "Composant nécessaire pour ouvrir des portails. Sans effet pour le moment.",
+    rarity: "legendary",
+    costs: {
+      credits: 15000000,
+      resources: { eternal_fragment: 500, rinusk: 500 },
+    },
+    output: { resources: { eternal_backlight_cpu: 1 } },
+  }),
+  Object.freeze({
     id: "craft_lf3",
     name: "Laser LF-3",
     rarity: "epic",

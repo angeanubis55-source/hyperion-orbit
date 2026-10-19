@@ -3944,7 +3944,7 @@ html body #profileOverlay .profileHeaderTop .profileTitle, html body #profileOve
   opacity:1;
 }
 .galaxyGatePanel {
-  width:min(920px,calc(100vw - 24px)) !important;
+  width:min(1000px,calc(100vw - 24px)) !important;
   min-width:min(620px,calc(100vw - 24px));
   height:auto;
   max-height:min(820px,calc(100vh - 24px));
@@ -4269,7 +4269,8 @@ html body #profileOverlay .profileHeaderTop .profileTitle, html body #profileOve
   max-width:100%;
   min-height:0;
   display:grid;
-  grid-template-columns:140px minmax(0,1fr) 270px;
+  /* ✅ seule la colonne portails grandit (+80 px) : centre et historique inchangés. */
+  grid-template-columns:220px minmax(0,1fr) 270px;
   align-items:stretch;
   gap:14px;
   overflow:hidden;
@@ -4363,6 +4364,57 @@ html body #profileOverlay .profileHeaderTop .profileTitle, html body #profileOve
   box-shadow:0 0 16px rgba(0,217,255,.12);
   color:#eaffff;
 }
+/* ✅ onglets de catégorie GG : Classique / Spéciaux (même style que les onglets). */
+.ggCatButtons {
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:8px;
+  padding:10px 0 0;
+}
+.ggCatButtons button {
+  min-height:34px;
+  border:1px solid rgba(124,240,255,.38);
+  border-radius:8px;
+  color:#fff;
+  background:linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34));
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.03);
+  font:800 12px/1.2 ui-sans-serif,system-ui;
+  text-transform:none;
+  cursor:pointer;
+  transition:none;
+}
+.ggCatButtons button:hover:not(:disabled) {
+  border-color:rgba(124,240,255,.62);
+  background:rgba(0,140,185,.3);
+  box-shadow:0 0 16px rgba(0,217,255,.12);
+}
+.ggCatButtons button.active {
+  border-color:rgba(124,240,255,.62);
+  background:rgba(0,140,185,.3);
+  box-shadow:0 0 16px rgba(0,217,255,.12);
+  color:#eaffff;
+}
+/* ✅ vue Eternal : calquée sur Kronos à l'identique (zone basse vide de
+   48 px comme la liste des pièces, sans contenu). */
+#ggEternalEntry {
+  display:none;
+}
+#ggSpinControls.eternalEntryMode > :not(#ggEternalEntry) {
+  display:none;
+}
+#ggSpinControls.eternalEntryMode > #ggEternalEntry {
+  display:grid;
+  grid-column:1/-1;
+  height:48px;
+  align-items:center;
+}
+#ggEternalUseBtn {
+  min-height:42px;
+  /* ✅ descendu de 5 px pour s'aligner comme le bouton Spin. */
+  margin-top:5px;
+  /* ✅ séparateur décalé à gauche. */
+  grid-template-columns:0.6fr auto 1fr;
+}
 .ggGateNav .ggTabsGroup:has(button.active) button::after {
   content:"";
   position:absolute;
@@ -4413,9 +4465,8 @@ html body #profileOverlay .profileHeaderTop .profileTitle, html body #profileOve
 .ggGateNav .ggTabsGroup[data-gg-group="lambda"],
 .ggGateNav .ggTabsGroup[data-gg-group="awakened"],
 .ggGateNav .ggTabsGroup[data-gg-group="kronos"] {
-  margin-top:3px;
-  padding-top:3px;
-  border-top:1px solid rgba(124,240,255,.25);
+  /* ✅ pas de séparateur : simple espace entre les groupes. */
+  margin-top:8px;
 }
 .ggGateNav .ggTabsButtons {
   display:grid;
@@ -4531,6 +4582,16 @@ html body #profileOverlay .profileHeaderTop .profileTitle, html body #profileOve
 }
 .ggBuiltLine b {
   color:#fff;
+}
+/* ✅ vues Kronos / Eternal : bouton multiplicateur masqué, "GG construite"
+   remontée alignée avec "Récompenses des NPC" (le reste du bloc suit). */
+#galaxyGateWindow.kronosView .ggDetails,
+#galaxyGateWindow.eternalView .ggDetails {
+  display:none;
+}
+#galaxyGateWindow.kronosView .ggBuiltLine,
+#galaxyGateWindow.eternalView .ggBuiltLine {
+  top:14px;
 }
 .ggRewardsHelp {
   position:absolute;
@@ -4970,12 +5031,12 @@ html body #profileOverlay .profileHeaderTop .profileTitle, html body #profileOve
 .ggSpinControls button[hidden] {
   display:none;
 }
-#ggSpinBtn em {
+#ggSpinBtn em, #ggEternalUseBtn em {
   color:#ffd36b;
   font-style:normal;
   font-variant-numeric:tabular-nums;
 }
-#ggSpinBtn .ggSpinSep {
+#ggSpinBtn .ggSpinSep, #ggEternalUseBtn .ggSpinSep {
   width:1px;
   align-self:stretch;
   background:rgba(124,240,255,.38);

@@ -752,6 +752,91 @@ export function getZonePortals(WORLD) {
 
     },
 
+    {
+
+      id: "p_31_to_eternal",
+
+      x: 5500,
+
+      y: 3500,
+
+      r: 260,
+
+      toMap: "eternal",
+
+      // ✅ coût payé au bouton du panneau (1 CPU = gate posée), entrée libre.
+
+  sprites: {
+
+    idle: {
+
+      src: "ASSETS/ETERNAL_PORTAL/DESACTIVE.png",
+
+      w: 320,
+
+      h: 320,
+
+      yOff: 0,
+
+    },
+
+    // ✅ comme les autres portails : ACTIVE fixe avec respiration par-dessus
+    // DESACTIVE (gérée par le moteur). L'anim 79 frames ne joue QUE au saut.
+    open: {
+
+      src: "ASSETS/ETERNAL_PORTAL/ACTIVE.png",
+
+      w: 320,
+
+      h: 320,
+
+      yOff: 0,
+
+      // ✅ respiration 2x plus rapide que les autres portails (2.4 s par défaut).
+      breathePeriod: 1.2,
+
+    },
+
+    jump: {
+
+      src: "ASSETS/ETERNAL_PORTAL/JUMP.png",
+
+      w: 320,
+
+      h: 320,
+
+      yOff: 0,
+
+      scale: 1,
+
+      spinSpeed: 0,
+
+      alpha: 1,
+
+    },
+
+    jumpFx: {
+
+      path: "ASSETS/ETERNAL_PORTAL/JUMP_FX/",
+
+      firstNumber: 1,
+
+      ext: ".png",
+
+      frames: 78,
+
+      fps: 40,
+
+      w: 350,
+
+      h: 350,
+
+    },
+
+  },
+
+    },
+
   ];
 }
 

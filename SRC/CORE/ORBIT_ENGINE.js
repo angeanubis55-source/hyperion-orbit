@@ -56,6 +56,10 @@ import {
   setActiveHangar,
   setActiveHangarConfig,
   consumeCurrentUserGalaxyGate,
+  isEternalGateDeployed,
+  deployEternalGateWithCpu,
+  recordEternalGateLoopDone,
+  clearEternalGateRun,
   completeCurrentUserGalaxyGate,
   loseCurrentUserGalaxyGateLife,
   grantCurrentUserGalaxyEnergy,
@@ -7769,7 +7773,7 @@ function breakCpuCloak(reason) {
 // Camouflage interdit par carte : GG + QZ + Low + Maudite. Boutons grisés
 // et activations refusées sur place (le serveur tranche en autorité).
 const NO_CLOAK_MAPS = new Set(["alpha", "beta", "gamma", "delta", "epsilon",
-  "zeta", "kappa", "lambda", "kronos", "awakened", "qz", "low", "maudite"]);
+  "zeta", "kappa", "lambda", "kronos", "awakened", "eternal", "qz", "low", "maudite"]);
 function cloakBlockedOnMap(mapId = null) {
   try {
     const id = String(mapId ?? window.__CURRENT_MAP_ID__ ?? currentMapId() ?? "").toLowerCase();
@@ -15940,6 +15944,85 @@ window.addEventListener("orbit:profile-progress", () => {
 queueMicrotask(() => renderCraftingWindow());
 
 let selectedGalaxyGateId = null;
+let lastClassicGalaxyGateId = null;
+
+// ✅ Gate Eternal (onglet "Spéciaux") : pas de spin, entrée = Eternal Classique CPU.
+const ETERNAL_GATE_ID = "eternal";
+const ETERNAL_GATE_INFO = Object.freeze({
+  id: ETERNAL_GATE_ID,
+  name: "Eternal",
+  image: "ASSETS/ETERNAL_PORTAL/DESACTIVE.png",
+  waves: 11,
+  entryResource: "eternal_cpu",
+  entryResourceCost: 1,
+  waveList: Object.freeze([
+    "Vague 1 — 40 Streuner", "Vague 2 — 40 Lordakia", "Vague 3 — 40 Mordon",
+    "Vague 4 — 80 Saimon", "Vague 5 — 20 Devolarium", "Vague 6 — 80 Kristallin",
+    "Vague 7 — 20 Sibelon", "Vague 8 — 80 Sibelonit", "Vague 9 — 16 Kristallon",
+    "Vague 10 — 30 Protegit", "Vague 11 — 2 Lordakium",
+  ]),
+});
+
+function renderEternalGatePanel(user, state) {
+  ui.ggEnergy.textContent = formatInteger(state.energy);
+  ui.ggCredits.textContent = formatInteger(user.credits);
+  ui.ggPortalImage.src = ETERNAL_GATE_INFO.image;
+  ui.ggPortalImage.alt = `Portail ${ETERNAL_GATE_INFO.name}`;
+  const owned = Math.max(0, Math.floor(Number(user?.inventory?.resources?.[ETERNAL_GATE_INFO.entryResource]) || 0));
+  const eternalStockBtn = document.getElementById("ggEternalStockBtn");
+  if (eternalStockBtn) eternalStockBtn.textContent = formatInteger(owned);
+  ui.ggRewards.innerHTML = `<strong>Gate ${escapeHtml(ETERNAL_GATE_INFO.name)}</strong>`
+    + `<span>${ETERNAL_GATE_INFO.waves} vagues old-school enchaînées</span>`
+    + `<span>Entrée : ${ETERNAL_GATE_INFO.entryResourceCost} ${escapeHtml(getResourceName(ETERNAL_GATE_INFO.entryResource))}</span>`
+    + `<span>En stock : ${formatInteger(owned)}</span>`
+    + `<span>Portail permanent au centre des maps X-1</span>`;
+  ui.ggNpcRewardScale.innerHTML = `Récompenses des NPC <em>×1</em>`;
+  ui.ggParts.textContent = "—";
+  ui.ggBuilt.textContent = "Portail permanent · X-1";
+  if (ui.ggCompleted) ui.ggCompleted.textContent = "—";
+  // ✅ Eternal : calqué sur Kronos (Vies 1/1, Vague 0/11, Pièces 0/0,
+  // zone basse vide de 48 px comme la liste des pièces).
+  if (ui.ggLives) ui.ggLives.textContent = "1 / 1";
+  const eternalPartsBar = ui.ggParts?.closest(".ggPartsBar");
+  if (eternalPartsBar) {
+    eternalPartsBar.style.display = "";
+    const partsLabel = eternalPartsBar.querySelector("span");
+    if (partsLabel) partsLabel.textContent = "Pièces";
+  }
+  // ✅ Pièces : 1/1 quand la gate est posée ou le run en cours, 0/1 sinon.
+  // (pas de stock : le portail n'est visible sur la map que si posée).
+  const eternalInRun = String(window.__CURRENT_MAP_ID__ || "").toLowerCase() === ETERNAL_GATE_ID;
+  ui.ggParts.textContent = (eternalInRun || isEternalGateDeployed(user)) ? "1 / 1" : "0 / 1";
+  const eternalWaveCell = ui.ggWave?.closest("div");
+  if (eternalWaveCell) eternalWaveCell.style.display = "";
+  // ✅ Vague : boucles de 11 vagues terminées (0 au départ).
+  ui.ggWave.textContent = `${Math.max(0, Math.floor(Number(user?.eternalGate?.loopsDone) || 0))}`;
+  ui.ggMultiplier.textContent = "x1";
+  if (ui.ggMultiplierBtn) {
+    ui.ggMultiplierBtn.disabled = true;
+    ui.ggMultiplierBtn.classList.remove("active");
+    const actionLabel = ui.ggMultiplierBtn.querySelector(".ggMultiplierAction");
+    if (actionLabel) actionLabel.textContent = "Désactivée";
+  }
+  if (ui.ggSpinControls) {
+    ui.ggSpinControls.hidden = false;
+    // ✅ même gabarit que Kronos : conteneur 53 px + zone vide 48 px.
+    ui.ggSpinControls.classList.add("kronosSpinControls");
+    ui.ggSpinControls.classList.add("eternalEntryMode");
+  }
+  ui.galaxyGateWindow?.classList.remove("kronosView");
+  ui.galaxyGateWindow?.classList.toggle("eternalView", true);
+  ui.ggSpinBtn.hidden = true;
+  ui.ggSpinBtn.disabled = true;
+  document.querySelectorAll("[data-gg-cat]").forEach((button) => {
+    button.classList.toggle("active", button.dataset.ggCat === "special");
+  });
+  ui.ggTabs.innerHTML = `<div class="ggTabsGroup" data-gg-group="special"><div class="ggTabsButtons">`
+    + `<button type="button" data-gg-gate="${ETERNAL_GATE_ID}" class="active">Eternal Classique</button>`
+    + `</div></div>`;
+  ui.ggHistory.innerHTML = `<div class="ggHistoryRow"><span><b>Gate ${escapeHtml(ETERNAL_GATE_INFO.name)}</b> · entrée CPU</span>`
+    + `<div class="ggHistoryGains">${ETERNAL_GATE_INFO.waveList.map((line) => `<small>${escapeHtml(line)}</small>`).join("")}</div></div>`;
+}
 
 function formatGalaxyGatePartRewards(reward) {
   const detailed = Object.entries(reward?.partsByGate || {})
@@ -15959,6 +16042,11 @@ function renderGalaxyGateWindow(message = "") {
   const user = getCurrentUserFull();
   const state = user?.galaxyGates;
   if (!state) return;
+  // ✅ onglet "Spéciaux" : panneau Eternal (pas de spin, entrée CPU).
+  if (selectedGalaxyGateId === ETERNAL_GATE_ID) {
+    renderEternalGatePanel(user, state);
+    return;
+  }
   if (!selectedGalaxyGateId && GALAXY_GATE_DEFINITIONS[state.lastOpenedGate]) selectedGalaxyGateId = state.lastOpenedGate;
   const gate = GALAXY_GATE_DEFINITIONS[selectedGalaxyGateId] || GALAXY_GATE_DEFINITIONS.alpha;
   ui.ggEnergy.textContent = formatInteger(state.energy);
@@ -16006,6 +16094,9 @@ function renderGalaxyGateWindow(message = "") {
   const selectedSpinCount = Math.max(1, Number(ui.ggSpinCount?.value || 1));
   ui.ggCreditCost.textContent = formatInteger(GALAXY_SPIN_CREDIT_COST * selectedSpinCount);
   const isKronos = gate.id === "kronos";
+  // ✅ vue Kronos : masque le bouton multiplicateur, remonte le bloc construit.
+  ui.galaxyGateWindow?.classList.toggle("kronosView", isKronos);
+  ui.galaxyGateWindow?.classList.toggle("eternalView", false);
   if (ui.ggSpinControls) {
     ui.ggSpinControls.classList.toggle("kronosSpinControls", isKronos);
     const spinLabel = ui.ggSpinControls.querySelector('label[for="ggSpinCount"]');
@@ -16025,6 +16116,19 @@ function renderGalaxyGateWindow(message = "") {
   ui.ggSpinBtn.hidden = gate.id === "kronos";
   ui.ggSpinBtn.disabled = gate.id === "kronos";
   if (ui.ggSpinCount) ui.ggSpinCount.disabled = gate.id === "kronos";
+  // ✅ retour de l'onglet Spéciaux : réaffiche les contrôles masqués (vue Eternal).
+  if (ui.ggSpinControls) {
+    ui.ggSpinControls.hidden = false;
+    ui.ggSpinControls.classList.remove("eternalEntryMode");
+  }
+  const classicPartsBar = ui.ggParts?.closest(".ggPartsBar");
+  if (classicPartsBar) {
+    classicPartsBar.style.display = "";
+    const partsLabel = classicPartsBar.querySelector("span");
+    if (partsLabel) partsLabel.textContent = "Pièces";
+  }
+  const classicWaveCell = ui.ggWave?.closest("div");
+  if (classicWaveCell) classicWaveCell.style.display = "";
   // ✅ plus de bouton "Préparer" : le placement sur la map est automatique.
   if (ui.ggDeployBtn) ui.ggDeployBtn.remove();
   ui.ggDeployBtn = null;
@@ -16049,6 +16153,9 @@ function renderGalaxyGateWindow(message = "") {
     + `<div class="ggTabsGroup" data-gg-group="lambda"><div class="ggTabsButtons">${lambdaTabs}</div></div>`
     + `<div class="ggTabsGroup" data-gg-group="awakened"><div class="ggTabsButtons">${awakenedTabs}</div></div>`
     + `<div class="ggTabsGroup" data-gg-group="kronos"><div class="ggTabsButtons">${kronosTabs}</div></div>`;
+  document.querySelectorAll("[data-gg-cat]").forEach((button) => {
+    button.classList.toggle("active", button.dataset.ggCat === "classic");
+  });
   const history = [...state.history].reverse();
   ui.ggHistory.innerHTML = history.length ? history.map(entry => {
     const reward = entry.rewards || {};
@@ -16132,6 +16239,38 @@ ui.ggTabs?.addEventListener("click", event => {
   if (!button) return;
   selectedGalaxyGateId = button.dataset.ggGate;
   renderGalaxyGateWindow();
+});
+
+// ✅ onglets de catégorie Classique / Spéciaux (la sélection pilote l'affichage).
+document.querySelectorAll("[data-gg-cat]").forEach((button) => {  button.addEventListener("click", () => {
+    if (button.dataset.ggCat === "special") {
+      if (GALAXY_GATE_DEFINITIONS[selectedGalaxyGateId]) lastClassicGalaxyGateId = selectedGalaxyGateId;
+      selectedGalaxyGateId = ETERNAL_GATE_ID;
+    } else if (!GALAXY_GATE_DEFINITIONS[selectedGalaxyGateId]) {
+      const fallbackUser = getCurrentUserFull();
+      const lastOpened = fallbackUser?.galaxyGates?.lastOpenedGate;
+      selectedGalaxyGateId = (lastClassicGalaxyGateId && GALAXY_GATE_DEFINITIONS[lastClassicGalaxyGateId])
+        ? lastClassicGalaxyGateId
+        : (lastOpened && GALAXY_GATE_DEFINITIONS[lastOpened] ? lastOpened : "alpha");
+    }
+    renderGalaxyGateWindow();
+  });
+});
+
+// ✅ bouton Eternal : 1 CPU = gate posée immédiatement (pas de stock).
+document.getElementById("ggEternalUseBtn")?.addEventListener("click", () => {
+  const res = deployEternalGateWithCpu();
+  if (res.ok) {
+    account.user = res.user;
+    showNotification("Gate Eternal posée sur ta map X-1 — 1 CPU utilisé", 4, "info", { log: false });
+    renderGalaxyGateWindow();
+    return;
+  }
+  if (res.already) {
+    showToast("Gate Eternal déjà posée", 1.8);
+    return;
+  }
+  showToast("Aucun CPU Eternal Classique — fabriques-en à l'atelier", 2.2);
 });
 
 ui.ggSpinCount?.addEventListener("change", () => renderGalaxyGateWindow());
@@ -16863,6 +17002,17 @@ function startZonePortalJump(ptl, entryConfirmed = false) {
     // ✅ pas de camouflage dans la gate (restauré après récompense/échec).
     try { suspendCloakForGate(); } catch {}
     // ✅ arrivée de l'autre côté = son "saut terminée" (comme les portails de zone).
+    try { sessionStorage.setItem("orbit_gate_jump", "1"); } catch {}
+  }
+
+  // ✅ Gate Eternal : la gate reste posée pendant le run (elle ne
+  // disparaît qu'à la mort). L'entrée est juste vérifiée ici.
+  if (targetMapId === "eternal") {
+    if (!isEternalGateDeployed(account.user || getCurrentUserFull())) {
+      showToast("Gate Eternal non posée — utilise un CPU depuis le panneau Galaxy Gate", 1.8);
+      return false;
+    }
+    renderGalaxyGateWindow("Eternal activée");
     try { sessionStorage.setItem("orbit_gate_jump", "1"); } catch {}
   }
 
@@ -18319,6 +18469,12 @@ function getInteractivePortals() {
 
 function isZonePortalAvailable(ptl) {
   const gateId = String(ptl?.toMap || "").toLowerCase();
+  // ✅ Gate Eternal : visible sur la map mère uniquement si posée via CPU (pas de stock).
+  if (gateId === "eternal") {
+    const eternalUser = account.user || getCurrentUserFull();
+    if (String(window.__CURRENT_MAP_ID__ || "").toLowerCase() !== getFactionHomeMap(eternalUser?.faction)) return false;
+    return isEternalGateDeployed(eternalUser);
+  }
   if (!GALAXY_GATE_DEFINITIONS[gateId]) return true;
   const user = account.user || getCurrentUserFull();
   const factionHomeMap = getFactionHomeMap(user?.faction);
@@ -27970,6 +28126,16 @@ function drawPetLocator(ox, oy) {
   ctx.restore();
 }
 
+// ✅ Gate Eternal : multiplicateur de boucle (boucles terminées + 1) :
+// ×1 au premier run, ×2 après 11 vagues + continuer, etc.
+function getEternalLoopMultiplier() {
+  try {
+    if (String(window.__CURRENT_MAP_ID__ || "").toLowerCase() !== "eternal") return 1;
+    const user = account.user || getCurrentUserFull();
+    return Math.max(1, Math.floor(Number(user?.eternalGate?.loopsDone) || 0) + 1);
+  } catch { return 1; }
+}
+
 function makeEnemy(type, x, y) {
   const factoryEntity = spawnNpcEntity({
     id: newId(),
@@ -27984,6 +28150,19 @@ function makeEnemy(type, x, y) {
     frames: ensureNpcLoaded,
   });
   if (!factoryEntity) return null;
+  // ✅ Gate Eternal : boucles ×2, ×3... (HP, bouclier, dégâts, récompenses).
+  const eternalMult = getEternalLoopMultiplier();
+  if (eternalMult > 1) {
+    factoryEntity.hpMax = Math.max(1, Math.floor(factoryEntity.hpMax * eternalMult));
+    factoryEntity.hp = factoryEntity.hpMax;
+    factoryEntity.shMax = Math.max(0, Math.floor(factoryEntity.shMax * eternalMult));
+    factoryEntity.sh = factoryEntity.shMax;
+    factoryEntity.bulletDmg = Math.max(1, Math.round(Number(factoryEntity.bulletDmg || 0) * eternalMult));
+    factoryEntity.value = Math.max(0, Math.floor(Number(factoryEntity.value || 0) * eternalMult));
+    const baseRewards = NPC_TYPES[factoryEntity.type];
+    factoryEntity.exp = Math.max(0, Math.floor(Number(baseRewards?.exp ?? 0) * eternalMult));
+    factoryEntity.honor = Math.max(0, Math.floor(Number(baseRewards?.honor ?? 0) * eternalMult));
+  }
   enemiesById.set(factoryEntity.id, factoryEntity);
   const encounter = rules?.bossEncounter;
   if (encounter?.bossType === type) {
@@ -32240,7 +32419,7 @@ function portalProvidesSafety(portal, forJpc = false) {
   const playerSector = getFaction((account.user || getCurrentUserFull())?.faction).sector;
   if (!forJpc && sectorMatch && sectorMatch[1] !== playerSector) return false;
   const destination = String(portal?.toMap || "").trim().toLowerCase();
-  return !["alpha", "beta", "gamma", "delta", "epsilon", "zeta", "kappa", "lambda", "kronos", "awakened"].includes(destination);
+  return !["alpha", "beta", "gamma", "delta", "epsilon", "zeta", "kappa", "lambda", "kronos", "awakened", "eternal"].includes(destination);
 }
 
 function baseProvidesSafety(forJpc = false) {
@@ -32367,6 +32546,34 @@ function tryCompleteClearedGalaxyGate() {
 function onWaveCleared() {
   if (gateCompletionPending) return;
   if (tryCompleteClearedGalaxyGate()) return;
+  // ✅ Gate Eternal (rules.autoChainWaves) : les vagues s'enchaînent toutes
+  // seules, sans portails de choix continuer/retour. La suivante démarre
+  // après le compte à rebours standard (recentrage comme le portail continuer).
+  if (rules?.autoChainWaves && !mapSwitchInProgress && !player.dead) {
+    const nextPlan = getWavePlan(wave + 1);
+    if (nextPlan && Array.isArray(nextPlan.spawns) && nextPlan.spawns.length) {
+      betweenWaves = false;
+      wave++;
+      player.x = clamp(WORLD.w / 2, 80, WORLD.w - 80);
+      player.y = clamp(WORLD.h / 2, 80, WORLD.h - 80);
+      player.vx = 0;
+      player.vy = 0;
+      moveTarget.active = false;
+      camera.x = player.x;
+      camera.y = player.y;
+      beginWave();
+      return;
+    }
+    // ✅ dernière vague Eternal : boucle bouclée -> compteur de boucles
+    // persisté aussitôt, puis portails de choix (continuer = boucle suivante
+    // ×N, retour = base, gate conservée dans les deux cas).
+    if (String(window.__CURRENT_MAP_ID__ || "").toLowerCase() === "eternal" && wave > 1) {
+      try {
+        const done = recordEternalGateLoopDone(account.user);
+        if (done.ok) account.user = done.user;
+      } catch {}
+    }
+  }
   betweenWaves = true;
   resetGatePortalState(portal, { active: true, switchDuration: portal.switchDur });
   portal.switchDur = Math.max(0.1, Number(portal.switchDur || 1));
@@ -34111,6 +34318,17 @@ function die() {
   }
 
   const defeatedGateId = String(window.__CURRENT_MAP_ID__ || "").toLowerCase();
+  // ✅ Mort en Gate Eternal : le portail ET la progression disparaissent
+  // (seule fin possible d'un run, avec la sortie manuelle).
+  if (rules?.mode === "gate" && defeatedGateId === "eternal") {
+    try {
+      const cleared = clearEternalGateRun(account.user);
+      if (cleared.ok) {
+        account.user = cleared.user;
+        showNotificationGroup(["Gate Eternal perdue", "Le portail a disparu de ta map X-1."]);
+      }
+    } catch {}
+  }
   if (rules?.mode === "gate" && GALAXY_GATE_DEFINITIONS[defeatedGateId]) {
     const lifeResult = loseCurrentUserGalaxyGateLife(defeatedGateId, account.user);
     if (lifeResult.ok) {
@@ -34159,7 +34377,7 @@ function die() {
 // ✅ Portails annexes (par destination) : jamais utilisés pour une
 // réapparition au portail — low, QZ, Galaxy Gates (aussi celles des X-1),
 // map maudite et 5-2 (portail central de 4-5).
-const ANNEX_PORTAL_MAPS = new Set(["low", "qz", "alpha", "beta", "gamma", "delta", "epsilon", "zeta", "kappa", "lambda", "kronos", "awakened", "maudite", "5-2"]);
+const ANNEX_PORTAL_MAPS = new Set(["low", "qz", "alpha", "beta", "gamma", "delta", "epsilon", "zeta", "kappa", "lambda", "kronos", "awakened", "eternal", "maudite", "5-2"]);
 
 function isAnnexPortal(portal) {
   // Retour Low : exclu aussi (sinon réapparition sur le portail masqué).
@@ -37883,7 +38101,10 @@ function tickGatePortalJumps(dt) {
       return true;
     }
     betweenWaves = false;
-    wave++;
+    // ✅ Eternal : "continuer" relance les 11 vagues (boucle suivante,
+    // déjà comptée et persistée à la fin de la précédente).
+    if (currentGateId === "eternal") wave = 1;
+    else wave++;
     const gateId = String(window.__CURRENT_MAP_ID__ || "").toLowerCase();
     if (GALAXY_GATE_DEFINITIONS[gateId]) {
       const saved = saveCurrentUserGalaxyGateWave(gateId, wave, account.user);
@@ -38040,7 +38261,9 @@ function drawZonePortals(ox, oy) {
       // sans respiration (sinon la boucle s'éteint et se rallume).
       const openAnimLoop = spr.open && Number(spr.open.frames) > 1 && spr.open.path;
       const nowMs = performance.now();
-      const breatheA = 0.5 - 0.5 * Math.cos(nowMs / 1000 * TAU / 2.4 + (Number(ptl.x) + Number(ptl.y)) * 0.01);
+      // ✅ période de respiration réglable par portail (open.breathePeriod, défaut 2.4 s).
+      const breathePeriod = Number(spr.open?.breathePeriod) > 0 ? Number(spr.open.breathePeriod) : 2.4;
+      const breatheA = 0.5 - 0.5 * Math.cos(nowMs / 1000 * TAU / breathePeriod + (Number(ptl.x) + Number(ptl.y)) * 0.01);
       const openW = spr.open.w || w;
       const openH = spr.open.h || h;
       const openScale = Number(spr.open.scale ?? 1);
@@ -38072,7 +38295,8 @@ function drawZonePortals(ox, oy) {
           openAlpha = 1;
         } else {
           const nowMs = performance.now();
-          const breatheA = 0.5 - 0.5 * Math.cos(nowMs / 1000 * TAU / 2.4 + (Number(ptl.x) + Number(ptl.y)) * 0.01);
+          const breathePeriod = Number(spr.open?.breathePeriod) > 0 ? Number(spr.open.breathePeriod) : 2.4;
+          const breatheA = 0.5 - 0.5 * Math.cos(nowMs / 1000 * TAU / breathePeriod + (Number(ptl.x) + Number(ptl.y)) * 0.01);
           // ✅ passation douce idle -> jump : le vortex s'efface pendant que le
           // FX de saut monte (plus de superposition brutale). Continu à fade=0.
           openAlpha = breatheA + (1 - breatheA) * clamp(jumpFade, 0, 1) * 0.25;
@@ -45028,6 +45252,9 @@ function paintStarMapNode(n) {
     for (const p of art.portals || []) {
       if (p.hidden || p.arrival || starMapById.has(String(p.toMap).toLowerCase())) continue;
       if (/^[123]-1$/.test(key) && GALAXY_GATE_DEFINITIONS[String(p.toMap).toLowerCase()]) continue;
+      // ✅ Gate Eternal : point masqué tant qu'elle n'est pas posée via CPU.
+      if (/^[123]-1$/.test(key) && String(p.toMap).toLowerCase() === "eternal"
+        && !isEternalGateDeployed(account.user || getCurrentUserFull())) continue;
       let stroke = "rgba(124,240,255,0.9)";
       try { stroke = getMinimapPortalColors(p).stroke || stroke; } catch {}
       ctx.strokeStyle = stroke;
@@ -46251,7 +46478,13 @@ if (rules?.mode === "gate" && GALAXY_GATE_DEFINITIONS[currentGateMapId] && cur.g
     showToast("Galaxy Gate non construite", 1.5);
     window.__GO_TO_MAP__?.(homeMap);
     return;
-  }
+  }}
+// ✅ Gate Eternal : accès direct (URL) refusé si pas posée via CPU.
+if (rules?.mode === "gate" && currentGateMapId === "eternal" && !isEternalGateDeployed(cur)) {
+  const homeMap = getFactionHomeMap(cur.faction);
+  showToast("Gate Eternal non posée", 1.5);
+  window.__GO_TO_MAP__?.(homeMap);
+  return;
 }
 // Démarrage direct (URL/refresh) sur Low, Maudite ou QZ : pas de camouflage.
 try { stripCloakForNoCloakMap(); } catch {}

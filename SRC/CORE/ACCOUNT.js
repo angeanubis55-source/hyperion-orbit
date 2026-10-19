@@ -2354,6 +2354,61 @@ export function consumeCurrentUserGalaxyGate(gateId) {
   return { ok: true, user: u };
 }
 
+// ✅ Gate Eternal (onglet Spéciaux) : pas de spin ni de pièces, 1 CPU =
+// 1 gate posée immédiatement. Pas de stock : impossible d'en cumuler.
+// Boucles : loopsDone = cycles de 11 vagues terminés (multiplicateur ×N).
+export function normalizeEternalGateState(raw) {
+  const source = raw && typeof raw === "object" ? raw : {};
+  return {
+    deployed: source.deployed === true,
+    loopsDone: Math.max(0, Math.floor(Number(source.loopsDone) || 0)),
+  };
+}
+
+export function isEternalGateDeployed(currentUser = null) {
+  const u = currentUser || getCurrentUserFull();
+  return normalizeEternalGateState(u?.eternalGate).deployed === true;
+}
+
+export function deployEternalGateWithCpu(currentUser = null) {
+  const u = currentUser || getCurrentUserForMutation();
+  if (!u) return { ok: false, error: "Aucun utilisateur connecté." };
+  if (normalizeEternalGateState(u.eternalGate).deployed) {
+    return { ok: false, error: "Gate Eternal déjà posée.", already: true, user: u };
+  }
+  u.inventory ||= {};
+  u.inventory.resources ||= {};
+  const stock = Math.max(0, Math.floor(Number(u.inventory.resources.eternal_cpu) || 0));
+  if (stock < 1) return { ok: false, error: "Aucun CPU Eternal Classique en stock.", user: u };
+  u.inventory.resources.eternal_cpu = stock - 1;
+  u.eternalGate = { deployed: true, loopsDone: 0 };
+  ensureUserShape(u);
+  saveUser(u);
+  return { ok: true, user: u };
+}
+
+// ✅ Boucle de 11 vagues terminée : compteur persisté aussitôt (le portail
+// et la progression survivent à la sortie, jamais à la mort).
+export function recordEternalGateLoopDone(currentUser = null) {
+  const u = currentUser || getCurrentUserForMutation();
+  if (!u) return { ok: false, error: "Aucun utilisateur connecté." };
+  const previous = normalizeEternalGateState(u.eternalGate);
+  u.eternalGate = { deployed: previous.deployed, loopsDone: previous.loopsDone + 1 };
+  ensureUserShape(u);
+  saveUser(u);
+  return { ok: true, user: u, loopsDone: previous.loopsDone + 1 };
+}
+
+// ✅ Mort dans la gate : le portail ET la progression disparaissent.
+export function clearEternalGateRun(currentUser = null) {
+  const u = currentUser || getCurrentUserForMutation();
+  if (!u) return { ok: false, error: "Aucun utilisateur connecté." };
+  u.eternalGate = { deployed: false, loopsDone: 0 };
+  ensureUserShape(u);
+  saveUser(u);
+  return { ok: true, user: u };
+}
+
 export function deployCurrentUserGalaxyGate(gateId) {
   const u = getCurrentUserForMutation();
   if (!u) return { ok: false, error: "Aucun utilisateur connecté." };
