@@ -513,7 +513,7 @@ import { loadServerMaps, mapTransition, validArrival, reviveArrival, baseArrival
 import { getFactionHomeMap } from "../SRC/CORE/FACTIONS.js";
 import { handleSocialMessage, socialPeerGone, socialPeerChanged, socialDescribeGroup, socialGroupOf } from "./SOCIAL_ROOM.js";
 import { getAuctionSync, handleAuctionBid, pollAuctionCycle, auctionRoomStatus } from "./AUCTION_ROOM.js";
-import { getStationSync, handleStationInstall, handleStationUninstall, handleStationBuild, handleStationReplace, handleStationCancelReplace, handleStationRepair, handleStationHit, hasStationMap, getStationDefense, stationShotReady, stationShotFired, isStationFoe } from "./STATION_ROOM.js";
+import { getStationSync, handleStationInstall, handleStationUninstall, handleStationBuild, handleStationReplace, handleStationCancelReplace, handleStationRepair, handleStationHit, hasStationMap, getStationDefense, stationShotReady, stationShotFired, isStationFoe, applyStationPassiveHeal } from "./STATION_ROOM.js";
 import { GAME_VERSION } from "../SRC/DATA/VERSION.js";
 import { COLLECTABLE_TYPES } from "../SRC/DATA/COLLECTABLES.js";
 import { HALLOWEEN_END, HALLOWEEN_START, HALLOWEEN_TIME_ZONE, isHalloweenBossVariant, isHalloweenEventActive } from "../NPC/NPC_HALLOWEEN.js";
@@ -4226,6 +4226,8 @@ setInterval(() => {
 // (les cadences 1 s / 3 s sont gérées par module). Hostilité mise en cache
 // 30 s (clan + diplo changent rarement ; évite les lectures DB par tick).
 const stationFoeCache = new Map();
+// Dernier passage réparation passive par map (throttle ~1 Hz).
+const stationPassiveLast = new Map();
 function stationFoeCached(ownerClan, ownerFirm, vClan, vFirm) {
   const k = `${ownerClan}|${ownerFirm}|${vClan}|${vFirm}`;
   const e = stationFoeCache.get(k);
@@ -4531,6 +4533,25 @@ setInterval(() => {
     // Défense de la Base de Combat (chaque tick : les cadences 1 s / 3 s
     // des modules sont gérées par module via leurs cooldowns).
     try { tickStationDefense(key, room, now); } catch {}
+    // Réparation passive du module REP (+5000 PV/s sur le cœur et les
+    // modules en vie) : ~1 Hz, diffusion seulement si du soin a eu lieu.
+    try {
+      if (hasStationMap(key)) {
+        const nowMs = Date.now();
+        if (nowMs - (stationPassiveLast.get(key) || 0) >= 1000) {
+          stationPassiveLast.set(key, nowMs);
+          if (applyStationPassiveHeal(key, nowMs) && room && room.size) {
+            for (const [, peer] of room) {
+              try {
+                const uid = peer?.state?._account?.id != null ? String(peer.state._account.id) : "";
+                const tag = uid ? clanTagOfUser(uid) : "";
+                peer.ws.send(JSON.stringify(getStationSync(key, tag)));
+              } catch {}
+            }
+          }
+        }
+      }
+    } catch {}
     // Raid Low : contrôleur de vagues en groupe (ralliement -> 5 s ->
     // vagues enchaînées -> Century Falcon -> récompense fixe).
     if (key === "low") {

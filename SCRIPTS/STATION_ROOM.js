@@ -84,6 +84,54 @@ export function stationShotFired(mapId, slot, periodMs, now) {
   (combatNext[key] ||= {})[String(slot)] = now + Math.max(100, Number(periodMs) || 1000);
 }
 
+// Réparation passive du module REP : +5000 PV/s sur le cœur et chaque
+// module en vie (module REP posé et installé requis). Retourne true si
+// au moins un PV a été rendu (pour diffuser le sync).
+export function applyStationPassiveHeal(mapId, nowMs) {
+  try {
+    const key = String(mapId || "").toLowerCase();
+    if (!STATION_MAPS.has(key)) return false;
+    const st = getStation(key);
+    if (!st.built?.clan) return false;
+    const inst = st.instances[st.built.clan];
+    if (!inst) return false;
+    const hasRep = STATION_SLOT_IDS.some((sid) => {
+      const q = inst.slots[sid];
+      return q && q.resourceId === "station_module_rep" && Number(q.hp) > 0 && Number(q.cooldownUntil) <= nowMs;
+    });
+    if (!hasRep) {
+      st.repPassiveLast = nowMs;
+      return false;
+    }
+    const from = Math.max(Number(st.repPassiveLast) || 0, nowMs - 1000);
+    const to = nowMs;
+    st.repPassiveLast = to;
+    if (!(to > from)) return false;
+    const add = 5000 * (to - from) / 1000;
+    if (!(add > 0)) return false;
+    let healed = false;
+    if (inst.hub && Number(inst.hub.hp) > 0) {
+      const cap = Number(inst.hub.hpMax) || STATION_CORE_HP;
+      if (Number(inst.hub.hp) < cap) {
+        inst.hub.hp = Math.min(cap, Number(inst.hub.hp) + add);
+        healed = true;
+      }
+    }
+    for (const sid of STATION_SLOT_IDS) {
+      const p = inst.slots[sid];
+      if (p && Number(p.hp) > 0) {
+        const cap = Number(p.hpMax) || STATION_MODULE_HP;
+        if (Number(p.hp) < cap) {
+          p.hp = Math.min(cap, Number(p.hp) + add);
+          healed = true;
+        }
+      }
+    }
+    if (healed) persist();
+    return healed;
+  } catch { return false; }
+}
+
 // Hostile pour la base ? Même clan : non. Guerre (clan connu) : oui.
 // NAP/alliance : non. Sinon : autre firme = oui (même sans clan, comme
 // le pseudo rouge en jeu), même firme = non (bleu). Sans aucune info : non.

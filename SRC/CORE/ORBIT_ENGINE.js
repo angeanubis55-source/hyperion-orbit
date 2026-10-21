@@ -20297,16 +20297,21 @@ function tickStationLogic() {
       zoneStation.cbsButtonPressed = false;
       if (isStationWindowOpen()) window.GameWindowManager?.minimize?.("stationWindow");
     }
-    // Flottant fixe +42 500/+85 000 par seconde pendant un cycle actif,
-    // membres du clan uniquement (même chiffre sur tous les écrans).
-    // On marque les pièces ayant vraiment gagné des PV (même devenues
-    // pleines entre-temps). Heures serveur (décalage d'horloge possible).
+    // Flottants réparation : +85 000/+42 500 par seconde pendant un cycle
+    // actif, +5 000 en passif REP. Membres du clan uniquement (même
+    // chiffre sur tous les écrans). On marque les pièces ayant vraiment
+    // gagné des PV (même devenues pleines entre-temps).
+    // Heures serveur (décalage d'horloge possible).
     try {
       const rep = zoneStation.repair;
       const repActive = rep && Number(rep.until) > serverNow();
+      let hasRepPassive = false;
+      try {
+        hasRepPassive = !!zoneStation.built && (zoneStation.slots || []).some((s) => s && s.resourceId === "station_module_rep" && Number(s.hp) > 0);
+      } catch {}
       const prev = tickStationLogic._repairHp || (tickStationLogic._repairHp = new Map());
       const marks = tickStationLogic._repairMarks || (tickStationLogic._repairMarks = { hub: 0, slots: {} });
-      if (repActive) {
+      if (repActive || hasRepPassive) {
         const mark = (key, cur, slotId) => {
           const c = Math.max(0, Number(cur) || 0);
           const had = prev.has(key) ? prev.get(key) : null;
@@ -20325,7 +20330,9 @@ function tickStationLogic() {
         }
         if (Date.now() - (tickStationLogic._repairFloatT || 0) >= 1000) {
           tickStationLogic._repairFloatT = Date.now();
-          flushRepairFloats(zoneStation, marks, rep);
+          flushRepairFloats(zoneStation, marks,
+            repActive ? (Number(rep?.rateHub) || 85000) : 5000,
+            repActive ? (Number(rep?.rateSlot) || 42500) : 5000);
           marks.hub = 0;
           marks.slots = {};
         }
@@ -39041,7 +39048,7 @@ function stationRepairTick() {
   st._repairAcc ||= { t: now, hub: 0, slots: {} };
   const acc = st._repairAcc;
   if (now >= Number(rp.until) || 0) {
-    flushRepairFloats(st, acc, rp);
+    flushRepairFloats(st, acc, Number(rp.rateHub) || STATION_REPAIR_HUB, Number(rp.rateSlot) || STATION_REPAIR_SLOT);
     st.repair = null;
     st._repairAcc = null;
     try { stationPersist(); } catch {}
@@ -39072,7 +39079,7 @@ function stationRepairTick() {
   // Flottant fixe par pièce soignée (+85 000 cœur, +42 500 modules),
   // membres du clan uniquement.
   if (now - acc.t >= 1000) {
-    flushRepairFloats(st, acc, rp);
+    flushRepairFloats(st, acc, Number(rp.rateHub) || STATION_REPAIR_HUB, Number(rp.rateSlot) || STATION_REPAIR_SLOT);
     acc.t = now;
     acc.hub = 0;
     acc.slots = {};
@@ -39080,18 +39087,18 @@ function stationRepairTick() {
   }
 }
 
-// Affiche le taux fixe par pièce (+85 000 cœur, +42 500 modules)
-// pour chaque pièce ayant gagné des PV dans la seconde.
-function flushRepairFloats(st, acc, rp) {
+// Affiche le montant fixe (+85 000 cœur / +42 500 modules en réparation
+// active, +5 000 en passif REP) pour chaque pièce ayant gagné des PV.
+function flushRepairFloats(st, acc, fixedHub, fixedSlot) {
   try {
     let clanView = false;
     try { clanView = stationOwnedByMyClan(); } catch {}
     if (!clanView) return;
-    if (acc.hub > 0) stationRepairFloatAt(Number(st.x), Number(st.y) - 235, Math.max(1, Number(rp?.rateHub) || STATION_REPAIR_HUB));
-    const fixedSlot = Math.max(1, Number(rp?.rateSlot) || STATION_REPAIR_SLOT);
+    if (acc.hub > 0) stationRepairFloatAt(Number(st.x), Number(st.y) - 235, Math.max(1, Number(fixedHub) || 0));
+    const fs = Math.max(1, Number(fixedSlot) || 0);
     for (const slot of st.slots || []) {
       if (slot?.id && acc.slots[slot.id] > 0) {
-        stationRepairFloatAt(Number(st.x) + (Number(slot.dx) || 0), Number(st.y) + (Number(slot.dy) || 0) - 160, fixedSlot);
+        stationRepairFloatAt(Number(st.x) + (Number(slot.dx) || 0), Number(st.y) + (Number(slot.dy) || 0) - 160, fs);
       }
     }
   } catch {}
