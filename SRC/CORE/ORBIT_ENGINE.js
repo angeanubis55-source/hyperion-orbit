@@ -10946,16 +10946,18 @@ function renderBoosterWindow() {
   } catch {}
   // Bases du clan avec modules DMG/HON/EXP/REP : une carte BASE <MAP> sans
   // timer par famille (+2 % dégâts, +10 % honneur, +10 % exp, +2 % réparation).
+  // HON/EXP : appliqué plafonné à +50 % au total (voir stationClanHonMult).
   try {
     for (const b of stationClanBaseBonuses()) {
       const pushBaseFacet = (key, pct, icon, short) => {
         if (!(Number(pct) > 0)) return;
+        const capped = key === "honorPct" || key === "expPct";
         facets.push({
           def: {
             id: `station-base-${String(b.map || "").toLowerCase()}-${key}`,
             code: `BASE ${b.map}`,
             name: `Base ${b.map} — module ${short}`,
-            desc: `Module ${short} de la base de combat : +${pct} %, cumulé aux boosters.`,
+            desc: `Module ${short} de la base de combat : +${pct} %${capped ? " (plafond +50 % au total)" : ""}, cumulé aux boosters.`,
             iconMini: icon,
             effect: { [key]: Number(pct) || 0 },
           },
@@ -20037,12 +20039,16 @@ function stationClanDmgMult() {
 }
 
 function stationClanHonMult() {
-  const total = stationClanBonusTotal("hon");
+  // Bonus bases plafonné à +50 % : même avec 13 bases au module honneur,
+  // seules 50 % s'appliquent.
+  const total = Math.min(50, stationClanBonusTotal("hon"));
   return total > 0 ? 1 + total / 100 : 1;
 }
 
 function stationClanExpMult() {
-  const total = stationClanBonusTotal("exp");
+  // Bonus bases plafonné à +50 % : même avec 13 bases au module expérience,
+  // seules 50 % s'appliquent.
+  const total = Math.min(50, stationClanBonusTotal("exp"));
   return total > 0 ? 1 + total / 100 : 1;
 }
 

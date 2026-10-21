@@ -1588,9 +1588,10 @@ export function ensureNetplayConnection() {
       netPerf.snapshotPlayers += msg.players.length;
       netPerf.snapshotNpcs += Array.isArray(msg.npc?.list) ? msg.npc.list.length : 0;
       // Bonus bases du clan (temps réel, toutes maps).
+      // Limite 32 : toutes les bases construites doivent passer (13+ vues).
       if (Array.isArray(msg.cbs)) {
         const clean = [];
-        for (const b of msg.cbs.slice(0, 8)) {
+        for (const b of msg.cbs.slice(0, 32)) {
           if (!b || typeof b !== "object") continue;
           clean.push({
             map: String(b.map || "").toLowerCase().slice(0, 16),
