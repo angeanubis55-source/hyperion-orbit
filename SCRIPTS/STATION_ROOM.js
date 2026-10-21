@@ -243,17 +243,23 @@ let stations = {}; // mapId -> { instances: { CLAN: { hub, slots } }, built: nul
 const dmgFeeds = {}; // mapId -> [{ target, by, total, at }]
 // Riposte : un joueur non-hostile (bleu) qui tape la base devient cible
 // des défenses pendant 30 s (prolongé à chaque coup). userId -> until (ms).
-const stationAggro = {}; // mapId -> Map(userId -> until)
+// Les ids pairs `u_<compte>` et bruts sont normalisés (sans préfixe).
+const stationAggro = {}; // mapId -> Map(rawId -> until)
+function normAggroId(uid) {
+  return String(uid || "").replace(/^u_/i, "").slice(0, 64);
+}
 export function isStationRetaliation(mapId, userId, nowMs) {
   try {
     const key = String(mapId || "").toLowerCase();
     const m = stationAggro[key];
     if (!m) return false;
-    const until = m.get(String(userId || ""));
+    const nid = normAggroId(userId);
+    if (!nid) return false;
+    const until = m.get(nid);
     if (!until) return false;
     const now = Number(nowMs) || Date.now();
     if (now >= Number(until)) {
-      try { m.delete(String(userId || "")); } catch {}
+      try { m.delete(nid); } catch {}
       return false;
     }
     return true;
@@ -261,11 +267,11 @@ export function isStationRetaliation(mapId, userId, nowMs) {
 }
 function touchStationAggro(key, userId, nowMs) {
   try {
-    const uid = String(userId || "");
-    if (!uid) return;
+    const nid = normAggroId(userId);
+    if (!nid) return;
     let m = stationAggro[key];
     if (!m) { m = new Map(); stationAggro[key] = m; }
-    m.set(uid, Number(nowMs) + 30000);
+    m.set(nid, Number(nowMs) + 30000);
     if (m.size > 200) {
       const now = Number(nowMs) || Date.now();
       for (const [k, v] of m) {

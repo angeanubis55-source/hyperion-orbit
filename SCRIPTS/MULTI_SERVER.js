@@ -4286,14 +4286,20 @@ function tickStationDefense(map, room, now) {
         if (s.safe === true || s.serverSafe === true) continue;
         if (Number(s._graceUntil || 0) > now) continue;
         const acct = s._account || null;
-        const aid = acct?.id != null ? String(acct.id) : "";
-        let vClan = "";
-        try { vClan = aid ? clanTagOfUser(aid) : ""; } catch {}
+        // Clan : état pair (rafraîchi à l'auth), repli DB avec id brut.
+        let vClan = String(s?.clanTag || "").toUpperCase().slice(0, 5);
+        if (!vClan) {
+          try {
+            const raw = String(pid || "").replace(/^u_/i, "");
+            vClan = raw ? clanTagOfUser(raw) : "";
+          } catch {}
+        }
         const vFirm = String(acct?.faction || "").toLowerCase();
         let foe = false;
         try { foe = stationFoeCached(def.clan, def.firm, vClan, vFirm); } catch {}
         if (!foe) {
-          try { foe = isStationRetaliation(map, aid, now); } catch {}
+          // Riposte : le module tire sur le bleu qui a tapé (id pair `u_x`).
+          try { foe = isStationRetaliation(map, pid, now) || isStationRetaliation(map, String(acct?.id || ""), now); } catch {}
           if (!foe) continue;
         }
         const dx = Number(s.x) - mod.x, dy = Number(s.y) - mod.y;
