@@ -11011,9 +11011,22 @@ function renderBoosterWindow() {
       for (const f of rows) html += rowHtml(f);
       html += `</div></div>`;
     }
-    // Bases : une ligne pleine par base (les unes sous les autres).
-    for (const b of baseRows) {
+    // Bases : lignes unitaires par base (une +X % chacune) avec accolade +
+    // total combiné comme les boosters classiques. HON/EXP : total appliqué
+    // plafonné à +50 %.
+    if (baseRows.length === 1) {
+      const b = baseRows[0];
       html += `<div class="boosterSingle" data-family="${key}" data-base="${b.base}" style="--boost:${color}"><span class="singleRail"><span class="boosterPct">+${b.pct}%</span><span class="singleBar" aria-hidden="true"></span></span>${rowHtml(b)}</div>`;
+    } else if (baseRows.length > 1) {
+      const rawTotal = Math.round(baseRows.reduce((sum, f) => sum + (Number(f.pct) || 0), 0));
+      const capped = key === "honorPct" || key === "expPct";
+      const shownTotal = capped ? Math.min(rawTotal, 50) : rawTotal;
+      const capNote = capped && rawTotal > 50 ? ` title="Total appliqué (plafond +50 %)"` : "";
+      html += `<div class="boosterGroup" data-family="${key}" style="--boost:${color}"><div class="boosterGroupRail"><span class="boosterCombined"${capNote}>+${shownTotal}%</span><span class="bracket" aria-hidden="true"></span></div><div class="boosterGroupCards">`;
+      for (const b of baseRows) {
+        html += `<div class="boosterSingle" data-family="${key}" data-base="${b.base}" style="--boost:${color}"><span class="singleRail"><span class="boosterPct">+${b.pct}%</span><span class="singleBar" aria-hidden="true"></span></span>${rowHtml(b)}</div>`;
+      }
+      html += `</div></div>`;
     }
   }
   list.innerHTML = html;
