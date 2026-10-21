@@ -47,6 +47,7 @@ import { getPortalSkinForMap } from "./PORTAL_SKINS.js";
 "use strict";
 import {
   getCurrentUserFull,
+  getCurrentUserForMutation,
   updateCurrentUserProgress,
   getActiveHangarState,
   saveActiveHangarState,
@@ -117,6 +118,8 @@ import { findCatalogItem } from "./CATALOG.js";
 import { activeBoosterMults, boosterTimeLeftMs, formatBoosterCountdown, formatBoosterDuration, BOOSTERS, getBooster, normalizeBoostersState, GROUP_BOOSTER_IDS, GROUP_BOOSTER_BONUS } from "../DATA/BOOSTERS.js";
 import { pilotSkillMults } from "../DATA/PILOT_SKILLS.js";
 import { CRAFTING_RECIPES, CRAFTING_ENABLED } from "../DATA/CRAFTING.js";
+import { STATION_CORE_HP, STATION_EMPTY_BASE, STATION_HUB, STATION_DESTROYED_SPOT, STATION_INSTALL_CD_SEC, STATION_MODULE_HP, STATION_MODULE_SPRITES, STATION_PRELOAD_SRCS, STATION_RING_COLORS, STATION_UNIQUE_MODULES } from "../DATA/BATTLESTATION.js";
+import { ensureStationSync, isSharedStation, pumpStationNet, resetSharedStation } from "./STATION_NET.js";
 import { ITEM_RARITIES } from "../DATA/ITEM_RARITIES.js";
 import { SHIP_EFFECTS } from "../../SHIP/SHIP_EFFECTS.js";
 import { getShipEffectStats, getShipBonusInfo } from "../../SHIP/SHIP_BONUSES.js";
@@ -155,8 +158,8 @@ import { createRadiationSystem } from "./RADIATION_SYSTEM.js";
 import { renderSpeedGuard } from "./SPEED_GUARD_UI.js";
 import { netServerMessageAge, netSimulationStep, netGameTimeMs, netSpeedGuardActive } from "./NETPLAY.js";
   import { pushNetplayLocal, sendNetplayBackgroundState, netplayLocalUpdateDue, getNetplayRemotes, tickNetplayRemotes, getNetNpcs, getNetDeaths, drainNetGone, getNetBoxes, drainNetBoxInbox, drainNetDmgInbox, drainNetHealInbox, drainNetShotEvents, drainNetSkillInbox, drainNetSkillDenied, clearNetShots, clearNetplayGameplay, sendShotEvent, sendSkillUse, sendHealAlly, sendPvpHit, sendPvpPetHit, getNetSelf, setNetInstanceMode, clearNetBoxes, claimNetBox, requestBoxSync, netBoxSyncAgeMs, netBoxSnapshotReady, netInInstance, sendNetHit, netMyId, netNpcFresh, netplayStatus, sendPing, netLatencyMs, netPongAge, netHelloAckAge, netServerVersion, netConnected, forceNetReconnect, ensureNetplayConnection, drainNetPvpKillInbox, drainNetPvpPetKillInbox, takeNetNpcReward, sendPvpLoot, sendPvpLootTake, drainNetPvpLootInbox,
-  drainNetPvpLootTakeInbox, drainNetAdminKickInbox, drainNetAdminBoomInbox, drainNetBannedInbox, drainNetCheatInbox, netDisconnect, drainNetSunInbox, drainNetSundayInbox, drainNetDecloakInbox, drainNetIemHitInbox,
-  getNetGroup, getNetLowRaid, takeNetLowRaidReward, setNetNpcRewardHandler, getNetServerRestartAt, consumeNetServerRestart, getMyClanTag, getClanRelation, requestStarJumpArrival, requestHangarArrival, finishHangarArrival } from "./NETPLAY.js";
+  drainNetPvpLootTakeInbox, drainNetAdminKickInbox, drainNetAdminBoomInbox, drainNetBannedInbox, drainNetCheatInbox, netDisconnect, drainNetSunInbox, drainNetSundayInbox, drainNetDecloakInbox, drainNetIemHitInbox, drainNetStationDmgInbox,
+  getNetGroup, getNetLowRaid, takeNetLowRaidReward, setNetNpcRewardHandler, getNetServerRestartAt, consumeNetServerRestart, getMyClanTag, getClanRelation, setMyClanTag, setNetDiplo, netIsAuthed, sendStationInstall, sendStationUninstall, sendStationBuild, sendStationReplace, sendStationCancelReplace, sendStationRepair, requestStationSync, sendStationHit, requestStarJumpArrival, requestHangarArrival, finishHangarArrival } from "./NETPLAY.js";
 import {
   createGatePortalState,
   getGateReturnMap as resolveGateReturnMap,
@@ -1057,6 +1060,12 @@ const ui = {
   otPalladiumGain: document.getElementById("otPalladiumGain"),
   otExchangeBtn: document.getElementById("otExchangeBtn"),
   otRows: document.getElementById("otRows"),
+  stationWindow: document.getElementById("stationWindow"),
+  stationArena: document.getElementById("stationArena"),
+  stationClans: document.getElementById("stationClans"),
+  stationBuildBtn: document.getElementById("stationBuildBtn"),
+  stationRows: document.getElementById("stationRows"),
+  stationMessage: document.getElementById("stationMessage"),
 
   respawnOverlay: document.getElementById("respawnOverlay"),
   respawnBaseBtn: document.getElementById("respawnBaseBtn"),
@@ -4270,6 +4279,7 @@ function tbrCloneFire(c) {
     sendShotEvent({ t: "shot", key: ammoKey, n: shots.length,
       petClone: c.id === "tbr0" ? 0 : 1,
       petTarget: tgt.isPetTarget === true ? "owner" : (tgt._netPet || undefined),
+      stationTarget: tgt._stationTarget || undefined,
       x: Math.round(c.x), y: Math.round(c.y), ang: angle,
       tx: Math.round(tgt.x), ty: Math.round(tgt.y), spd: Math.round(speed),
       miss: missRolls.some(Boolean), v: volleyId });
@@ -10727,6 +10737,8 @@ function registerHudWindows() {
   reg("petWindow", "P.E.T", menuIcon("pet"), false);
   reg("oreTradeWindow", "Commerce", menuIcon("ore_trade"), false, { dock: false });
   window.GameWindowManager?.close?.("oreTradeWindow");
+  reg("stationWindow", "Station de Combat", menuIcon("armoryUnlock"), false, { dock: false });
+  window.GameWindowManager?.close?.("stationWindow");
   reg("refineryWindow", "Raffinage", menuIcon("refinement"), false);
   reg("skylabWindow", "Skylab", menuIcon("skylab"), false);
   reg("auctionWindow", "Enchères", menuIcon("auction"), false);
@@ -16241,6 +16253,10 @@ window.addEventListener("orbit:window-restoring", event => {
   if (event.detail?.id === "questWindow") renderQuestWindow();
   if (event.detail?.id === "questOfferWindow") renderQuestTerminal();
   if (event.detail?.id === "oreTradeWindow") renderOreTradeWindow();
+  if (event.detail?.id === "stationWindow") renderStationWindow();
+});
+window.addEventListener("orbit:clan-tag", () => {
+  try { if (typeof isStationWindowOpen === "function" && isStationWindowOpen()) renderStationWindow(); } catch {}
 });
 window.addEventListener("orbit:background-refresh-changed", () => {
   renderGalaxyGateWindow();
@@ -16250,6 +16266,7 @@ window.addEventListener("orbit:background-refresh-changed", () => {
   renderOreTradeWindow();
   renderQuestWindow();
   renderQuestTerminal();
+  renderStationWindow();
   renderStarMap();
 });
 
@@ -16566,6 +16583,17 @@ const TRADE_BUTTON = {
   gap: 12,
   // Le vaisseau doit être dans ce rayon AUTOUR DU BOUTON pour le rendre cliquable.
   proximityRadius: 450,
+};
+
+// Bouton Base de Combat : flotte au-dessus de la station, même gabarit.
+const CBS_BUTTON = {
+  idle: { src: "ASSETS/CBS_BUTTON/1.png" },
+  mouse: { src: "ASSETS/CBS_BUTTON/2.png" },
+  click: { src: "ASSETS/CBS_BUTTON/3.png" },
+  w: 88,
+  h: 135,
+  gap: 12,
+  proximityRadius: 100,
 };
 
 // Skin de portail par map de destination (ASSETS/PORTAL : NORMAUX / BATTLE / BL / QZ).
@@ -19001,6 +19029,16 @@ function pickEnemyAtScreen(sx, sy) {
     } catch {}
   }
 
+  // Station construite : cœur et modules externes sont des cibles manuelles.
+  if (!best) {
+    for (const e of stationCombatTargets()) {
+      const dx = w.x - e.x, dy = w.y - e.y;
+      if (Math.abs(dx) > e.r || Math.abs(dy) > e.r) continue;
+      const d2 = dx * dx + dy * dy;
+      if (d2 < bestD2) { best = e; bestD2 = d2; }
+    }
+  }
+
   // Multi PvP : verrouiller le PET d'un autre joueur (voir ses PV,
   // lui tirer dessus). Apres le vaisseau : ne vole pas le lock.
   if (!best && netplayNpcActive()) {
@@ -20175,8 +20213,156 @@ try {
   });
 } catch {}
 
-function tickAuctionLogic() {
-  if (!account.user) return;
+// Base de Combat partagée : sync serveur (filtrée par clan) + accusés +
+// remboursements. Sans serveur : le local continue (user.stations).
+function stationSharedActive() {
+  try {
+    const map = String(window.__CURRENT_MAP_ID__ || rules?.mapLabel || "").toLowerCase();
+    return isSharedStation(map) && netIsAuthed();
+  } catch {
+    return false;
+  }
+}
+
+function stationApplyNetStock(resourceId, delta) {
+  try {
+    const u = getCurrentUserForMutation();
+    if (!u) return;
+    u.inventory = u.inventory || {};
+    u.inventory.resources = u.inventory.resources || {};
+    const id = String(resourceId || "");
+    if (!id) return;
+    const cur = Math.max(0, Math.floor(Number(u.inventory.resources[id]) || 0));
+    u.inventory.resources[id] = Math.max(0, cur + Math.floor(Number(delta) || 0));
+    account.user = u;
+    saveUser(u, { durable: true });
+    try { localStorage.setItem("orbit_sync", String(Date.now())); } catch {}
+  } catch {}
+}
+
+function tickStationLogic() {
+  if (!account.user || !zoneStation) return;
+  try {
+    const map = String(window.__CURRENT_MAP_ID__ || rules?.mapLabel || "").toLowerCase();
+    // Reconnexion après coupure/restart serveur : forcer une sync complète.
+    const upNow = (() => { try { return !!netConnected(); } catch { return false; } })();
+    if (upNow && !tickStationLogic._wasUp) {
+      try { resetSharedStation(); } catch {}
+    }
+    tickStationLogic._wasUp = upNow;
+    ensureStationSync(map, zoneStation);
+    // Compte à rebours affiché à chaque frame (fenêtre ouverte uniquement).
+    try { stationTickCooldowns(); } catch {}
+    // Remplacements : bascule solo à échéance, resync partagée à échéance
+    // (le serveur applique paresseusement au sync suivant).
+    // Réparation partagée : resync ~1/s pendant le cycle + 3 s de grâce
+    // (le serveur applique au fil des syncs, visible par tous).
+    try {
+      if (stationSharedActive()) {
+        const now = Date.now();
+        const done = (zoneStation.slots || []).some((s) => s?.replace && Number(s.replace.cooldownUntil) <= now);
+        const rep = zoneStation.repair;
+        const repActive = rep && Number(rep.until) > now;
+        if (repActive) tickStationLogic._repairSeenUntil = now;
+        const repGrace = !repActive && now - (tickStationLogic._repairSeenUntil || 0) < 3000;
+        if ((done || repActive || repGrace) && now - (tickStationLogic._repairSyncReq || 0) > 1000) {
+          tickStationLogic._repairSyncReq = now;
+          requestStationSync(map);
+        }
+      } else {
+        stationResolveReplaces();
+        stationRepairTick();
+      }
+    } catch {}
+    const pump = pumpStationNet(zoneStation, map);
+    const events = pump.events || [];
+    if (!pump.dirty && !events.length) return;
+    // Dès qu'un clan termine la base, tous les autres perdent l'accès à
+    // l'interface. La fenêtre est réduite immédiatement chez eux.
+    if (zoneStation.built && !stationOwnedByMyClan()) {
+      zoneStation.cbsButtonHovered = false;
+      zoneStation.cbsButtonPressed = false;
+      if (isStationWindowOpen()) window.GameWindowManager?.minimize?.("stationWindow");
+    }
+    // Flottant fixe +25 000/s pendant un cycle actif, membres du clan
+    // uniquement (même chiffre sur tous les écrans, comme les dégâts alliés).
+    try {
+      const rep = zoneStation.repair;
+      if (rep && Number(rep.until) > Date.now()) {
+        const nowMs = Date.now();
+        if (nowMs - (tickStationLogic._repairFloatT || 0) >= 1000) {
+          tickStationLogic._repairFloatT = nowMs;
+          let clanView = false;
+          try { clanView = stationOwnedByMyClan(); } catch {}
+          if (!clanView) {
+            tickStationLogic._repairFloatT = 0;
+          } else {
+          const fixed = Math.max(1, Number(rep.rate) || 25000);
+          if (zoneStation.hub && Number(zoneStation.hubHp) > 0
+            && Number(zoneStation.hubHp) < (Number(zoneStation.hubHpMax) || STATION_CORE_HP)) {
+            stationRepairFloatAt(Number(zoneStation.x), Number(zoneStation.y) - 235, fixed);
+          }
+          for (const slot of zoneStation.slots || []) {
+            if (slot?.resourceId && Number(slot.hp) > 0
+              && Number(slot.hp) < (Number(slot.hpMax) || STATION_MODULE_HP)) {
+              stationRepairFloatAt(Number(zoneStation.x) + (Number(slot.dx) || 0), Number(zoneStation.y) + (Number(slot.dy) || 0) - 160, fixed);
+            }
+          }
+          }
+        }
+      }
+    } catch {}
+    for (const ev of events) {
+      try {
+        if (ev?.type === "installed") {
+          stationApplyNetStock(ev.resourceId, -1);
+        } else if (ev?.type === "replaced") {
+          stationApplyNetStock(ev.resourceId, -1);
+          if (ev.replaced) stationApplyNetStock(ev.replaced, 1);
+          showNotification(`Module remplacé : ${getResourceName(ev.resourceId, 1)}`, 3, "reward");
+        } else if (ev?.type === "replaceCancelled") {
+          if (ev.resourceId) stationApplyNetStock(ev.resourceId, 1);
+          showNotification("Remplacement annulé.", 3, "reward");
+        } else if (ev?.type === "uninstalled" || ev?.type === "refunded") {
+          stationApplyNetStock(ev.resourceId, 1);
+          if (ev?.type === "refunded") showNotification(`Module restitué : ${getResourceName(ev.resourceId, 1)}`, 3, "reward");
+        } else if (ev?.type === "reject") {
+          if (ev?.reason) showToast(ev.reason, 2.5);
+        } else if (ev?.type === "stationDestroyed") {
+          if (String(ev.target) === "hub") {
+            // Cœur détruit : toute la base tombe — explosion simultanée sur
+            // le cœur et chaque emplacement (tous garnis : 10/10 requis).
+            const hx = Number(zoneStation.x);
+            const hy = Number(zoneStation.y);
+            spawnExplosion(hx, hy, 1, "rocket");
+            try { stationDestroyedAnims.clear(); } catch {}
+            for (const slot of zoneStation.slots || []) {
+              try {
+                spawnExplosion(hx + (slot ? Number(slot.dx || 0) : 0), hy + (slot ? Number(slot.dy || 0) : 0), 1, "rocket");
+              } catch {}
+            }
+            if (Target.get()?._stationTarget) { Target.clear(); stopAttack(); }
+          } else {
+            const slot = (zoneStation.slots || []).find((entry) => String(entry?.id) === String(ev.target));
+            const x = Number(zoneStation.x) + (slot ? Number(slot.dx || 0) : 0);
+            const y = Number(zoneStation.y) + (slot ? Number(slot.dy || 0) : 0);
+            spawnExplosion(x, y, 1, "rocket");
+            try { stationDestroyedAnims.set(String(ev.target), performance.now()); } catch {}
+            if (Target.get()?._stationTarget === ev.target) { Target.clear(); stopAttack(); }
+          }
+        }
+      } catch {}
+    }
+    // Miroir local de la vue serveur : sans ça, des modules posés en solo
+    // seraient re-remboursés à chaque première sync (duplication).
+    try { stationPersist(); } catch {}
+    stationRefresh();
+  } catch (error) {
+    console.warn("Station tick:", error);
+  }
+}
+
+function tickAuctionLogic() {  if (!account.user) return;
   // Liaison morte : enchères gelées (pas de repli solo, reprise au retour).
   if (linkDead) return;
   // Enchères partagées d'abord (comme le tchat) : le serveur tranche.
@@ -22481,6 +22667,71 @@ function isPlayerNearTradeModule(module) {
   return dist2(player.x, player.y, pos.x, pos.y) <= radius * radius;
 }
 
+// Bouton Base de Combat : flotte au-dessus de la station (hub 350 ou base
+// vide 334), même logique que les boutons quêtes/commerce.
+function getCbsButtonPosition() {
+  if (!zoneStation) return null;
+  const baseH = zoneStation.hub ? 350 : 334;
+  return {
+    x: Number(zoneStation.x),
+    y: Number(zoneStation.y) - baseH / 2 - CBS_BUTTON.h / 2 - CBS_BUTTON.gap,
+  };
+}
+
+function stationOwnedByMyClan() {
+  if (!zoneStation?.built) return false;
+  const ownerClan = String(zoneStation?.owner?.clan || "").toUpperCase();
+  if (!ownerClan) return false;
+  try {
+    return ownerClan === String(getMyClanTag() || "").toUpperCase();
+  } catch {
+    return false;
+  }
+}
+
+function stationButtonAvailable() {
+  if (!zoneStation) return false;
+  let myClan = "";
+  try { myClan = String(getMyClanTag() || "").toUpperCase(); } catch {}
+  if (!myClan) return false;
+  return !zoneStation.built || stationOwnedByMyClan();
+}
+
+function pickCbsButtonAtScreen(clientX, clientY) {
+  if (!isZoneMap || !zoneStation) return null;
+  if (!stationButtonAvailable()) return null;
+  const pos = getCbsButtonPosition();
+  if (!pos) return null;
+  const mouseWorld = screenToWorld(clientX, clientY);
+  if (
+    mouseWorld.x >= pos.x - CBS_BUTTON.w / 2 &&
+    mouseWorld.x <= pos.x + CBS_BUTTON.w / 2 &&
+    mouseWorld.y >= pos.y - CBS_BUTTON.h / 2 &&
+    mouseWorld.y <= pos.y + CBS_BUTTON.h / 2
+  ) return zoneStation;
+  return null;
+}
+
+function updateCbsButtonCursor(clientX, clientY) {
+  if (!zoneStation) return false;
+  zoneStation.cbsButtonHovered = pickCbsButtonAtScreen(clientX, clientY) === zoneStation;
+  if (zoneStation.cbsButtonHovered) canvas.style.cursor = "pointer";
+  return Boolean(zoneStation.cbsButtonHovered);
+}
+
+function isPlayerNearStation() {
+  if (!zoneStation) return false;
+  // Posé sur la station (demi-emprise 535 + petite marge) : le clic reste
+  // valide même si le bouton flotte à ~250px au-dessus du hub.
+  const hw = 535 + 60;
+  const hh = 535 + 60;
+  if (Math.abs(player.x - zoneStation.x) <= hw && Math.abs(player.y - zoneStation.y) <= hh) return true;
+  const pos = getCbsButtonPosition();
+  if (!pos) return false;
+  const radius = Number(CBS_BUTTON.proximityRadius || 450);
+  return dist2(player.x, player.y, pos.x, pos.y) <= radius * radius;
+}
+
 // Module commerce actif (fenêtre ouverte dessus). Fermeture si on s'éloigne.
 let activeTradeModule = null;
 
@@ -22504,9 +22755,11 @@ canvas.addEventListener(
 
     const overTradeButton = updateTradeButtonCursor(e.clientX, e.clientY);
 
+    const overCbsButton = updateCbsButtonCursor(e.clientX, e.clientY);
+
     const overEnemy = updateEnemyCursor(e.clientX, e.clientY);
 
-    if (!overPortalButton && !overQuestButton && !overTradeButton && !overEnemy) {
+    if (!overPortalButton && !overQuestButton && !overTradeButton && !overCbsButton && !overEnemy) {
       updateCollectableCursor(e.clientX, e.clientY);
     }
   },
@@ -22768,6 +23021,18 @@ if (tradeButton) {
   return;
 }
 
+const cbsButton = pickCbsButtonAtScreen(e.clientX, e.clientY);
+
+if (cbsButton) {
+  cbsButton.cbsButtonPressed = true;
+  cbsButton.cbsButtonHovered = true;
+  pointer.dragArmed = false;
+  pointer.dragging = false;
+  pointer.downOnEnemy = false;
+  pointer.followWhileDown = false;
+  return;
+}
+
    const enemy = pickEnemyAtScreen(e.clientX, e.clientY);
   // ✅ On lock le NPC
   // ✅ Mais on ne touche PAS à l'ordre de collecte de box
@@ -22857,6 +23122,7 @@ canvas.addEventListener(
     );
     const releasedOnQuest = pickQuestButtonAtScreen(e.clientX, e.clientY);
     const releasedOnTrade = pickTradeButtonAtScreen(e.clientX, e.clientY);
+    const releasedOnCbs = pickCbsButtonAtScreen(e.clientX, e.clientY);
 
     let pressedPortal = null;
 
@@ -22924,6 +23190,14 @@ canvas.addEventListener(
       }
     }
 
+    if (zoneStation?.cbsButtonPressed) {
+      const pressedStation = zoneStation;
+      zoneStation.cbsButtonPressed = false;
+      if (releasedOnCbs === pressedStation) {
+        openStationWindow();
+      }
+    }
+
     // Double-clic maison (fiable sur cibles mobiles) : 2 relâchés sur le même
     // ennemi à moins de 350 ms ET à moins de 14 px l'un de l'autre ->
     // verrouille + attaque. Pas de re-visée. Désactivable dans Général.
@@ -22979,6 +23253,10 @@ canvas.addEventListener(
       module.questButtonHovered = false;
       module.tradeButtonPressed = false;
       module.tradeButtonHovered = false;
+    }
+    if (zoneStation) {
+      zoneStation.cbsButtonPressed = false;
+      zoneStation.cbsButtonHovered = false;
     }
 
     try {
@@ -23577,6 +23855,7 @@ const isSab = ammoKey === "sab";
       t: "shot", key: ammoKey, n: shotOffsets.length,
       petSource: true,
       petTarget: target?.isPetTarget === true ? "owner" : (target?._netPet || undefined),
+      stationTarget: target?._stationTarget || undefined,
       x: Math.round(petState.x), y: Math.round(petState.y), ang: Number(angle) || 0,
       tx: Math.round(target.x), ty: Math.round(target.y), spd: Math.round(speed), sab: isSab === true,
       miss: petMissRolls.some(Boolean), v: volleyId,
@@ -28369,6 +28648,14 @@ const Target = (() => {
       }
       return cur;
     }
+    if (cur._stationTarget) {
+      const live = stationTargetProxies.get(String(cur._stationTarget));
+      if (live !== cur || !(cur.hp > 0) || !zoneStation?.built) {
+        clear();
+        return null;
+      }
+      return cur;
+    }
     // Bot JPC entré à l'abri en plein lock : le verrou est GARDÉ (pas de
     // rupture). Seule l'attaque est coupée (tickAutoAttack via
     // netPvpBlocked) et les dégâts/SAB restent bloqués par la ZNA : on
@@ -28931,6 +29218,28 @@ function jpcPreyClaimedByLiveBot(e) {
 
 function damageEnemy(e, dmg, shieldPenetration, crit, opts = {}) {
   if (!e || e.hp <= 0) return { total: 0, sh: 0, hp: 0, bypass: 0, isCrit: false, rawDamage: 0 };
+  if (e._stationTarget) {
+    if (stationOwnedByMyClan()) {
+      cancelOwnStationAttack(e, false);
+      return { total: 0, sh: 0, hp: 0, bypass: 0, isCrit: false, rawDamage: 0 };
+    }
+    // Même variance que NPC/joueurs (±5 % + critique), sinon dégâts constants.
+    let amount = Math.max(0, Number(dmg) || 0);
+    let stationCrit = false;
+    if (!opts.fixedDamage && amount > 0) {
+      amount = amount * (1 - 0.05 + Math.random() * 0.1);
+      const chance = Number(crit?.chance ?? 0.05);
+      const mult = Number(crit?.mult ?? 1.5);
+      if (Math.random() < chance) {
+        amount = amount * mult;
+        stationCrit = true;
+      }
+    }
+    amount = Math.max(0, Math.round(amount));
+    const map = String(window.__CURRENT_MAP_ID__ || rules?.mapLabel || "").toLowerCase();
+    if (amount > 0) sendStationHit(map, e._stationTarget, amount);
+    return { total: amount, sh: 0, hp: amount, bypass: 0, isCrit: stationCrit, rawDamage: amount };
+  }
   // REX du joueur : dégâts via le vrai pet (proxy lecture seule).
   if (e.isPetTarget === true) {
     try { return damagePetFromPlayer(dmg); } catch {}
@@ -31232,6 +31541,15 @@ function announceLaserCombatRange(t) {
   } else notifyLaserRange("Le combat a commencé.", "info");
 }
 
+function cancelOwnStationAttack(target, notify = true) {
+  if (!target?._stationTarget || !stationOwnedByMyClan()) return false;
+  attackActive = false;
+  laserCombatInRange = null;
+  clearPendingSalvo({ keepQa: true });
+  if (notify) showToast("Tu ne peux pas attaquer la base de ton clan", 1.5);
+  return true;
+}
+
 function startAttack(ammoOverride = null) {
   const currentAmmo = player.ammo.active || "x1";
 
@@ -31251,6 +31569,7 @@ function startAttack(ammoOverride = null) {
     if (player.dead || !started) return;
     const t = Target.get();
     if (!t) return;
+    if (cancelOwnStationAttack(t)) return;
     // ZNA : si l'un des deux est en zone de non-agression, l'attaque ne
     // démarre même pas (pas d'attackActive -> la ZNA reste active).
     if (netPvpBlocked(t)) return;
@@ -31273,6 +31592,7 @@ function startAttack(ammoOverride = null) {
 
   const t = Target.get();
   if (!t) return;
+  if (cancelOwnStationAttack(t)) return;
 
   // ZNA : attaque impossible si l'un des deux est en zone de non-agression.
   if (netPvpBlocked(t)) return;
@@ -31373,6 +31693,7 @@ function tryFireRocket(opts = {}) {
 
   const t = Target.get();
   if (!t) return false;
+  if (cancelOwnStationAttack(t, !silent)) return false;
 
   if (netPvpBlocked(t)) return false;
 
@@ -31479,6 +31800,7 @@ function spawnRocketProjectile(rocket, t, { spread = 0, volleyId = 0, volleySize
       t: "rshot", kind: rocket.id,
       ability,
       petTarget: t?.isPetTarget === true ? "owner" : (t?._netPet || undefined),
+      stationTarget: t?._stationTarget || undefined,
       x: Math.round(player.x), y: Math.round(player.y), ang,
       tx: Math.round(t.x), ty: Math.round(t.y), spd: Math.round(speed),
       arcDir: arcDirEff, arcScale: Number(arcScale) || 1, arcBoost: Number(arcBoost) || 0,
@@ -31513,6 +31835,7 @@ function tryFireSalvo(opts = {}) {
 
   const t = Target.get();
   if (!t) return false;
+  if (cancelOwnStationAttack(t, !silent)) return false;
 
   if (netPvpBlocked(t)) return false;
 
@@ -31846,12 +32169,20 @@ function rebuildEnemyIndex() {
     for (const e of netPetProxies.values()) {
       if (e && e.hp > 0) enemiesById.set(e.id, e);
     }
+    for (const e of stationCombatTargets()) {
+      if (e?.hp > 0) enemiesById.set(e.id, e);
+    }
   } catch {}
 }
 
 function getEnemyById(id) {
   if (id == null) return null;
   if (id === "pet") return petLockValid() ? petTargetProxy : null;
+  if (String(id).startsWith("station:")) {
+    stationCombatTargets();
+    const stationTarget = stationTargetProxies.get(String(id).slice(8));
+    return stationTarget?.hp > 0 ? stationTarget : null;
+  }
   // Multi PvP : "self" = notre vaisseau (impacts visuels des tirs allies).
   if (id === "self") return !player.dead && player.hp > 0 ? player : null;
   const enemy = enemiesById.get(id);
@@ -31910,6 +32241,7 @@ function spawnSalvoDecoy(e) {
       sendShotEvent({
         t: "shot", key, n: e.items.length,
         petTarget: t2.isPetTarget === true ? "owner" : (t2._netPet || undefined),
+        stationTarget: t2._stationTarget || undefined,
         x: Math.round(startX), y: Math.round(startY), ang: baseAng,
         tx: Math.round(t2.x), ty: Math.round(t2.y), spd: Math.round(e.speed), sab: true,
         miss: false, v: e.volleyId,
@@ -31952,6 +32284,7 @@ function spawnSalvoDecoy(e) {
     sendShotEvent({
       t: "shot", key, n: e.items.length,
       petTarget: t2.isPetTarget === true ? "owner" : (t2._netPet || undefined),
+      stationTarget: t2._stationTarget || undefined,
       x: Math.round(player.x), y: Math.round(player.y), ang: ang2,
       tx: Math.round(t2.x), ty: Math.round(t2.y), spd: Math.round(e.speed), sab: false,
       miss: false, v: e.volleyId,
@@ -32110,6 +32443,7 @@ function spawnEscortSalvoDecoy(e) {
         petSource: isPet,
         petClone: isTbr ? (e.escortId === "tbr0" ? 0 : 1) : undefined,
         petTarget: t2.isPetTarget === true ? "owner" : (t2._netPet || undefined),
+        stationTarget: t2._stationTarget || undefined,
         x: Math.round(escort.x), y: Math.round(escort.y),
         ang: Math.atan2(t2.y - escort.y, t2.x - escort.x),
         tx: Math.round(t2.x), ty: Math.round(t2.y), spd: Math.round(e.speed || 4000), sab: false,
@@ -32258,6 +32592,7 @@ function tryFireOnce(ammoOverride = null, silent = false) {
 
   const t = Target.get();
   if (!t) return false;
+  if (cancelOwnStationAttack(t, !silent)) return false;
   if (netPvpBlocked(t)) return false;
 
   const volleyId = volleySeq++;
@@ -32342,6 +32677,7 @@ const shotHitBonusPct = Number(player.laserHitBonusPct || 0) + Number(shotBooste
     sendShotEvent({
       t: "shot", key: ammoKey, n: isSabLike ? 1 : volleySize,
       petTarget: t?.isPetTarget === true ? "owner" : (t?._netPet || undefined),
+      stationTarget: t?._stationTarget || undefined,
       x: Math.round(player.x), y: Math.round(player.y), ang: Number(player.angle) || 0,
       tx: Math.round(t.x), ty: Math.round(t.y), spd: Math.round(speed), sab: isSabLike,
       miss: shotMiss === true, v: volleyId,
@@ -32494,6 +32830,7 @@ let zoneCamps = [];
 let zonePortals = [];
 let zoneWalls = [];
 let zoneSafe = null;
+let zoneStation = null;
 let mapPortalLock = 0;
 let portalHintCd = 0;
 // Cumul de présence en map Blacklight (quêtes "stay"), versé par tranches.
@@ -33490,6 +33827,22 @@ function syncNetNpcs(dt) {
       queueVolleyFloat(e, { total: f.total, sh: 0, hp: f.total, rawDamage: f.total }, `netdmg${(Math.random() * 1e9) | 0}`, 1, VOLLEY_FLOAT_TIMEOUT);
     }
   } catch {}
+  // Degats allies sur la station : chiffres flottants sur le cœur/module
+  // verrouille uniquement (comme les NPC). Nos propres tirs sont exclus
+  // du feed (deja affiches en local) et le serveur fait foi pour les HP.
+  try {
+    const sfeed = drainNetStationDmgInbox();
+    if (sfeed.length) {
+      const lockedStation = Target.get()?._stationTarget || null;
+      for (const f of sfeed) {
+        if (!f || !(Number(f.total) > 0)) continue;
+        if (!lockedStation || String(f.target) !== String(lockedStation)) continue;
+        const proxy = stationTargetProxies.get(String(f.target)) || null;
+        if (!proxy || !(proxy.hp > 0)) continue;
+        queueVolleyFloat(proxy, { total: f.total, sh: 0, hp: f.total, rawDamage: f.total }, `netdmg${(Math.random() * 1e9) | 0}`, 1, VOLLEY_FLOAT_TIMEOUT);
+      }
+    }
+  } catch {}
   // Réparation JPC : chiffres +x (vert coque, bleu bouclier) sur le bot
   // locké uniquement, comme les dégâts alliés et les soins distants.
   try {
@@ -34097,6 +34450,83 @@ jumpBaseFade: 1,
     zoneSafe = rules.getZoneSafeModules(WORLD) || null;
   } else {
     zoneSafe = null;
+  }
+
+  // Base de Combat de test (ex : 1-3) : station complète posée sur la map.
+  if (isZoneMap && typeof rules.getZoneStation === "function") {
+    try {
+      zoneStation = rules.getZoneStation(WORLD) || null;
+    } catch {
+      zoneStation = null;
+    }
+    // Tag clan en direct (HTTP, comme la fenêtre Clan) : le push WS arrive
+    // après la connexion, ce qui retardait le bouton CBS à chaque entrée.
+    try {
+      if (zoneStation && !String(getMyClanTag() || "")) void refreshMyClanTagNow();
+    } catch {}
+    // Reprend la construction sauvegardée (hub + slots + propriétaire).
+    try {
+      const mapId = String(rules?.mapLabel || window.__CURRENT_MAP_ID__ || "").toLowerCase();
+      const saved = mapId ? (account.user || getCurrentUserFull())?.stations?.[mapId] : null;
+      if (zoneStation && saved && typeof saved === "object") {
+        if (typeof saved.hub === "string" || saved.hub === null) zoneStation.hub = saved.hub || null;
+        if (typeof saved.hubClan === "string" && saved.hubClan) zoneStation.hubClan = saved.hubClan;
+        if (typeof saved.hubPseudo === "string" && saved.hubPseudo) zoneStation.hubPseudo = saved.hubPseudo;
+        if (saved.built === true) zoneStation.built = true;
+        if (saved.owner && typeof saved.owner === "object") zoneStation.owner = { ...saved.owner };
+        if (typeof saved.contestedBy === "string" && saved.contestedBy) zoneStation.contestedBy = saved.contestedBy;
+        if (saved.slots && typeof saved.slots === "object") {
+          for (const slot of zoneStation.slots || []) {
+            if (slot?.id && Object.prototype.hasOwnProperty.call(saved.slots, slot.id)) {
+              const val = saved.slots[slot.id];
+              // Nouveau format {r, c} ou ancien format id direct.
+              if (val && typeof val === "object") {
+                slot.resourceId = val.r || null;
+                if (val.c) slot.clan = val.c;
+              } else {
+                slot.resourceId = val || null;
+              }
+              if (saved.slotClans && typeof saved.slotClans === "object" && saved.slotClans[slot.id]) {
+                slot.clan = saved.slotClans[slot.id];
+              }
+              if (saved.slotPending && typeof saved.slotPending === "object" && saved.slotPending[slot.id]) {
+                const pr = saved.slotPending[slot.id];
+                if (pr && typeof pr === "object" && pr.r) {
+                  slot.pendingReplace = { resourceId: String(pr.r), clan: String(pr.c || ""), pseudo: String(pr.p || "").slice(0, 20) };
+                }
+              }
+              if (saved.slotPseudos && typeof saved.slotPseudos === "object" && saved.slotPseudos[slot.id]) {
+                slot.pseudo = String(saved.slotPseudos[slot.id]).slice(0, 20);
+              }
+            }
+          }
+        }
+        // Cooldowns d'installation en cours (repris après refresh).
+        if (saved.cds && typeof saved.cds === "object") {
+          if (Number(saved.cds.hub) > Date.now()) zoneStation.hubCd = Number(saved.cds.hub);
+          for (const slot of zoneStation.slots || []) {
+            if (slot?.id && Number(saved.cds[slot.id]) > Date.now()) slot.cooldownUntil = Number(saved.cds[slot.id]);
+          }
+        }
+        // PV non persistés : pleins par défaut (le serveur tranche en partagé).
+        if (zoneStation.hub && !(Number(zoneStation.hubHp) > 0)) {
+          zoneStation.hubHp = STATION_CORE_HP;
+          zoneStation.hubHpMax = STATION_CORE_HP;
+        }
+        // Réparation solo en cours : reprise (sans rattrapage du temps écoulé).
+        if (saved.repair && typeof saved.repair === "object" && Number(saved.repair.until) > Date.now()) {
+          zoneStation.repair = { until: Number(saved.repair.until), rate: STATION_REPAIR_RATE, lastTick: Date.now() };
+        }
+        for (const slot of zoneStation.slots || []) {
+          if (slot?.resourceId && !(Number(slot.hp) > 0)) {
+            slot.hp = STATION_MODULE_HP;
+            slot.hpMax = STATION_MODULE_HP;
+          }
+        }
+      }
+    } catch {}
+  } else {
+    zoneStation = null;
   }
 
   if (!spawnedFromPortal) {
@@ -34978,8 +35408,8 @@ mini.addEventListener("pointerup", (e) => {
   try { mini.releasePointerCapture(e.pointerId); } catch {}
 }, { passive: true });
 
-// Multi : allies minimap = escortes + joueurs distants (vert clan/allié,
-// orange NAP, rouge guerre, bleu meme firme, rouge autre firme).
+// Multi : allies minimap = escortes + joueurs distants (vert notre clan,
+// bleu sans clan ou même firme pas en guerre, orange NAP, rouge guerre/autre firme).
 function minimapAllies() {
   try {
     const remotes = getNetplayRemotes();
@@ -34995,15 +35425,21 @@ function minimapAllies() {
       const firm = String(rr.firm || "").toLowerCase();
       const same = myFirm !== "" && firm === myFirm;
       const tag = String(rr.clan || "").toUpperCase().slice(0, 5);
-      let color = same ? "rgba(80,160,255,0.95)" : "rgba(255,70,90,0.95)";
-      if (myClan !== "" && tag === myClan) color = "rgba(105,255,140,0.95)";
-      else if (tag) {
-        try {
-          const rel = getClanRelation(tag);
-          if (rel === "war") color = "rgba(255,70,90,0.95)";
-          else if (rel === "nap") color = "rgba(255,160,60,0.95)";
-          else if (rel === "ally") color = "rgba(105,255,140,0.95)";
-        } catch {}
+      let color;
+      if (myClan !== "" && tag === myClan) {
+        color = "rgba(105,255,140,0.95)";
+      } else if (!tag) {
+        // Sans clan : bleu.
+        color = "rgba(80,160,255,0.95)";
+      } else {
+        let rel = "";
+        try { rel = getClanRelation(tag); } catch {}
+        if (rel === "war") color = "rgba(255,70,90,0.95)";
+        // Même firme, pas en guerre : bleu.
+        else if (same) color = "rgba(80,160,255,0.95)";
+        else if (rel === "nap") color = "rgba(255,160,60,0.95)";
+        else if (rel === "ally") color = "rgba(105,255,140,0.95)";
+        else color = "rgba(255,70,90,0.95)";
       }
       dots.push({
         x: Number(rr.rx ?? rr.x), y: Number(rr.ry ?? rr.y), hp: 1, r: 18, _net: true,
@@ -35049,6 +35485,9 @@ function drawMinimap() {
     enemies,
     allies: minimapAllies(),
     markers: petLocatorMarkers,
+    // Base de Combat : cercle couleur propriété, comme la base (vert = à
+    // nous, jaune = NAP, rouge = ennemie, gris = vide). Rien en vue jeu.
+    station: zoneStation ? { x: zoneStation.x, y: zoneStation.y, color: zoneStationRingColor() } : null,
     pet: isPetActive
       ? {
           active: true,
@@ -35490,6 +35929,12 @@ function netShotTarget(tx, ty, range) {
 // recus : homing + impact visible, zero degat).
 function netVisualTarget(tx, ty, range, ev = null) {
   try {
+    const stationTarget = typeof ev?.stationTarget === "string" ? ev.stationTarget : "";
+    if (stationTarget) {
+      stationCombatTargets();
+      const exact = stationTargetProxies.get(stationTarget);
+      if (exact?.hp > 0) return exact.id;
+    }
     const petTarget = typeof ev?.petTarget === "string" ? ev.petTarget : "";
     if (petTarget) {
       if (petTarget === "owner") {
@@ -37869,6 +38314,16 @@ function preloadSafeModuleSprites(sectorRules, world) {
   return [...sources].map(src => loadImage(src, { priority: true }));
 }
 
+// Base de Combat : précharge hub + modules (+ frames d'animation lasers).
+function preloadStationSprites(sectorRules) {
+  if (sectorRules?.mode !== "zone" || typeof sectorRules.getZoneStation !== "function") return [];
+  return STATION_PRELOAD_SRCS.map(src => loadImage(src, { priority: true }));
+}
+
+for (const state of Object.values(CBS_BUTTON).filter(value => value?.src)) {
+  loadImage(state.src, { priority: true });
+}
+
 for (const state of Object.values(QUEST_BUTTON).filter(value => value?.src)) {
   loadImage(state.src, { priority: true });
 }
@@ -37942,6 +38397,885 @@ function closeOreTradeWindow() {
 function isOreTradeWindowOpen() {
   return !!ui.oreTradeWindow && ui.oreTradeWindow.style.display !== "none";
 }
+
+// ============================================================
+// Station de Combat : arène (caillou + slots) + inventaire modules.
+// ============================================================
+let selectedStationItemId = null;
+const stationTargetProxies = new Map();
+
+function stationCombatTargets() {
+  // Même le clan propriétaire peut verrouiller ses éléments pour consulter
+  // précisément leur état. Le serveur conserve l'interdiction de dégâts.
+  if (!zoneStation?.built) {
+    stationTargetProxies.clear();
+    return [];
+  }
+  const live = new Set();
+  const upsert = (key, name, x, y, hp, hpMax, radius) => {
+    if (!(Number(hp) > 0)) return;
+    live.add(key);
+    let proxy = stationTargetProxies.get(key);
+    if (!proxy) {
+      proxy = { id: `station:${key}`, _stationTarget: key, type: "station_module", vx: 0, vy: 0, sh: 0, shMax: 0 };
+      stationTargetProxies.set(key, proxy);
+    }
+    Object.assign(proxy, { name, x, y, hp: Number(hp), hpMax: Math.max(1, Number(hpMax) || 1), r: radius });
+  };
+  upsert("hub", "Cœur de base", Number(zoneStation.x), Number(zoneStation.y), zoneStation.hubHp, zoneStation.hubHpMax || STATION_CORE_HP, 175);
+  for (const slot of zoneStation.slots || []) {
+    if (!slot?.resourceId) continue;
+    upsert(String(slot.id), "Module de base", Number(zoneStation.x) + Number(slot.dx || 0), Number(zoneStation.y) + Number(slot.dy || 0), slot.hp, slot.hpMax || STATION_MODULE_HP, 105);
+  }
+  for (const key of [...stationTargetProxies.keys()]) if (!live.has(key)) stationTargetProxies.delete(key);
+  return [...stationTargetProxies.values()];
+}
+
+function isStationWindowOpen() {
+  return !!ui.stationWindow && ui.stationWindow.style.display !== "none";
+}
+
+function stationInventoryIds() {
+  return [STATION_HUB.resourceId, ...Object.keys(STATION_MODULE_SPRITES)];
+}
+
+function stationCooldownLeft(until) {
+  const left = Math.ceil((Math.max(0, Number(until) || 0) - Date.now()) / 1000);
+  return left > 0 ? left : 0;
+}
+
+function stationCooldownPct(until) {
+  const total = Math.max(1, STATION_INSTALL_CD_SEC);
+  return Math.max(0, Math.min(100, Math.round(stationCooldownLeft(until) / total * 100)));
+}
+
+// Progression par clan : seuls les modules terminés comptent
+// (l'installation en cours ne compte pas). Utilisé par le rendu et le ticker.
+function stationClanProgress() {
+  let fallback = "";
+  try { fallback = String(getMyClanTag() || "").toUpperCase(); } catch {}
+  const map = new Map();
+  const pending = new Map();
+  const add = (tag, value) => {
+    const clean = String(tag || fallback).toUpperCase();
+    if (!clean) return;
+    map.set(clean, (map.get(clean) || 0) + value);
+  };
+  const addPending = (tag) => {
+    const clean = String(tag || fallback).toUpperCase();
+    if (!clean) return;
+    pending.set(clean, (pending.get(clean) || 0) + 1);
+  };
+  const st = zoneStation;
+  const total = 1 + (st?.slots || []).length;
+  // Seuls les modules terminés comptent (pas ceux en cours d'installation).
+  if (st?.hub) {
+    if (stationCooldownLeft(st.hubCd) > 0) addPending(st.hubClan);
+    else add(st.hubClan, 1);
+  }
+  for (const slot of st?.slots || []) {
+    if (!slot?.resourceId) continue;
+    if (stationCooldownLeft(slot.cooldownUntil) > 0) addPending(slot.clan);
+    else add(slot.clan, 1);
+  }
+  const rows = [...map.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .map(([tag, value]) => ({ tag, value, installing: pending.get(tag) || 0 }));
+  for (const [tag, count] of pending) {
+    if (!map.has(tag)) rows.push({ tag, value: 0, installing: count });
+  }
+  rows.sort((a, b) => (b.value + b.installing) - (a.value + a.installing));
+  return { total, rows };
+}
+
+function stationSharedClanRows() {
+  const now = Date.now();
+  return (Array.isArray(zoneStation?.perClan) ? zoneStation.perClan : [])
+    .filter((entry) => entry && String(entry.clan || ""))
+    .map((entry) => {
+      const completedNow = (Array.isArray(entry.installingUntil) ? entry.installingUntil : [])
+        .filter((until) => Number(until) <= now).length;
+      return {
+        tag: String(entry.clan).toUpperCase(),
+        value: Math.max(0, Number(entry.count) || 0) + completedNow,
+      };
+    });
+}
+
+// Cooldowns affichés à chaque frame de jeu (pas de setInterval : non
+// sujet au throttle d'onglet ni aux à-coups de la boucle principale).
+// À l'expiration : retrait DOM immédiat + re-render de cohérence.
+function stationTickCooldowns() {
+  if (typeof isStationWindowOpen !== "function" || !isStationWindowOpen()) return;
+  const nodes = document.querySelectorAll("#stationArena [data-station-cd]");
+  const now = Date.now();
+  let alive = false;
+  for (const node of nodes) {
+    const id = String(node.dataset.stationCd || "");
+    const until = id === "hub"
+      ? zoneStation?.hubCd
+      : (zoneStation?.slots || []).find((s) => s?.id === id)?.cooldownUntil;
+    const left = Math.max(0, Math.ceil((Math.max(0, Number(until) || 0) - now) / 1000));
+    if (left > 0) {
+      alive = true;
+      try {
+        const pct = String(stationCooldownPct(until));
+        if (node.dataset.p !== pct) {
+          node.dataset.p = pct;
+          node.style.setProperty("--p", pct);
+        }
+      } catch {}
+      const num = node.parentElement ? node.parentElement.querySelector(".stationCdSmall") : null;
+      if (num && num.textContent !== String(left)) num.textContent = String(left);
+    }
+  }
+  if (nodes.length && !alive) {
+    // Retrait immédiat (même si le re-render est filtré).
+    for (const node of document.querySelectorAll("#stationArena [data-station-cd], #stationArena .stationCdSmall")) {
+      try { node.remove(); } catch {}
+    }
+    try { renderStationWindow(); } catch {}
+    return;
+  }
+  // Barres de progression des clans : suivent les modules terminés.
+  // En partagé : décompte serveur (tous les clans).
+  try {
+    const total = 1 + (zoneStation?.slots || []).length;
+    let rows;
+    if (stationSharedActive() && Array.isArray(zoneStation?.perClan)) {
+      rows = stationSharedClanRows();
+    } else {
+      rows = stationClanProgress().rows;
+    }
+    for (const row of document.querySelectorAll("#stationClans [data-station-clan]")) {
+      const entry = rows.find((r) => r.tag === String(row.dataset.stationClan || ""));
+      if (!entry) continue;
+      const pct = total > 0 ? Math.max(0, Math.min(100, Math.round((entry.value / total) * 100))) : 0;
+      const bar = row.querySelector(".stationClanBar i");
+      if (bar && bar.style.width !== `${pct}%`) bar.style.width = `${pct}%`;
+      const num = row.querySelector("strong");
+      const label = `${pct}%`;
+      if (num && num.textContent !== label) num.textContent = label;
+    }
+  } catch {}
+  // Bouton Réparation : décompte en direct pendant le cycle.
+  try {
+    const rbtn = document.getElementById("stationRepairBtn");
+    if (rbtn) {
+      const left = Math.max(0, Math.ceil((Number(zoneStation?.repair?.until) - now) / 1000));
+      if (left > 0) {
+        rbtn.disabled = true;
+        const label = `Réparation ${left}s`;
+        if (rbtn.textContent !== label) rbtn.textContent = label;
+      } else if (rbtn.disabled || rbtn.textContent !== "Réparation") {
+        try { renderStationWindow(); } catch {}
+      }
+    }
+  } catch {}
+}
+
+function renderStationWindow(message = "") {
+  if (!shouldRefreshWindow("stationWindow")) return;
+  if (!ui.stationArena || !ui.stationRows) return;
+  const user = account.user || getCurrentUserFull();
+  if (!user) return;
+  account.user = user;
+  const resources = user.inventory?.resources || {};
+  const st = zoneStation;
+  // Arène : caillou centré + hub + slots aux positions connues (échelle arène).
+  const ARENA = 440;
+  const SCALE = 0.40;
+  const SLOT_PX = 64;
+  const rockW = 300;
+  const rockH = Math.round(300 * STATION_EMPTY_BASE.h / STATION_EMPTY_BASE.w);
+  let arena = `<img class="stationRock" src="${escapeHtml(STATION_EMPTY_BASE.src)}" alt="" loading="lazy" draggable="false" style="width:${rockW}px;height:${rockH}px;">`;
+  const hubRes = st?.hub || null;
+  const hubIcon = hubRes ? (STATION_MODULE_SPRITES[hubRes]?.src || STATION_HUB.src) : null;
+  const hubCdLeft = stationCooldownLeft(st?.hubCd);
+  arena += `<div class="stationSlot stationHub${hubIcon ? " filled" : ""}${hubCdLeft > 0 ? "" : " noCd"}" data-station-slot="hub" title="Cœur" style="left:50%;top:50%;width:84px;height:84px;"${hubIcon ? ` draggable="true"` : ``}>`
+    + (hubIcon ? `<img src="${escapeHtml(hubIcon)}" alt="" loading="lazy" draggable="false">` : ``)
+    + (hubCdLeft > 0 ? `<i class="stationCdRing" data-station-cd="hub" style="--p:${stationCooldownPct(st?.hubCd)}"></i><span class="stationCdSmall" data-station-cdnum="hub">${hubCdLeft}</span>` : ``)
+    + (hubIcon && st?.hubPseudo ? `<span class="stationWho">${escapeHtml(String(st.hubPseudo))}</span>` : ``) + `</div>`;
+  for (const slot of st?.slots || []) {
+    const def = STATION_MODULE_SPRITES[slot?.resourceId] || null;
+    const lx = 50 + ((Number(slot?.dx) || 0) * SCALE / ARENA) * 100;
+    const ly = 50 + ((Number(slot?.dy) || 0) * SCALE / ARENA) * 100;
+    const label = slot?.id || slot?.resourceId || "slot";
+    const cdLeft = stationCooldownLeft(slot?.cooldownUntil);
+    arena += `<div class="stationSlot${def ? " filled" : ""}${cdLeft > 0 ? "" : " noCd"}" data-station-slot="${escapeHtml(String(label))}" title="${escapeHtml(String(label))}" style="left:${lx.toFixed(2)}%;top:${ly.toFixed(2)}%;width:${SLOT_PX}px;height:${SLOT_PX}px;"${def ? ` draggable="true"` : ``}>`
+      + (def ? `<img src="${escapeHtml(def.src)}" alt="" loading="lazy" draggable="false">` : ``)
+      + (cdLeft > 0 ? `<i class="stationCdRing" data-station-cd="${escapeHtml(String(label))}" style="--p:${stationCooldownPct(slot?.cooldownUntil)}"></i><span class="stationCdSmall" data-station-cdnum="${escapeHtml(String(label))}">${cdLeft}</span>` : ``)
+      + (def && slot?.pseudo ? `<span class="stationWho">${escapeHtml(String(slot.pseudo))}</span>` : ``) + `</div>`;
+  }
+  ui.stationArena.innerHTML = arena;
+  // Pied de fenêtre : base construite -> bouton Réparation (25 000 PV/s,
+  // 10 s, cœur + modules en vie). Sinon lignes par clan (Clan + barre + %).
+  if (ui.stationClans) {
+    if (st?.built) {
+      const repLeft = Math.max(0, Math.ceil((Number(st?.repair?.until) - Date.now()) / 1000));
+      ui.stationClans.innerHTML = `<button id="stationRepairBtn" class="stationRepairBtn" type="button"${repLeft > 0 ? " disabled" : ""}>`
+        + `${repLeft > 0 ? `Réparation ${repLeft}s` : "Réparation"}</button>`;
+    } else {
+      const total = 1 + (st?.slots || []).length;
+      let rows;
+      if (stationSharedActive() && Array.isArray(st?.perClan)) {
+        rows = stationSharedClanRows().sort((a, b) => b.value - a.value);
+      } else {
+        rows = stationClanProgress().rows;
+      }
+      ui.stationClans.innerHTML = rows.length
+        ? rows.map(({ tag, value }) => {
+            const pct = total > 0 ? Math.round((value / total) * 100) : 0;
+            const color = stationClanColor(tag);
+            return `<div class="stationClanRow" data-station-clan="${escapeHtml(tag)}"><b>Clan : ${escapeHtml(tag)}</b>`
+              + `<span class="stationClanBar"><i style="width:${pct}%;background:${color};"></i></span>`
+              + `<strong>${pct}%</strong></div>`;
+          }).join("")
+        : `<div class="stationClansEmpty">Aucun module posé.</div>`;
+    }
+  }
+  if (ui.stationBuildBtn) ui.stationBuildBtn.hidden = !stationBuildable();
+  // Inventaire : les 10 pièces (présentation hangar : icône + nom + stock).
+  ui.stationRows.innerHTML = stationInventoryIds().map((id) => {
+    const owned = Math.max(0, Math.floor(Number(resources[id]) || 0));
+    const icon = id === STATION_HUB.resourceId ? STATION_HUB.src : (STATION_MODULE_SPRITES[id]?.src || "");
+    return `<div class="stationRow${selectedStationItemId === id ? " active" : ""}" data-station-item="${escapeHtml(id)}" draggable="true" role="button" tabindex="0">`
+      + `<img src="${escapeHtml(icon)}" alt="" loading="lazy" draggable="false" onerror="this.onerror=null;this.src='${CRAFTING_FALLBACK_ICON}'">`
+      + `<b>${escapeHtml(getResourceName(id, Math.max(owned, 2)))}</b>`
+      + `<strong>×${formatInteger(owned)}</strong></div>`;
+  }).join("");
+  if (ui.stationMessage) ui.stationMessage.textContent = message || "";
+}
+
+function openStationWindow() {
+  if (!zoneStation) {
+    showToast("Aucune station sur cette carte", 1.4);
+    return;
+  }
+  if (!stationButtonAvailable()) {
+    showToast("Cette base appartient à un autre clan", 1.8);
+    return;
+  }
+  if (!isPlayerNearStation()) {
+    showToast("Approche-toi de la station", 1.4);
+    return;
+  }
+  if (!ui.stationWindow) {
+    showToast("Fenêtre indisponible — recharge la page (Ctrl+F5)", 3);
+    return;
+  }
+  renderStationWindow();
+  if (window.GameWindowManager) window.GameWindowManager.restore("stationWindow");
+  else ui.stationWindow.style.display = "block";
+}
+
+function closeStationWindow() {
+  selectedStationItemId = null;
+  const card = ui.stationWindow;
+  if (!card || card.classList.contains("gameWinClosing")) return;
+  if (window.GameWindowManager) {
+    card.classList.add("gameWinClosing");
+    setTimeout(() => {
+      card.classList.remove("gameWinClosing");
+      window.GameWindowManager?.close("stationWindow");
+    }, 360);
+  } else card.style.display = "none";
+}
+
+ui.stationRows?.addEventListener("click", (event) => {
+  const row = event.target.closest("[data-station-item]");
+  if (!row) return;
+  selectedStationItemId = String(row.dataset.stationItem || "") || null;
+  renderStationWindow();
+});
+
+// Drag & drop + double-clic : poser dans les slots, double-clic sur un
+// module = slot libre aléatoire autour. Double-clic sur un slot plein =
+// désinstaller (retour au stock). Le hub n'accepte que le Cœur.
+function stationPersist() {
+  try {
+    const mapId = String(rules?.mapLabel || window.__CURRENT_MAP_ID__ || "").toLowerCase();
+    const u = getCurrentUserForMutation();
+    if (!mapId || !u || !zoneStation) return;
+    if (!u.stations || typeof u.stations !== "object") u.stations = {};
+    let fallbackClanForPersist = "";
+    try { fallbackClanForPersist = String(getMyClanTag() || "").toUpperCase(); } catch {}
+    if (zoneStation.hub && !zoneStation.hubClan && fallbackClanForPersist) {
+      zoneStation.hubClan = fallbackClanForPersist;
+    }
+    const slots = {};
+    const slotClans = {};
+    const slotPseudos = {};
+    const slotPending = {};
+    const cds = {};
+    for (const slot of zoneStation.slots || []) {
+      if (slot?.id) {
+        slots[slot.id] = slot.resourceId || null;
+        // Rattrapage : module posé avant le suivi par clan -> clan actuel.
+        if (slot.resourceId && !slot.clan && fallbackClanForPersist) slot.clan = fallbackClanForPersist;
+        if (slot.clan) slotClans[slot.id] = slot.clan;
+        if (slot.pseudo) slotPseudos[slot.id] = slot.pseudo;
+        if (slot?.pendingReplace?.resourceId) slotPending[slot.id] = { r: slot.pendingReplace.resourceId, c: slot.pendingReplace.clan || null, p: slot.pendingReplace.pseudo || "" };
+        if (stationCooldownLeft(slot.cooldownUntil) > 0) cds[slot.id] = slot.cooldownUntil;
+      }
+    }
+    if (stationCooldownLeft(zoneStation.hubCd) > 0) cds.hub = zoneStation.hubCd;
+    const repUntil = Number(zoneStation.repair?.until) || 0;
+    u.stations[mapId] = { hub: zoneStation.hub || null, hubClan: zoneStation.hubClan || null, hubPseudo: zoneStation.hubPseudo || "", slots, slotClans, slotPseudos, slotPending, cds, repair: repUntil > Date.now() ? { until: repUntil } : null, built: zoneStation.built === true, owner: { ...(zoneStation.owner || {}) }, contestedBy: zoneStation.contestedBy || null };
+    account.user = u;
+    saveUser(u, { durable: true });
+    try { localStorage.setItem("orbit_sync", String(Date.now())); } catch {}
+  } catch {}
+}
+
+function stationRefresh(reason = "") {
+  try { syncPlayerFromAccount(); } catch {}
+  renderStationWindow(reason);
+  try { window.dispatchEvent(new CustomEvent("orbit:profile-progress")); } catch {}
+}
+
+// Unicité stricte : 1 seul exemplaire de chaque module par station,
+// remplacements en cours inclus (ils basculeront à l'échéance).
+function stationModuleTaken(id, exceptSlot = null) {
+  const want = String(id || "");
+  if (!want) return false;
+  for (const s of zoneStation?.slots || []) {
+    if (exceptSlot && s === exceptSlot) continue;
+    if (String(s?.resourceId || "") === want) return true;
+    if (String(s?.pendingReplace?.resourceId || "") === want) return true;
+  }
+  return false;
+}
+
+function stationInstallModule(resourceId, slotId = null) {
+  const st = zoneStation;
+  if (!st) return;
+  const id = String(resourceId || "");
+  const isCore = id === STATION_HUB.resourceId;
+  const u = getCurrentUserForMutation();
+  if (!u) return;
+  // Construction réservée aux clans.
+  let myClan = "";
+  try { myClan = String(getMyClanTag() || "").toUpperCase(); } catch {}
+  if (!myClan) {
+    renderStationWindow("Construction réservée aux clans.");
+    return;
+  }
+  const mapId = String(window.__CURRENT_MAP_ID__ || rules?.mapLabel || "").toLowerCase();
+  // En multijoueur : le serveur tranche (places, cooldowns, remboursements).
+  if (stationSharedActive()) {
+    let targetSlot = slotId || null;
+    if (!targetSlot) {
+      if (isCore) {
+        targetSlot = "hub";
+      } else {
+        const empties = (st.slots || []).filter((s) => !s?.resourceId);
+        if (!empties.length) {
+          renderStationWindow("Aucun emplacement libre.");
+          return;
+        }
+        targetSlot = empties[Math.floor(Math.random() * empties.length)].id;
+      }
+    }
+    // Une seule opération à la fois : un remplacement/reconstruction en
+    // cours bloque tout le reste (le serveur tranche en autorité).
+    const opBusy = (st.slots || []).some((s) => s?.replace);
+    if (st.built && opBusy) {
+      renderStationWindow("Remplacement déjà en cours.");
+      return;
+    }
+    // Base construite + emplacement occupé (jamais le hub) : remplacement.
+    const occSlot = targetSlot && targetSlot !== "hub"
+      ? (st.slots || []).find((s) => String(s?.id) === String(targetSlot))
+      : null;
+    if (st.built && occSlot?.resourceId) {
+      if (!sendStationReplace(mapId, targetSlot, id)) {
+        renderStationWindow("Hors ligne — remplacement impossible.");
+      }
+      return;
+    }
+    if (!sendStationInstall(mapId, targetSlot, id)) {
+      renderStationWindow("Hors ligne — installation locale impossible.");
+    }
+    return;
+  }
+  // Une seule installation à la fois (comme l'officiel).
+  const busy = (st.hubCd && stationCooldownLeft(st.hubCd) > 0)
+    || (st.slots || []).some((s) => stationCooldownLeft(s?.cooldownUntil) > 0);
+  if (busy) {
+    renderStationWindow("Installation en cours — patientez.");
+    return;
+  }
+  u.inventory ||= {};
+  u.inventory.resources ||= {};
+  const stock = Math.max(0, Math.floor(Number(u.inventory.resources[id]) || 0));
+  if (stock <= 0) {
+    renderStationWindow(`Stock épuisé : ${getResourceName(id, 2)}.`);
+    return;
+  }
+  // Modules uniques : un seul exemplaire de chaque par station
+  // (remplacements en cours inclus).
+  if (STATION_UNIQUE_MODULES.includes(id) && stationModuleTaken(id)) {
+    renderStationWindow(`${getResourceName(id, 2)} : un seul exemplaire par station.`);
+    return;
+  }
+  if (slotId === "hub") {
+    if (!isCore) {
+      renderStationWindow("Le hub n'accepte que le Cœur de base.");
+      return;
+    }
+    if (st.hub) {
+      renderStationWindow("Un Cœur est déjà posé.");
+      return;
+    }
+    const myPseudo = String(u.pseudo || getCurrentUserFull()?.pseudo || "Pilote").slice(0, 20);
+    u.inventory.resources[id] = stock - 1;
+    try { noteNetConsumption("ores", id, 1); } catch {}
+    st.hub = id;
+    st.hubClan = myClan;
+    st.hubPseudo = myPseudo;
+    st.hubCd = Date.now() + STATION_INSTALL_CD_SEC * 1000;
+    st.hubHp = STATION_CORE_HP;
+    st.hubHpMax = STATION_CORE_HP;
+    // Propriétaire déclaré à la construction, pas à la pose.
+  } else {
+    if (isCore) {
+      renderStationWindow("Le Cœur se pose sur le hub central.");
+      return;
+    }
+    let target = null;
+    if (slotId) {
+      target = (st.slots || []).find((s) => s?.id === slotId) || null;
+      if (!target) return;
+      if (target.resourceId) {
+        // Remplacement sur base construite (le Cœur ne se remplace jamais :
+        // la branche hub ci-dessus rejette déjà un hub occupé).
+        if (!st.built) {
+          renderStationWindow("Emplacement déjà occupé.");
+          return;
+        }
+        if (String(target.resourceId) === id) {
+          renderStationWindow("Module identique.");
+          return;
+        }
+        if (STATION_UNIQUE_MODULES.includes(id) && stationModuleTaken(id, target)) {
+          renderStationWindow(`${getResourceName(id, 2)} : un seul exemplaire par station.`);
+          return;
+        }
+        const rpPseudo = String(u.pseudo || getCurrentUserFull()?.pseudo || "Pilote").slice(0, 20);
+        // L'ancien module reste actif pendant le décompte ; la bascule
+        // (stock -1 nouveau / +1 ancien) a lieu à la fin des 60 s.
+        target.pendingReplace = { resourceId: id, clan: myClan, pseudo: rpPseudo };
+        target.cooldownUntil = Date.now() + STATION_INSTALL_CD_SEC * 1000;
+        account.user = u;
+        stationPersist();
+        stationRefresh(`Remplacement dans 60 s : ${getResourceName(id, 1)} (double-clic pour annuler).`);
+        return;
+      }
+    } else {
+      const empties = (st.slots || []).filter((s) => !s?.resourceId);
+      if (!empties.length) {
+        renderStationWindow("Aucun emplacement libre.");
+        return;
+      }
+      target = empties[Math.floor(Math.random() * empties.length)];
+    }
+    const rpPseudo = String(u.pseudo || getCurrentUserFull()?.pseudo || "Pilote").slice(0, 20);
+    if (st.built) {
+      // Repose différée sur base construite : 60 s avant apparition
+      // visuelle (comme un remplacement, sans remboursement à la fin).
+      target.pendingReplace = { resourceId: id, clan: myClan, pseudo: rpPseudo };
+      target.cooldownUntil = Date.now() + STATION_INSTALL_CD_SEC * 1000;
+      account.user = u;
+      stationPersist();
+      stationRefresh(`Reconstruction dans 60 s : ${getResourceName(id, 1)} (double-clic pour annuler).`);
+      return;
+    }
+    const myPseudo = String(u.pseudo || getCurrentUserFull()?.pseudo || "Pilote").slice(0, 20);
+    u.inventory.resources[id] = stock - 1;
+    try { noteNetConsumption("ores", id, 1); } catch {}
+    target.resourceId = id;
+    target.clan = myClan;
+    target.pseudo = myPseudo;
+    target.cooldownUntil = Date.now() + STATION_INSTALL_CD_SEC * 1000;
+    target.hp = STATION_MODULE_HP;
+    target.hpMax = STATION_MODULE_HP;
+  }
+  account.user = u;
+  stationPersist();
+  stationRefresh();
+}
+
+// Remplacements solo arrivés à échéance : bascule atomique
+// (stock -1 nouveau / +1 ancien), l'ancien restant actif pendant le décompte.
+function stationResolveReplaces() {
+  const st = zoneStation;
+  if (!st) return;
+  const now = Date.now();
+  const u = getCurrentUserForMutation();
+  if (!u) return;
+  u.inventory ||= {};
+  u.inventory.resources ||= {};
+  let changed = false;
+  for (const slot of st.slots || []) {
+    const pr = slot?.pendingReplace;
+    if (!pr?.resourceId) continue;
+    if (Number(slot.cooldownUntil) > now) continue;
+    const newId = String(pr.resourceId);
+    const oldId = String(slot.resourceId || "");
+    if (newId === oldId) {
+      slot.pendingReplace = null;
+      slot.cooldownUntil = 0;
+      changed = true;
+      continue;
+    }
+    const stock = Math.max(0, Math.floor(Number(u.inventory.resources[newId]) || 0));
+    if (stock <= 0) {
+      slot.pendingReplace = null;
+      slot.cooldownUntil = 0;
+      changed = true;
+      try { stationRefresh(`Stock épuisé : ${getResourceName(newId, 2)} — remplacement annulé.`); } catch {}
+      continue;
+    }
+    if (STATION_UNIQUE_MODULES.includes(newId) && stationModuleTaken(newId, slot)) {
+      slot.pendingReplace = null;
+      slot.cooldownUntil = 0;
+      changed = true;
+      continue;
+    }
+    u.inventory.resources[newId] = stock - 1;
+    // Remplacement : l'ancien module retourne au stock. Repose sur
+    // emplacement détruit (pas d'ancien) : rien à rembourser.
+    if (oldId) {
+      u.inventory.resources[oldId] = Math.max(0, Math.floor(Number(u.inventory.resources[oldId]) || 0)) + 1;
+    }
+    try { noteNetConsumption("ores", newId, 1); } catch {}
+    if (oldId) {
+      try { noteNetResourceGain({ [oldId]: 1 }); } catch {}
+    }
+    slot.resourceId = newId;
+    slot.clan = String(pr.clan || "");
+    slot.pseudo = String(pr.pseudo || "").slice(0, 20);
+    slot.hp = STATION_MODULE_HP;
+    slot.hpMax = STATION_MODULE_HP;
+    slot.pendingReplace = null;
+    slot.cooldownUntil = 0;
+    changed = true;
+  }
+  if (changed) {
+    account.user = u;
+    try { stationPersist(); } catch {}
+    try { stationRefresh("Module posé !"); } catch {}
+  }
+}
+
+function stationUninstallSlot(slotId) {
+  const st = zoneStation;
+  if (!st) return;
+  const u = getCurrentUserForMutation();
+  if (!u) return;
+  let myClan = "";
+  try { myClan = String(getMyClanTag() || "").toUpperCase(); } catch {}
+  u.inventory ||= {};
+  u.inventory.resources ||= {};
+  // Seul le clan poseur peut retirer son module (pas de vol).
+  if (stationSharedActive()) {
+    const mapId = String(window.__CURRENT_MAP_ID__ || rules?.mapLabel || "").toLowerCase();
+    // Remplacement / repose en cours : double-clic = annulation (l'ancien
+    // module reste en place, le remplaçant est remboursé).
+    try {
+      const pending = (st.slots || []).find((s) => String(s?.id) === String(slotId))?.replace;
+      if (st.built && pending) {
+        if (!sendStationCancelReplace(mapId, slotId)) {
+          renderStationWindow("Hors ligne — annulation impossible.");
+        }
+        return;
+      }
+    } catch {}
+    // Seul le poseur peut retirer (le serveur tranche, ceci évite l'aller-retour).
+    try {
+      const mine = String(netMyId() || "");
+      const owner = slotId === "hub"
+        ? st.hubPlacer
+        : (st.slots || []).find((s) => s?.id === slotId)?.placerId;
+      if (mine && owner && owner !== mine) {
+        renderStationWindow("Module d'un autre joueur.");
+        return;
+      }
+    } catch {}
+    if (!sendStationUninstall(mapId, slotId)) {
+      renderStationWindow("Hors ligne — retrait impossible.");
+    }
+    return;
+  }
+  if (slotId === "hub") {
+    if (!st.hub) return;
+    if (st.hubClan && st.hubClan !== myClan) {
+      renderStationWindow("Cœur d'un autre clan.");
+      return;
+    }
+    const id = st.hub;
+    u.inventory.resources[id] = Math.max(0, Math.floor(Number(u.inventory.resources[id]) || 0)) + 1;
+    try { noteNetResourceGain({ [id]: 1 }); } catch {}
+    st.hub = null;
+    st.hubCd = 0;
+    st.hubClan = null;
+    st.hubPseudo = "";
+    st.owner = {};
+  } else {
+    const target = (st.slots || []).find((s) => s?.id === slotId) || null;
+    if (!target) return;
+    // Annulation d'un remplacement / d'une repose en cours (double-clic) :
+    // l'ancien module reste en place, rien n'avait été débité.
+    if (target.pendingReplace) {
+      target.pendingReplace = null;
+      target.cooldownUntil = 0;
+      stationPersist();
+      stationRefresh("Remplacement annulé.");
+      return;
+    }
+    if (!target.resourceId) return;
+    if (target.clan && target.clan !== myClan) {
+      renderStationWindow("Module d'un autre clan.");
+      return;
+    }
+    const id = target.resourceId;
+    u.inventory.resources[id] = Math.max(0, Math.floor(Number(u.inventory.resources[id]) || 0)) + 1;
+    try { noteNetResourceGain({ [id]: 1 }); } catch {}
+    target.resourceId = null;
+    target.cooldownUntil = 0;
+    target.clan = null;
+    target.pseudo = "";
+  }
+  account.user = u;
+  // Station incomplète : repasse en construction (modules cachés en jeu).
+  if (st.built) {
+    st.built = false;
+    st.owner = {};
+  }
+  stationPersist();
+  stationRefresh();
+}
+
+function stationBuildable() {
+  const st = zoneStation;
+  if (!st || st.built) return false;
+  // En multijoueur : le serveur tranche (slots ennemis masqués localement).
+  if (stationSharedActive()) {
+    let myClan = "";
+    try { myClan = String(getMyClanTag() || "").toUpperCase(); } catch {}
+    const mine = stationSharedClanRows().find((row) => row.tag === myClan);
+    return Number(mine?.value || 0) >= Math.max(1, Number(st.total) || 10);
+  }
+  if (!st.hub) return false;
+  return (st.slots || []).length > 0 && (st.slots || []).every((s) => !!s?.resourceId);
+}
+
+function stationBuild() {
+  const st = zoneStation;
+  if (!stationBuildable()) return;
+  const u = getCurrentUserForMutation();
+  if (!u) return;
+  let clan = null;
+  try { clan = String(getMyClanTag() || "").toUpperCase() || null; } catch {}
+  if (!clan) {
+    renderStationWindow("Construction réservée aux clans.");
+    return;
+  }
+  if (stationSharedActive()) {
+    const mapId = String(window.__CURRENT_MAP_ID__ || rules?.mapLabel || "").toLowerCase();
+    if (!sendStationBuild(mapId)) {
+      renderStationWindow("Hors ligne — construction impossible.");
+    }
+    return;
+  }
+  st.built = true;
+  st.owner = { firm: normalizeFactionId(u.faction), ...(clan ? { clan } : {}) };
+  // PV pleins à la construction (sauvegardes / poses antérieures au suivi HP).
+  if (st.hub && !(Number(st.hubHp) > 0)) { st.hubHp = STATION_CORE_HP; st.hubHpMax = STATION_CORE_HP; }
+  for (const slot of st.slots || []) {
+    if (slot?.resourceId && !(Number(slot.hp) > 0)) { slot.hp = STATION_MODULE_HP; slot.hpMax = STATION_MODULE_HP; }
+  }
+  account.user = u;
+  stationPersist();
+  stationRefresh("Station construite !");
+}
+
+// Réparation : 25 000 PV/s pendant 10 s sur le cœur et les modules en vie.
+const STATION_REPAIR_RATE = 25000;
+const STATION_REPAIR_MS = 10000;
+
+function stationRepair() {
+  const st = zoneStation;
+  if (!st?.built) return;
+  if (st.repair && Number(st.repair.until) > Date.now()) {
+    renderStationWindow("Réparation déjà en cours.");
+    return;
+  }
+  if (stationSharedActive()) {
+    const mapId = String(window.__CURRENT_MAP_ID__ || rules?.mapLabel || "").toLowerCase();
+    if (!sendStationRepair(mapId)) {
+      renderStationWindow("Hors ligne — réparation impossible.");
+    }
+    return;
+  }
+  const u = getCurrentUserForMutation();
+  if (!u) return;
+  let clan = "";
+  try { clan = String(getMyClanTag() || "").toUpperCase(); } catch {}
+  if (String(st.owner?.clan || "").toUpperCase() !== clan || !clan) {
+    renderStationWindow("Réparation réservée à ton clan.");
+    return;
+  }
+  const needsHeal = (st.hub && Number(st.hubHp) > 0 && Number(st.hubHp) < (Number(st.hubHpMax) || STATION_CORE_HP))
+    || (st.slots || []).some((s) => s?.resourceId && Number(s.hp) > 0 && Number(s.hp) < (Number(s.hpMax) || STATION_MODULE_HP));
+  if (!needsHeal) {
+    renderStationWindow("Rien à réparer.");
+    return;
+  }
+  const now = Date.now();
+  st.repair = { until: now + STATION_REPAIR_MS, rate: STATION_REPAIR_RATE, lastTick: now };
+  account.user = u;
+  stationPersist();
+  stationRefresh("Réparation engagée !");
+}
+
+// Flottant +x de réparation (vert coque, comme les soins distants).
+function stationRepairFloatAt(wx, wy, gain) {
+  if (!(gain > 0)) return;
+  try {
+    addFloatText(wx + (Math.random() - 0.5) * 60, wy,
+      gain, "rgba(80,255,125,0.98)",
+      { text: `+${formatInteger(Math.round(gain))}`, size: 21, pop: 0.3, shake: 0.6, life: 1, glow: 1, weight: 900, impact: true });
+  } catch {}
+}
+
+// Tick solo : applique la réparation en cours (le partagé passe par les syncs).
+function stationRepairTick() {
+  const st = zoneStation;
+  if (!st?.repair) return;
+  if (!st.built) {
+    st.repair = null;
+    return;
+  }
+  const now = Date.now();
+  const rp = st.repair;
+  st._repairFloatT ||= 0;
+  if (now >= Number(rp.until) || 0) {
+    st.repair = null;
+    try { stationPersist(); } catch {}
+    try { stationRefresh(); } catch {}
+    return;
+  }
+  const last = Math.min(now, Math.max(Number(rp.lastTick) || now, Number(rp.startedAt) || now));
+  const add = Math.max(0, (Number(rp.rate) || STATION_REPAIR_RATE)) * Math.max(0, now - last) / 1000;
+  rp.lastTick = now;
+  if (add > 0) {
+    if (st.hub && Number(st.hubHp) > 0) {
+      st.hubHp = Math.min(Number(st.hubHpMax) || STATION_CORE_HP, Number(st.hubHp) + add);
+    }
+    for (const slot of st.slots || []) {
+      if (slot?.resourceId && Number(slot.hp) > 0) {
+        slot.hp = Math.min(Number(slot.hpMax) || STATION_MODULE_HP, Number(slot.hp) + add);
+      }
+    }
+  }
+  // Flottant fixe +25 000/s sur le cœur et les modules en vie non pleins.
+  // Membres du clan uniquement.
+  if (now - st._repairFloatT >= 1000) {
+    st._repairFloatT = now;
+    let clanView = false;
+    try { clanView = stationOwnedByMyClan(); } catch {}
+    if (!clanView) {
+      try { stationPersist(); } catch {}
+      return;
+    }
+    const fixed = Math.max(1, Number(rp.rate) || STATION_REPAIR_RATE);
+    if (st.hub && Number(st.hubHp) > 0 && Number(st.hubHp) < (Number(st.hubHpMax) || STATION_CORE_HP)) {
+      stationRepairFloatAt(Number(st.x), Number(st.y) - 235, fixed);
+    }
+    for (const slot of st.slots || []) {
+      if (slot?.resourceId && Number(slot.hp) > 0 && Number(slot.hp) < (Number(slot.hpMax) || STATION_MODULE_HP)) {
+        stationRepairFloatAt(Number(st.x) + (Number(slot.dx) || 0), Number(st.y) + (Number(slot.dy) || 0) - 160, fixed);
+      }
+    }
+    try { stationPersist(); } catch {}
+  }
+}
+
+ui.stationRows?.addEventListener("dragstart", (event) => {
+  const row = event.target.closest("[data-station-item]");
+  if (!row) return;
+  try { event.dataTransfer.setData("text/station-item", String(row.dataset.stationItem || "")); } catch {}
+  try { event.dataTransfer.effectAllowed = "copy"; } catch {}
+});
+
+ui.stationRows?.addEventListener("dblclick", (event) => {
+  const row = event.target.closest("[data-station-item]");
+  if (!row || !row.dataset.stationItem) return;
+  stationInstallModule(row.dataset.stationItem, null);
+});
+
+ui.stationRows?.addEventListener("dragover", (event) => {
+  event.preventDefault();
+});
+
+ui.stationRows?.addEventListener("drop", (event) => {
+  event.preventDefault();
+  let slotId = "";
+  try { slotId = String(event.dataTransfer.getData("text/station-slot") || ""); } catch {}
+  if (!slotId) return;
+  stationUninstallSlot(slotId);
+});
+
+ui.stationArena?.addEventListener("dragstart", (event) => {
+  const slot = event.target.closest("[data-station-slot]");
+  if (!slot || !slot.querySelector("img")) return;
+  try { event.dataTransfer.setData("text/station-slot", String(slot.dataset.stationSlot || "")); } catch {}
+  try { event.dataTransfer.effectAllowed = "move"; } catch {}
+});
+
+ui.stationArena?.addEventListener("dragover", (event) => {
+  const slot = event.target.closest("[data-station-slot]");
+  if (!slot) return;
+  event.preventDefault();
+  try { event.dataTransfer.dropEffect = "copy"; } catch {}
+  slot.classList.add("stationDragOver");
+});
+
+ui.stationArena?.addEventListener("dragleave", (event) => {
+  const slot = event.target.closest("[data-station-slot]");
+  if (slot) slot.classList.remove("stationDragOver");
+});
+
+ui.stationArena?.addEventListener("drop", (event) => {
+  const slot = event.target.closest("[data-station-slot]");
+  if (!slot) return;
+  event.preventDefault();
+  slot.classList.remove("stationDragOver");
+  let id = "";
+  try { id = String(event.dataTransfer.getData("text/station-item") || ""); } catch {}
+  if (!id) return;
+  stationInstallModule(id, slot.dataset.stationSlot || null);
+});
+
+ui.stationArena?.addEventListener("dblclick", (event) => {
+  const slot = event.target.closest("[data-station-slot]");
+  if (!slot) return;
+  const filled = slot.querySelector("img");
+  if (!filled) return;
+  stationUninstallSlot(slot.dataset.stationSlot || null);
+});
+
+ui.stationBuildBtn?.addEventListener("click", () => {
+  stationBuild();
+});
+
+// Bouton Réparation injecté dans le pied de fenêtre (délégation : le footer
+// est re-rendu à chaque ouverture/refresh).
+ui.stationClans?.addEventListener("click", (event) => {
+  if (event.target.closest("#stationRepairBtn")) stationRepair();
+});
 
 ui.otExchangeBtn?.addEventListener("click", () => {
   if (!isTradeWindowAnchored()) {
@@ -38836,6 +40170,377 @@ function drawSafeModules(ox, oy) {
   }
 }
 
+// Tag clan + diplo en direct (HTTP, mêmes endpoints que la fenêtre Clan) :
+// le push WS n'arrive qu'après connexion, d'où le retard du bouton CBS.
+// Converge avec le WS dans tous les cas (même valeur des deux côtés).
+let clanTagFetchInflight = null;
+function refreshMyClanTagNow() {
+  if (!isZoneMap || !zoneStation) return Promise.resolve(null);
+  try {
+    if (String(getMyClanTag() || "")) return Promise.resolve(getMyClanTag());
+  } catch {}
+  if (clanTagFetchInflight) return clanTagFetchInflight;
+  clanTagFetchInflight = (async () => {
+    try {
+      let token = "";
+      try { token = String(localStorage.getItem("orbit_token") || ""); } catch {}
+      if (!token) return null;
+      const headers = { Authorization: `Bearer ${token}` };
+      const res = await fetch("/api/clans/me", { headers });
+      const data = await res.json().catch(() => ({}));
+      const tag = String(data?.clan?.tag || "").toUpperCase().slice(0, 5);
+      setMyClanTag(tag);
+      try {
+        const rel = await fetch("/api/clans/relations", { headers });
+        const relData = await rel.json().catch(() => ({}));
+        const act = Array.isArray(relData?.active) ? relData.active : [];
+        setNetDiplo(
+          act.filter((x) => x?.kind === "alliance").map((x) => x?.otherTag),
+          act.filter((x) => x?.kind === "nap").map((x) => x?.otherTag),
+          act.filter((x) => x?.kind === "war").map((x) => x?.otherTag)
+        );
+      } catch {}
+      return tag || null;
+    } catch {
+      return null;
+    } finally {
+      clanTagFetchInflight = null;
+      try { if (typeof isStationWindowOpen === "function" && isStationWindowOpen()) renderStationWindow(); } catch {}
+    }
+  })();
+  return clanTagFetchInflight;
+}
+
+// Couleur d'un clan contributeur : vert (nous/allié), jaune (NAP),
+// rouge (guerre), cyan (sans relation).
+function stationClanColor(tag) {
+  const clean = String(tag || "").toUpperCase();
+  if (!clean) return "#9aa3ad";
+  let mine = "";
+  try { mine = String(getMyClanTag() || "").toUpperCase(); } catch {}
+  if (mine && clean === mine) return STATION_RING_COLORS.own;
+  try {
+    const rel = getClanRelation(clean);
+    if (rel === "ally") return STATION_RING_COLORS.own;
+    if (rel === "nap") return STATION_RING_COLORS.nap;
+    if (rel === "war") return STATION_RING_COLORS.enemy;
+  } catch {}
+  return "#7df0ff";
+}
+
+// Statut de propriété de la Base de Combat : own (vert), nap (jaune),// enemy (rouge), empty (gris). Même firme non hostile = à nous.
+function zoneStationRingStatus() {
+  const st = zoneStation;
+  if (!st) return null;
+  const owner = st.owner || {};
+  const clan = String(owner.clan || "").toUpperCase();
+  const firm = String(owner.firm || "").toLowerCase();
+  if (!clan && !firm) return "empty";
+  let mine = "";
+  try { mine = String(getMyClanTag() || "").toUpperCase(); } catch {}
+  if (clan && mine && clan === mine) return "own";
+  if (clan) {
+    try {
+      const rel = getClanRelation(clan);
+      if (rel === "ally") return "own";
+      if (rel === "nap") return "nap";
+      if (rel === "war") return "enemy";
+    } catch {}
+  }
+  let myFirm = "";
+  try { myFirm = String(getFaction((account.user || getCurrentUserFull())?.faction)?.id || "").toLowerCase(); } catch {}
+  if (firm && myFirm && firm === myFirm) return "own";
+  return "enemy";
+}
+
+function zoneStationRingColor() {
+  return STATION_RING_COLORS[zoneStationRingStatus()] || STATION_RING_COLORS.empty;
+}
+
+// Animations "emplacement détruit" : slotId -> timestamp de destruction
+// (performance.now()). Remplie sur l'événement stationDestroyed.
+const stationDestroyedAnims = new Map();
+
+// Base de Combat (test 1-3) : hub + 9 slots en anneau, affichés 1:1.
+// Lasers : 2 frames idle alternées (500 ms). Le reste : frame de repos.
+function drawZoneStation(ox, oy) {
+  if (!isZoneMap || !zoneStation) return;
+  const sx = Number(zoneStation.x), sy = Number(zoneStation.y);
+  if (!Number.isFinite(sx) || !Number.isFinite(sy)) return;
+  try {
+    if (isBeyondSensorRadius(sx, sy, 650)) return;
+  } catch {}
+  const blinkFrame = Math.floor(performance.now() / 500) % 2;
+  const drawSprite = (src, w, h, wx, wy) => {
+    if (!src) return;
+    const img = getCachedImage(src);
+    if (!isImgReady(img)) return;
+    ctx.save();
+    ctx.imageSmoothingEnabled = false;
+    ctx.imageSmoothingQuality = "low";
+    ctx.drawImage(img, wx + ox - w / 2, wy + oy - h / 2, w, h);
+    ctx.restore();
+  };
+  // Hub posé = Cœur de base, sinon astéroïde vide (BASE_VIDE).
+  // Avant construction : rien des modules posés n'apparaît en jeu,
+  // seul le caillou est visible (comme une base vide).
+  const built = !!zoneStation.built;
+  const base = built && zoneStation.hub ? STATION_HUB : STATION_EMPTY_BASE;
+  drawSprite(base.src, base.w, base.h, sx, sy);
+  // Bouton CBS au-dessus de la base (comme quêtes/commerce) : idle /
+  // survol / clic, atténué si le vaisseau est loin. Masqué sans clan.
+  try {
+    if (stationButtonAvailable()) {
+    const buttonSprite = zoneStation.cbsButtonPressed
+      ? CBS_BUTTON.click
+      : zoneStation.cbsButtonHovered
+        ? CBS_BUTTON.mouse
+        : CBS_BUTTON.idle;
+    const buttonImg = getCachedImage(buttonSprite.src);
+    if (isImgReady(buttonImg)) {
+      const button = getCbsButtonPosition();
+      if (button) {
+        ctx.save();
+        ctx.globalAlpha = isPlayerNearStation() ? 1 : 0.65;
+        ctx.imageSmoothingEnabled = false;
+        ctx.imageSmoothingQuality = "low";
+        ctx.drawImage(
+          buttonImg,
+          button.x + ox - CBS_BUTTON.w / 2,
+          button.y + oy - CBS_BUTTON.h / 2,
+          CBS_BUTTON.w,
+          CBS_BUTTON.h
+        );
+        ctx.restore();
+      }
+    }
+    }
+  } catch {}
+  // Modules posés : visibles en jeu uniquement une fois la station construite.
+  if (built) for (const slot of zoneStation.slots || []) {
+    const def = STATION_MODULE_SPRITES[slot?.resourceId];
+    if (!def) continue;
+    // Emplacement reconstruit : l'animation de destruction est purgée.
+    try { if (stationDestroyedAnims.has(String(slot.id))) stationDestroyedAnims.delete(String(slot.id)); } catch {}
+    const wx = sx + (Number(slot.dx) || 0);
+    const wy = sy + (Number(slot.dy) || 0);
+    const src = Array.isArray(def.frames) && def.frames.length
+      ? def.frames[blinkFrame % def.frames.length]
+      : def.src;
+    drawSprite(src, def.w, def.h, wx, wy);
+  }
+  // Emplacements détruits : animation 59 frames en boucle continue tant que
+  // l'emplacement est vide. Construite + slot vide = détruit (10/10 requis
+  // pour construire, solo comme multi).
+  if (built) for (const slot of zoneStation.slots || []) {
+    if (!slot?.id || slot.resourceId) continue;
+    const key = String(slot.id);
+    let start = null;
+    try { start = stationDestroyedAnims.has(key) ? stationDestroyedAnims.get(key) : null; } catch {}
+    if (start == null) {
+      // Destruction vue après coup (refresh/sync sans l'événement) :
+      // cratère direct, sans rejouer l'animation.
+      try { stationDestroyedAnims.set(key, -1e15); } catch {}
+      start = -1e15;
+    }
+    const frames = STATION_DESTROYED_SPOT?.frames || [];
+    if (!frames.length) continue;
+    const step = Math.max(1, Number(STATION_DESTROYED_SPOT.frameMs) || 40);
+    // Lecture en boucle : l'animation tourne en continu sur l'emplacement vide.
+    const nowMs = performance.now();
+    const since = nowMs - Number(start);
+    const idx = since < 0 || !Number.isFinite(since)
+      ? Math.floor(nowMs / step) % frames.length
+      : Math.floor(since / step) % frames.length;
+    const src = frames[idx];
+    const wx = sx + (Number(slot.dx) || 0);
+    const wy = sy + (Number(slot.dy) || 0);
+    drawSprite(src, STATION_DESTROYED_SPOT.w, STATION_DESTROYED_SPOT.h, wx, wy);
+  }
+  // Modules : "[TAG] Nom" sous chaque module (Laser 1, Roquette 1, Honneur...).
+  if (built) for (const slot of zoneStation.slots || []) {
+    const def = STATION_MODULE_SPRITES[slot?.resourceId];
+    if (!def) continue;
+    const id = String(slot.resourceId || "");
+    const mTag = String(slot?.clan || zoneStation?.owner?.clan || zoneStation?.hubClan || "").toUpperCase().slice(0, 5);
+    let short = "";
+    if (id === "station_laser_1") short = "Laser 1";
+    else if (id === "station_laser_2") short = "Laser 2";
+    else if (id === "station_laser_3") short = "Laser 3";
+    else if (id === "station_rocket_1") short = "Roquette 1";
+    else if (id === "station_rocket_2") short = "Roquette 2";
+    else if (id === "station_module_dmg") short = "Dégâts";
+    else if (id === "station_module_exp") short = "Expérience";
+    else if (id === "station_module_hon") short = "Honneur";
+    else if (id === "station_module_rep") short = "Réparation";
+    else { try { short = String(getResourceName(id, 1) || "").slice(0, 18); } catch {} }
+    if (!short) continue;
+    const tagPart = mTag ? `[${mTag}] ` : "";
+    const full = `${tagPart}${short}`;
+    try {
+      ctx.save();
+      ctx.font = "900 12px ui-sans-serif, system-ui";
+      ctx.textAlign = "left";
+      ctx.textBaseline = "top";
+      const cx = sx + (Number(slot.dx) || 0) + ox;
+      const cy = sy + (Number(slot.dy) || 0) + oy + def.h / 2 + 8;
+      const wTag = mTag ? ctx.measureText(tagPart).width : 0;
+      const wName = ctx.measureText(short).width;
+      let tx = cx - (wTag + wName) / 2;
+      ctx.lineWidth = 4;
+      ctx.strokeStyle = "rgba(5,8,20,0.90)";
+      if (mTag) ctx.strokeText(tagPart, tx, cy);
+      ctx.strokeText(short, tx + wTag, cy);
+      if (mTag) {
+        let tc = "#7df0ff";
+        try { tc = stationClanColor(mTag); } catch {}
+        ctx.fillStyle = tc;
+        ctx.fillText(tagPart, tx, cy);
+      }
+      ctx.fillStyle = "rgba(255,255,255,0.95)";
+      ctx.fillText(short, tx + wTag, cy);
+      ctx.restore();
+    } catch {}
+  }
+  // Base construite : "Base de [TAG]" sous le cœur (tag du clan proprio).
+  if (built && zoneStation.hub) {
+    let tag = String(zoneStation?.owner?.clan || zoneStation?.hubClan || "").toUpperCase().slice(0, 5);
+    if (!tag) {
+      // Rattrapage vieille sauvegarde construite sans clan : slots puis clan actuel.
+      try {
+        const counts = {};
+        for (const s of zoneStation.slots || []) {
+          const c = String(s?.clan || "").toUpperCase().slice(0, 5);
+          if (c) counts[c] = (counts[c] || 0) + 1;
+        }
+        const best = Object.entries(counts).sort((a, b) => b[1] - a[1])[0]?.[0] || "";
+        if (best) tag = best;
+      } catch {}
+      if (!tag) { try { tag = String(getMyClanTag() || "").toUpperCase().slice(0, 5); } catch {} }
+      // Mémorise pour les prochains affichages / sauvegardes.
+      if (tag) {
+        try {
+          zoneStation.owner ||= {};
+          if (!zoneStation.owner.clan) zoneStation.owner.clan = tag;
+          if (!zoneStation.hubClan) zoneStation.hubClan = tag;
+        } catch {}
+      }
+    }
+    try { window.__CBS_LABEL_DEBUG = { built, hub: String(zoneStation.hub || ""), tag, owner: zoneStation?.owner || null }; } catch {}
+    if (!tag) {
+      // Construite mais sans clan connu (vieille sauvegarde, pas de clan) :
+      // placeholder gris pour prouver que le rendu passe ici.
+      try {
+        ctx.save();
+        ctx.font = "900 14px ui-sans-serif, system-ui";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "top";
+        ctx.lineWidth = 4;
+        ctx.strokeStyle = "rgba(5,8,20,0.90)";
+        const lx = sx + ox, ly = sy + oy + base.h / 2 - 20;
+        ctx.strokeText("Base de [?]", lx, ly);
+        ctx.fillStyle = "rgba(154,163,173,0.95)";
+        ctx.fillText("Base de [?]", lx, ly);
+        ctx.restore();
+      } catch {}
+    } else {
+      const labelX = sx + ox;
+      const labelY = sy + oy + base.h / 2 - 20;
+      const prefix = "Base de ";
+      const tagPart = `[${tag}]`;
+      try {
+        ctx.save();
+        ctx.font = "900 14px ui-sans-serif, system-ui";
+        ctx.textAlign = "left";
+        ctx.textBaseline = "top";
+        const wPrefix = ctx.measureText(prefix).width;
+        const wTag = ctx.measureText(tagPart).width;
+        const totalW = wPrefix + wTag;
+        let tx = labelX - totalW / 2;
+        ctx.lineWidth = 4;
+        ctx.strokeStyle = "rgba(5,8,20,0.90)";
+        ctx.strokeText(prefix, tx, labelY);
+        ctx.strokeText(tagPart, tx + wPrefix, labelY);
+        ctx.fillStyle = "rgba(255,255,255,0.95)";
+        ctx.fillText(prefix, tx, labelY);
+        let tagColor = "#7df0ff";
+        try { tagColor = stationClanColor(tag); } catch {}
+        ctx.fillStyle = tagColor;
+        ctx.fillText(tagPart, tx + wPrefix, labelY);
+        ctx.restore();
+      } catch {}
+    }
+  }
+  // PV chiffrés + barres au-dessus du cœur et de chaque module :
+  // clan proprio uniquement (les autres ne voient ni barres ni x/x).
+  let clanView = false;
+  try { clanView = stationOwnedByMyClan(); } catch {}
+  if (built && clanView) {
+    const hpLabel = (wx, wyTop, hp, hpMax, fallbackMax, barW) => {
+      const cur = Math.max(0, Math.round(Number(hp) || 0));
+      const max = Math.max(1, Math.round(Number(hpMax) || fallbackMax));
+      const ratio = Math.max(0, Math.min(1, cur / max));
+      const txt = `${formatInteger(cur)}/${formatInteger(max)}`;
+      try {
+        ctx.save();
+        if (barW > 0) {
+          const bx = wx - barW / 2;
+          const by = wyTop - 12 - 5 - 8;
+          ctx.fillStyle = "rgba(0,0,0,.82)";
+          ctx.fillRect(bx - 2, by - 2, barW + 4, 12);
+          ctx.fillStyle = ratio > 0.5 ? "#38d66b" : ratio > 0.2 ? "#ffbd2e" : "#ff4057";
+          ctx.fillRect(bx, by, barW * ratio, 8);
+        }
+        ctx.font = "900 12px ui-sans-serif, system-ui";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "bottom";
+        ctx.lineWidth = 4;
+        ctx.strokeStyle = "rgba(5,8,20,0.90)";
+        ctx.strokeText(txt, wx, wyTop);
+        ctx.fillStyle = cur >= max ? "rgba(105,255,140,0.98)"
+          : cur > max * 0.5 ? "rgba(255,255,255,0.95)"
+          : cur > max * 0.2 ? "rgba(255,189,46,0.98)"
+          : "rgba(255,64,87,0.98)";
+        ctx.fillText(txt, wx, wyTop);
+        ctx.restore();
+      } catch {}
+    };
+    if (zoneStation.hub) {
+      hpLabel(sx + ox, sy + oy - base.h / 2 - 6, zoneStation.hubHp ?? STATION_CORE_HP, zoneStation.hubHpMax || STATION_CORE_HP, STATION_CORE_HP, 220);
+    }
+    for (const slot of zoneStation.slots || []) {
+      const def = STATION_MODULE_SPRITES[slot?.resourceId];
+      if (!def) continue;
+      hpLabel(
+        sx + (Number(slot.dx) || 0) + ox,
+        sy + (Number(slot.dy) || 0) + oy - def.h / 2 - 6,
+        slot.hp ?? STATION_MODULE_HP,
+        slot.hpMax || STATION_MODULE_HP,
+        STATION_MODULE_HP,
+        150
+      );
+    }
+  }
+  // Non-membres : barre de vie uniquement sur la partie verrouillée
+  // (les membres voient déjà les PV en permanence ci-dessus).
+  if (!clanView) {
+    const lockedStation = Target.get();
+    if (built && lockedStation?._stationTarget) {
+      const ratio = Math.max(0, Math.min(1, Number(lockedStation.hp) / Math.max(1, Number(lockedStation.hpMax))));
+      const width = lockedStation._stationTarget === "hub" ? 220 : 150;
+      const bx = lockedStation.x + ox - width / 2;
+      const by = lockedStation.y + oy - lockedStation.r - 26;
+      ctx.save();
+      ctx.fillStyle = "rgba(0,0,0,.82)";
+      ctx.fillRect(bx - 2, by - 2, width + 4, 12);
+      ctx.fillStyle = ratio > 0.5 ? "#38d66b" : ratio > 0.2 ? "#ffbd2e" : "#ff4057";
+      ctx.fillRect(bx, by, width * ratio, 8);
+      ctx.restore();
+    }
+  }
+  // (Pas de barre de lock pour les membres : PV affichés en permanence.)
+}
+
 function drawToast() {
   drawToastMessage(ctx, toast, innerWidth, innerHeight);
   // Bannière admin : même typo/hauteur que le toast de zone, juste au-dessus.
@@ -38874,7 +40579,9 @@ function drawMoveTarget(ox, oy) {
 
 function drawTargetMarker(e, ox, oy, time) {
   if (!e || e.hp <= 0) return;
-  const spr = targetLockSprite(e);
+  // Les offsets des locks de vaisseaux ne s'appliquent pas à la CBS : le
+  // viseur doit être exactement centré sur le cœur/module sélectionné.
+  const spr = e._stationTarget ? { ...targetLockSprite(e), yOff: 0 } : targetLockSprite(e);
   const img = getCachedImage(spr.src);
   if (!isImgReady(img)) return;
   // Lock collé au vaisseau distant : suit son balancement (même formule que
@@ -41147,6 +42854,7 @@ if (movementLocked) {
       auctionTickT = 0;
       try { tickAuctionLogic(); } catch (error) { console.warn("Auction tick:", error); }
     }
+    try { tickStationLogic(); } catch (error) { console.warn("Station tick:", error); }
     try { tickGameVersionCheck(dt); } catch (error) { console.warn("Version tick:", error); }
   }
 
@@ -43099,6 +44807,7 @@ function draw() {
 
   drawZonePortals(ox, oy);
   drawSafeModules(ox, oy);
+  drawZoneStation(ox, oy);
   drawLowRaidZone(ox, oy);
   drawMoveTarget(ox, oy);
   drawPhoneAim(ox, oy);
@@ -44386,6 +46095,7 @@ async function prepareGameAssets() {
     } catch {}
     jobs.push(...preloadCollectables());
     jobs.push(...preloadSafeModuleSprites(rules, WORLD));
+    jobs.push(...preloadStationSprites(rules));
     for (const type of npcTypesForCurrentSector()) {
       if (NPC_TYPES[type]) jobs.push(ensureNpcLoaded(type));
     }

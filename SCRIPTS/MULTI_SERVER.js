@@ -513,6 +513,7 @@ import { loadServerMaps, mapTransition, validArrival, reviveArrival, baseArrival
 import { getFactionHomeMap } from "../SRC/CORE/FACTIONS.js";
 import { handleSocialMessage, socialPeerGone, socialPeerChanged, socialDescribeGroup, socialGroupOf } from "./SOCIAL_ROOM.js";
 import { getAuctionSync, handleAuctionBid, pollAuctionCycle, auctionRoomStatus } from "./AUCTION_ROOM.js";
+import { getStationSync, handleStationInstall, handleStationUninstall, handleStationBuild, handleStationReplace, handleStationCancelReplace, handleStationRepair, handleStationHit, hasStationMap } from "./STATION_ROOM.js";
 import { GAME_VERSION } from "../SRC/DATA/VERSION.js";
 import { COLLECTABLE_TYPES } from "../SRC/DATA/COLLECTABLES.js";
 import { HALLOWEEN_END, HALLOWEEN_START, HALLOWEEN_TIME_ZONE, isHalloweenBossVariant, isHalloweenEventActive } from "../NPC/NPC_HALLOWEEN.js";
@@ -2403,7 +2404,7 @@ wss.on("connection", (ws) => {
     if (!msg || typeof msg !== "object") return;
     ws.lastHeardAt = rateNow;
     // La pause est appliquee aussi par le serveur, meme si le DOM est retire.
-    if (state._clockGuard?.blocked && ["pos", "map", "box", "hit", "pvpHit", "pvpPetHit", "skillUse", "shot", "rshot", "pvpLoot", "pvpLootTake"].includes(msg.t)) {
+    if (state._clockGuard?.blocked && ["pos", "map", "box", "hit", "pvpHit", "pvpPetHit", "stationHit", "skillUse", "shot", "rshot", "pvpLoot", "pvpLootTake"].includes(msg.t)) {
       stopRejectedMotion(state);
       if (msg.t === "pos" || msg.t === "map") correctState();
       return;
@@ -3377,6 +3378,7 @@ wss.on("connection", (ws) => {
         if (typeof msg.key === "string") out.key = String(msg.key).slice(0, 16);
         if (typeof msg.kind === "string") out.kind = String(msg.kind).slice(0, 16);
         if (typeof msg.petTarget === "string") out.petTarget = String(msg.petTarget).slice(0, 64);
+        if (typeof msg.stationTarget === "string") out.stationTarget = String(msg.stationTarget).slice(0, 32);
         if (msg.petSource === true) out.petSource = true;
         if (msg.petClone === 0 || msg.petClone === 1) {
           if (state.peta !== 1 || state.dead || state.pvpDead || state.petDead === true
@@ -3632,6 +3634,155 @@ wss.on("connection", (ws) => {
               lot: res.lot || null,
             }));
           } catch {}
+        }
+      } catch {}
+      return;
+    }
+    // Base de Combat partagée : état filtré par clan, le serveur tranche.
+    const stationWho = () => {
+      let acct = null;
+      try { acct = state?._account || null; } catch {}
+      return {
+        id,
+        pseudo: state?.pseudo,
+        authed,
+        clan: authed && accountId ? clanTagOfUser(accountId) : "",
+        faction: acct?.faction || "",
+        x: Number(state?.x) || 0,
+        y: Number(state?.y) || 0,
+        range: Number(state?.range) || 800,
+      };
+    };
+    const broadcastStation = (map) => {
+      try {
+        const room = roomFor(map);
+        if (!room) return;
+        for (const [, peer] of room) {
+          try {
+            const uid = peer?.state?._account?.id || null;
+            const tag = uid ? clanTagOfUser(uid) : "";
+            peer.ws.send(JSON.stringify(getStationSync(map, tag)));
+          } catch {}
+        }
+      } catch {}
+    };
+    if (msg.t === "stationSyncReq") {
+      try {
+        const map = String(mapId || "").toLowerCase();
+        if (!hasStationMap(map)) return;
+        const tag = authed && accountId ? clanTagOfUser(accountId) : "";
+        ws.send(JSON.stringify(getStationSync(map, tag)));
+      } catch {}
+      return;
+    }
+    if (msg.t === "stationInstall") {
+      try {
+        const map = String(mapId || "").toLowerCase();
+        if (!hasStationMap(map)) return;
+        const res = handleStationInstall(
+          { map, slot: msg.slot, resourceId: msg.resourceId },
+          stationWho(),
+        );
+        if (res.status === "ok") {
+          try { ws.send(JSON.stringify({ t: "stationInstallOk", map, slot: res.slot, resourceId: res.resourceId })); } catch {}
+          broadcastStation(map);
+        } else {
+          try { ws.send(JSON.stringify({ t: "stationReject", reason: String(res.reason || "Pose refusée.") })); } catch {}
+        }
+      } catch {}
+      return;
+    }
+    if (msg.t === "stationUninstall") {
+      try {
+        const map = String(mapId || "").toLowerCase();
+        if (!hasStationMap(map)) return;
+        const res = handleStationUninstall({ map, slot: msg.slot }, stationWho());
+        if (res.status === "ok") {
+          try { ws.send(JSON.stringify({ t: "stationUninstallOk", map, slot: res.slot, resourceId: res.resourceId })); } catch {}
+          broadcastStation(map);
+        } else {
+          try { ws.send(JSON.stringify({ t: "stationReject", reason: String(res.reason || "Retrait refusé.") })); } catch {}
+        }
+      } catch {}
+      return;
+    }
+    if (msg.t === "stationBuild") {
+      try {
+        const map = String(mapId || "").toLowerCase();
+        if (!hasStationMap(map)) return;
+        const res = handleStationBuild({ map }, stationWho());
+        if (res.status === "ok") {
+          broadcastStation(map);
+          try {
+            const room = roomFor(map);
+            if (room) {
+              const payload = JSON.stringify({ t: "stationBuildSettle", map, refunds: res.refunds || [] });
+              for (const [, peer] of room) {
+                try { peer.ws.send(payload); } catch {}
+              }
+            }
+          } catch {}
+        } else {
+          try { ws.send(JSON.stringify({ t: "stationReject", reason: String(res.reason || "Construction refusée.") })); } catch {}
+        }
+      } catch {}
+      return;
+    }
+    if (msg.t === "stationHit") {
+      try {
+        const map = String(mapId || "").toLowerCase();
+        if (!hasStationMap(map) || !authed || !accountId) return;
+        const res = handleStationHit(
+          { map, target: msg.target, dmg: msg.dmg },
+          stationWho(),
+        );
+        if (res.status === "ok") broadcastStation(map);
+      } catch {}
+      return;
+    }
+    if (msg.t === "stationReplace") {
+      try {
+        const map = String(mapId || "").toLowerCase();
+        if (!hasStationMap(map)) return;
+        const res = handleStationReplace(
+          { map, slot: msg.slot, resourceId: msg.resourceId },
+          stationWho(),
+        );
+        if (res.status === "ok") {
+          try { ws.send(JSON.stringify({ t: "stationReplaceOk", map, slot: res.slot, resourceId: res.resourceId, replaced: res.replaced })); } catch {}
+          broadcastStation(map);
+        } else {
+          try { ws.send(JSON.stringify({ t: "stationReject", reason: String(res.reason || "Remplacement refusé.") })); } catch {}
+        }
+      } catch {}
+      return;
+    }
+    if (msg.t === "stationCancelReplace") {
+      try {
+        const map = String(mapId || "").toLowerCase();
+        if (!hasStationMap(map)) return;
+        const res = handleStationCancelReplace(
+          { map, slot: msg.slot },
+          stationWho(),
+        );
+        if (res.status === "ok") {
+          try { ws.send(JSON.stringify({ t: "stationReplaceCancelOk", map, slot: res.slot, resourceId: res.resourceId })); } catch {}
+          broadcastStation(map);
+        } else {
+          try { ws.send(JSON.stringify({ t: "stationReject", reason: String(res.reason || "Annulation refusée.") })); } catch {}
+        }
+      } catch {}
+      return;
+    }
+    if (msg.t === "stationRepair") {
+      try {
+        const map = String(mapId || "").toLowerCase();
+        if (!hasStationMap(map)) return;
+        const res = handleStationRepair({ map }, stationWho());
+        if (res.status === "ok") {
+          broadcastStation(map);
+        } else {
+          try { ws.send(JSON.stringify({ t: "stationReject", reason: String(res.reason || "Réparation refusée.") })); } catch {}
         }
       } catch {}
       return;

@@ -1450,6 +1450,268 @@ body.phoneDockEditorOpen #ammoBar .phoneEditorSelected {
   opacity:.35;
   cursor:default;
 }
+/* Station de Combat : arène (caillou + slots) + inventaire modules. */
+.stationPanel {
+  width:max-content;
+  max-width:min(860px,calc(100vw - 24px));
+}
+#stationWindow.gameWindow {
+  min-width:min(560px,calc(100vw - 24px)) !important;
+  min-height:300px !important;
+}
+.stationBody {
+  display:grid;
+  grid-template-columns:auto 1fr;
+  gap:12px;
+  padding:12px;
+  align-items:stretch;
+}
+.stationArenaCard {
+  display:grid;
+  gap:6px;
+  justify-items:center;
+}
+.stationArena {
+  position:relative;
+  width:440px;
+  height:440px;
+  border:1px solid rgba(124,240,255,.25);
+  border-radius:12px;
+  background:radial-gradient(circle at 50% 50%,rgba(10,30,45,.55),rgba(3,10,18,.85));
+  overflow:hidden;
+}
+.stationArena img.stationRock {
+  position:absolute;
+  left:50%;
+  top:50%;
+  transform:translate(-50%,-50%);
+  pointer-events:none;
+}
+.stationSlot {
+  position:absolute;
+  transform:translate(-50%,-50%);
+  border:2px dashed rgba(124,240,255,.55);
+  border-radius:50%;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  background:rgba(5,15,25,.35);
+}
+.stationSlot img {
+  max-width:88%;
+  max-height:88%;
+  object-fit:contain;
+  pointer-events:none;
+}
+.stationSlot.filled img {
+  width:100%;
+  height:100%;
+  max-width:100%;
+  max-height:100%;
+  object-fit:cover;
+  border-radius:50%;
+}
+.stationSlot.stationHub {
+  border-style:solid;
+  border-color:rgba(255,211,107,.7);
+}
+.stationSlot.filled {
+  border-style:solid;
+  background:rgba(124,240,255,.10);
+}
+.stationSlot.stationDragOver {
+  outline:2px solid #ffd36b;
+  outline-offset:2px;
+  background:rgba(255,211,107,.15);
+}
+.stationCdRing {
+  position:absolute;
+  inset:0;
+  border-radius:50%;
+  background:conic-gradient(rgba(3,10,18,.78) calc(var(--p,100) * 1%), transparent 0);
+  pointer-events:none;
+}
+.stationCdSmall {
+  position:absolute;
+  top:calc(100% + 1px);
+  left:50%;
+  transform:translateX(-50%);
+  color:#ffd36b;
+  font-size:10px;
+  font-weight:700;
+  text-shadow:0 1px 2px #000;
+  pointer-events:none;
+  white-space:nowrap;
+}
+.stationWho {
+  position:absolute;
+  top:calc(100% + 15px);
+  left:50%;
+  transform:translateX(-50%);
+  color:#eaffff;
+  font-size:10px;
+  font-weight:700;
+  text-shadow:0 1px 2px #000;
+  pointer-events:none;
+  white-space:nowrap;
+  max-width:90px;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+.stationSlot:not(.filled) .stationWho {
+  display:none;
+}
+/* Plus de CD : le nom du poseur remonte à la place du compteur. */
+.stationSlot.noCd .stationWho {
+  top:calc(100% + 1px);
+}
+.stationRow[draggable="true"] {
+  cursor:grab;
+}
+.stationFooter {
+  grid-column:1 / -1;
+  display:grid;
+  gap:4px;
+  padding-top:2px;
+}
+.stationSep {
+  height:0;
+  justify-self:stretch;
+  margin:2px 18px;
+  border-bottom:1px solid rgba(124,240,255,.2);
+}
+.stationClans {
+  display:grid;
+  gap:4px;
+}
+.stationClanRow {
+  display:grid;
+  grid-template-columns:auto 1fr auto;
+  align-items:center;
+  gap:10px;
+}
+.stationClanRow b {
+  color:#eaffff;
+  font-size:12px;
+  font-weight:700;
+  white-space:nowrap;
+}
+.stationClanBar {
+  height:8px;
+  border-radius:4px;
+  background:rgba(255,255,255,.08);
+  overflow:hidden;
+}
+.stationClanBar i {
+  display:block;
+  height:100%;
+  border-radius:4px;
+}
+.stationClanRow strong {
+  color:#ffd36b;
+  font-size:12px;
+  font-weight:900;
+  min-width:38px;
+  text-align:right;
+}
+.stationInstalling {
+  color:#7df0ff;
+  font-size:10px;
+  font-weight:700;
+  white-space:nowrap;
+}
+.stationClansEmpty {
+  color:#8fcddd;
+  font-size:12px;
+  text-align:center;
+}
+.stationBuildBtn {
+  min-width:160px;
+  padding:8px 14px;
+  border:1px solid rgba(124,240,255,.5);
+  border-radius:8px;
+  color:#eaffff;
+  background:linear-gradient(135deg,rgba(0,145,190,.45),rgba(0,70,100,.4));
+  font:750 13px/1.2 ui-sans-serif,system-ui;
+  cursor:pointer;
+}
+.stationBuildBtn[hidden] {
+  display:none;
+}
+.stationRepairBtn {
+  min-width:160px;
+  padding:8px 14px;
+  border:1px solid rgba(105,255,140,.5);
+  border-radius:8px;
+  color:#eafff2;
+  background:linear-gradient(135deg,rgba(0,150,70,.45),rgba(0,80,40,.4));
+  font:750 13px/1.2 ui-sans-serif,system-ui;
+  cursor:pointer;
+  justify-self:center;
+}
+.stationRepairBtn:disabled {
+  opacity:.75;
+  cursor:wait;
+}
+.stationSide {
+  display:grid;
+  gap:8px;
+  min-width:280px;
+  max-width:340px;
+  height:100%;
+  grid-template-rows:auto 1fr;
+  align-content:stretch;
+}
+.stationSide h4 {
+  margin:0;
+  color:#eaffff;
+  font-size:14px;
+}
+.stationRows {
+  display:grid;
+  gap:0;
+  height:100%;
+  grid-auto-rows:1fr;
+  align-content:stretch;
+}
+.stationRow {
+  display:grid;
+  grid-template-columns:auto 1fr auto;
+  align-items:center;
+  gap:8px;
+  padding:3px 6px;
+  border-bottom:1px solid rgba(124,240,255,.2);
+  cursor:pointer;
+}
+.stationRow:last-child {
+  border-bottom:none;
+}
+.stationRow img {
+  width:28px;
+  height:28px;
+  object-fit:contain;
+}
+.stationRow b {
+  color:#eaffff;
+  font-size:11px;
+  font-weight:700;
+}
+.stationRow strong {
+  color:#ffd36b;
+  font-size:12px;
+  font-weight:900;
+}
+.stationRow.active {
+  background:rgba(124,240,255,.12);
+  outline:1px solid rgba(124,240,255,.5);
+  border-radius:8px;
+}
+.stationMessage {
+  padding:0 12px 12px;
+  color:#ffb3c0;
+  font-size:12px;
+  min-height:18px;
+}
 .oreTradeRows button:hover:not(:disabled) {
   border-color:rgba(124,240,255,.62);
   background:rgba(0,140,185,.3);

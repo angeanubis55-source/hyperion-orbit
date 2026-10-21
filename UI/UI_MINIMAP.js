@@ -39,6 +39,15 @@ function whiteIcon(img) {
 // Animation des icônes de boss : une frame par rendu (minimap à 20 Hz).
 let bossIconFrame = 0;
 
+// "#rrggbb" -> "r,g,b" (remplissage translucide des cercles).
+function hexToRgb(hex) {
+  const clean = String(hex || "").replace("#", "");
+  const full = clean.length === 3 ? clean.split("").map((c) => c + c).join("") : clean;
+  const num = parseInt(full, 16);
+  if (!Number.isFinite(num)) return "154,163,173";
+  return `${(num >> 16) & 255},${(num >> 8) & 255},${num & 255}`;
+}
+
 function minimapStaticKey(world, portals, isZoneMap, safeZone, returnPortal, width, height, rallyZone, walls) {
   const portalKey = (portals || []).map((p) => [p.x, p.y, p.r, p.toMap, p.shortcutCreditCost]);
   const safeKey = safeZone
@@ -227,7 +236,7 @@ export function renderMinimap(context, options) {
     width, height, world, player, enemies = [], allies = [], pet = null, portals = [], returnPortal = null,
     isZoneMap = false, safeZone = null, rallyZone = null, moveTarget = null, ping = null, markers = [],
     camera, viewportWidth, viewportHeight, lockedNpc = null, shouldShowNpc = () => true, npcOpacity = () => 1,
-    walls = [], bossIconFor = null,
+    walls = [], bossIconFor = null, station = null,
   } = options;
   const staticLayer = getMinimapStaticLayer(world, portals, isZoneMap, safeZone, returnPortal, width, height, rallyZone, walls);
   // La couche statique contient un fond blanc translucide. Sans effacer le
@@ -302,6 +311,21 @@ export function renderMinimap(context, options) {
     context.beginPath();
     context.arc(px, py, 1, 0, Math.PI * 2);
     context.fill();
+  }
+
+  // Base de Combat : cercle couleur propriété, comme la base
+  // (vert = à nous, jaune = NAP, rouge = ennemie, gris = vide).
+  if (station && Number.isFinite(Number(station.x)) && Number.isFinite(Number(station.y))) {
+    const rgb = hexToRgb(station.color || "#9aa3ad");
+    context.save();
+    context.fillStyle = `rgba(${rgb},0.25)`;
+    context.beginPath();
+    context.arc(station.x * scaleX, station.y * scaleY, 8, 0, Math.PI * 2);
+    context.fill();
+    context.strokeStyle = station.color || "#9aa3ad";
+    context.lineWidth = 1.5;
+    context.stroke();
+    context.restore();
   }
 
   // Marqueurs (localisateur P.E.T) : rond qui s'éloigne en boucle,

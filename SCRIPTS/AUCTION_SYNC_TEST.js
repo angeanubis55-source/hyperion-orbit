@@ -5,7 +5,7 @@ import { readFileSync } from "node:fs";
 import { auctionMinNextBid, normalizeAuctionState, AUCTION_CYCLE_VERSION } from "../SRC/DATA/AUCTION.js";
 import { buildHourlyLots, AUCTION_ACTIVE_LOTS } from "../SRC/DATA/AUCTION.js";
 
-test("lots horaires : 22 lots fixes, sans Xénocide, ticket dernier", () => {
+test("lots horaires : 32 lots fixes (22 + 10 Base de Combat), sans Xénocide, ticket dernier", () => {
   const item = (id, price = 1000000) => ({ id, name: id, icon: "", price, give: {} });
   const catalog = {
     ammo: [item("ammo_x2"), item("ammo_x3"), item("ammo_x4"), { ...item("ammo_x6"), give: { ammo: { x6: 1000 } } }],
@@ -20,8 +20,9 @@ test("lots horaires : 22 lots fixes, sans Xénocide, ticket dernier", () => {
     tickets: [item("ticket_module_reroll")],
   };
   const lots = buildHourlyLots(catalog, {}, Date.now(), () => 0.5);
-  assert.equal(lots.length, 22, "22 lots fixes");
+  assert.equal(lots.length, 32, "32 lots fixes (22 + 10 Base de Combat)");
   assert.equal(lots.length, AUCTION_ACTIVE_LOTS, "cap = lots réels");
+  assert.equal(lots.filter((l) => l.kind === "resources").length, 10, "10 lots Base de Combat");
   assert.ok(lots.every((l) => l.catalogId !== "laser_lf6"), "pas de Xénocide aux enchères");
   assert.ok(lots.some((l) => l.catalogId === "laser_lf5"), "LF-5 toujours là");
   assert.equal(lots[lots.length - 1].catalogId, "ticket_module_reroll", "ticket toujours dernier");
