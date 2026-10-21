@@ -513,7 +513,7 @@ import { loadServerMaps, mapTransition, validArrival, reviveArrival, baseArrival
 import { getFactionHomeMap } from "../SRC/CORE/FACTIONS.js";
 import { handleSocialMessage, socialPeerGone, socialPeerChanged, socialDescribeGroup, socialGroupOf } from "./SOCIAL_ROOM.js";
 import { getAuctionSync, handleAuctionBid, pollAuctionCycle, auctionRoomStatus } from "./AUCTION_ROOM.js";
-import { getStationSync, handleStationInstall, handleStationUninstall, handleStationBuild, handleStationReplace, handleStationCancelReplace, handleStationRepair, handleStationHit, hasStationMap, getStationDefense, stationShotReady, stationShotFired, isStationFoe, applyStationPassiveHeal } from "./STATION_ROOM.js";
+import { getStationSync, handleStationInstall, handleStationUninstall, handleStationBuild, handleStationReplace, handleStationCancelReplace, handleStationRepair, handleStationHit, hasStationMap, getStationDefense, stationShotReady, stationShotFired, isStationFoe, applyStationPassiveHeal, getClanBaseBonuses } from "./STATION_ROOM.js";
 import { GAME_VERSION } from "../SRC/DATA/VERSION.js";
 import { COLLECTABLE_TYPES } from "../SRC/DATA/COLLECTABLES.js";
 import { HALLOWEEN_END, HALLOWEEN_START, HALLOWEEN_TIME_ZONE, isHalloweenBossVariant, isHalloweenEventActive } from "../NPC/NPC_HALLOWEEN.js";
@@ -4217,6 +4217,18 @@ setInterval(() => {
   } catch {}
 }, 5000);
 
+// Bonus bases du clan (temps réel, toutes maps) : cache 1 s, partagé par
+// tous les snapshots — quelques octets par message.
+let clanBaseCache = { at: 0, list: [] };
+function getCachedClanBaseBonuses(now) {
+  try {
+    if (now - clanBaseCache.at > 1000 || !Array.isArray(clanBaseCache.list)) {
+      clanBaseCache = { at: now, list: getClanBaseBonuses() || [] };
+    }
+    return clanBaseCache.list;
+  } catch { return []; }
+}
+
 // Broadcast + simu NPC 20 Hz par room, uniquement aux sockets ouvertes.
 // Les NPC inactifs a plus de 2 000 unites voyagent a 1 Hz, repartis sur les ticks ;
 // leur simulation reste à 20 Hz et les NPC actifs/proches restent toujours
@@ -4745,7 +4757,7 @@ setInterval(() => {
       delete entry._staticSignature;
     }
     const npcForNetwork = selectNpcSnapshot(npc, players, snapshotTick, NPC_NEAR_PLAYER_RADIUS);
-    const payload = JSON.stringify({ t: "snapshot", map: key, at: now, players: playersForNetwork, npc: npcForNetwork });
+    const payload = JSON.stringify({ t: "snapshot", map: key, at: now, players: playersForNetwork, npc: npcForNetwork, cbs: getCachedClanBaseBonuses(now) });
     for (const [, entry] of room) {
       try {
         if (entry.ws.readyState === 1 && entry.ws.bufferedAmount < SNAPSHOT_BACKPRESSURE_LIMIT) entry.ws.send(payload);

@@ -157,7 +157,7 @@ import { createRadiationSystem } from "./RADIATION_SYSTEM.js";
 import { renderSpeedGuard } from "./SPEED_GUARD_UI.js";
 import { netServerMessageAge, netSimulationStep, netGameTimeMs, netSpeedGuardActive } from "./NETPLAY.js";
   import { pushNetplayLocal, sendNetplayBackgroundState, netplayLocalUpdateDue, getNetplayRemotes, tickNetplayRemotes, getNetNpcs, getNetDeaths, drainNetGone, getNetBoxes, drainNetBoxInbox, drainNetDmgInbox, drainNetHealInbox, drainNetShotEvents, drainNetSkillInbox, drainNetSkillDenied, clearNetShots, clearNetplayGameplay, sendShotEvent, sendSkillUse, sendHealAlly, sendPvpHit, sendPvpPetHit, getNetSelf, setNetInstanceMode, clearNetBoxes, claimNetBox, requestBoxSync, netBoxSyncAgeMs, netBoxSnapshotReady, netInInstance, sendNetHit, netMyId, netplayStatus, sendPing, netLatencyMs, netPongAge, netHelloAckAge, netServerVersion, netConnected, forceNetReconnect, ensureNetplayConnection, drainNetPvpKillInbox, drainNetPvpPetKillInbox, takeNetNpcReward, sendPvpLoot, sendPvpLootTake, drainNetPvpLootInbox,
-  drainNetPvpLootTakeInbox, drainNetAdminKickInbox, drainNetAdminBoomInbox, drainNetBannedInbox, drainNetCheatInbox, netDisconnect, drainNetSunInbox, drainNetSundayInbox, drainNetDecloakInbox, drainNetIemHitInbox, drainNetStationDmgInbox,
+  drainNetPvpLootTakeInbox, drainNetAdminKickInbox, drainNetAdminBoomInbox, drainNetBannedInbox, drainNetCheatInbox, netDisconnect, drainNetSunInbox, drainNetSundayInbox, drainNetDecloakInbox, drainNetIemHitInbox, drainNetStationDmgInbox, getNetClanBases,
   getNetGroup, getNetLowRaid, takeNetLowRaidReward, setNetNpcRewardHandler, getNetServerRestartAt, consumeNetServerRestart, getMyClanTag, getClanRelation, setMyClanTag, setNetDiplo, netIsAuthed, sendStationInstall, sendStationUninstall, sendStationBuild, sendStationReplace, sendStationCancelReplace, sendStationRepair, requestStationSync, sendStationHit, requestStarJumpArrival, requestHangarArrival, finishHangarArrival } from "./NETPLAY.js";
 import {
   createGatePortalState,
@@ -10942,9 +10942,35 @@ function renderBoosterWindow() {
       facets.push({ def, key, pct: (Number(Object.values(bonus)[0]) || 0) * Number(n), group: Number(n) });
     }
   } catch {}
+  // Bases du clan avec module DMG : une carte BASE <MAP> sans timer
+  // (+2 % dégâts chacune, cumulé dans le total).
+  try {
+    for (const b of stationClanBaseBonuses()) {
+      facets.push({
+        def: {
+          id: `station-base-${String(b.map || "").toLowerCase()}`,
+          code: `BASE ${b.map}`,
+          name: `Base ${b.map} — module DMG`,
+          desc: "Module DMG de la base de combat : +2 % dégâts, cumulé aux boosters.",
+          iconMini: "/ASSETS/BATTLESTATION/MODULE_DMG.png",
+          effect: { dmgPct: Number(b.pct) || 0 },
+        },
+        key: "dmgPct",
+        pct: Number(b.pct) || 0,
+        base: String(b.map || "").toUpperCase(),
+      });
+    }
+  } catch {}
   const rowHtml = (facet) => {
     const color = BOOSTER_FAMILY_COLORS[facet.key] || "#effbff";
     const icon = boosterFacetIcon(facet);
+    if (facet.base) {
+      const label = `BASE ${facet.base}`;
+      return `<div class="boosterRow compact" data-booster="${facet.def.id}" data-family="${facet.key}" data-base="${facet.base}" style="--boost:${color}" title="${facet.def.name} — ${facet.def.desc}">`
+        + `<img src="${icon}" alt="${facet.def.code}">`
+        + `<strong class="boosterCode">${label}</strong>`
+        + `</div>`;
+    }
     if (facet.group) {
       const label = facet.group > 1 ? `GROUPE X${facet.group}` : "GROUPE";
       return `<div class="boosterRow compact" data-booster="${facet.def.id}" data-family="${facet.key}" data-group="${facet.group}" style="--boost:${color}" title="${facet.def.name} — bonus de groupe (${facet.group} membre${facet.group > 1 ? "s" : ""})">`
@@ -10986,11 +11012,17 @@ function refreshBoosterCountdowns() {
   const user = account.user || getCurrentUserFull();
   let changed = false;
   // B02 du groupe : tout changement (activation, expiration, arrivée,
-  // départ) re-rend les cartes GROUPE.
+  // départ) re-rend les cartes GROUPE. Idem pour les cartes BASE (DMG
+  // posé/retiré/détruit sur une base du clan).
   try {
     const sig = JSON.stringify(groupBoosterCounts());
     if (sig !== refreshBoosterCountdowns._groupSig) {
       refreshBoosterCountdowns._groupSig = sig;
+      changed = true;
+    }
+    const stationSig = JSON.stringify(stationClanBaseBonuses());
+    if (stationSig !== refreshBoosterCountdowns._stationSig) {
+      refreshBoosterCountdowns._stationSig = stationSig;
       changed = true;
     }
   } catch {}
@@ -19911,10 +19943,57 @@ function playerBoosterMults() {
         }
       }
     } catch {}
+    // Bases du clan avec module DMG : +2 % dégâts par base (cumulé).
+    try {
+      const st = stationClanDmgMult();
+      if (st !== 1) base.dmg = (Number(base.dmg) || 1) * st;
+    } catch {}
     return base;
   } catch {
     return { dmg: 1, shield: 1, hp: 1, exp: 1, honor: 1, repair: 1, res: 1, petXp: 1, hit: 0, sreg: 1, box: 1, quest: 1 };
   }
+}
+
+// Bases construites tenues par le clan avec module DMG équipé :
+// [{ map, pct }], une entrée par base (+2 % dégâts chacune, cumulé).
+// TEMPS RÉEL : liste live du serveur (toutes maps, via les snapshots) ;
+// en solo (pas de serveur), la station locale uniquement.
+function stationClanBaseBonuses() {
+  const out = [];
+  try {
+    let myClan = "";
+    try { myClan = String(getMyClanTag() || "").toUpperCase(); } catch {}
+    if (!myClan) return out;
+    let shared = false;
+    try { shared = stationSharedActive(); } catch {}
+    if (shared) {
+      let live = null;
+      try { live = getNetClanBases(); } catch {}
+      if (!Array.isArray(live)) return out;
+      for (const b of live) {
+        if (!b || typeof b !== "object" || b.dmg !== true) continue;
+        if (String(b.clan || "").toUpperCase() !== myClan) continue;
+        out.push({ map: String(b.map || "").toUpperCase(), pct: 2 });
+      }
+      return out;
+    }
+    const st = zoneStation;
+    if (st && st.built && String(st.owner?.clan || "").toUpperCase() === myClan) {
+      const hasDmg = (st.slots || []).some((s) => s && s.resourceId === "station_module_dmg" && Number(s.hp) > 0 && !(stationCooldownLeft(s.cooldownUntil) > 0));
+      if (!hasDmg) return out;
+      const map = String(window.__CURRENT_MAP_ID__ || rules?.mapLabel || "").toUpperCase();
+      if (map) out.push({ map, pct: 2 });
+    }
+  } catch {}
+  return out;
+}
+
+function stationClanDmgMult() {
+  try {
+    let total = 0;
+    for (const b of stationClanBaseBonuses()) total += Number(b.pct) || 0;
+    return total > 0 ? 1 + total / 100 : 1;
+  } catch { return 1; }
 }
 
 // Bonus passifs de l'arbre de pilotage (même convention que les boosters :

@@ -52,6 +52,14 @@ export function getStationDefense(mapId) {
   const center = STATION_POS[key];
   if (!center) return null;
   const modules = [];
+  // Module DMG équipé (posé, installation terminée, en vie) : +10 % aux
+  // dégâts des lasers et roquettes de la base.
+  const nowMs = Date.now();
+  const hasDmg = STATION_SLOT_IDS.some((sid) => {
+    const q = inst.slots[sid];
+    return q && q.resourceId === "station_module_dmg" && Number(q.hp) > 0 && Number(q.cooldownUntil) <= nowMs && !q.replace;
+  });
+  const dmgMult = hasDmg ? 1.1 : 1;
   STATION_SLOT_IDS.forEach((id, i) => {
     const p = inst.slots[id];
     const spec = p?.resourceId ? STATION_WEAPON_STATS[p.resourceId] : null;
@@ -66,17 +74,40 @@ export function getStationDefense(mapId) {
       y: center.y + Number(off.y || 0),
       kind: spec.kind,
       range: spec.range,
-      dmg: spec.dmg,
+      dmg: Math.max(1, Math.round(spec.dmg * dmgMult)),
       periodMs: spec.periodMs,
     });
   });
   if (!modules.length) return null;
-  return { clan: String(st.built.clan || ""), firm: String(st.owner?.firm || "").toLowerCase(), modules };
+  return { clan: String(st.built.clan || ""), firm: String(st.owner?.firm || "").toLowerCase(), modules, dmgBonus: hasDmg };
 }
 
 export function stationShotReady(mapId, slot, now) {
   const key = String(mapId || "").toLowerCase();
   return Number(combatNext[key]?.[slot] || 0) <= now;
+}
+
+// Vue temps réel pour tous les joueurs (toutes maps) : bases construites
+// avec module DMG opérationnel (posé, installation terminée, en vie).
+export function getClanBaseBonuses() {
+  const out = [];
+  try {
+    for (const mapId of STATION_MAPS) {
+      const key = String(mapId || "").toLowerCase();
+      const st = getStation(key);
+      if (!st?.built?.clan) continue;
+      const inst = st.instances[st.built.clan];
+      if (!inst) continue;
+      const nowMs = Date.now();
+      const hasDmg = STATION_SLOT_IDS.some((sid) => {
+        const p = inst.slots[sid];
+        return p && p.resourceId === "station_module_dmg" && Number(p.hp) > 0 && Number(p.cooldownUntil) <= nowMs && !p.replace;
+      });
+      if (!hasDmg) continue;
+      out.push({ map: key, clan: String(st.built.clan || "").toUpperCase(), dmg: true });
+    }
+  } catch {}
+  return out;
 }
 
 export function stationShotFired(mapId, slot, periodMs, now) {

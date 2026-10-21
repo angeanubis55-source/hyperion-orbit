@@ -82,11 +82,11 @@ export const STATION_UNIQUE_MODULES = Object.freeze([
 // ennemis (joueurs hostiles non camouflés) à sa portée. Dégâts par tir,
 // cadence par module. Le Cœur ne tire pas.
 export const STATION_WEAPON_STATS = Object.freeze({
-  station_laser_1: Object.freeze({ kind: "laser", range: 700, dmg: 25000, periodMs: 1000 }),
-  station_laser_2: Object.freeze({ kind: "laser", range: 750, dmg: 30000, periodMs: 1000 }),
-  station_laser_3: Object.freeze({ kind: "laser", range: 850, dmg: 35000, periodMs: 1000 }),
-  station_rocket_1: Object.freeze({ kind: "rocket", range: 700, dmg: 75000, periodMs: 3000 }),
-  station_rocket_2: Object.freeze({ kind: "rocket", range: 750, dmg: 85000, periodMs: 3000 }),
+  station_laser_1: Object.freeze({ kind: "laser", range: 750, dmg: 25000, periodMs: 1000 }),
+  station_laser_2: Object.freeze({ kind: "laser", range: 950, dmg: 30000, periodMs: 1000 }),
+  station_laser_3: Object.freeze({ kind: "laser", range: 1150, dmg: 35000, periodMs: 1000 }),
+  station_rocket_1: Object.freeze({ kind: "rocket", range: 1000, dmg: 75000, periodMs: 3000 }),
+  station_rocket_2: Object.freeze({ kind: "rocket", range: 1000, dmg: 85000, periodMs: 3000 }),
 });
 
 // Durée d'installation d'un module (comme l'officiel) : 60 s avec
