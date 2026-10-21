@@ -25,7 +25,9 @@ const serverRewards = new Map();
 let nextSaveId = 0;
 const accountWriteNotice = () => ({
   ok: false,
-  error: "Action trop rapide : cette tentative a été annulée. Réessaie dans un instant.",
+  busy: true,
+  ignored: true,
+  silent: true,
 });
 let pendingGalaxyGates = null;
 function cachePendingGalaxyGates() {

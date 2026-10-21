@@ -15591,7 +15591,7 @@ ui.craftingBuildBtn?.addEventListener("click", async () => {
   if (!canAfford) return renderCraftingWindow("Ressources insuffisantes.");
   // Craft instantané : pas de timer, pas de progress bar.
   const result = await craftCurrentUserRecipeOnline(recipe.id, quantity);
-  if (!result.ok) return renderCraftingWindow(result.error);
+  if (!result.ok) return result.silent ? undefined : renderCraftingWindow(result.error);
   account.user = result.user;
   try { advanceQuestProgress("craft", String(recipe.id), Math.max(1, Math.floor(Number(quantity) || 1))); } catch {}
   syncPlayerFromAccount();
@@ -15824,6 +15824,7 @@ ui.refineryRecipes?.addEventListener("click", async event => {
   const result = await refineCurrentUserOreOnline(button.dataset.refineryBuild, Infinity);
   if (!result.ok) {
     account.user = result.user || account.user;
+    if (result.silent) return;
     return renderRefineryWindow(result.error);
   }
   account.user = result.user;
@@ -16394,7 +16395,7 @@ ui.ggMultiplierBtn?.addEventListener("click", async () => {
   const group = GALAXY_GATE_DEFINITIONS[selectedGalaxyGateId]?.group || selectedGalaxyGateId || "ensemble";
   const armed = state?.multiplierArmed?.[group] === true;
   const result = await armCurrentUserGalaxyGateMultiplierOnline(selectedGalaxyGateId, !armed);
-  if (!result.ok) return renderGalaxyGateWindow(result.error);
+  if (!result.ok) return result.silent ? undefined : renderGalaxyGateWindow(result.error);
   account.user = result.user;
   renderGalaxyGateWindow(armed ? "Multiplicateur désactivé." : "Multiplicateur activé pour le prochain spin.");
 });
@@ -16405,6 +16406,7 @@ ui.galaxyGateWindow?.addEventListener("click", async event => {
   saveProgressNow();
   const result = await spinCurrentUserGalaxyGateOnline(selectedGalaxyGateId, Number(ui.ggSpinCount?.value || 1));
   if (!result.ok) {
+    if (result.silent) return;
     renderGalaxyGateWindow(result.error);
     return;
   }

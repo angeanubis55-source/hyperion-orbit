@@ -33,7 +33,7 @@ import {
 } from "../SRC/CORE/ACCOUNT.js";
 
 import { measureGameTask } from "../SRC/CORE/PERFORMANCE_TIMINGS.js";
-import { apiAccountIdentity, apiPseudoFree, netActive, netList } from "../SRC/CORE/ACCOUNT_NET.js";
+import { apiAccountIdentity, apiPseudoFree, flushNetUser, netActive, netList } from "../SRC/CORE/ACCOUNT_NET.js";
 
 import { CATALOG, findCatalogItem } from "../SRC/CORE/CATALOG.js";
 import { SHIP_PACKS, getShipFamilyId, getShipFamilyIds, getShipFamilyMembers, getShipFamilyName, getShipDesignBaseId, getShipDesignIds, getShipPackById } from "../SHIP/SHIP_PACKS.js";
@@ -1595,7 +1595,7 @@ function wireAccountSettingsOnce() {
     const out = netActive()
       ? await apiAccountIdentity("pseudo", pseudo, currentPassword)
       : updateCurrentUserPseudo(pseudo, currentPassword);
-    if (!out?.ok) return setMsg(out?.error || "Impossible de changer le pseudo.", false);
+    if (!out?.ok) return out?.silent ? undefined : setMsg(out?.error || "Impossible de changer le pseudo.", false);
 
     if (pseudoCurrentPassword) pseudoCurrentPassword.value = "";
     user = getCurrentUserFull();
@@ -1629,7 +1629,7 @@ function wireAccountSettingsOnce() {
     const out = netActive()
       ? await apiAccountIdentity("email", email, currentPassword)
       : updateCurrentUserEmail(email, currentPassword);
-    if (!out?.ok) return setMsg(out?.error || "Impossible de modifier l'adresse email.", false);
+    if (!out?.ok) return out?.silent ? undefined : setMsg(out?.error || "Impossible de modifier l'adresse email.", false);
 
     if (emailCurrentPassword) emailCurrentPassword.value = "";
     user = getCurrentUserFull();
@@ -1648,7 +1648,7 @@ function wireAccountSettingsOnce() {
     const out = netActive()
       ? await apiAccountIdentity("password", nextPassword, currentPassword)
       : changeCurrentUserPassword(currentPassword, nextPassword);
-    if (!out?.ok) return setMsg(out?.error || "Impossible de changer le mot de passe.", false);
+    if (!out?.ok) return out?.silent ? undefined : setMsg(out?.error || "Impossible de changer le mot de passe.", false);
 
     if (passwordCurrent) passwordCurrent.value = "";
     if (passwordNew) passwordNew.value = "";
@@ -2322,6 +2322,7 @@ card.className = "shipCard" + (owned ? " owned" : "");
           async () => {
             const out = await buyShopItem(it.id);
             if (!out?.ok) {
+              if (out?.silent) return;
               showToast(out?.error || "Achat impossible", 'error');
               return;
             }
@@ -2797,6 +2798,7 @@ function renderExtrasRoulette(user) {
     if (!u2) { setMsg("Non connecté.", false); return; }
     const saved = await buyAndAddShipModuleOnline();
     if (!saved?.ok) {
+      if (saved?.silent) return;
       setMsg(saved?.error || "Achat impossible.", false);
       return;
     }
@@ -2904,6 +2906,7 @@ function renderExtrasRoulette(user) {
     // Relance : ticket automatique si dispo, sinon crédits (pas de choix).
     const repl = await buyAndReplaceShipModuleOnline(oldId);
     if (!repl?.ok) {
+      if (repl?.silent) return;
       setMsg(repl?.error || "Achat impossible.", false);
       return;
     }
@@ -3681,6 +3684,7 @@ if (isDrone) {
         onConfirm: async (petPseudo) => {
           const out = await buyShopItem(it.id, quantity, { petPseudo, petFaction: user?.faction });
           if (!out?.ok) {
+            if (out?.silent) return;
             showToast(out?.error || "Achat impossible", 'error');
             return;
           }
@@ -3702,6 +3706,7 @@ if (isDrone) {
       async () => {
         const out = await buyShopItem(it.id, quantity);
         if (!out?.ok) {
+          if (out?.silent) return;
           showToast(out?.error || "Achat impossible", 'error');
           return;
         }
@@ -6585,20 +6590,24 @@ document.addEventListener("click", (event) => {
 });
 
 btnRestartGame?.addEventListener("click", async () => {
+  const previousText = btnRestartGame.textContent;
+  btnRestartGame.disabled = true;
+  btnRestartGame.textContent = "Redémarrage…";
   try {
+    // Finir d'abord la sauvegarde du compte. Le nettoyage ne concerne que
+    // l'état temporaire de cet onglet, jamais la session ni la progression.
+    if (netActive()) await flushNetUser();
     if (window.caches) {
       const keys = await caches.keys();
       await Promise.all(keys.map((key) => caches.delete(key)));
     }
-    document.cookie.split(";").forEach((cookie) => {
-      const name = cookie.split("=")[0]?.trim();
-      if (name) document.cookie = `${name}=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/`;
-    });
-    sessionStorage.removeItem("orbit_assets_preloaded_v1");
+    sessionStorage.clear();
   } catch (error) {
     console.warn("Redémarrage avec nettoyage partiel", error);
   }
   location.reload();
+  btnRestartGame.disabled = false;
+  btnRestartGame.textContent = previousText;
 });
 
 // Plein écran (PC + mobile) depuis le menu Session. API Fullscreen quand

@@ -1891,9 +1891,11 @@ test("designs : parfois la coque de base, parfois un skin elite/plus", () => {
   // Type NPC enregistré pour le skin (rendu client OK).
   ensureJpcTypes();
   assert.ok(NPC_TYPES[`npc_Jpc_${picked}`], `type enregistré pour ${picked}`);
-  // Roster 1-8 : cuirassés avec mélange base/skins.
+  // Plusieurs rotations 1-8 : cuirassés avec mélange base/skins. Une seule
+  // petite rotation peut légitimement tirer uniquement des skins ou des bases.
   const world = { w: 10000, h: 6000 };
-  const roster = buildJpcRoster("1-8", world, [], []);
+  const roster = Array.from({ length: 24 }, (_, hour) =>
+    buildJpcRoster("1-8", world, [], [], hour * 3600000)).flat();
   const bases = new Set(roster.map((d) => jpcBaseHull(d.shipId)));
   assert.ok([...bases].every((s) => ["vengeance", "goliath", "aegis", "citadel", "spectrum", "solace"].includes(s)), `1-8 cuirassés (${[...bases]})`);
   assert.ok(roster.some((d) => d.shipId !== jpcBaseHull(d.shipId)), "au moins un skin en 1-8");

@@ -67,13 +67,22 @@ ZoneNpcSim.prototype.drainPlayerHits = function() { this.playerHits.length = 0; 
   const connect = async (pseudo, petOwned, offset) => {
     const account = await api("/api/register", { method: "POST", headers: { "content-type": "application/json" },
       body: JSON.stringify({ pseudo, email: `${pseudo}@example.test`, password: "test-password-123", faction: "mmo" }) });
+    let canonical = account.user;
+    if (petOwned) {
+      const purchase = await api("/api/shop/buy", { method: "POST", headers: {
+        "content-type": "application/json", Authorization: `Bearer ${account.token}` },
+        body: JSON.stringify({ itemId: "pet_niveau1", quantity: 1, petPseudo: "Collecteur" }) });
+      canonical = purchase.user;
+      assert.equal(canonical.pet?.owned, true);
+    }
     const position = { x: centre.x - offset, y: centre.y };
-    const user = { ...account.user, revision: account.user.revision + 1,
-      pet: { owned: petOwned, id: "niveau1", exp: 0, hp: 4000, active: petOwned },
+    const user = { ...canonical, revision: canonical.revision + 1,
+      pet: petOwned ? { ...canonical.pet, active: true } : { ...canonical.pet, owned: false, active: false },
       hangars: [{ id: "collection-hangar", active: true, shipId: "PhoenixBleu", activeConfig: 1,
         lastMap: "1-1", lastPos: position, fits: { "1": { lasers: [], gens: [], extras: [], shipMods: [] } } }] };
-    await api("/api/save", { method: "POST", headers: { "content-type": "application/json", Authorization: `Bearer ${account.token}` },
-      body: JSON.stringify({ user }) });
+    const saved = await api("/api/save", { method: "POST", headers: { "content-type": "application/json", Authorization: `Bearer ${account.token}` },
+      body: JSON.stringify({ user, baseRevision: canonical.revision, saveId: `collection-${pseudo}` }) });
+    assert.equal(saved.user?.pet?.owned, petOwned);
     const ws = new WebSocket(`ws://127.0.0.1:${port}/ws`); sockets.push(ws);
     const messages = [];
     ws.on("message", raw => { messages.push(JSON.parse(String(raw))); });

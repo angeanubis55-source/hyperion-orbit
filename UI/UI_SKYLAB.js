@@ -588,7 +588,7 @@ async function onSkylabClick(event) {
   }
   if (action === "upgrade") {
     const res = await startSkylabUpgradeOnline(btn.dataset.module);
-    if (!res?.ok) { ctx?.toast?.(res?.error || "Impossible.", 2.2); return; }
+    if (!res?.ok) { if (!res?.silent) ctx?.toast?.(res?.error || "Impossible.", 2.2); return; }
     after(true, "", `${getSkylabModuleDef(btn.dataset.module)?.name || "Module"} : amélioration lancée.`);
     return;
   }
@@ -596,14 +596,14 @@ async function onSkylabClick(event) {
     const sky = liveSkylab();
     const cur = sky?.modules?.[btn.dataset.module];
     const res = await setSkylabModuleEnabledOnline(btn.dataset.module, !(cur?.enabled !== false));
-    if (!res?.ok) { ctx?.toast?.(res?.error || "Impossible.", 2); return; }
+    if (!res?.ok) { if (!res?.silent) ctx?.toast?.(res?.error || "Impossible.", 2); return; }
     after(true, "", null);
     renderSkylabWindow();
     return;
   }
   if (action === "robot") {
     const res = await buySkylabRobotOnline(btn.dataset.module);
-    if (!res?.ok) { ctx?.toast?.(res?.error || "Impossible.", 2.2); return; }
+    if (!res?.ok) { if (!res?.silent) ctx?.toast?.(res?.error || "Impossible.", 2.2); return; }
     after(true, "", "Robot +5 % ajouté (12 h).");
     return;
   }
@@ -646,12 +646,12 @@ async function onSkylabClick(event) {
     const toSky = transportDir === "toSky";
     if (action === "send-instant") {
       const res = await instantSkylabTransportOnline(amounts, toSky);
-      if (!res?.ok) { ctx?.toast?.(res?.error || "Impossible.", 2.2); return; }
+      if (!res?.ok) { if (!res?.silent) ctx?.toast?.(res?.error || "Impossible.", 2.2); return; }
       after(true, "", `Envoi immédiat : +${formatInteger(res.totalMoved)} ressources.`);
       return;
     }
     const res = toSky ? await loadSkylabFromShipOnline(amounts) : await transportSkylabToShipOnline(amounts);
-    if (!res?.ok) { ctx?.toast?.(res?.error || "Impossible.", 2.2); return; }
+    if (!res?.ok) { if (!res?.silent) ctx?.toast?.(res?.error || "Impossible.", 2.2); return; }
     after(true, "", toSky
       ? `Chargé vers le Skylab : +${formatInteger(res.totalMoved)} ressources.`
       : `Transporteur envoyé : +${formatInteger(res.totalMoved)} ressources en soute.`);

@@ -252,6 +252,7 @@ async function confirmSellDialog() {
     res = { ok: false, error: String(e?.message || e) };
   }
   if (!res?.ok) {
+    if (res?.silent) return;
     sellDialogError(res?.error || "Vente impossible.");
     return;
   }
