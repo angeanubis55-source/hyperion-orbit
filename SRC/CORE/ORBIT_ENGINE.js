@@ -40433,6 +40433,8 @@ function zoneStationRingColor() {
 // État du déflecteur pour l'affichage (jeu + fenêtre) et l'invincibilité.
 // charge : { phase:"charge", chargeMs|null, bankSec, offMs } ;
 // bouclier : { phase:"shield", shieldMs }.
+// En partagé la banque n'arrive que toutes les ~5 s : on interpole +3 s/s
+// en local pour un décompte fluide comme le proprio (même X qui descend).
 function stationDeflectDisplay() {
   try {
     const st = zoneStation;
@@ -40442,10 +40444,26 @@ function stationDeflectDisplay() {
     if (d.active === true && Number(d.until) > now) {
       return { phase: "shield", active: true, disabled: false, chargeMs: null, bankSec: 0, shieldMs: Math.max(0, Number(d.until) - now), offMs: 0 };
     }
-    const bank = Math.max(0, Number(d.bank) || 0);
+    const elapsed = Math.max(0, Math.min(15000, now - (Number(d.at) > 0 ? Number(d.at) : now)));
+    let bank = Math.max(0, Number(d.bank) || 0);
+    // Hors bouclier le cumul tourne en continu (+3 s/s même en coupure).
+    // En solo la banque est déjà incrémentée par le tick : pas de double.
+    try {
+      if (stationSharedActive()) bank += STATION_DEFLECT_RATE * (elapsed / 1000);
+    } catch {}
     const offMs = Math.max(0, Number(d.disabledUntil || 0) - now);
     if (offMs > 0) {
       return { phase: "charge", active: false, disabled: true, chargeMs: null, bankSec: bank, shieldMs: 0, offMs };
+    }
+    // Prédiction du déclenchement entre deux syncs : la banque a pu passer
+    // le seuil, le serveur déclenchera au prochain tick.
+    if (bank >= STATION_DEFLECT_COST) {
+      const needMs = Math.max(0, (STATION_DEFLECT_COST - Math.max(0, Number(d.bank) || 0)) / STATION_DEFLECT_RATE * 1000);
+      const trigAt = (Number(d.at) > 0 ? Number(d.at) : now) + needMs;
+      if (now >= trigAt) {
+        const shieldMs = Math.max(0, trigAt + STATION_DEFLECT_COST * 1000 - now);
+        return { phase: "shield", active: true, disabled: false, chargeMs: null, bankSec: 0, shieldMs, offMs: 0 };
+      }
     }
     const chargeMs = Math.max(0, (STATION_DEFLECT_COST - bank) / STATION_DEFLECT_RATE * 1000);
     return { phase: "charge", active: false, disabled: false, chargeMs, bankSec: bank, shieldMs: 0, offMs: 0 };

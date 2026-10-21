@@ -223,7 +223,7 @@ function applyStationView(zoneStation, msg) {
   zoneStation.built = msg.built === true;
   zoneStation.owner = msg.owner && typeof msg.owner === "object" ? { ...msg.owner } : {};
   zoneStation.deflect = (msg.deflect && typeof msg.deflect === "object")
-    ? { bank: Math.max(0, Number(msg.deflect.bank) || 0), active: msg.deflect.active === true && Number(msg.deflect.until) > serverNowMs(), until: Math.max(0, Number(msg.deflect.until) || 0), disabledUntil: Math.max(0, Number(msg.deflect.disabledUntil) || 0) }
+    ? { bank: Math.max(0, Number(msg.deflect.bank) || 0), active: msg.deflect.active === true && Number(msg.deflect.until) > serverNowMs(), until: Math.max(0, Number(msg.deflect.until) || 0), disabledUntil: Math.max(0, Number(msg.deflect.disabledUntil) || 0), at: serverNowMs() }
     : null;
   zoneStation.repair = (msg.repair && typeof msg.repair === "object" && Number(msg.repair.until) > 0)
     ? { until: Number(msg.repair.until), rateHub: Math.max(1, Number(msg.repair.rateHub) || 85000), rateSlot: Math.max(1, Number(msg.repair.rateSlot) || 42500) }
