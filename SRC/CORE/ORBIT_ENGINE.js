@@ -10962,9 +10962,9 @@ function renderBoosterWindow() {
           base: String(b.map || "").toUpperCase(),
         });
       };
-      pushBaseFacet("dmgPct", b.dmg, "/ASSETS/BATTLESTATION/MODULE_DMG.png");
-      pushBaseFacet("honorPct", b.hon, "/ASSETS/BATTLESTATION/MODULE_HON.png");
-      pushBaseFacet("expPct", b.exp, "/ASSETS/BATTLESTATION/MODULE_EXP.png");
+      pushBaseFacet("dmgPct", b.dmg, "/ASSETS/BOOSTERS/CAT/dmg.png");
+      pushBaseFacet("honorPct", b.hon, "/ASSETS/BOOSTERS/CAT/rep.png");
+      pushBaseFacet("expPct", b.exp, "/ASSETS/BOOSTERS/CAT/ep.png");
     }
   } catch {}
   const rowHtml = (facet) => {
@@ -19980,9 +19980,11 @@ function stationClanBaseBonuses() {
     let myClan = "";
     try { myClan = String(getMyClanTag() || "").toUpperCase(); } catch {}
     if (!myClan) return out;
-    let shared = false;
-    try { shared = stationSharedActive(); } catch {}
-    if (shared) {
+    let online = false;
+    try { online = typeof netConnected === "function" && netConnected(); } catch {}
+    if (online) {
+      // En ligne : liste live du serveur (toutes maps, temps réel),
+      // quel que soit la map courante. Vide = aucun bonus (pas de fantôme).
       let live = null;
       try { live = getNetClanBases(); } catch {}
       if (!Array.isArray(live)) return out;
