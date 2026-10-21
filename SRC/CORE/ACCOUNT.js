@@ -5,7 +5,7 @@ import { apiGalaxyGateOperation, apiModuleOperation, apiProduction, apiShopBuyIt
 // Multi : session serveur restauree au chargement (token + cache local),
 // puis refresh async via /api/me (revision canonique).
 try { bootNetFromCache(); } catch {}
-import { findCatalogItem, CATALOG } from "./CATALOG.js";
+import { findCatalogItem } from "./CATALOG.js";
 import { SHIP_PACKS, getShipDesignBaseId, getShipPackById, getShipFamilyId } from "../../SHIP/SHIP_PACKS.js";
 import { normalizeQuestState, QUEST_DEFINITIONS } from "../../QUEST/QUEST_TYPES.js";
 import { getBattlepassObjective, isBattlepassComplete, normalizeBattlepassState, mergeBattlepassProgress } from "../../QUEST/BATTLEPASS.js";
@@ -23,15 +23,7 @@ import { generateShipModule } from "../DATA/MODULE_GEN.js";
 import { getPassShopOffer, PASS_MODULE_FORCED } from "../DATA/PASS_SHOP.js";
 export { PASS_MODULE_KEY_COSTS, PASS_SHOP_OFFERS } from "../DATA/PASS_SHOP.js";
 import {
-  AUCTION_ACTIVE_LOTS,
-  AUCTION_CYCLE_VERSION,
   AUCTION_HISTORY_LEN,
-  AUCTION_STATION_PRICES,
-  auctionLotKey,
-  auctionMinNextBid,
-  auctionStartPrice,
-  auctionTimeLeftMs,
-  buildHourlyLots,
   normalizeAuctionState,
 } from "../DATA/AUCTION.js";
 import {
@@ -4550,105 +4542,16 @@ function ensureAuction(u) {
   u.auction = normalizeAuctionState(u.auction);
   // Migration vers le cycle fixe : purge les anciens lots (roulement),
   // rembourse les mises réservées dessus, puis le tick reconstruit en fixe.
-  if (u.auction.v !== AUCTION_CYCLE_VERSION) {
-    let refund = 0;
-    for (const lot of u.auction.lots) refund += Math.max(0, Math.floor(Number(lot?.myBid) || 0));
-    if (refund > 0) u.credits = Math.max(0, Math.floor(Number(u.credits || 0)) + refund);
-    u.auction.lots = [];
-    u.auction.v = AUCTION_CYCLE_VERSION;
-    ensureUserShape(u);
-    saveUser(u);
-  }
   // Correctif non destructif (sans purge, mises conservées) : le ticket part
   // de son prix de base (25 M, sans -70 %). Si une mise existe sous ce seuil,
   // elle est remboursée et le lot repart à zéro.
-  try {
-    const ticketBase = Math.max(1, Math.floor(Number(findCatalogItem("ticket_module_reroll")?.price) || 25000000));
-    let patched = false;
-    for (const lot of u.auction.lots) {
-      if (String(lot?.catalogId) !== "ticket_module_reroll") continue;
-      if (Number(lot.shopPrice) === ticketBase && Number(lot.startPrice) === ticketBase && lot.noDiscount === true) continue;
-      lot.shopPrice = ticketBase;
-      lot.startPrice = ticketBase;
-      lot.noDiscount = true;
-      const my = Math.max(0, Math.floor(Number(lot.myBid) || 0));
-      if (my > 0 && my < ticketBase) {
-        u.credits = Math.max(0, Math.floor(Number(u.credits || 0)) + my);
-        lot.myBid = 0;
-        lot.topBid = 0;
-        lot.topBidder = "";
-      }
-      patched = true;
-    }
-    if (patched) {
-  ensureUserShape(u);
-      saveUser(u);
-    }
-  } catch {}
   // Correctif prix Base de Combat : aligne les lots déjà générés sur la
   // table en vigueur (sinon l'ancien prix reste jusqu'au prochain cycle).
   // Même règle que le ticket : mise sous le nouveau départ = remboursée.
-  try {
-    let stationPatched = false;
-    for (const lot of u.auction.lots) {
-      if (String(lot?.kind) !== "resources") continue;
-      const give = lot?.resourcesGive && typeof lot.resourcesGive === "object" ? Object.keys(lot.resourcesGive)[0] : "";
-      const base = AUCTION_STATION_PRICES[String(give) || ""];
-      if (!Number.isFinite(base)) continue;
-      const start = auctionStartPrice(base);
-      if (Number(lot.shopPrice) === base && Number(lot.startPrice) === start) continue;
-      lot.shopPrice = base;
-      lot.startPrice = start;
-      const my = Math.max(0, Math.floor(Number(lot.myBid) || 0));
-      if (my > 0 && my < start) {
-        u.credits = Math.max(0, Math.floor(Number(u.credits || 0)) + my);
-        lot.myBid = 0;
-        lot.topBid = 0;
-        lot.topBidder = "";
-      }
-      stationPatched = true;
-    }
-    if (stationPatched) {
-      ensureUserShape(u);
-      saveUser(u);
-    }
-  } catch {}
   return u.auction;
 }
 
 // Lot éligible : item au catalogue, pas déjà possédé (uniques).
-function auctionFiltersFor(u) {
-  return {
-    hasPet: u?.pet?.owned === true,
-    ownedShips: new Set((u?.inventory?.ships || []).map(String)),
-    ownedDesigns: new Set((u?.inventory?.shipDesigns || []).map(String)),
-    ownedFormations: new Set((u?.drones?.formations || []).map(String)),
-    droneCounts: { iris: (u?.drones?.items || []).filter((d) => d?.type === "iris").length },
-  };
-}
-
-function fillAuctionLots(auction, u, now) {
-  if (auction.lots.length >= AUCTION_ACTIVE_LOTS) return false;
-  const fresh = buildHourlyLots(CATALOG, auctionFiltersFor(u), now);
-  const used = new Set(auction.lots.map((lot) => auctionLotKey(lot)));
-  // Garde-fou : un seul lot design max (le design est déterministe par heure,
-  // mais on ne doit jamais accumuler de designs au fil des ticks).
-  let hasDesign = auction.lots.some((lot) => String(lot?.catalogId || "").startsWith("design_"));
-  let added = false;
-  for (const lot of fresh) {
-    if (auction.lots.length >= AUCTION_ACTIVE_LOTS) break;
-    if (used.has(auctionLotKey(lot))) continue;
-    if (String(lot.catalogId).startsWith("design_")) {
-      if (hasDesign) continue;
-      hasDesign = true;
-    }
-    used.add(auctionLotKey(lot));
-    auction.lots.push(lot);
-    added = true;
-  }
-  return added;
-}
-
 function pushAuctionHistory(auction, entry) {
   auction.history.push({
     name: String(entry?.name || ""),
@@ -4658,35 +4561,6 @@ function pushAuctionHistory(auction, entry) {
     by: String(entry?.by || ""),
   });
   while (auction.history.length > AUCTION_HISTORY_LEN) auction.history.shift();
-}
-
-// Placer une mise (montant total, pas un ajout). Réserve immédiate en crédits.
-export function placeAuctionBid(lotId, amount, nowMs = Date.now()) {
-  if (sharedAuctionMode === true) return { ok: false, shared: true, error: "Enchères partagées : mise via le serveur." };
-  const u = getCurrentUserForMutation();
-  if (!u) return { ok: false, error: "Aucun utilisateur connecté." };
-  const auction = ensureAuction(u);
-  const lot = auction.lots.find((entry) => String(entry?.id) === String(lotId));
-  if (!lot) return { ok: false, error: "Lot introuvable.", user: u };
-  if (auctionTimeLeftMs(lot, nowMs) <= 0) return { ok: false, error: "Enchère terminée.", user: u };
-  const bid = Math.max(0, Math.floor(Number(amount) || 0));
-  const minimum = auctionMinNextBid(lot);
-  if (bid < minimum) return { ok: false, error: `Mise minimale : ${minimum.toLocaleString("fr-FR")} crédits.`, user: u };
-  // Rembourse l'ancienne mise puis réserve la nouvelle.
-  const previousMyBid = Math.max(0, Math.floor(Number(lot.myBid) || 0));
-  u.credits = Math.max(0, Math.floor(Number(u.credits || 0) + Math.max(0, Number(lot.myBid) || 0)));
-  if (Number(u.credits || 0) < bid) return { ok: false, error: "Crédits insuffisants.", user: u };
-  u.credits = Math.max(0, Math.floor(Number(u.credits || 0) - bid));
-  // Mode multi : débit net synchrone (sinon un 409 rembourse la mise via le
-  // canon pendant que le lot reste acquis après attribution).
-  noteNetPurchase(Math.max(0, bid - previousMyBid));
-  lot.myBid = bid;
-  lot.topBid = bid;
-  lot.topBidder = "you";
-  lot.bids = Math.max(0, Math.floor(Number(lot.bids) || 0)) + 1;
-  ensureUserShape(u);
-  saveUser(u);
-  return { ok: true, user: u, lotId: lot.id, bid };
 }
 
 // Attribution d'un lot remporté selon son type.
@@ -4755,23 +4629,6 @@ function grantAuctionLot(u, lot) {
     return { ok: true, user: u };
   }
   return buyItem(lot.catalogId, Math.max(1, lot.qty || 1), { free: true });
-}
-
-function settleAuctionLot(u, auction, lot) {
-  const bidder = String(u?.pseudo || "Joueur");
-  const won = lot.topBidder === "you" && Number(lot.myBid) > 0;
-  if (won) {
-    const grant = grantAuctionLot(u, lot);
-    if (!grant?.ok) {      // Gain impossible (ex : devenu possédé entre-temps) : rembourse la mise.
-      u.credits = Math.max(0, Math.floor(Number(u.credits || 0) + Math.max(0, Number(lot.myBid) || 0)));
-      pushAuctionHistory(auction, { name: lot.name, result: "lost", amount: Number(lot.myBid) || 0, by: bidder });
-      return { type: "lost", name: lot.name, amount: Number(lot.myBid) || 0, refunded: true };
-    }
-    pushAuctionHistory(auction, { name: lot.name, result: "won", amount: Number(lot.topBid) || 0, by: bidder });
-    return { type: "won", name: lot.name, amount: Number(lot.topBid) || 0 };
-  }
-  pushAuctionHistory(auction, { name: lot.name, result: "expired", amount: 0, by: "" });
-  return { type: "expired", name: lot.name, amount: 0 };
 }
 
 // ---------------------------
@@ -4873,13 +4730,8 @@ export function resetPilotSkills() {
 // suspendu (ni lots locaux ni règlement local) et les mises passent
 // par le réseau (SRC/CORE/AUCTION_NET.js).
 // ---------------------------
-let sharedAuctionMode = true;
 export function setSharedAuctionMode() {
-  // Mode serveur obligatoire : aucun appel réseau ne peut réactiver le tick local.
-  sharedAuctionMode = true;
-}
-export function isSharedAuctionMode() {
-  return sharedAuctionMode === true;
+  // Compatibilité avec le réseau : les enchères sont toujours partagées.
 }
 
 // Gain d'un lot partagé remporté : même attribution que le local,
@@ -4941,38 +4793,4 @@ export function pushSharedAuctionExpired(name) {
   ensureUserShape(u);
   saveUser(u);
   return { ok: true, user: u };
-}
-
-export function tickCurrentUserAuction(nowMs = Date.now()) {
-  if (sharedAuctionMode === true) return { ok: true, user: null, events: [], changed: false, shared: true };
-  const u = getCurrentUserForMutation();
-  if (!u) return { ok: false, error: "Aucun utilisateur connecté." };
-  const now = Number(nowMs) || Date.now();
-  const auction = ensureAuction(u);
-  const events = [];
-  let changed = false;
-  if (fillAuctionLots(auction, u, now)) changed = true;
-  const remaining = [];
-  let settled = 0;
-  for (const lot of auction.lots) {
-    if (auctionTimeLeftMs(lot, now) > 0) {
-      remaining.push(lot);
-      continue;
-    }
-    events.push(settleAuctionLot(u, auction, lot));
-    settled++;
-    changed = true;
-  }
-  auction.lots = remaining;
-  if (remaining.length === 0 && settled > 0) {
-    // Renouvellement complet : "Dernières enchères" = exactement ce cycle
-    // (22 lots, y compris non misés), sans mélange avec les cycles précédents.
-    auction.history = auction.history.slice(-settled);
-  }
-  if (fillAuctionLots(auction, u, now)) changed = true;
-  if (changed) {
-    ensureUserShape(u);
-    saveUser(u);
-  }
-  return { ok: true, user: u, events, changed };
 }

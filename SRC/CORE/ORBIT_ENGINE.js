@@ -117,7 +117,7 @@ import { findCatalogItem } from "./CATALOG.js";
 import { activeBoosterMults, boosterTimeLeftMs, formatBoosterCountdown, formatBoosterDuration, BOOSTERS, getBooster, normalizeBoostersState, GROUP_BOOSTER_IDS, GROUP_BOOSTER_BONUS } from "../DATA/BOOSTERS.js";
 import { pilotSkillMults } from "../DATA/PILOT_SKILLS.js";
 import { CRAFTING_RECIPES, CRAFTING_ENABLED } from "../DATA/CRAFTING.js";
-import { STATION_CORE_HP, STATION_EMPTY_BASE, STATION_HUB, STATION_DESTROYED_SPOT, STATION_INSTALL_CD_SEC, STATION_MODULE_HP, STATION_MODULE_SPRITES, STATION_PRELOAD_SRCS, STATION_RING_COLORS, STATION_UNIQUE_MODULES, STATION_DEFLECT_RATE, STATION_DEFLECT_COST } from "../DATA/BATTLESTATION.js";
+import { STATION_CORE_HP, STATION_EMPTY_BASE, STATION_HUB, STATION_DESTROYED_SPOT, STATION_INSTALL_CD_SEC, STATION_MODULE_HP, STATION_MODULE_SPRITES, STATION_PRELOAD_SRCS, STATION_RING_COLORS, STATION_DEFLECT_RATE, STATION_DEFLECT_COST } from "../DATA/BATTLESTATION.js";
 import { STATION_CENTERS } from "../DATA/STATION_CENTERS.js";
 import { ensureStationSync, isSharedStation, pumpStationNet, resetSharedStation } from "./STATION_NET.js";
 import { ITEM_RARITIES } from "../DATA/ITEM_RARITIES.js";
@@ -20418,10 +20418,9 @@ function tickStationLogic() {
     ensureStationSync(map, zoneStation);
     // Compte à rebours affiché à chaque frame (fenêtre ouverte uniquement).
     try { stationTickCooldowns(); } catch {}
-    // Remplacements : bascule solo à échéance, resync partagée à échéance
-    // (le serveur applique paresseusement au sync suivant).
-    // Réparation partagée : resync ~1/s pendant le cycle + 3 s de grâce
-    // (le serveur applique au fil des syncs, visible par tous).
+    // Remplacements et réparations : le client attend toujours l'état serveur.
+    // Resync ~1/s pendant le cycle + 3 s de grâce afin que les changements
+    // appliqués par le serveur restent visibles par tous.
     // Comparaisons en heure serveur estimée (décalage d'horloge possible).
     try {
       if (stationSharedActive()) {
@@ -20440,10 +20439,6 @@ function tickStationLogic() {
           tickStationLogic._deflectSyncReq = now;
           requestStationSync(map);
         }
-      } else {
-        stationResolveReplaces();
-        stationRepairTick();
-        stationDeflectTick();
       }
     } catch {}
     const pump = pumpStationNet(zoneStation, map);
@@ -20541,9 +20536,6 @@ function tickStationLogic() {
         }
       } catch {}
     }
-    // Miroir local de la vue serveur : sans ça, des modules posés en solo
-    // seraient re-remboursés à chaque première sync (duplication).
-    try { stationPersist(); } catch {}
     stationRefresh();
   } catch (error) {
     console.warn("Station tick:", error);
@@ -34459,82 +34451,6 @@ jumpBaseFade: 1,
     try {
       if (zoneStation && !String(getMyClanTag() || "")) void refreshMyClanTagNow();
     } catch {}
-    // Reprend la construction sauvegardée (hub + slots + propriétaire).
-    try {
-      const mapId = String(rules?.mapLabel || window.__CURRENT_MAP_ID__ || "").toLowerCase();
-      const saved = mapId ? (account.user || getCurrentUserFull())?.stations?.[mapId] : null;
-      if (zoneStation && saved && typeof saved === "object") {
-        if (typeof saved.hub === "string" || saved.hub === null) zoneStation.hub = saved.hub || null;
-        if (typeof saved.hubClan === "string" && saved.hubClan) zoneStation.hubClan = saved.hubClan;
-        if (typeof saved.hubPseudo === "string" && saved.hubPseudo) zoneStation.hubPseudo = saved.hubPseudo;
-        if (saved.built === true) zoneStation.built = true;
-        if (Number(saved.builtAt) > 0) zoneStation.builtAt = Number(saved.builtAt);
-        else if (zoneStation.built) zoneStation.builtAt = Date.now();
-        if (saved.owner && typeof saved.owner === "object") zoneStation.owner = { ...saved.owner };
-        if (typeof saved.contestedBy === "string" && saved.contestedBy) zoneStation.contestedBy = saved.contestedBy;
-        if (saved.slots && typeof saved.slots === "object") {
-          for (const slot of zoneStation.slots || []) {
-            if (slot?.id && Object.prototype.hasOwnProperty.call(saved.slots, slot.id)) {
-              const val = saved.slots[slot.id];
-              // Nouveau format {r, c} ou ancien format id direct.
-              if (val && typeof val === "object") {
-                slot.resourceId = val.r || null;
-                if (val.c) slot.clan = val.c;
-              } else {
-                slot.resourceId = val || null;
-              }
-              if (saved.slotClans && typeof saved.slotClans === "object" && saved.slotClans[slot.id]) {
-                slot.clan = saved.slotClans[slot.id];
-              }
-              if (saved.slotPending && typeof saved.slotPending === "object" && saved.slotPending[slot.id]) {
-                const pr = saved.slotPending[slot.id];
-                if (pr && typeof pr === "object" && pr.r) {
-                  slot.pendingReplace = { resourceId: String(pr.r), clan: String(pr.c || ""), pseudo: String(pr.p || "").slice(0, 20) };
-                }
-              }
-              if (saved.slotPseudos && typeof saved.slotPseudos === "object" && saved.slotPseudos[slot.id]) {
-                slot.pseudo = String(saved.slotPseudos[slot.id]).slice(0, 20);
-              }
-            }
-          }
-        }
-        // Cooldowns d'installation en cours (repris après refresh).
-        if (saved.cds && typeof saved.cds === "object") {
-          if (Number(saved.cds.hub) > Date.now()) zoneStation.hubCd = Number(saved.cds.hub);
-          for (const slot of zoneStation.slots || []) {
-            if (slot?.id && Number(saved.cds[slot.id]) > Date.now()) slot.cooldownUntil = Number(saved.cds[slot.id]);
-          }
-        }
-        // PV non persistés : pleins par défaut (le serveur tranche en partagé).
-        if (zoneStation.hub && !(Number(zoneStation.hubHp) > 0)) {
-          zoneStation.hubHp = STATION_CORE_HP;
-          zoneStation.hubHpMax = STATION_CORE_HP;
-        }
-        // Déflecteur sauvegardé : reprise telle quelle (solo ; en partagé
-        // le serveur fait foi et écrase au premier sync).
-        if (saved.deflect && typeof saved.deflect === "object" && (Number(saved.deflect.bank) > 0 || saved.deflect.active === true || Number(saved.deflect.disabledUntil) > 0)) {
-          zoneStation.deflect = {
-            bank: Math.max(0, Number(saved.deflect.bank) || 0),
-            active: saved.deflect.active === true,
-            until: Math.max(0, Number(saved.deflect.until) || 0),
-            disabledUntil: Math.max(0, Number(saved.deflect.disabledUntil) || 0),
-            lastTick: Date.now(),
-          };
-        } else if (zoneStation.built && zoneStation.hub) {
-          zoneStation.deflect = { bank: 0, active: false, until: 0, disabledUntil: 0, lastTick: Date.now() };
-        }
-        // Réparation solo en cours : reprise (sans rattrapage du temps écoulé).
-        if (saved.repair && typeof saved.repair === "object" && Number(saved.repair.until) > Date.now()) {
-          zoneStation.repair = { until: Number(saved.repair.until), rateHub: STATION_REPAIR_HUB, rateSlot: STATION_REPAIR_SLOT, lastTick: Date.now() };
-        }
-        for (const slot of zoneStation.slots || []) {
-          if (slot?.resourceId && !(Number(slot.hp) > 0)) {
-            slot.hp = STATION_MODULE_HP;
-            slot.hpMax = STATION_MODULE_HP;
-          }
-        }
-      }
-    } catch {}
   } else {
     zoneStation = null;
   }
@@ -38632,7 +38548,7 @@ function stationTickCooldowns() {
       const label = off ? "Déflecteur : OFF" : "Désactiver 30 min";
       if (dbtn.textContent !== label) dbtn.textContent = label;
       if (dbtn.classList.contains("off") !== off) dbtn.classList.toggle("off", off);
-      dbtn.title = off && dd ? `Coupé — reprise dans ${formatDeflectCountdown(dd.offMs)}` : "Couper le bouclier 30 min (cumul gelé, reprise après)";
+      dbtn.title = off && dd ? `Coupé — reprise dans ${formatDeflectCountdown(dd.offMs)}` : "Couper le bouclier 30 min (la réserve continue de se charger)";
     }
   } catch {}
   // Déflecteur : décompte en direct dans la fenêtre.
@@ -38711,7 +38627,7 @@ function renderStationWindow(message = "") {
       const defOff = !!(st?.deflect && Number(st.deflect.disabledUntil || 0) > serverNow());
       ui.stationClans.innerHTML = `<div class="stationDeflectRow"><button id="stationRepairBtn" class="stationRepairBtn" type="button"${repLeft > 0 ? " disabled" : ""}>`
         + `${repLeft > 0 ? `Réparation ${repLeft}s` : "Réparation"}</button>`
-        + `<button id="stationDeflectBtn" class="stationDeflectBtn${defOff ? " off" : ""}" type="button" title="Couper le bouclier 30 min (cumul gelé, reprise après)">Déflecteur : ${defOff ? "OFF" : "Désactiver 30 min"}</button></div>`;
+        + `<button id="stationDeflectBtn" class="stationDeflectBtn${defOff ? " off" : ""}" type="button" title="Couper le bouclier 30 min (la réserve continue de se charger)">Déflecteur : ${defOff ? "OFF" : "Désactiver 30 min"}</button></div>`;
     } else {
       const total = 1 + (st?.slots || []).length;
       let rows;
@@ -38786,45 +38702,6 @@ ui.stationRows?.addEventListener("click", (event) => {
   renderStationWindow();
 });
 
-// Drag & drop + double-clic : poser dans les slots, double-clic sur un
-// module = slot libre aléatoire autour. Double-clic sur un slot plein =
-// désinstaller (retour au stock). Le hub n'accepte que le Cœur.
-function stationPersist() {
-  try {
-    const mapId = String(rules?.mapLabel || window.__CURRENT_MAP_ID__ || "").toLowerCase();
-    const u = getCurrentUserForMutation();
-    if (!mapId || !u || !zoneStation) return;
-    if (!u.stations || typeof u.stations !== "object") u.stations = {};
-    let fallbackClanForPersist = "";
-    try { fallbackClanForPersist = String(getMyClanTag() || "").toUpperCase(); } catch {}
-    if (zoneStation.hub && !zoneStation.hubClan && fallbackClanForPersist) {
-      zoneStation.hubClan = fallbackClanForPersist;
-    }
-    const slots = {};
-    const slotClans = {};
-    const slotPseudos = {};
-    const slotPending = {};
-    const cds = {};
-    for (const slot of zoneStation.slots || []) {
-      if (slot?.id) {
-        slots[slot.id] = slot.resourceId || null;
-        // Rattrapage : module posé avant le suivi par clan -> clan actuel.
-        if (slot.resourceId && !slot.clan && fallbackClanForPersist) slot.clan = fallbackClanForPersist;
-        if (slot.clan) slotClans[slot.id] = slot.clan;
-        if (slot.pseudo) slotPseudos[slot.id] = slot.pseudo;
-        if (slot?.pendingReplace?.resourceId) slotPending[slot.id] = { r: slot.pendingReplace.resourceId, c: slot.pendingReplace.clan || null, p: slot.pendingReplace.pseudo || "" };
-        if (stationCooldownLeft(slot.cooldownUntil) > 0) cds[slot.id] = slot.cooldownUntil;
-      }
-    }
-    if (stationCooldownLeft(zoneStation.hubCd) > 0) cds.hub = zoneStation.hubCd;
-    const repUntil = Number(zoneStation.repair?.until) || 0;
-    u.stations[mapId] = { hub: zoneStation.hub || null, hubClan: zoneStation.hubClan || null, hubPseudo: zoneStation.hubPseudo || "", slots, slotClans, slotPseudos, slotPending, cds, repair: repUntil > Date.now() ? { until: repUntil } : null, deflect: zoneStation.deflect && typeof zoneStation.deflect === "object" ? { bank: Math.max(0, Number(zoneStation.deflect.bank) || 0), active: zoneStation.deflect.active === true, until: Math.max(0, Number(zoneStation.deflect.until) || 0), disabledUntil: Math.max(0, Number(zoneStation.deflect.disabledUntil) || 0) } : null, built: zoneStation.built === true, builtAt: Math.max(0, Number(zoneStation.builtAt) || 0), owner: { ...(zoneStation.owner || {}) }, contestedBy: zoneStation.contestedBy || null };
-    account.user = u;
-    saveUser(u, { durable: true });
-    try { localStorage.setItem("orbit_sync", String(Date.now())); } catch {}
-  } catch {}
-}
-
 function stationRefresh(reason = "") {
   try { syncPlayerFromAccount(); } catch {}
   renderStationWindow(reason);
@@ -38833,17 +38710,6 @@ function stationRefresh(reason = "") {
 
 // Unicité stricte : 1 seul exemplaire de chaque module par station,
 // remplacements en cours inclus (ils basculeront à l'échéance).
-function stationModuleTaken(id, exceptSlot = null) {
-  const want = String(id || "");
-  if (!want) return false;
-  for (const s of zoneStation?.slots || []) {
-    if (exceptSlot && s === exceptSlot) continue;
-    if (String(s?.resourceId || "") === want) return true;
-    if (String(s?.pendingReplace?.resourceId || "") === want) return true;
-  }
-  return false;
-}
-
 function stationInstallModule(resourceId, slotId = null) {
   const st = zoneStation;
   if (!st) return;
@@ -38853,8 +38719,6 @@ function stationInstallModule(resourceId, slotId = null) {
   }
   const id = String(resourceId || "");
   const isCore = id === STATION_HUB.resourceId;
-  const u = getCurrentUserForMutation();
-  if (!u) return;
   // Construction réservée aux clans.
   let myClan = "";
   try { myClan = String(getMyClanTag() || "").toUpperCase(); } catch {}
@@ -38863,211 +38727,31 @@ function stationInstallModule(resourceId, slotId = null) {
     return;
   }
   const mapId = String(window.__CURRENT_MAP_ID__ || rules?.mapLabel || "").toLowerCase();
-  // En multijoueur : le serveur tranche (places, cooldowns, remboursements).
-  if (stationSharedActive()) {
-    let targetSlot = slotId || null;
-    if (!targetSlot) {
-      if (isCore) {
-        targetSlot = "hub";
-      } else {
-        const empties = (st.slots || []).filter((s) => !s?.resourceId);
-        if (!empties.length) {
-          renderStationWindow("Aucun emplacement libre.");
-          return;
-        }
-        targetSlot = empties[Math.floor(Math.random() * empties.length)].id;
-      }
-    }
-    // Une seule opération à la fois : un remplacement/reconstruction en
-    // cours bloque tout le reste (le serveur tranche en autorité).
-    const opBusy = (st.slots || []).some((s) => s?.replace);
-    if (st.built && opBusy) {
-      renderStationWindow("Remplacement déjà en cours.");
-      return;
-    }
-    // Base construite + emplacement occupé (jamais le hub) : remplacement.
-    const occSlot = targetSlot && targetSlot !== "hub"
-      ? (st.slots || []).find((s) => String(s?.id) === String(targetSlot))
-      : null;
-    if (st.built && occSlot?.resourceId) {
-      if (!sendStationReplace(mapId, targetSlot, id)) {
-        renderStationWindow("Hors ligne — remplacement impossible.");
-      }
-      return;
-    }
-    if (!sendStationInstall(mapId, targetSlot, id)) {
-      renderStationWindow("Hors ligne — installation locale impossible.");
-    }
-    return;
-  }
-  // Une seule installation à la fois (comme l'officiel).
-  const busy = (st.hubCd && stationCooldownLeft(st.hubCd) > 0)
-    || (st.slots || []).some((s) => stationCooldownLeft(s?.cooldownUntil) > 0);
-  if (busy) {
-    renderStationWindow("Installation en cours — patientez.");
-    return;
-  }
-  u.inventory ||= {};
-  u.inventory.resources ||= {};
-  const stock = Math.max(0, Math.floor(Number(u.inventory.resources[id]) || 0));
-  if (stock <= 0) {
-    renderStationWindow(`Stock épuisé : ${getResourceName(id, 2)}.`);
-    return;
-  }
-  // Modules uniques : un seul exemplaire de chaque par station
-  // (remplacements en cours inclus).
-  if (STATION_UNIQUE_MODULES.includes(id) && stationModuleTaken(id)) {
-    renderStationWindow(`${getResourceName(id, 2)} : un seul exemplaire par station.`);
-    return;
-  }
-  if (slotId === "hub") {
-    if (!isCore) {
-      renderStationWindow("Le hub n'accepte que le Cœur de base.");
-      return;
-    }
-    if (st.hub) {
-      renderStationWindow("Un Cœur est déjà posé.");
-      return;
-    }
-    const myPseudo = String(u.pseudo || getCurrentUserFull()?.pseudo || "Pilote").slice(0, 20);
-    u.inventory.resources[id] = stock - 1;
-    try { noteNetConsumption("ores", id, 1); } catch {}
-    st.hub = id;
-    st.hubClan = myClan;
-    st.hubPseudo = myPseudo;
-    st.hubCd = Date.now() + STATION_INSTALL_CD_SEC * 1000;
-    st.hubHp = STATION_CORE_HP;
-    st.hubHpMax = STATION_CORE_HP;
-    // Propriétaire déclaré à la construction, pas à la pose.
-  } else {
-    if (isCore) {
-      renderStationWindow("Le Cœur se pose sur le hub central.");
-      return;
-    }
-    let target = null;
-    if (slotId) {
-      target = (st.slots || []).find((s) => s?.id === slotId) || null;
-      if (!target) return;
-      if (target.resourceId) {
-        // Remplacement sur base construite (le Cœur ne se remplace jamais :
-        // la branche hub ci-dessus rejette déjà un hub occupé).
-        if (!st.built) {
-          renderStationWindow("Emplacement déjà occupé.");
-          return;
-        }
-        if (String(target.resourceId) === id) {
-          renderStationWindow("Module identique.");
-          return;
-        }
-        if (STATION_UNIQUE_MODULES.includes(id) && stationModuleTaken(id, target)) {
-          renderStationWindow(`${getResourceName(id, 2)} : un seul exemplaire par station.`);
-          return;
-        }
-        const rpPseudo = String(u.pseudo || getCurrentUserFull()?.pseudo || "Pilote").slice(0, 20);
-        // L'ancien module reste actif pendant le décompte ; la bascule
-        // (stock -1 nouveau / +1 ancien) a lieu à la fin des 60 s.
-        target.pendingReplace = { resourceId: id, clan: myClan, pseudo: rpPseudo };
-        target.cooldownUntil = Date.now() + STATION_INSTALL_CD_SEC * 1000;
-        account.user = u;
-        stationPersist();
-        stationRefresh(`Remplacement dans 60 s : ${getResourceName(id, 1)} (double-clic pour annuler).`);
-        return;
-      }
-    } else {
+  let targetSlot = slotId || null;
+  if (!targetSlot) {
+    if (isCore) targetSlot = "hub";
+    else {
       const empties = (st.slots || []).filter((s) => !s?.resourceId);
       if (!empties.length) {
         renderStationWindow("Aucun emplacement libre.");
         return;
       }
-      target = empties[Math.floor(Math.random() * empties.length)];
+      targetSlot = empties[Math.floor(Math.random() * empties.length)].id;
     }
-    const rpPseudo = String(u.pseudo || getCurrentUserFull()?.pseudo || "Pilote").slice(0, 20);
-    if (st.built) {
-      // Repose différée sur base construite : 60 s avant apparition
-      // visuelle (comme un remplacement, sans remboursement à la fin).
-      target.pendingReplace = { resourceId: id, clan: myClan, pseudo: rpPseudo };
-      target.cooldownUntil = Date.now() + STATION_INSTALL_CD_SEC * 1000;
-      account.user = u;
-      stationPersist();
-      stationRefresh(`Reconstruction dans 60 s : ${getResourceName(id, 1)} (double-clic pour annuler).`);
-      return;
-    }
-    const myPseudo = String(u.pseudo || getCurrentUserFull()?.pseudo || "Pilote").slice(0, 20);
-    u.inventory.resources[id] = stock - 1;
-    try { noteNetConsumption("ores", id, 1); } catch {}
-    target.resourceId = id;
-    target.clan = myClan;
-    target.pseudo = myPseudo;
-    target.cooldownUntil = Date.now() + STATION_INSTALL_CD_SEC * 1000;
-    target.hp = STATION_MODULE_HP;
-    target.hpMax = STATION_MODULE_HP;
   }
-  account.user = u;
-  stationPersist();
-  stationRefresh();
-}
-
-// Remplacements solo arrivés à échéance : bascule atomique
-// (stock -1 nouveau / +1 ancien), l'ancien restant actif pendant le décompte.
-function stationResolveReplaces() {
-  const st = zoneStation;
-  if (!st) return;
-  const now = Date.now();
-  const u = getCurrentUserForMutation();
-  if (!u) return;
-  u.inventory ||= {};
-  u.inventory.resources ||= {};
-  let changed = false;
-  for (const slot of st.slots || []) {
-    const pr = slot?.pendingReplace;
-    if (!pr?.resourceId) continue;
-    if (Number(slot.cooldownUntil) > now) continue;
-    const newId = String(pr.resourceId);
-    const oldId = String(slot.resourceId || "");
-    if (newId === oldId) {
-      slot.pendingReplace = null;
-      slot.cooldownUntil = 0;
-      changed = true;
-      continue;
-    }
-    const stock = Math.max(0, Math.floor(Number(u.inventory.resources[newId]) || 0));
-    if (stock <= 0) {
-      slot.pendingReplace = null;
-      slot.cooldownUntil = 0;
-      changed = true;
-      try { stationRefresh(`Stock épuisé : ${getResourceName(newId, 2)} — remplacement annulé.`); } catch {}
-      continue;
-    }
-    if (STATION_UNIQUE_MODULES.includes(newId) && stationModuleTaken(newId, slot)) {
-      slot.pendingReplace = null;
-      slot.cooldownUntil = 0;
-      changed = true;
-      continue;
-    }
-    u.inventory.resources[newId] = stock - 1;
-    // Remplacement : l'ancien module retourne au stock. Repose sur
-    // emplacement détruit (pas d'ancien) : rien à rembourser.
-    if (oldId) {
-      u.inventory.resources[oldId] = Math.max(0, Math.floor(Number(u.inventory.resources[oldId]) || 0)) + 1;
-    }
-    try { noteNetConsumption("ores", newId, 1); } catch {}
-    if (oldId) {
-      try { noteNetResourceGain({ [oldId]: 1 }); } catch {}
-    }
-    slot.resourceId = newId;
-    slot.clan = String(pr.clan || "");
-    slot.pseudo = String(pr.pseudo || "").slice(0, 20);
-    slot.hp = STATION_MODULE_HP;
-    slot.hpMax = STATION_MODULE_HP;
-    slot.pendingReplace = null;
-    slot.cooldownUntil = 0;
-    changed = true;
+  const opBusy = (st.slots || []).some((s) => s?.replace);
+  if (st.built && opBusy) {
+    renderStationWindow("Remplacement déjà en cours.");
+    return;
   }
-  if (changed) {
-    account.user = u;
-    try { stationPersist(); } catch {}
-    try { stationRefresh("Module posé !"); } catch {}
+  const occSlot = targetSlot !== "hub"
+    ? (st.slots || []).find((s) => String(s?.id) === String(targetSlot))
+    : null;
+  if (st.built && occSlot?.resourceId) {
+    if (!sendStationReplace(mapId, targetSlot, id)) renderStationWindow("Hors ligne — remplacement impossible.");
+    return;
   }
+  if (!sendStationInstall(mapId, targetSlot, id)) renderStationWindow("Hors ligne — installation impossible.");
 }
 
 function stationUninstallSlot(slotId) {
@@ -39077,104 +38761,33 @@ function stationUninstallSlot(slotId) {
     renderStationWindow("Synchronisation serveur en cours — réessaie dans un instant.");
     return;
   }
-  const u = getCurrentUserForMutation();
-  if (!u) return;
-  let myClan = "";
-  try { myClan = String(getMyClanTag() || "").toUpperCase(); } catch {}
-  u.inventory ||= {};
-  u.inventory.resources ||= {};
-  // Seul le clan poseur peut retirer son module (pas de vol).
-  if (stationSharedActive()) {
-    const mapId = String(window.__CURRENT_MAP_ID__ || rules?.mapLabel || "").toLowerCase();
-    // Remplacement / repose en cours : double-clic = annulation (l'ancien
-    // module reste en place, le remplaçant est remboursé).
-    try {
-      const pending = (st.slots || []).find((s) => String(s?.id) === String(slotId))?.replace;
-      if (st.built && pending) {
-        if (!sendStationCancelReplace(mapId, slotId)) {
-          renderStationWindow("Hors ligne — annulation impossible.");
-        }
-        return;
-      }
-    } catch {}
-    // Seul le poseur peut retirer (le serveur tranche, ceci évite l'aller-retour).
-    try {
-      const mine = String(netMyId() || "");
-      const owner = slotId === "hub"
-        ? st.hubPlacer
-        : (st.slots || []).find((s) => s?.id === slotId)?.placerId;
-      if (mine && owner && owner !== mine) {
-        renderStationWindow("Module d'un autre joueur.");
-        return;
-      }
-    } catch {}
-    if (!sendStationUninstall(mapId, slotId)) {
-      renderStationWindow("Hors ligne — retrait impossible.");
-    }
-    return;
-  }
-  if (slotId === "hub") {
-    if (!st.hub) return;
-    if (st.hubClan && st.hubClan !== myClan) {
-      renderStationWindow("Cœur d'un autre clan.");
+  const mapId = String(window.__CURRENT_MAP_ID__ || rules?.mapLabel || "").toLowerCase();
+  try {
+    const pending = (st.slots || []).find((s) => String(s?.id) === String(slotId))?.replace;
+    if (st.built && pending) {
+      if (!sendStationCancelReplace(mapId, slotId)) renderStationWindow("Hors ligne — annulation impossible.");
       return;
     }
-    const id = st.hub;
-    u.inventory.resources[id] = Math.max(0, Math.floor(Number(u.inventory.resources[id]) || 0)) + 1;
-    try { noteNetResourceGain({ [id]: 1 }); } catch {}
-    st.hub = null;
-    st.hubCd = 0;
-    st.hubClan = null;
-    st.hubPseudo = "";
-    st.owner = {};
-  } else {
-    const target = (st.slots || []).find((s) => s?.id === slotId) || null;
-    if (!target) return;
-    // Annulation d'un remplacement / d'une repose en cours (double-clic) :
-    // l'ancien module reste en place, rien n'avait été débité.
-    if (target.pendingReplace) {
-      target.pendingReplace = null;
-      target.cooldownUntil = 0;
-      stationPersist();
-      stationRefresh("Remplacement annulé.");
+  } catch {}
+  try {
+    const mine = String(netMyId() || "");
+    const owner = slotId === "hub" ? st.hubPlacer : (st.slots || []).find((s) => s?.id === slotId)?.placerId;
+    if (mine && owner && owner !== mine) {
+      renderStationWindow("Module d'un autre joueur.");
       return;
     }
-    if (!target.resourceId) return;
-    if (target.clan && target.clan !== myClan) {
-      renderStationWindow("Module d'un autre clan.");
-      return;
-    }
-    const id = target.resourceId;
-    u.inventory.resources[id] = Math.max(0, Math.floor(Number(u.inventory.resources[id]) || 0)) + 1;
-    try { noteNetResourceGain({ [id]: 1 }); } catch {}
-    target.resourceId = null;
-    target.cooldownUntil = 0;
-    target.clan = null;
-    target.pseudo = "";
-  }
-  account.user = u;
-  // Station incomplète : repasse en construction (modules cachés en jeu).
-  if (st.built) {
-    st.built = false;
-    st.owner = {};
-  }
-  stationPersist();
-  stationRefresh();
+  } catch {}
+  if (!sendStationUninstall(mapId, slotId)) renderStationWindow("Hors ligne — retrait impossible.");
 }
 
 function stationBuildable() {
   const st = zoneStation;
   if (!st || st.built) return false;
   if (!stationSharedActive()) return false;
-  // En multijoueur : le serveur tranche (slots ennemis masqués localement).
-  if (stationSharedActive()) {
-    let myClan = "";
-    try { myClan = String(getMyClanTag() || "").toUpperCase(); } catch {}
-    const mine = stationSharedClanRows().find((row) => row.tag === myClan);
-    return Number(mine?.value || 0) >= Math.max(1, Number(st.total) || 10);
-  }
-  if (!st.hub) return false;
-  return (st.slots || []).length > 0 && (st.slots || []).every((s) => !!s?.resourceId);
+  let myClan = "";
+  try { myClan = String(getMyClanTag() || "").toUpperCase(); } catch {}
+  const mine = stationSharedClanRows().find((row) => row.tag === myClan);
+  return Number(mine?.value || 0) >= Math.max(1, Number(st.total) || 10);
 }
 
 function stationBuild() {
@@ -39184,40 +38797,15 @@ function stationBuild() {
     return;
   }
   if (!stationBuildable()) return;
-  const u = getCurrentUserForMutation();
-  if (!u) return;
   let clan = null;
   try { clan = String(getMyClanTag() || "").toUpperCase() || null; } catch {}
   if (!clan) {
     renderStationWindow("Construction réservée aux clans.");
     return;
   }
-  if (stationSharedActive()) {
-    const mapId = String(window.__CURRENT_MAP_ID__ || rules?.mapLabel || "").toLowerCase();
-    if (!sendStationBuild(mapId)) {
-      renderStationWindow("Hors ligne — construction impossible.");
-    }
-    return;
-  }
-  st.built = true;
-  st.builtAt = Date.now();
-  st.owner = { firm: normalizeFactionId(u.faction), ...(clan ? { clan } : {}) };
-  // PV pleins à la construction (sauvegardes / poses antérieures au suivi HP).
-  if (st.hub && !(Number(st.hubHp) > 0)) { st.hubHp = STATION_CORE_HP; st.hubHpMax = STATION_CORE_HP; }
-  for (const slot of st.slots || []) {
-    if (slot?.resourceId && !(Number(slot.hp) > 0)) { slot.hp = STATION_MODULE_HP; slot.hpMax = STATION_MODULE_HP; }
-  }
-  // Déflecteur : banque à zéro, charge démarrée à la construction.
-  st.deflect = { bank: 0, active: false, until: 0, disabledUntil: 0, lastTick: Date.now() };
-  account.user = u;
-  stationPersist();
-  stationRefresh("Station construite !");
+  const mapId = String(window.__CURRENT_MAP_ID__ || rules?.mapLabel || "").toLowerCase();
+  if (!sendStationBuild(mapId)) renderStationWindow("Hors ligne — construction impossible.");
 }
-
-// Réparation : 85 000 PV/s sur le cœur, 42 500 PV/s par module, pendant 10 s.
-const STATION_REPAIR_HUB = 85000;
-const STATION_REPAIR_SLOT = 42500;
-const STATION_REPAIR_MS = 10000;
 
 function stationRepair() {
   const st = zoneStation;
@@ -39230,32 +38818,8 @@ function stationRepair() {
     renderStationWindow("Réparation déjà en cours.");
     return;
   }
-  if (stationSharedActive()) {
-    const mapId = String(window.__CURRENT_MAP_ID__ || rules?.mapLabel || "").toLowerCase();
-    if (!sendStationRepair(mapId)) {
-      renderStationWindow("Hors ligne — réparation impossible.");
-    }
-    return;
-  }
-  const u = getCurrentUserForMutation();
-  if (!u) return;
-  let clan = "";
-  try { clan = String(getMyClanTag() || "").toUpperCase(); } catch {}
-  if (String(st.owner?.clan || "").toUpperCase() !== clan || !clan) {
-    renderStationWindow("Réparation réservée à ton clan.");
-    return;
-  }
-  const needsHeal = (st.hub && Number(st.hubHp) > 0 && Number(st.hubHp) < (Number(st.hubHpMax) || STATION_CORE_HP))
-    || (st.slots || []).some((s) => s?.resourceId && Number(s.hp) > 0 && Number(s.hp) < (Number(s.hpMax) || STATION_MODULE_HP));
-  if (!needsHeal) {
-    renderStationWindow("Rien à réparer.");
-    return;
-  }
-  const now = Date.now();
-  st.repair = { until: now + STATION_REPAIR_MS, rateHub: STATION_REPAIR_HUB, rateSlot: STATION_REPAIR_SLOT, lastTick: now };
-  account.user = u;
-  stationPersist();
-  stationRefresh("Réparation engagée !");
+  const mapId = String(window.__CURRENT_MAP_ID__ || rules?.mapLabel || "").toLowerCase();
+  if (!sendStationRepair(mapId)) renderStationWindow("Hors ligne — réparation impossible.");
 }
 
 // Interrupteur du déflecteur : ON = cycle normal (bouclier auto au cumul
@@ -39264,34 +38828,12 @@ function stationRepair() {
 function stationDeflectToggle() {
   const st = zoneStation;
   if (!st?.built) return;
-  if (stationSharedActive()) {
-    const mapId = String(window.__CURRENT_MAP_ID__ || rules?.mapLabel || "").toLowerCase();
-    if (!sendStationDeflectToggle(mapId)) {
-      renderStationWindow("Hors ligne — déflecteur inaccessible.");
-    }
+  if (!stationSharedActive()) {
+    renderStationWindow("Synchronisation serveur en cours — réessaie dans un instant.");
     return;
   }
-  const u = getCurrentUserForMutation();
-  if (!u) return;
-  let clan = "";
-  try { clan = String(getMyClanTag() || "").toUpperCase(); } catch {}
-  if (String(st.owner?.clan || "").toUpperCase() !== clan || !clan) {
-    renderStationWindow("Déflecteur réservé à ton clan.");
-    return;
-  }
-  if (!st.deflect || typeof st.deflect !== "object") st.deflect = { bank: 0, active: false, until: 0, disabledUntil: 0, lastTick: Date.now() };
-  const d = st.deflect;
-  const now = Date.now();
-  if (d.active === true && Number(d.until) > now) {
-    d.bank = Math.max(0, Number(d.bank) || 0) + Math.max(0, (Number(d.until) - now) / 1000);
-    d.active = false;
-    d.until = 0;
-  }
-  d.disabledUntil = now + STATION_DEFLECT_OFF_MS;
-  d.lastTick = now;
-  account.user = u;
-  stationPersist();
-  stationRefresh("Déflecteur coupé 30 min — cumul gelé.");
+  const mapId = String(window.__CURRENT_MAP_ID__ || rules?.mapLabel || "").toLowerCase();
+  if (!sendStationDeflectToggle(mapId)) renderStationWindow("Hors ligne — déflecteur inaccessible.");
 }
 
 // Flottant +x de réparation (vert coque, comme les soins distants).
@@ -39301,97 +38843,6 @@ function stationRepairFloatAt(wx, wy, gain) {
     addFloatText(wx + (Math.random() - 0.5) * 60, wy,
       gain, "rgba(80,255,125,0.98)",
       { text: `+${formatInteger(Math.round(gain))}`, size: 21, pop: 0.3, shake: 0.6, life: 1, glow: 1, weight: 900, impact: true });
-  } catch {}
-}
-
-// Tick solo : applique la réparation en cours (le partagé passe par les syncs).
-function stationRepairTick() {
-  const st = zoneStation;
-  if (!st?.repair) return;
-  if (!st.built) {
-    st.repair = null;
-    return;
-  }
-  const now = Date.now();
-  const rp = st.repair;
-  // Cumul des gains réels par pièce : une pièce soignée (même devenue
-  // pleine en cours de seconde) affiche quand même son montant fixe.
-  st._repairAcc ||= { t: now, hub: 0, slots: {} };
-  const acc = st._repairAcc;
-  if (now >= Number(rp.until) || 0) {
-    flushRepairFloats(st, acc, Number(rp.rateHub) || STATION_REPAIR_HUB, Number(rp.rateSlot) || STATION_REPAIR_SLOT);
-    st.repair = null;
-    st._repairAcc = null;
-    try { stationPersist(); } catch {}
-    try { stationRefresh(); } catch {}
-    return;
-  }
-  const last = Math.min(now, Math.max(Number(rp.lastTick) || now, Number(rp.startedAt) || now));
-  const dt = Math.max(0, now - last) / 1000;
-  const addHub = Math.max(0, (Number(rp.rateHub) || STATION_REPAIR_HUB)) * dt;
-  const addSlot = Math.max(0, (Number(rp.rateSlot) || STATION_REPAIR_SLOT)) * dt;
-  rp.lastTick = now;
-  if (addHub > 0) {
-    if (st.hub && Number(st.hubHp) > 0) {
-      const before = Number(st.hubHp);
-      st.hubHp = Math.min(Number(st.hubHpMax) || STATION_CORE_HP, before + addHub);
-      if (st.hubHp > before) acc.hub += st.hubHp - before;
-    }
-  }
-  if (addSlot > 0) {
-    for (const slot of st.slots || []) {
-      if (slot?.resourceId && Number(slot.hp) > 0) {
-        const before = Number(slot.hp);
-        slot.hp = Math.min(Number(slot.hpMax) || STATION_MODULE_HP, before + addSlot);
-        if (slot.hp > before && slot.id) acc.slots[slot.id] = (acc.slots[slot.id] || 0) + (slot.hp - before);
-      }
-    }
-  }
-  // Flottant fixe par pièce soignée (+85 000 cœur, +42 500 modules),
-  // membres du clan uniquement.
-  if (now - acc.t >= 1000) {
-    flushRepairFloats(st, acc, Number(rp.rateHub) || STATION_REPAIR_HUB, Number(rp.rateSlot) || STATION_REPAIR_SLOT);
-    acc.t = now;
-    acc.hub = 0;
-    acc.slots = {};
-    try { stationPersist(); } catch {}
-  }
-}
-
-// Déflecteur solo : même automate que le serveur (banque temps réel,
-// +3 s/s même éteint, bouclier d'un bloc dès le seuil si allumé).
-function stationDeflectTick() {
-  const st = zoneStation;
-  const d = st?.deflect;
-  if (!st?.built || !d || typeof d !== "object") return;
-  try {
-    const now = Date.now();
-    const dt = Math.max(0, now - Number(d.lastTick || now)) / 1000;
-    d.lastTick = now;
-    const off = Number(d.disabledUntil || 0) > now;
-    if (d.active === true) {
-      if (now >= Number(d.until) || 0) {
-        d.active = false;
-        d.until = 0;
-        try { stationPersist(); } catch {}
-        try { stationRefresh(); } catch {}
-      }
-      return;
-    }
-    if (dt > 0) {
-      d.bank = Math.max(0, Number(d.bank) || 0) + STATION_DEFLECT_RATE * dt;
-      if (now - (stationDeflectTick._persistAt || 0) > 60000) {
-        stationDeflectTick._persistAt = now;
-        try { stationPersist(); } catch {}
-      }
-    }
-    if (!off && Number(d.bank) >= STATION_DEFLECT_COST) {
-      d.active = true;
-      d.until = now + Math.round(Number(d.bank)) * 1000;
-      d.bank = 0;
-      try { stationPersist(); } catch {}
-      try { stationRefresh(); } catch {}
-    }
   } catch {}
 }
 
