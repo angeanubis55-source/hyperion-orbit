@@ -10942,23 +10942,29 @@ function renderBoosterWindow() {
       facets.push({ def, key, pct: (Number(Object.values(bonus)[0]) || 0) * Number(n), group: Number(n) });
     }
   } catch {}
-  // Bases du clan avec module DMG : une carte BASE <MAP> sans timer
-  // (+2 % dégâts chacune, cumulé dans le total).
+  // Bases du clan avec modules DMG/HON/EXP : une carte BASE <MAP> sans
+  // timer par famille (+2 % dégâts, +10 % honneur, +10 % exp, cumulés).
   try {
     for (const b of stationClanBaseBonuses()) {
-      facets.push({
-        def: {
-          id: `station-base-${String(b.map || "").toLowerCase()}`,
-          code: `BASE ${b.map}`,
-          name: `Base ${b.map} — module DMG`,
-          desc: "Module DMG de la base de combat : +2 % dégâts, cumulé aux boosters.",
-          iconMini: "/ASSETS/BATTLESTATION/MODULE_DMG.png",
-          effect: { dmgPct: Number(b.pct) || 0 },
-        },
-        key: "dmgPct",
-        pct: Number(b.pct) || 0,
-        base: String(b.map || "").toUpperCase(),
-      });
+      const pushBaseFacet = (key, pct, icon) => {
+        if (!(Number(pct) > 0)) return;
+        facets.push({
+          def: {
+            id: `station-base-${String(b.map || "").toLowerCase()}-${key}`,
+            code: `BASE ${b.map}`,
+            name: `Base ${b.map} — module ${key === "dmgPct" ? "DMG" : key === "honorPct" ? "HON" : "EXP"}`,
+            desc: `Module ${key === "dmgPct" ? "DMG" : key === "honorPct" ? "HON" : "EXP"} de la base de combat : +${pct} %, cumulé aux boosters.`,
+            iconMini: icon,
+            effect: { [key]: Number(pct) || 0 },
+          },
+          key,
+          pct: Number(pct) || 0,
+          base: String(b.map || "").toUpperCase(),
+        });
+      };
+      pushBaseFacet("dmgPct", b.dmg, "/ASSETS/BATTLESTATION/MODULE_DMG.png");
+      pushBaseFacet("honorPct", b.hon, "/ASSETS/BATTLESTATION/MODULE_HON.png");
+      pushBaseFacet("expPct", b.exp, "/ASSETS/BATTLESTATION/MODULE_EXP.png");
     }
   } catch {}
   const rowHtml = (facet) => {
@@ -10987,17 +10993,22 @@ function renderBoosterWindow() {
   };
   let html = "";
   for (const key of BOOSTER_FAMILY_ORDER) {
-    const rows = facets.filter((f) => f.key === key);
-    if (!rows.length) continue;
+    const rows = facets.filter((f) => f.key === key && !f.base);
+    const baseRows = facets.filter((f) => f.key === key && f.base);
+    if (!rows.length && !baseRows.length) continue;
     const color = BOOSTER_FAMILY_COLORS[key] || "#ffc85a";
     if (rows.length === 1) {
       const pct = rows[0].pct;
       html += `<div class="boosterSingle" data-family="${key}" style="--boost:${color}"><span class="singleRail"><span class="boosterPct">${pct}%</span><span class="singleBar" aria-hidden="true"></span></span>${rowHtml(rows[0])}</div>`;
-    } else {
+    } else if (rows.length > 1) {
       const total = Math.round(rows.reduce((sum, f) => sum + f.pct, 0));
       html += `<div class="boosterGroup" data-family="${key}" style="--boost:${color}"><div class="boosterGroupRail"><span class="boosterCombined">${total}%</span><span class="bracket" aria-hidden="true"></span></div><div class="boosterGroupCards">`;
       for (const f of rows) html += rowHtml(f);
       html += `</div></div>`;
+    }
+    // Bases : une ligne pleine par base (les unes sous les autres).
+    for (const b of baseRows) {
+      html += `<div class="boosterSingle" data-family="${key}" data-base="${b.base}" style="--boost:${color}"><span class="singleRail"><span class="boosterPct">+${b.pct}%</span><span class="singleBar" aria-hidden="true"></span></span>${rowHtml(b)}</div>`;
     }
   }
   list.innerHTML = html;
@@ -19943,10 +19954,15 @@ function playerBoosterMults() {
         }
       }
     } catch {}
-    // Bases du clan avec module DMG : +2 % dégâts par base (cumulé).
+    // Bases du clan avec modules DMG/HON/EXP : +2 % dégâts, +10 % honneur,
+    // +10 % exp par base (cumulé).
     try {
       const st = stationClanDmgMult();
       if (st !== 1) base.dmg = (Number(base.dmg) || 1) * st;
+      const stH = stationClanHonMult();
+      if (stH !== 1) base.honor = (Number(base.honor) || 1) * stH;
+      const stE = stationClanExpMult();
+      if (stE !== 1) base.exp = (Number(base.exp) || 1) * stE;
     } catch {}
     return base;
   } catch {
@@ -19954,8 +19970,8 @@ function playerBoosterMults() {
   }
 }
 
-// Bases construites tenues par le clan avec module DMG équipé :
-// [{ map, pct }], une entrée par base (+2 % dégâts chacune, cumulé).
+// Bases construites tenues par le clan avec modules DMG/HON/EXP équipés :
+// [{ map, dmg, hon, exp }] en % (+2 dégâts, +10 honneur, +10 exp par base).
 // TEMPS RÉEL : liste live du serveur (toutes maps, via les snapshots) ;
 // en solo (pas de serveur), la station locale uniquement.
 function stationClanBaseBonuses() {
@@ -19971,29 +19987,54 @@ function stationClanBaseBonuses() {
       try { live = getNetClanBases(); } catch {}
       if (!Array.isArray(live)) return out;
       for (const b of live) {
-        if (!b || typeof b !== "object" || b.dmg !== true) continue;
+        if (!b || typeof b !== "object") continue;
         if (String(b.clan || "").toUpperCase() !== myClan) continue;
-        out.push({ map: String(b.map || "").toUpperCase(), pct: 2 });
+        const entry = { map: String(b.map || "").toUpperCase(), dmg: 0, hon: 0, exp: 0 };
+        if (b.dmg === true) entry.dmg = 2;
+        if (b.hon === true) entry.hon = 10;
+        if (b.exp === true) entry.exp = 10;
+        if (!entry.dmg && !entry.hon && !entry.exp) continue;
+        out.push(entry);
       }
       return out;
     }
     const st = zoneStation;
     if (st && st.built && String(st.owner?.clan || "").toUpperCase() === myClan) {
-      const hasDmg = (st.slots || []).some((s) => s && s.resourceId === "station_module_dmg" && Number(s.hp) > 0 && !(stationCooldownLeft(s.cooldownUntil) > 0));
-      if (!hasDmg) return out;
-      const map = String(window.__CURRENT_MAP_ID__ || rules?.mapLabel || "").toUpperCase();
-      if (map) out.push({ map, pct: 2 });
+      const equipped = (rid) => (st.slots || []).some((s) => s && s.resourceId === rid && Number(s.hp) > 0 && !(stationCooldownLeft(s.cooldownUntil) > 0));
+      const entry = { map: "", dmg: 0, hon: 0, exp: 0 };
+      if (equipped("station_module_dmg")) entry.dmg = 2;
+      if (equipped("station_module_hon")) entry.hon = 10;
+      if (equipped("station_module_exp")) entry.exp = 10;
+      if (entry.dmg || entry.hon || entry.exp) {
+        entry.map = String(window.__CURRENT_MAP_ID__ || rules?.mapLabel || "").toUpperCase();
+        if (entry.map) out.push(entry);
+      }
     }
   } catch {}
   return out;
 }
 
-function stationClanDmgMult() {
+function stationClanBonusTotal(key) {
   try {
     let total = 0;
-    for (const b of stationClanBaseBonuses()) total += Number(b.pct) || 0;
-    return total > 0 ? 1 + total / 100 : 1;
-  } catch { return 1; }
+    for (const b of stationClanBaseBonuses()) total += Number(b[key]) || 0;
+    return total;
+  } catch { return 0; }
+}
+
+function stationClanDmgMult() {
+  const total = stationClanBonusTotal("dmg");
+  return total > 0 ? 1 + total / 100 : 1;
+}
+
+function stationClanHonMult() {
+  const total = stationClanBonusTotal("hon");
+  return total > 0 ? 1 + total / 100 : 1;
+}
+
+function stationClanExpMult() {
+  const total = stationClanBonusTotal("exp");
+  return total > 0 ? 1 + total / 100 : 1;
 }
 
 // Bonus passifs de l'arbre de pilotage (même convention que les boosters :

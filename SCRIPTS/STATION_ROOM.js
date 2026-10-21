@@ -88,7 +88,8 @@ export function stationShotReady(mapId, slot, now) {
 }
 
 // Vue temps réel pour tous les joueurs (toutes maps) : bases construites
-// avec module DMG opérationnel (posé, installation terminée, en vie).
+// avec modules DMG/HON/EXP opérationnels (posés, installation terminée,
+// en vie). Sert les bonus de clan (+2 % dégâts, +10 % honneur, +10 % exp).
 export function getClanBaseBonuses() {
   const out = [];
   try {
@@ -99,12 +100,17 @@ export function getClanBaseBonuses() {
       const inst = st.instances[st.built.clan];
       if (!inst) continue;
       const nowMs = Date.now();
-      const hasDmg = STATION_SLOT_IDS.some((sid) => {
+      const equipped = (rid) => STATION_SLOT_IDS.some((sid) => {
         const p = inst.slots[sid];
-        return p && p.resourceId === "station_module_dmg" && Number(p.hp) > 0 && Number(p.cooldownUntil) <= nowMs && !p.replace;
+        return p && p.resourceId === rid && Number(p.hp) > 0 && Number(p.cooldownUntil) <= nowMs && !p.replace;
       });
-      if (!hasDmg) continue;
-      out.push({ map: key, clan: String(st.built.clan || "").toUpperCase(), dmg: true });
+      const mods = {
+        dmg: equipped("station_module_dmg"),
+        hon: equipped("station_module_hon"),
+        exp: equipped("station_module_exp"),
+      };
+      if (!mods.dmg && !mods.hon && !mods.exp) continue;
+      out.push({ map: key, clan: String(st.built.clan || "").toUpperCase(), ...mods });
     }
   } catch {}
   return out;

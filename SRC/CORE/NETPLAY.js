@@ -1581,6 +1581,8 @@ export function ensureNetplayConnection() {
             map: String(b.map || "").toLowerCase().slice(0, 16),
             clan: String(b.clan || "").toUpperCase().slice(0, 5),
             dmg: b.dmg === true,
+            hon: b.hon === true,
+            exp: b.exp === true,
           });
         }
         netClanBases = clean;
