@@ -513,7 +513,7 @@ import { loadServerMaps, mapTransition, validArrival, reviveArrival, baseArrival
 import { getFactionHomeMap } from "../SRC/CORE/FACTIONS.js";
 import { handleSocialMessage, socialPeerGone, socialPeerChanged, socialDescribeGroup, socialGroupOf } from "./SOCIAL_ROOM.js";
 import { getAuctionSync, handleAuctionBid, pollAuctionCycle, auctionRoomStatus } from "./AUCTION_ROOM.js";
-import { getStationSync, handleStationInstall, handleStationUninstall, handleStationBuild, handleStationReplace, handleStationCancelReplace, handleStationRepair, handleStationDeflectToggle, handleStationHit, hasStationMap, getStationDefense, stationShotReady, stationShotFired, isStationFoe, applyStationPassiveHeal, getClanBaseBonuses } from "./STATION_ROOM.js";
+import { getStationSync, handleStationInstall, handleStationUninstall, handleStationBuild, handleStationReplace, handleStationCancelReplace, handleStationRepair, handleStationDeflectToggle, handleStationHit, hasStationMap, getStationDefense, stationShotReady, stationShotFired, isStationFoe, isStationRetaliation, applyStationPassiveHeal, getClanBaseBonuses } from "./STATION_ROOM.js";
 import { GAME_VERSION } from "../SRC/DATA/VERSION.js";
 import { COLLECTABLE_TYPES } from "../SRC/DATA/COLLECTABLES.js";
 import { HALLOWEEN_END, HALLOWEEN_START, HALLOWEEN_TIME_ZONE, isHalloweenBossVariant, isHalloweenEventActive } from "../NPC/NPC_HALLOWEEN.js";
@@ -4275,7 +4275,8 @@ function tickStationDefense(map, room, now) {
     const hitVictims = new Set();
     for (const mod of def.modules) {
       if (!stationShotReady(map, mod.slot, now)) continue;
-      // Ennemi le plus proche à portée : hostile, en vie, visible, non protégé.
+      // Ennemi le plus proche à portée : hostile OU bleu qui a tapé
+      // (riposte 30 s), en vie, visible, non protégé.
       let best = null, bestPid = "", bestD2 = mod.range * mod.range;
       for (const [pid, pentry] of room) {
         const s = pentry?.state;
@@ -4289,7 +4290,12 @@ function tickStationDefense(map, room, now) {
         let vClan = "";
         try { vClan = aid ? clanTagOfUser(aid) : ""; } catch {}
         const vFirm = String(acct?.faction || "").toLowerCase();
-        if (!stationFoeCached(def.clan, def.firm, vClan, vFirm)) continue;
+        let foe = false;
+        try { foe = stationFoeCached(def.clan, def.firm, vClan, vFirm); } catch {}
+        if (!foe) {
+          try { foe = isStationRetaliation(map, aid, now); } catch {}
+          if (!foe) continue;
+        }
         const dx = Number(s.x) - mod.x, dy = Number(s.y) - mod.y;
         const d2 = dx * dx + dy * dy;
         if (!(d2 <= bestD2)) continue;

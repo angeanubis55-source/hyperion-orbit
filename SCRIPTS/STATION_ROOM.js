@@ -241,6 +241,40 @@ let stations = {}; // mapId -> { instances: { CLAN: { hub, slots } }, built: nul
 // s'affichent sur la cible station verrouillée. Fenêtre ~2,5 s (pas de
 // consommation : un sync est construit par pair).
 const dmgFeeds = {}; // mapId -> [{ target, by, total, at }]
+// Riposte : un joueur non-hostile (bleu) qui tape la base devient cible
+// des défenses pendant 30 s (prolongé à chaque coup). userId -> until (ms).
+const stationAggro = {}; // mapId -> Map(userId -> until)
+export function isStationRetaliation(mapId, userId, nowMs) {
+  try {
+    const key = String(mapId || "").toLowerCase();
+    const m = stationAggro[key];
+    if (!m) return false;
+    const until = m.get(String(userId || ""));
+    if (!until) return false;
+    const now = Number(nowMs) || Date.now();
+    if (now >= Number(until)) {
+      try { m.delete(String(userId || "")); } catch {}
+      return false;
+    }
+    return true;
+  } catch { return false; }
+}
+function touchStationAggro(key, userId, nowMs) {
+  try {
+    const uid = String(userId || "");
+    if (!uid) return;
+    let m = stationAggro[key];
+    if (!m) { m = new Map(); stationAggro[key] = m; }
+    m.set(uid, Number(nowMs) + 30000);
+    if (m.size > 200) {
+      const now = Number(nowMs) || Date.now();
+      for (const [k, v] of m) {
+        if (now >= Number(v)) m.delete(k);
+        if (m.size <= 150) break;
+      }
+    }
+  } catch {}
+}
 
 function emptyInstance() {
   const slots = {};
@@ -1002,9 +1036,12 @@ export function handleStationHit({ map, target, dmg }, who) {
     feed.push({ target: id, by: String(who?.id || ""), total: Math.round(amount), at: Date.now() });
     while (feed.length > 24) feed.shift();
   } catch {}
+  // Riposte : même bleu, il a tapé -> défenses le ciblent 30 s.
+  try { touchStationAggro(key, who?.id, Date.now()); } catch {}
   if (destroyed) {
     if (id === "hub") {
       stations[key] = emptyStation();
+      try { delete stationAggro[key]; } catch {}
     } else {
       inst.slots[id] = null;
     }
