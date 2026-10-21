@@ -70,16 +70,16 @@ import {
   completeCurrentUserGalaxyGate,
   loseCurrentUserGalaxyGateLife,
   grantCurrentUserGalaxyEnergy,
-  spinCurrentUserGalaxyGate,
+  spinCurrentUserGalaxyGateOnline,
   saveCurrentUserGalaxyGateWave,
   recordCurrentUserGalaxyGateWaveKill,
   getCurrentUserGalaxyGateWaveKills,
-  deployCurrentUserGalaxyGate,
-  armCurrentUserGalaxyGateMultiplier,
-  craftCurrentUserRecipe,
-  refineCurrentUserOre,
-  sellCurrentUserOre,
-  exchangeCurrentUserPalladiumForEnergy,
+  deployCurrentUserGalaxyGateOnline,
+  armCurrentUserGalaxyGateMultiplierOnline,
+  craftCurrentUserRecipeOnline,
+  refineCurrentUserOreOnline,
+  sellCurrentUserOreOnline,
+  exchangeCurrentUserPalladiumForEnergyOnline,
   chargeShipUpgrade,
   chargeShipUpgradesAutomatically,
   setCurrentUserDroneFormation,
@@ -157,7 +157,7 @@ import { pushBounded } from "./BOUNDED_COLLECTION.js";
 import { createRadiationSystem } from "./RADIATION_SYSTEM.js";
 import { renderSpeedGuard } from "./SPEED_GUARD_UI.js";
 import { netServerMessageAge, netSimulationStep, netGameTimeMs, netSpeedGuardActive } from "./NETPLAY.js";
-  import { pushNetplayLocal, sendNetplayBackgroundState, netplayLocalUpdateDue, getNetplayRemotes, tickNetplayRemotes, getNetNpcs, getNetDeaths, drainNetGone, getNetBoxes, drainNetBoxInbox, drainNetDmgInbox, drainNetHealInbox, drainNetShotEvents, drainNetSkillInbox, drainNetSkillDenied, clearNetShots, clearNetplayGameplay, sendShotEvent, sendSkillUse, sendHealAlly, sendPvpHit, sendPvpPetHit, getNetSelf, setNetInstanceMode, clearNetBoxes, claimNetBox, requestBoxSync, netBoxSyncAgeMs, netBoxSnapshotReady, netInInstance, sendNetHit, netMyId, netNpcFresh, netplayStatus, sendPing, netLatencyMs, netPongAge, netHelloAckAge, netServerVersion, netConnected, forceNetReconnect, ensureNetplayConnection, drainNetPvpKillInbox, drainNetPvpPetKillInbox, takeNetNpcReward, sendPvpLoot, sendPvpLootTake, drainNetPvpLootInbox,
+  import { pushNetplayLocal, sendNetplayBackgroundState, netplayLocalUpdateDue, getNetplayRemotes, tickNetplayRemotes, getNetNpcs, getNetDeaths, drainNetGone, getNetBoxes, drainNetBoxInbox, drainNetDmgInbox, drainNetHealInbox, drainNetShotEvents, drainNetSkillInbox, drainNetSkillDenied, clearNetShots, clearNetplayGameplay, sendShotEvent, sendSkillUse, sendHealAlly, sendPvpHit, sendPvpPetHit, getNetSelf, setNetInstanceMode, clearNetBoxes, claimNetBox, requestBoxSync, netBoxSyncAgeMs, netBoxSnapshotReady, netInInstance, sendNetHit, netMyId, netplayStatus, sendPing, netLatencyMs, netPongAge, netHelloAckAge, netServerVersion, netConnected, forceNetReconnect, ensureNetplayConnection, drainNetPvpKillInbox, drainNetPvpPetKillInbox, takeNetNpcReward, sendPvpLoot, sendPvpLootTake, drainNetPvpLootInbox,
   drainNetPvpLootTakeInbox, drainNetAdminKickInbox, drainNetAdminBoomInbox, drainNetBannedInbox, drainNetCheatInbox, netDisconnect, drainNetSunInbox, drainNetSundayInbox, drainNetDecloakInbox, drainNetIemHitInbox, drainNetStationDmgInbox,
   getNetGroup, getNetLowRaid, takeNetLowRaidReward, setNetNpcRewardHandler, getNetServerRestartAt, consumeNetServerRestart, getMyClanTag, getClanRelation, setMyClanTag, setNetDiplo, netIsAuthed, sendStationInstall, sendStationUninstall, sendStationBuild, sendStationReplace, sendStationCancelReplace, sendStationRepair, requestStationSync, sendStationHit, requestStarJumpArrival, requestHangarArrival, finishHangarArrival } from "./NETPLAY.js";
 import {
@@ -1523,7 +1523,7 @@ const BATTLE_REPAIR_2_ID = "ability_tech_battle_repair_2";
 const BATTLE_REPAIR_DURATION = 15;
 const BATTLE_REPAIR_2_DURATION = 10;
 function techInLocalInstance() {
-  try { return typeof netInInstance === "function" ? netInInstance() : rules?.mode === "gate"; } catch { return false; }
+  return isPrivateInstance();
 }
 function showTechLocalHeal(amount, shield = false) {
   try {
@@ -2459,7 +2459,7 @@ function cancelSent() {
 }
 function sentShieldTick() {
   if (player.dead) return;
-  if (netplayNpcActive()) {
+  if (isSharedZone()) {
     shieldShimmerT = 0;
     ensureShieldShimmerLoaded();
     SFX.play("shieldShimmer");
@@ -7097,7 +7097,7 @@ function reallocRecipients() {
   return list;
 }
 function reallocDistribute() {
-  if (netplayNpcActive()) return;
+  if (isSharedZone()) return;
   const pool = Math.max(0, Math.floor(Number(player.reallocPool || 0)));
   player.reallocPool = 0;
   if (pool <= 0) {
@@ -7188,7 +7188,7 @@ function healHammerPodTick(plus) {
   const pr = hammerPodRadius(plus);
   const r2 = pr * pr;
   const amt = plus ? HAMMER_PLUS_POD_HEAL : HAMMER_POD_HEAL;
-  if (!netplayNpcActive() && !player.dead && (player.tempestBackupT || 0) <= 0 && px != null && py != null && dist2(player.x, player.y, px, py) <= r2) {
+  if (!isSharedZone() && !player.dead && (player.tempestBackupT || 0) <= 0 && px != null && py != null && dist2(player.x, player.y, px, py) <= r2) {
     const old = Number(player.hp || 0);
     player.hp = Math.min(Number(player.hpMax || 0), old + amt);
     const gain = Math.round(player.hp - old);
@@ -11515,13 +11515,13 @@ function botApplyConfig(want) {
 }
 
 // Vend tous les minerais vendables au comptoir. Retourne les crédits gagnés.
-function botSellOres() {
+async function botSellOres() {
   let total = 0;
   try {
     for (const id of Object.keys(ORE_SELL_PRICES)) {
       const owned = Math.floor(Number(account.user?.inventory?.resources?.[id]) || 0);
       if (owned <= 0) continue;
-      const out = sellCurrentUserOre(id, 0);
+      const out = await sellCurrentUserOreOnline(id, false);
       if (out?.ok) total += Math.floor(Number(out.gained) || 0);
     }
     if (total > 0) {
@@ -13432,7 +13432,7 @@ function botKiteCombatMove(npc, d, standD, dt) {
 // spins sur l'ensemble Alpha + Beta + Gamma (une seule roue). Le placement
 // sur la map est automatique (voir GALAXY_GATES.js) : la 2e GG reste en
 // stock 1/1 tant qu'un portail est déjà posé.
-function botTickGalaxySpin(dt) {
+async function botTickGalaxySpin(dt) {
   if (!Bot.ggSpin || Bot.module !== "galaxy" || rules?.mode === "gate") return false;
   Bot.ggSpinT -= dt;
   Bot.ggUiT -= dt;
@@ -13450,7 +13450,7 @@ function botTickGalaxySpin(dt) {
   // Multiplicateur auto : on l'arme dès qu'il est disponible (x2+).
   if (Bot.ggAutoMult && ggEnsMult > 1 && ggEnsArmed !== true) {
     try {
-      const armed = armCurrentUserGalaxyGateMultiplier(gateId, true);
+      const armed = await armCurrentUserGalaxyGateMultiplierOnline(gateId, true);
       if (armed?.ok) {
         account.user = armed.user;
         loadAccountUser();
@@ -13464,7 +13464,7 @@ function botTickGalaxySpin(dt) {
   if (built >= GALAXY_GATE_BUILD_LIMIT) return false;
   const spins = Math.max(1, Math.min(100, Math.floor(Number(Bot.ggSpins) || 1)));
   let result = null;
-  try { result = spinCurrentUserGalaxyGate(gateId, spins); } catch { result = null; }
+  try { result = await spinCurrentUserGalaxyGateOnline(gateId, spins); } catch { result = null; }
   if (!result) return false;
   if (!result.ok) {
     Bot.status = "Galaxy Gates";
@@ -13500,7 +13500,7 @@ function botTickGalaxySpin(dt) {
   for (const id of ["alpha", "beta", "gamma"]) {
     if (Number(result.state?.built?.[id] || 0) >= GALAXY_GATE_BUILD_LIMIT && result.state?.deployed?.[id] !== true && result.state?.active !== id) {
       try {
-        const dep = deployCurrentUserGalaxyGate(id);
+        const dep = await deployCurrentUserGalaxyGateOnline(id);
         if (dep?.ok) {
           account.user = dep.user;
           loadAccountUser();
@@ -13541,13 +13541,13 @@ function botTickGalaxyEnter(dt) {
   // Sécurité legacy : pose un stock restant non déployé (migration auto normale).
   if (Number(st?.built?.[gateId] || 0) >= GALAXY_GATE_BUILD_LIMIT && st?.deployed?.[gateId] !== true && st?.active !== gateId) {
     try {
-      const dep = deployCurrentUserGalaxyGate(gateId);
-      if (dep?.ok) {
+      deployCurrentUserGalaxyGateOnline(gateId).then(dep => {
+        if (!dep?.ok) return;
         account.user = dep.user;
         loadAccountUser();
         renderGalaxyGateWindow(`${GALAXY_GATE_DEFINITIONS[gateId].name} envoyée sur la map (bot).`);
         botLog(`GG ${gateId.toUpperCase()} déployée — direction le portail`);
-      }
+      }).catch(() => {});
     } catch {}
   }
   const user = account.user || getCurrentUserFull();
@@ -13966,9 +13966,10 @@ function tickBot(dt) {
     } else {
       Bot.travelOverride = null;
       if (isPlayerNearTradeModule(trade.module)) {
-        const gained = botSellOres();
         Bot.selling = false;
-        botLog(gained > 0 ? `Vente comptoir : +${formatInteger(gained)} crédits — reprise` : "Soute : rien à vendre — reprise");
+        botSellOres().then((gained) => {
+          botLog(gained > 0 ? `Vente comptoir : +${formatInteger(gained)} crédits — reprise` : "Soute : rien à vendre — reprise");
+        }).catch(() => botLog("Soute : vente serveur refusée — reprise"));
       } else {
         Bot.status = "Vente — comptoir";
         Bot.target = `Comptoir (${Math.round(Math.sqrt(trade.d2))}m)`;
@@ -14102,7 +14103,7 @@ function tickBot(dt) {
   if (Bot.module === "galaxy") {
     if (!gateMode) {
       // Hors gate : spinner auto puis entrée auto dans la gate construite.
-      try { botTickGalaxySpin(dt); } catch {}
+      botTickGalaxySpin(dt).catch(() => {});
       if (botTickGalaxyEnter(dt)) return;
       Bot.status = "Galaxy Gates";
       Bot.target = Bot.ggSpin ? "Spinner auto… (aucune gate prête)" : "Active le spinner auto (onglet Galaxy)";
@@ -15578,7 +15579,7 @@ ui.craftingRecipes?.addEventListener("wheel", event => {
   strip.scrollLeft += delta;
 }, { passive: false });
 ui.craftingQuantity?.addEventListener("change", () => renderCraftingWindow());
-ui.craftingBuildBtn?.addEventListener("click", () => {
+ui.craftingBuildBtn?.addEventListener("click", async () => {
   if (!CRAFTING_ENABLED) return renderCraftingWindow("Assemblage désactivé.");
   const recipe = CRAFTING_RECIPES.find(entry => entry.id === selectedCraftingRecipeId);
   if (!recipe) return;
@@ -15589,7 +15590,7 @@ ui.craftingBuildBtn?.addEventListener("click", () => {
   const canAfford = canAffordCraftingRecipe(user, recipe, quantity);
   if (!canAfford) return renderCraftingWindow("Ressources insuffisantes.");
   // Craft instantané : pas de timer, pas de progress bar.
-  const result = craftCurrentUserRecipe(recipe.id, quantity);
+  const result = await craftCurrentUserRecipeOnline(recipe.id, quantity);
   if (!result.ok) return renderCraftingWindow(result.error);
   account.user = result.user;
   try { advanceQuestProgress("craft", String(recipe.id), Math.max(1, Math.floor(Number(quantity) || 1))); } catch {}
@@ -15613,6 +15614,7 @@ ui.craftingBuildBtn?.addEventListener("click", () => {
 const refineryEquipmentPrefs = { ores: {}, cursors: {} };
 const REFINERY_AUTO_INTERVAL_SEC = 3;
 let refineryAutoT = 0;
+let refineryServerBusy = false;
 
 function refineryEquipmentPrefsKey() {
   // Le compte du moteur est encore vide pendant le montage des fenetres.
@@ -15641,16 +15643,19 @@ function refineryChargeEquipment({ deferSave = false, applyStats = true } = {}) 
   return result.consumed;
 }
 
-function refineryRefineAll({ refineOres = true } = {}) {
+async function refineryRefineAll({ refineOres = true } = {}) {
+  if (refineryServerBusy) return 0;
   if (!account.user) loadAccountUser();
   if (!account.user) return 0;
+  refineryServerBusy = true;
+  try {
   // Passes répétées : une recette peut débloquer la suivante (ex : Xenomit -> Promerium).
   let total = 0;
   let charged = refineryChargeEquipment({ deferSave: true, applyStats: false });
   for (let pass = 0; refineOres && pass < 10; pass++) {
     let progress = 0;
     for (const recipe of REFINERY_RECIPES) {
-      const result = refineCurrentUserOre(recipe.id, Infinity, { user: account.user, deferSave: true });
+      const result = await refineCurrentUserOreOnline(recipe.id, Infinity);
       if (result.ok) {
         account.user = result.user;
         progress += result.gained;
@@ -15667,14 +15672,17 @@ function refineryRefineAll({ refineOres = true } = {}) {
   if (total > 0 || charged > 0) saveUser(account.user, { source: "progress" });
   if (charged > 0) applyCurrentConfigStats(false, null, true);
   return total;
+  } finally {
+    refineryServerBusy = false;
+  }
 }
 
-function maybeRefineryAuto() {
+async function maybeRefineryAuto() {
   if (!ui.refineryAuto?.checked && !ui.refineryAutoUpgrades?.checked) return 0;
   return refineryRefineAll({ refineOres: ui.refineryAuto?.checked === true });
 }
 
-function tickRefineryAuto(dt) {
+async function tickRefineryAuto(dt) {
   if (!started || (!ui.refineryAuto?.checked && !ui.refineryAutoUpgrades?.checked)) {
     refineryAutoT = 0;
     return;
@@ -15682,7 +15690,7 @@ function tickRefineryAuto(dt) {
   refineryAutoT += Math.max(0, Number(dt) || 0);
   if (refineryAutoT < REFINERY_AUTO_INTERVAL_SEC) return;
   refineryAutoT %= REFINERY_AUTO_INTERVAL_SEC;
-  maybeRefineryAuto();
+  await maybeRefineryAuto();
 }
 
 function renderRefineryWindow(message = "") {
@@ -15773,53 +15781,53 @@ queueMicrotask(() => { try {
     refineryEquipmentPrefs.cursors = stored.cursors && typeof stored.cursors === "object" ? stored.cursors : {};
   }
 } catch {} });
-ui.refineryAutoUpgrades?.addEventListener("change", () => {
+ui.refineryAutoUpgrades?.addEventListener("change", async () => {
   saveRefineryEquipmentPrefs();
-  if (ui.refineryAutoUpgrades.checked) { saveProgressNow(); maybeRefineryAuto(); }
+  if (ui.refineryAutoUpgrades.checked) { saveProgressNow(); await maybeRefineryAuto(); }
   renderRefineryWindow();
   if (shouldRefreshWindow("boxVitals")) updateResourceHud(ui, player, currentCargo());
 });
-ui.refineryUpgrades?.addEventListener("change", event => {
+ui.refineryUpgrades?.addEventListener("change", async event => {
   const select = event.target.closest("[data-upgrade-auto-ore]");
   if (!select) return;
   const slot = select.dataset.upgradeAutoOre, ore = select.value;
   if (!UPGRADE_SLOT_ORES[slot] || (ore && !UPGRADE_SLOT_ORES[slot].includes(ore))) return;
   refineryEquipmentPrefs.ores[slot] = ore;
   saveRefineryEquipmentPrefs();
-  if (ui.refineryAutoUpgrades?.checked) { saveProgressNow(); maybeRefineryAuto(); }
+  if (ui.refineryAutoUpgrades?.checked) { saveProgressNow(); await maybeRefineryAuto(); }
   renderRefineryWindow();
   if (shouldRefreshWindow("boxVitals")) updateResourceHud(ui, player, currentCargo());
 });
-ui.refineryAuto?.addEventListener("change", () => {
+ui.refineryAuto?.addEventListener("change", async () => {
   try { localStorage.setItem("orbit_refinery_auto", ui.refineryAuto?.checked ? "1" : "0"); } catch {}
   if (ui.refineryAuto?.checked) {
     saveProgressNow();
-    refineryRefineAll();
+    await refineryRefineAll();
     renderRefineryWindow();
   } else {
     renderRefineryWindow();
   }
 });
 
-ui.refineryAllBtn?.addEventListener("click", () => {
+ui.refineryAllBtn?.addEventListener("click", async () => {
   saveProgressNow();
-  refineryRefineAll();
+  await refineryRefineAll();
   renderRefineryWindow();
   try { if (ui.oreTradeWindow && ui.oreTradeWindow.style.display !== "none") renderOreTradeWindow(); } catch {}
   window.dispatchEvent(new CustomEvent("orbit:profile-progress"));
 });
 
-ui.refineryRecipes?.addEventListener("click", event => {
+ui.refineryRecipes?.addEventListener("click", async event => {
   const button = event.target.closest("[data-refinery-build]");
   if (!button) return;
   saveProgressNow();
-  const result = refineCurrentUserOre(button.dataset.refineryBuild, Infinity);
+  const result = await refineCurrentUserOreOnline(button.dataset.refineryBuild, Infinity);
   if (!result.ok) {
     account.user = result.user || account.user;
     return renderRefineryWindow(result.error);
   }
   account.user = result.user;
-  const autoTotal = maybeRefineryAuto();
+  const autoTotal = await maybeRefineryAuto();
   renderRefineryWindow(`${formatInteger(result.gained + autoTotal)} ${getResourceName(result.recipe.output.id, result.gained + autoTotal)} raffiné(s).`);
   try { if (ui.oreTradeWindow && ui.oreTradeWindow.style.display !== "none") renderOreTradeWindow(); } catch {}
   window.dispatchEvent(new CustomEvent("orbit:profile-progress"));
@@ -16381,21 +16389,21 @@ ui.ggSpinCount?.addEventListener("change", () => renderGalaxyGateWindow());
   }
 }
 
-ui.ggMultiplierBtn?.addEventListener("click", () => {
+ui.ggMultiplierBtn?.addEventListener("click", async () => {
   const state = getCurrentUserFull()?.galaxyGates;
   const group = GALAXY_GATE_DEFINITIONS[selectedGalaxyGateId]?.group || selectedGalaxyGateId || "ensemble";
   const armed = state?.multiplierArmed?.[group] === true;
-  const result = armCurrentUserGalaxyGateMultiplier(selectedGalaxyGateId, !armed);
+  const result = await armCurrentUserGalaxyGateMultiplierOnline(selectedGalaxyGateId, !armed);
   if (!result.ok) return renderGalaxyGateWindow(result.error);
   account.user = result.user;
   renderGalaxyGateWindow(armed ? "Multiplicateur désactivé." : "Multiplicateur activé pour le prochain spin.");
 });
 
-ui.galaxyGateWindow?.addEventListener("click", event => {
+ui.galaxyGateWindow?.addEventListener("click", async event => {
   const button = event.target.closest("[data-gg-spin]");
   if (!button) return;
   saveProgressNow();
-  const result = spinCurrentUserGalaxyGate(selectedGalaxyGateId, Number(ui.ggSpinCount?.value || 1));
+  const result = await spinCurrentUserGalaxyGateOnline(selectedGalaxyGateId, Number(ui.ggSpinCount?.value || 1));
   if (!result.ok) {
     renderGalaxyGateWindow(result.error);
     return;
@@ -19010,7 +19018,7 @@ function pickEnemyAtScreen(sx, sy) {
   }
 
   // Multi PvP : verrouiller le vaisseau d'un autre joueur (taille coque).
-  if (!best && netplayNpcActive()) {
+  if (!best && isSharedZone()) {
     try {
       for (const e of netPlayerProxies.values()) {
         if (!e || !(e.hp > 0)) continue;
@@ -19041,7 +19049,7 @@ function pickEnemyAtScreen(sx, sy) {
 
   // Multi PvP : verrouiller le PET d'un autre joueur (voir ses PV,
   // lui tirer dessus). Apres le vaisseau : ne vole pas le lock.
-  if (!best && netplayNpcActive()) {
+  if (!best && isSharedZone()) {
     try {
       const hw = PET_DRAW_W / 2, hh = PET_DRAW_H / 2;
       for (const e of netPetProxies.values()) {
@@ -28710,7 +28718,7 @@ function petLockValid() {
 
 function refreshCubikonFromMinionHit(minion) {
   if (!minion?.masterId) return;
-  if (minion._netUid && netplayNpcActive()) return;
+  if (minion._netUid && isSharedZone()) return;
   const cub = enemies.find(e => e.id === minion.masterId && e.hp > 0 && (e.type === "npc_Cubikon" || e.cubikonMinions));
   if (!cub) return;
   // ✅ le type de minion dépend du Cubikon (Protegit en 1-6, icy vert en Awakened).
@@ -28808,7 +28816,7 @@ function spawnMindfireAttends(mind, count = 2) {
 function checkMindfireWaves(e) {
   if (!e || String(e.type || "") !== "npc_Mindfire_Behemoth" || !(e.hp > 0)) return;
   // Multi : vague pilotée par le serveur (snapshot), jamais en local.
-  if (e._netUid && netplayNpcActive()) return;
+  if (e._netUid && isSharedZone()) return;
   // Brouillé : pas de spawn (comme Cubikon / onKill).
   if (isEntityJammed(e)) return;
   const max = Math.max(0, Number(e.hpMax) || 0) + Math.max(0, Number(e.shMax) || 0);
@@ -28846,7 +28854,7 @@ function checkInvokeRelease(e) {
   if (!e || String(e.type || "") !== "npc_Invoke_XVI") return;
   if (e._invokeReleased === true) return;
   // Multi : vague pilotée par le serveur (snapshot), jamais en local.
-  if (e._netUid && netplayNpcActive()) return;
+  if (e._netUid && isSharedZone()) return;
   // Brouillé : pas de spawn (comme Cubikon / onKill).
   if (isEntityJammed(e)) return;
   e._invokeReleased = true;
@@ -28877,7 +28885,7 @@ function tickStrokelightBarrage(dt) {
     const sRange = Number(e.shootRange) || 700;
     if (dist2(e.x, e.y, player.x, player.y) > sRange * sRange) continue;
     // Multi : vague pilotée par le serveur (snapshot), jamais en local.
-    if (e._netUid && netplayNpcActive()) continue;
+    if (e._netUid && isSharedZone()) continue;
     e._barrageT = Math.max(0, Number(e._barrageT) || 0) - dt;
     if (e._barrageT > 0) continue;
     e._barrageT = 5;
@@ -29049,7 +29057,7 @@ function drainShieldFromEnemy(e, amount, recipient = player, transferPct) {
 
   // Multi PvP : drain sur un joueur — prevision locale + gain conserve,
   // serveur tranche (bouclier seul).
-  if (e._netPlayer && netplayNpcActive()) {    const stolen = Math.min(Math.max(0, Number(e.sh) || 0), raw);
+  if (e._netPlayer && isSharedZone()) {    const stolen = Math.min(Math.max(0, Number(e.sh) || 0), raw);
     if (stolen > 0) {
       try { sendPvpHit({ target: e._netPlayer, kind: "sab", dmg: raw }); } catch {}
       const gain = stolen * (Number(transferPct) >= 0 ? Number(transferPct) : SAB50.transferPct);
@@ -29071,7 +29079,7 @@ function drainShieldFromEnemy(e, amount, recipient = player, transferPct) {
 
   // Multi PvP : drain sur le PET d'un joueur — prevision locale + gain,
   // serveur tranche (bouclier seul).
-  if (e._netPet && netplayNpcActive()) {
+  if (e._netPet && isSharedZone()) {
     const stolen = Math.min(Math.max(0, Number(e.sh) || 0), raw);
     if (stolen > 0) {
       try { sendPvpPetHit({ target: e._netPet, kind: "sab", dmg: raw }); } catch {}
@@ -29125,7 +29133,7 @@ function drainShieldFromEnemy(e, amount, recipient = player, transferPct) {
   if (e.type === "npc_Cubikon" || e.cubikonMinions) {
     e._sinceHit = 0;
 
-    if (!(e._netUid && netplayNpcActive()) && e._resetting) {
+    if (!(e._netUid && isSharedZone()) && e._resetting) {
       e._resetting = false;
       const sabMinionType = String(e.cubikonMinions?.type || "npc_Protegit");
       for (const m of enemies) {
@@ -29137,7 +29145,7 @@ function drainShieldFromEnemy(e, amount, recipient = player, transferPct) {
       }
     }
 
-    if (!e._spawnedOnce && !isEntityJammed(e) && !(e._netUid && netplayNpcActive())) {
+    if (!e._spawnedOnce && !isEntityJammed(e) && !(e._netUid && isSharedZone())) {
       e._spawnedOnce = true;
 
       e._animPhase = "delay";
@@ -29262,7 +29270,7 @@ function damageEnemy(e, dmg, shieldPenetration, crit, opts = {}) {
 
   // Multi PvP : degats sur un joueur — prediction locale, le serveur tranche.
   // (recompenses/effets speciaux NPC ignores : la cible n'est pas un NPC).
-  if (e._netPlayer && netplayNpcActive()) {
+  if (e._netPlayer && isSharedZone()) {
     const amount = Math.max(0, Math.round(Number(dmg) || 0));
     try {
       sendPvpHit({ target: e._netPlayer, dmg: amount, pen: shieldPenetration, critChance: crit?.chance, critMult: crit?.mult,
@@ -29274,7 +29282,7 @@ function damageEnemy(e, dmg, shieldPenetration, crit, opts = {}) {
 
   // Multi PvP : degats sur le PET d'un joueur — prediction locale (chiffres),
   // le serveur tranche. Pas de recompenses ni d'effets NPC.
-  if (e._netPet && netplayNpcActive()) {
+  if (e._netPet && isSharedZone()) {
     const amount = Math.max(0, Math.round(Number(dmg) || 0));
     try {
       sendPvpPetHit({ target: e._netPet, dmg: amount, pen: shieldPenetration, critChance: crit?.chance, critMult: crit?.mult, rocket: opts.rocket });
@@ -29313,7 +29321,7 @@ function damageEnemy(e, dmg, shieldPenetration, crit, opts = {}) {
   // Lien de bouclier (Berserker, officiel) : les dégâts infligés AU BOUCLIER
   // de la cible liée sont encaissés par nous à la place (dégâts classiques :
   // notre distribution + blocage regen, mort possible). La cible ne perd rien.
-  if (!(e._netUid && netplayNpcActive()) && (player.shlT || 0) > 0 && player.linkTarget === e && result.sh > 0 && !player.dead && opts.fromJpc !== true) {
+  if (!(e._netUid && isSharedZone()) && (player.shlT || 0) > 0 && player.linkTarget === e && result.sh > 0 && !player.dead && opts.fromJpc !== true) {
     const shared = Math.round(result.sh);
     e.sh = Math.min(Number(e.shMax || 0), Number(e.sh || 0) + shared);
     result.sh = 0;
@@ -29378,7 +29386,7 @@ function damageEnemy(e, dmg, shieldPenetration, crit, opts = {}) {
   if (e.type === "npc_Cubikon" || e.cubikonMinions) {
     e._sinceHit = 0;
 
-    if (!(e._netUid && netplayNpcActive()) && e._resetting) {
+    if (!(e._netUid && isSharedZone()) && e._resetting) {
       e._resetting = false;
       const dmgMinionType = String(e.cubikonMinions?.type || "npc_Protegit");
       for (const m of enemies) {
@@ -29390,7 +29398,7 @@ function damageEnemy(e, dmg, shieldPenetration, crit, opts = {}) {
       }
     }
 
-   if (!e._spawnedOnce && (shD + hpD) > 0 && !isEntityJammed(e) && !(e._netUid && netplayNpcActive())) {
+   if (!e._spawnedOnce && (shD + hpD) > 0 && !isEntityJammed(e) && !(e._netUid && isSharedZone())) {
   e._spawnedOnce = true;
 
   e._animPhase = "delay";
@@ -30678,7 +30686,7 @@ if ((e.type === "npc_Cubikon" || e.cubikonMinions) && e.cubikonMinions?.fleeOnDe
     // cloture : le bonus final et le Cubikon forment une seule transaction.
     // Multi : NPC partage — les renforts onKill viennent du serveur
     // (snapshot, visibles par tous). Pas de doublons locaux.
-    if (e._onKill && !(e._netUid && netplayNpcActive())) {
+    if (e._onKill && !(e._netUid && isSharedZone())) {
       const onKillAction = e._onKill;
       e._onKill = null;
       const completesGate = !!onKillAction?.tp?.factionBase || !!onKillAction?.completeSpecialGate;
@@ -33208,7 +33216,7 @@ function netPvpBlocked(t) {
     } catch {}
     return true;
   }
-  if ((!t._netPlayer && !t._netPet) || !netplayNpcActive()) return false;
+  if ((!t._netPlayer && !t._netPet) || !isSharedZone()) return false;
   // Seule la cible compte : protégée -> intouchable. Attaquant protégé
   // seul -> autorisé (il perd sa ZNA en attaquant, mécanique existante).
   let foeSafe = false;
@@ -33314,7 +33322,7 @@ function syncNetPlayers(dt = 0.016) {
   try { tickNetplayRemotes(dt); } catch {}
   const seen = new Set();
   const petSeen = new Set();
-  if (remotes && netplayNpcActive()) {
+  if (remotes && isSharedZone()) {
     for (const [rid, r] of remotes) {
       if (!r) continue;
       try { warmNetplayRemoteAssets(r); } catch {}
@@ -33431,7 +33439,7 @@ try {
     probe: () => {
       try {
         const list = [...netPlayerProxies.values()].map((e) => ({ hp: e.hp, hpMax: e.hpMax, x: Math.round(e.x), y: Math.round(e.y) }));
-        return { active: netplayNpcActive(), me: { x: Math.round(player.x), y: Math.round(player.y) }, proxies: list };
+        return { active: isSharedZone(), me: { x: Math.round(player.x), y: Math.round(player.y) }, proxies: list };
       } catch (err) { return { err: String(err && err.message || err) }; }
     },
     selfTest: () => {
@@ -33442,7 +33450,7 @@ try {
         const s = worldToScreenPoint(e.x, e.y, camera, innerWidth, innerHeight);
         let found = null;
         try { found = pickEnemyAtScreen(s.x, s.y); } catch (err) { return { result: "pick-threw", err: String(err && err.message || err) }; }
-        if (!found) return { result: "pick-null", screen: { x: Math.round(s.x), y: Math.round(s.y) }, proxyHp: e.hp, active: netplayNpcActive() };
+        if (!found) return { result: "pick-null", screen: { x: Math.round(s.x), y: Math.round(s.y) }, proxyHp: e.hp, active: isSharedZone() };
         if (found._netPlayer) return { result: "OK-pick-works" };
         return { result: `found-npc-instead:${found.type}` };
       } catch (err) { return { result: "err", err: String(err && err.message || err) }; }
@@ -33485,7 +33493,7 @@ try {
 // Multi : reconcilie les entites locales avec les snapshots NPC serveur.
 // - apparition / positions (interpolees) / HP / angle depuis le serveur ;
 // - mort + killer depuis le serveur (processDeaths tranche les recompenses) ;
-// - repli solo : purge les entites reseau, le spawner local reprend.
+// - hors zone (GG) : purge les entites réseau et laisse l'instance privée.
 function syncNetNpcs(dt) {
   // Reboot serveur (run changé, consommé via welcome) : purge déterministe
   // des entités réseau. Le seq serveur repart de zéro : un cadavre conservé
@@ -33499,7 +33507,7 @@ function syncNetNpcs(dt) {
   } catch {}
   let remotes = null;
   try { remotes = getNetNpcs(); } catch { remotes = null; }
-  if (!netplayNpcActive() || !remotes) {
+  if (!isSharedZone() || !remotes) {
     let purged = false;
     for (let i = enemies.length - 1; i >= 0; i--) {
       if (enemies[i]?._netUid) { enemies.splice(i, 1); purged = true; }
@@ -33988,7 +33996,7 @@ function purgeHalloweenNormals() {
 
 // Compteur de l'event : 50 normaux -> 3 boss -> retour aux normaux.
 function onHalloweenNpcKilled(e) {
-  if (netplayNpcActive()) return; // multi : le serveur est autorité
+  if (isSharedZone()) return; // multi : le serveur est autorité
   if (!isZoneMap) return;
   const role = halloweenRoleOf(e?.type);
   if (!role) return;
@@ -34049,198 +34057,9 @@ function syncHalloweenLive(curMap) {
   }
 }
 
-function zoneController(dt) {
-  if (!started || player.dead) return;
-  if (!isZoneMap) return;
-  // Multi : le serveur possede les NPC (spawn, HP, mort). Le local ne touche a rien.
-  if (netplayNpcActive()) return;
-
-  const curMap = currentMapId();
-
-  // Event Halloween en direct : pas besoin de changer de map.
-  try { syncHalloweenLive(curMap); } catch {}
-
-for (let i = collectables.length - 1; i >= 0; i--) {
-  if (collectables[i]?.map && String(collectables[i].map) !== curMap) {
-    collectables.splice(i, 1);
-  }
+function zoneController() {
+  // Les zones partagees sont entierement simulees par MULTI_SERVER.
 }
-
-  for (const camp of zoneCamps) {
-    // Event Halloween : chaque camp ne spawne que dans sa phase (normaux
-    // puis boss). Hors event : plus aucun respawn.
-    if (camp?.event === "halloween") {
-      if (!isHalloweenMapActive(curMap) || halloweenCampBlocked(camp, getHalloweenState(curMap))) continue;
-    }
-    camp.t -= dt;
-    if (camp.t > 0) continue;
-
-    let alive = 0;
-    for (const e of enemies) {
-      if (!e || e.hp <= 0) continue;
-      if (e.homeCampId === camp.id) alive++;
-    }
-
-    if (alive < (camp.maxAlive || 0)) {
-      // Univers persistant : un slot mort avant son respawnAt ne respawn pas,
-      // meme si le joueur change de map / refresh / meurt. L'horloge decide.
-      // Mort -> respawn RANDOM instant (sauf Cubikon/camps fixes : au camp).
-      // Vivant connu -> position + HP persistés (retrouvé où laissé).
-      const uid = slotUid(curMap, camp.id);
-      let slot = null;
-      try {
-        slot = getSlot(universe, curMap, uid);
-      } catch { slot = null; }
-      const isCubikon = camp.type === "npc_Cubikon";
-      // Camps fixes (boss BL...) : spawn/respawn au camp, comme le Cubikon.
-      const isFixedCamp = isCubikon || camp.fixed === true;
-      if (slot && slot.alive === false) {
-        if (!worldClock.isDue(slot.respawnAtMs)) {
-          camp.t = 1;
-          continue;
-        }
-      }
-      const scatter = !isFixedCamp && (!slot || slot.scattered === false);
-      let x = 0, y = 0;
-
-      if (isFixedCamp) {
-  x = camp.x;
-  y = camp.y;
-} else if (!scatter && slot && slot.alive !== false && slot.updatedAtMs > 0 && Number.isFinite(Number(slot.x))) {
-  // NPC connu blesse/deplace : on le retrouve la ou on l'a laisse,
-  // pas a l'autre bout de la carte (derive de fond bornee entre-temps).
-  x = clamp(Number(slot.x), 80, WORLD.w - 80);
-  y = clamp(Number(slot.y), 80, WORLD.h - 80);
-} else {
-  // Zone de spawn du camp (ex : Invoke BL) sinon random sur toute la map.
-  // Jamais dans les zones grises (murs) pour les spawnArea (Invoke BL).
-  const area = camp.spawnArea;
-  if (area && [area.x1, area.y1, area.x2, area.y2].every((v) => Number.isFinite(Number(v)))) {
-    const ax1 = Math.min(Number(area.x1), Number(area.x2));
-    const ax2 = Math.max(Number(area.x1), Number(area.x2));
-    const ay1 = Math.min(Number(area.y1), Number(area.y2));
-    const ay2 = Math.max(Number(area.y1), Number(area.y2));
-    const wallMargin = (Number(NPC_TYPES[camp.type]?.r) || 60) + 30;
-    x = rand(ax1, ax2);
-    y = rand(ay1, ay2);
-    for (let t = 0; t < 12 && spawnPosInWall(x, y, wallMargin); t++) {
-      x = rand(ax1, ax2);
-      y = rand(ay1, ay2);
-    }
-    if (spawnPosInWall(x, y, wallMargin) && Number.isFinite(Number(camp.x)) && Number.isFinite(Number(camp.y))) {
-      x = clamp(Number(camp.x), 80, WORLD.w - 80);
-      y = clamp(Number(camp.y), 80, WORLD.h - 80);
-    }
-  } else {
-    const pos = spawnRandomOnMap();
-    x = pos.x;
-    y = pos.y;
-  }
-}
-
-      if (camp.spawnMinDistance > 0) {
-        const position = pickSpacedSpawnPosition({ area: camp.spawnArea, walls: zoneWalls || [],
-          minDistance: camp.spawnMinDistance, preferred: { x, y },
-          occupied: enemies.filter(enemy => enemy && enemy.hp > 0 && enemy.type === camp.type) });
-        if (!position) { camp.t = 1; continue; }
-        x = position.x; y = position.y;
-      }
-      if (slot?.alive === false) {
-        try { markAlive(universe, curMap, uid, worldClock.now()); } catch {}
-      }
-      const e = makeEnemy(camp.type, x, y);
-      if (e) {
-        e.homeX = null;
-        e.homeY = null;
-        e.homeCampId = camp.id;
-        e.universeUid = uid;
-        // Invoke XVI : lâcher unique déjà effectué pour cette incarnation ?
-        // (slot persistant : départ/retour ou autre joueur = pas de re-lâcher).
-        if (String(camp.type || "") === "npc_Invoke_XVI") e._invokeReleased = slot?.released === true;
-
-        e.wanderMode = true;
-        e.aggroRange = camp.aggroRange ?? 700;
-        e.aggroHold = camp.aggroHold ?? 3.5;
-        // Override de vitesse du camp (ex : Cubikon x-6 immobile).
-        if (camp.speed != null && Number.isFinite(Number(camp.speed))) e.speed = Math.max(0, Number(camp.speed));
-
-        // Respawn random : fige la nouvelle position (full life).
-        if (scatter && slot) {
-          try {
-            snapshotUniverseEnemy(universe, curMap, uid, { x, y, hpPct: 1, shPct: 1 }, worldClock.now());
-            slot.scattered = true;
-          } catch {}
-        }
-
-        // Restaure le NPC blesse : meme HP que quand on l'a quitte.
-        if (!scatter && slot && slot.alive !== false && slot.updatedAtMs > 0) {
-          if (Number.isFinite(Number(slot.hpPct)) && e.hpMax > 0) {
-            e.hp = Math.max(1, Math.floor(e.hpMax * Math.max(0, Math.min(1, Number(slot.hpPct)))));
-          }
-          if (Number.isFinite(Number(slot.shPct)) && e.shMax > 0) {
-            e.sh = Math.max(0, Math.floor(e.shMax * Math.max(0, Math.min(1, Number(slot.shPct)))));
-          }
-        }
-
-        enemies.push(e);
-      }
-    }
-
-    camp.t = camp.respawn ?? 1.5;
-  }
-
-  // Bots JPC d'Hyperion Orbit : faux joueurs qui farment la map (solo uniquement,
-  // zoneController est déjà coupé en multi : le serveur possède les NPC).
-  try {
-    let jpcLockedId = null;
-    try { jpcLockedId = Target.get()?.id ?? null; } catch {}
-    tickJpcSystem(dt, {
-      enemies, makeEnemy, WORLD, zoneWalls, zonePortals, zoneCamps,
-      player, damageEnemy, enemyShoot, npcIemBlast,
-      addCappedProjectile, enemyBullets, bulletLimit: ENTITY_LIMITS.enemyBullets,
-      bulletLifeForRange, currentMapId, npcIsInSafeZone,
-      lockedId: jpcLockedId,
-      // Chiffres +x de réparation du bot locké (vert coque, bleu bouclier).
-      npcRepairFloat: (bot, hpGain, shGain) => {
-        try {
-          if (!(bot && bot.hp > 0)) return;
-          if (Math.round(Number(hpGain) || 0) > 0) {
-            addFloatText(bot.x + (Math.random() - 0.5) * 60, bot.y - 90 - Math.random() * 20,
-              hpGain, "rgba(80,255,125,0.98)",
-              { text: `+${DMG_FMT.format(Math.round(Number(hpGain) || 0))}`, size: 21, pop: 0.3, shake: 0.6, life: 1, glow: 1, weight: 900, impact: true });
-          }
-          if (Math.round(Number(shGain) || 0) > 0) {
-            addFloatText(bot.x + (Math.random() - 0.5) * 60, bot.y - 110 - Math.random() * 20,
-              shGain, "rgba(70,180,255,0.98)",
-              { text: `+${DMG_FMT.format(Math.round(Number(shGain) || 0))}`, size: 21, pop: 0.3, shake: 0.6, life: 1, glow: 1, weight: 900, impact: true });
-          }
-        } catch {}
-      },
-      // Dégâts du bot sur notre cible lockée (lasers + roquettes) : on voit
-      // aussi ce qu'il inflige, comme les dégâts alliés en multi.
-      npcJpcDamageFloat: (target, amount) => {
-        try {
-          const dmg = Math.max(1, Math.round(Number(amount) || 0));
-          if (!(target && target.hp > 0)) return;
-          addFloatText(target.x + (Math.random() - 0.5) * 60, target.y - 90 - Math.random() * 20,
-            dmg, "rgba(255,235,170,0.96)",
-            { text: `${DMG_FMT.format(dmg)}`, size: 19, pop: 0.3, shake: 0.6, life: 1, glow: 1, weight: 900, impact: true });
-        } catch {}
-      },
-      // MISS du bot sur notre cible lockée : écrit comme un MISS allié.
-      npcJpcMissFloat: (target) => {
-        try {
-          if (!(target && target.hp > 0)) return;
-          addMissText(target.x + (Math.random() - 0.5) * 50, target.y - 85 - Math.random() * 20);
-        } catch {}
-      },
-    });
-  } catch {}
-}
-
-// ============================================================
-// Death / Respawn
-// ============================================================
 function resetRun({ randomSpawn = false, preparedZoneCamps = null, preparedZonePortals = null } = {}) {
   phoneControls?.cancel();
   portalJumpActive = false;
@@ -35748,10 +35567,13 @@ function drawCustomDesignParticles(shipId, ownerId = "self") {
 // Multi : autres joueurs de la meme map avec leur vrai vaisseau + leur laser.
 // Les packs sont charges a la demande (comme la coque locale) ; en attendant,
 // repli triangle + pseudo (meme style que l'etape 1).
-// Multi : NPC partages actifs si map zone + snapshots serveur frais.
-// Sinon le spawner local reprend (solo ou coupure).
-function netplayNpcActive() {
-  try { return isZoneMap && netNpcFresh(); } catch { return false; }
+// Les NPC reseau sont le seul gameplay autorise sur une carte zone.
+// Les instances privees (GG) restent gerees par leur controleur local.
+function isSharedZone() {
+  return isZoneMap === true;
+}
+function isPrivateInstance() {
+  return !isSharedZone();
 }
 const netplaySpriteCache = new Map();
 // Etats moteurs (flammes) des vaisseaux distants, par id joueur.
@@ -37942,7 +37764,7 @@ const ALLY_HEAL_RADIUS = 1000;
 function pvpFoesInRadius(cx, cy, radius) {
   const out = [];
   try {
-    if (player.dead || !started || !netplayNpcActive()) return out;
+    if (player.dead || !started || !isSharedZone()) return out;
     let myFirm = "";
     try { myFirm = String(account.user?.faction || "").toLowerCase(); } catch {}
     let myClan = "";
@@ -38041,7 +37863,7 @@ function healAllyOrSelf(allyAmount, selfAmount, isShield, abilityId = "") {
   const maxKey = isShield ? "shMax" : "hpMax";
   const ally = pickHealAlly(isShield);
   const dst = ally || player;
-  if (dst === player && netplayNpcActive()) return 0;
+  if (dst === player && isSharedZone()) return 0;
   // Volt Back-up actif : pas de soin coque sur nous (les alliés sont soignés).
   if (!isShield && dst === player && (player.tempestBackupT || 0) > 0) return 0;
   const dx = (Number(dst.x || 0)) + (Math.random() - 0.5) * 60;
@@ -39277,13 +39099,13 @@ ui.stationClans?.addEventListener("click", (event) => {
   if (event.target.closest("#stationRepairBtn")) stationRepair();
 });
 
-ui.otExchangeBtn?.addEventListener("click", () => {
+ui.otExchangeBtn?.addEventListener("click", async () => {
   if (!isTradeWindowAnchored()) {
     closeOreTradeWindow();
     return;
   }
   saveProgressNow();
-  const result = exchangeCurrentUserPalladiumForEnergy();
+  const result = await exchangeCurrentUserPalladiumForEnergyOnline();
   if (!result.ok) return;
   account.user = result.user;
   addPlayerCombatFloat(result.energies, "rgba(121,237,255,0.98)", "+");
@@ -39292,7 +39114,7 @@ ui.otExchangeBtn?.addEventListener("click", () => {
   try { if (ui.refineryWindow && ui.refineryWindow.style.display !== "none") renderRefineryWindow(); } catch {}
   window.dispatchEvent(new CustomEvent("orbit:profile-progress"));
 });
-ui.oreTradeWindow?.addEventListener("click", (event) => {
+ui.oreTradeWindow?.addEventListener("click", async (event) => {
   const button = event.target.closest("[data-ore-sell]");
   if (!button) return;
   if (!isTradeWindowAnchored()) {
@@ -39302,7 +39124,7 @@ ui.oreTradeWindow?.addEventListener("click", (event) => {
   saveProgressNow();
   // Cargo Trader : bonus de vente du niveau équipé pendant la session.
   const traBonus = traWindowActive() ? getPetTradeBonusPct(petTrader.level) : 0;
-  const result = sellCurrentUserOre(button.dataset.oreSell, traBonus);
+  const result = await sellCurrentUserOreOnline(button.dataset.oreSell, traBonus > 0);
   if (!result.ok) return;
   account.user = result.user;
   player.credits = result.user.credits;
@@ -40912,14 +40734,14 @@ function enemyShoot(e, dt, combatTarget = player) {
   // dégâts directs (les enemyBullets ne touchent que joueur/escorte).
   if (combatTarget && combatTarget.isJpcBot === true) {
     // Multi : le serveur tranche (dégâts + visuels via shotFx).
-    if (e._netUid && netplayNpcActive()) return;
+    if (e._netUid && isSharedZone()) return;
     enemyShootAtJpc(e, dt, combatTarget);
     return;
   }
   // Vers un joueur, les dégâts des NPC partagés arrivent du serveur.
   // Si tirs ET impacts sont coupés, aucune trajectoire invisible à simuler.
   // Les escortes locales et les NPC solo gardent leurs vrais projectiles.
-  if (e._netUid && netplayNpcActive() && (combatTarget === player || combatTarget?._netVisual)
+  if (e._netUid && isSharedZone() && (combatTarget === player || combatTarget?._netVisual)
     && !displayNpcShotsOn() && (GAME_SETTINGS.npcExplosions === false || fxDensityMult() === 0)) return;
   if ((e.empT || 0) > 0) return;
   // Redirect (Disruptor, officiel) : lasers de la cible désactivés 4 s.
@@ -41839,7 +41661,7 @@ function update(dt) {
   player.qaCd = Math.max(0, (player.qaCd || 0) - dt);
   // Keres Spread : timers par infecté + contagion à 200 toutes les 0,5 s.
   // Fin du cast quand plus aucun infecté (pas de réinfection même cast).
-  if (netplayNpcActive()) {
+  if (isSharedZone()) {
     const self = getNetSelf();
     if (self && (self.sprCastT > 0 || performance.now() - Number(player._sprRequestedAt || 0) > 1000)) {
       player.keresSprActive = self.sprCastT > 0;
@@ -42802,7 +42624,7 @@ if (movementLocked) {
   // reparation locale serait ecrasee avant que le serveur la voie).
   // Destruction a 0 (explosion + toast comme en solo).
   try {
-    if (netplayNpcActive()) {
+    if (isSharedZone()) {
       const self = getNetSelf();
       const pet = account.user?.pet;
       const serverPetHp = Number(self?.petHp);
@@ -43601,7 +43423,7 @@ for (let i = enemyBullets.length - 1; i >= 0; i--) {
           const ownerNpc = b.ownerId != null ? enemies.find((x) => x?.id === b.ownerId) || null : null;
           // Sur les maps partagees, le projectile reste visuel : le pool
           // hp/sh est deja retire par la simulation NPC autoritaire serveur.
-          if (!(ownerNpc?._netUid && netplayNpcActive())) hurtPlayer(b.dmg, ownerNpc);
+          if (!(ownerNpc?._netUid && isSharedZone())) hurtPlayer(b.dmg, ownerNpc);
           // Dégâts réellement reçus → le P.E.T pourra riposter sur ce NPC.
           if (b.ownerId != null) {
             notePetAttacker(enemies.find((x) => x?.id === b.ownerId) || null);
@@ -43771,7 +43593,7 @@ if ((e.type === "npc_Cubikon" || e.cubikonMinions) && e._animPhase) {
       // jamais en local (sinon fantomes visibles par le seul tireur).
       const n = e._pendingSpawn || 20;
       e._pendingSpawn = 0;
-      if (n > 0 && !isEntityJammed(e) && !(e._netUid && netplayNpcActive())) spawnProtegitOnCubikonHit(e, n);
+      if (n > 0 && !isEntityJammed(e) && !(e._netUid && isSharedZone())) spawnProtegitOnCubikonHit(e, n);
 
       // ✅ commence fermeture (reverse)
       e._animPhase = "close";
@@ -43801,7 +43623,7 @@ if ((e.type === "npc_Cubikon" || e.cubikonMinions) && e._animPhase) {
     // Multi : NPC partage — le reset idle (regen + despawn) est serveur.
     // En local on ne toucherait que des fantomes et on ferait flicker la
     // barre de vie (regen locale ecrasee par le snapshot 20 Hz).
-    if ((e.type === "npc_Cubikon" || e.cubikonMinions) && !(e._netUid && netplayNpcActive())) {
+    if ((e.type === "npc_Cubikon" || e.cubikonMinions) && !(e._netUid && isSharedZone())) {
       e._sinceHit = (e._sinceHit ?? 999) + dt;
       refillLocalCubikonMinions(e);
 
@@ -44182,7 +44004,7 @@ if ((e.type === "npc_Cubikon" || e.cubikonMinions) && e._animPhase) {
         // En multi le serveur tranche : pas d'aggro JPC locale.
         e._jpcAggroT = Math.max(0, (Number(e._jpcAggroT) || 0) - dt);
         let jpcT = null;
-        if (!e._netUid && !netplayNpcActive() && !(combatTarget && combatTarget.isJpcBot === true && e._jpcAggro === true)) {
+        if (!e._netUid && !isSharedZone() && !(combatTarget && combatTarget.isJpcBot === true && e._jpcAggro === true)) {
           try {
             const cfgJ = NPC_TYPES[e.type] || {};
             const provId = e._jpcAggroBy;
@@ -48189,9 +48011,11 @@ window.addEventListener("orbit:net-adopted", (e) => {
 // en grand au lieu de perdre la progression en silence.
 window.addEventListener("orbit:net-fallback", () => {
   try {
-    showNotificationGroup(["Session expirée — reconnecte-toi", "Tes gains ne sont plus sauvegardés en attendant."], "info", {});
+    showNotificationGroup(["Session expirée — reconnecte-toi", "Retour à la connexion…"], "info", {});
   } catch {}
   try { showToast("Session expirée — reconnecte-toi", 6); } catch {}
+  // Une session serveur invalide ne doit jamais continuer en compte local.
+  setTimeout(() => { location.href = "./PUBLIC/AUTH.html"; }, 1200);
 });
 
 window.addEventListener("orbit:user-updated", event => {

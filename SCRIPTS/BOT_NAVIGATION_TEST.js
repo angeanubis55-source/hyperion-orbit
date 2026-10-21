@@ -226,6 +226,7 @@ function engineBot(walls, start, goal, npc = null) {
   const from = source.indexOf("function botMovementStep("), to = source.indexOf("function botClampCombatTarget(", from);
   const context = vm.createContext({
     portalJumpActive: false, mapSwitchInProgress: false,
+    document: { body: { classList: { contains: () => false } } },
     hangarSwapFx: null, StarJump: { channel: null }, Bot: { active: true, manualT: 0, combatTargetId: npc?.id, combatMoveTargetId: npc?.id },
     moveTarget: { active: true, ...goal }, player: { ...start, r: 18, baseSpeed: 400, vx: 0, vy: 0 },
     pointer: { down: false }, performance: { now: () => 10000 }, isZoneMap: true, zoneWalls: walls,

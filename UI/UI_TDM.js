@@ -6,7 +6,7 @@ import { shouldRefreshWindow } from "../SRC/CORE/BACKGROUND_REFRESH.js";
 // PUBLIC/PROFILE.js), de façon indépendante, avec switch par catégorie +
 // recherche + filtre vaisseau (modules possédés) + pagination.
 
-import { getCurrentUserFull, sellItem, sellShipModules, sellUnitPrice, shipModuleGroupKey } from "../SRC/CORE/ACCOUNT.js";
+import { getCurrentUserFull, sellInventoryItem, sellShipModulesOnline, sellUnitPrice, shipModuleGroupKey } from "../SRC/CORE/ACCOUNT.js";
 import { getShipPackById, getShipDesignBaseId } from "../SHIP/SHIP_PACKS.js";
 import { inventoryPage } from "./UI_INVENTORY.js";
 import { escapeHtml, stripNonDigits, wireDigitsOnly } from "./UI_DOM.js";
@@ -240,14 +240,14 @@ function openSellDialog() {
   refreshSellDialogTotal();
 }
 
-function confirmSellDialog() {
+async function confirmSellDialog() {
   if (!sellDialog) return;
   const { id, kind, name, module } = sellDialog;
   const qty = sellDialogQty();
   let res = null;
   try {
-    if (kind === "module") res = sellShipModules(shipModuleGroupKey(module), qty, { force: true });
-    else res = sellItem(id, qty, { force: true });
+    if (kind === "module") res = await sellShipModulesOnline(shipModuleGroupKey(module), qty, { force: true });
+    else res = await sellInventoryItem(id, qty, { force: true });
   } catch (e) {
     res = { ok: false, error: String(e?.message || e) };
   }

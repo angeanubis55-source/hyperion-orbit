@@ -1,5 +1,5 @@
 "use strict";
-import { buyPassShopOffer, claimBattlepassObjective, getCurrentUserFull, PASS_SHOP_OFFERS } from "../SRC/CORE/ACCOUNT.js";
+import { buyPassShopOfferOnline, claimBattlepassObjective, getCurrentUserFull, PASS_SHOP_OFFERS } from "../SRC/CORE/ACCOUNT.js";
 import { BATTLEPASS_OBJECTIVES, normalizeBattlepassState } from "../QUEST/BATTLEPASS.js";
 import { ITEM_RARITIES } from "../SRC/DATA/ITEM_RARITIES.js";
 import { halloweenCountdown, isHalloweenEventActive } from "../NPC/NPC_HALLOWEEN.js";
@@ -135,9 +135,9 @@ export function initBattlepassUI() {
       btn.className = "passRoll";
       btn.textContent = offer.kind === "module" ? `Tirer (${cost})` : `Acheter (${cost})`;
       btn.disabled = ownedKeys < cost;
-      btn.addEventListener("click", () => {
+      btn.addEventListener("click", async () => {
         try {
-          const res = buyPassShopOffer(offer.id);
+          const res = await buyPassShopOfferOnline(offer.id);
           if (!res?.ok && status) status.textContent = res?.error || "Achat impossible.";
         } catch {}
         // Inventaire jeu + historique boutique : refresh immédiat,

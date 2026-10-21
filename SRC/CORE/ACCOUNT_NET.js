@@ -15,7 +15,7 @@ let memUser = null;
 let memToken = null;
 let saveTimer = null;
 let saveInFlight = null;
-let identityWriter = null;
+let authoritativeWriter = null;
 // Référence serveur indépendante du compte mutable. Une révision locale
 // élevée ne prouve pas que ses achats incluent les dernières récompenses.
 let serverBase = null;
@@ -189,7 +189,7 @@ function resetPendingAccountState() {
   retrySave = null;
   knownRewardRevision = 0;
   serverRewards.clear();
-  identityWriter = null;
+  authoritativeWriter = null;
 }
 
 export function netSetCurrent(cur) {
@@ -511,7 +511,7 @@ export function enterNetMode(token, user) {
   memUser = user && typeof user === "object" ? user : null;
   if (!memToken || !memUser) return false;
   saveInFlight = null;
-  identityWriter = null;
+  authoritativeWriter = null;
   serverRewards.clear();
   knownRewardRevision = Number(memUser.revision) || 0;
   serverBase = copyAccount(memUser);
@@ -592,7 +592,7 @@ export async function apiAccountIdentity(kind, value, currentPassword) {
   const allowed = new Set(["pseudo", "email", "password"]);
   const key = String(kind || "").toLowerCase();
   if (!allowed.has(key)) return { ok: false, error: "Modification inconnue." };
-  if (identityWriter) return { ok: false, error: "Une modification du compte est déjà en cours." };
+  if (authoritativeWriter) return { ok: false, error: "Une modification du compte est déjà en cours." };
   let writer = null;
   try {
     if (saveInFlight) await saveInFlight;
@@ -601,7 +601,7 @@ export async function apiAccountIdentity(kind, value, currentPassword) {
       if (retrySave) return { ok: false, error: "La sauvegarde précédente attend encore la connexion." };
     }
     if (!netActive() || memToken !== token || memUser.id !== userId) return { ok: false, ignored: true };
-    writer = {}; identityWriter = writer;
+    writer = {}; authoritativeWriter = writer;
     clearTimeout(saveTimer); saveTimer = null;
     const out = await api(`/api/account/${key}`, {
       method: "POST",
@@ -617,8 +617,211 @@ export async function apiAccountIdentity(kind, value, currentPassword) {
   } catch {
     return { ok: false, error: "Réseau." };
   } finally {
-    if (writer && identityWriter === writer) {
-      identityWriter = null;
+    if (writer && authoritativeWriter === writer) {
+      authoritativeWriter = null;
+      if (netActive() && !same(memUser, serverBase)) schedulePush();
+    }
+  }
+}
+
+export async function apiShopBuyItem(itemId, quantity = 1, options = {}) {
+  if (!netActive()) return { ok: false, error: "Session serveur inactive." };
+  if (authoritativeWriter) return { ok: false, error: "Une modification du compte est déjà en cours." };
+  const token = memToken;
+  const userId = memUser.id;
+  let writer = null;
+  try {
+    if (saveInFlight) await saveInFlight;
+    if (netHasPendingSave()) {
+      await flushNetUser();
+      if (retrySave) return { ok: false, error: "La sauvegarde précédente attend encore la connexion." };
+    }
+    if (!netActive() || memToken !== token || memUser.id !== userId) return { ok: false, ignored: true };
+    writer = {}; authoritativeWriter = writer;
+    clearTimeout(saveTimer); saveTimer = null;
+    const out = await api("/api/shop/buy", {
+      method: "POST", body: { itemId, quantity, petPseudo: options?.petPseudo }, token,
+    });
+    if (!netActive() || memToken !== token || memUser.id !== userId) return { ok: false, ignored: true };
+    if (out?.ok && out.user) {
+      adoptServerUser(out.user, { reason: "shop" });
+      try { window.dispatchEvent(new CustomEvent("orbit:user-updated", { detail: { userId: memUser.id, revision: memUser.revision, source: "shop" } })); } catch {}
+    }
+    return out || { ok: false, error: "Réponse serveur invalide." };
+  } catch {
+    return { ok: false, error: "Réseau." };
+  } finally {
+    if (writer && authoritativeWriter === writer) {
+      authoritativeWriter = null;
+      if (netActive() && !same(memUser, serverBase)) schedulePush();
+    }
+  }
+}
+
+export async function apiShopSell(kind, id, quantity = 1, options = {}) {
+  if (!netActive()) return { ok: false, error: "Session serveur inactive." };
+  if (authoritativeWriter) return { ok: false, error: "Une modification du compte est déjà en cours." };
+  const token = memToken;
+  const userId = memUser.id;
+  let writer = null;
+  try {
+    if (saveInFlight) await saveInFlight;
+    if (netHasPendingSave()) {
+      await flushNetUser();
+      if (retrySave) return { ok: false, error: "La sauvegarde précédente attend encore la connexion." };
+    }
+    if (!netActive() || memToken !== token || memUser.id !== userId) return { ok: false, ignored: true };
+    writer = {}; authoritativeWriter = writer;
+    clearTimeout(saveTimer); saveTimer = null;
+    const out = await api("/api/shop/sell", {
+      method: "POST", body: { kind, id, quantity, force: options?.force === true, trader: options?.trader === true }, token,
+    });
+    if (!netActive() || memToken !== token || memUser.id !== userId) return { ok: false, ignored: true };
+    if (out?.ok && out.user) {
+      adoptServerUser(out.user, { reason: "shop" });
+      try { window.dispatchEvent(new CustomEvent("orbit:user-updated", { detail: { userId: memUser.id, revision: memUser.revision, source: "shop" } })); } catch {}
+    }
+    return out || { ok: false, error: "Réponse serveur invalide." };
+  } catch {
+    return { ok: false, error: "Réseau." };
+  } finally {
+    if (writer && authoritativeWriter === writer) {
+      authoritativeWriter = null;
+      if (netActive() && !same(memUser, serverBase)) schedulePush();
+    }
+  }
+}
+
+export async function apiProduction(action, recipeId, quantity = 1) {
+  if (!netActive()) return { ok: false, error: "Session serveur inactive." };
+  if (authoritativeWriter) return { ok: false, error: "Une modification du compte est déjà en cours." };
+  const token = memToken;
+  const userId = memUser.id;
+  let writer = null;
+  try {
+    if (saveInFlight) await saveInFlight;
+    if (netHasPendingSave()) {
+      await flushNetUser();
+      if (retrySave) return { ok: false, error: "La sauvegarde précédente attend encore la connexion." };
+    }
+    if (!netActive() || memToken !== token || memUser.id !== userId) return { ok: false, ignored: true };
+    writer = {}; authoritativeWriter = writer;
+    clearTimeout(saveTimer); saveTimer = null;
+    const out = await api("/api/production", { method: "POST", body: { action, recipeId, quantity }, token });
+    if (!netActive() || memToken !== token || memUser.id !== userId) return { ok: false, ignored: true };
+    if (out?.ok && out.user) {
+      adoptServerUser(out.user, { reason: "production" });
+      try { window.dispatchEvent(new CustomEvent("orbit:user-updated", { detail: { userId: memUser.id, revision: memUser.revision, source: "production" } })); } catch {}
+    }
+    return out || { ok: false, error: "Réponse serveur invalide." };
+  } catch {
+    return { ok: false, error: "Réseau." };
+  } finally {
+    if (writer && authoritativeWriter === writer) {
+      authoritativeWriter = null;
+      if (netActive() && !same(memUser, serverBase)) schedulePush();
+    }
+  }
+}
+
+export async function apiModuleOperation(action, options = {}) {
+  if (!netActive()) return { ok: false, error: "Session serveur inactive." };
+  if (authoritativeWriter) return { ok: false, error: "Une modification du compte est deja en cours." };
+  const token = memToken;
+  const userId = memUser.id;
+  let writer = null;
+  try {
+    if (saveInFlight) await saveInFlight;
+    if (netHasPendingSave()) {
+      await flushNetUser();
+      if (retrySave) return { ok: false, error: "La sauvegarde precedente attend encore la connexion." };
+    }
+    if (!netActive() || memToken !== token || memUser.id !== userId) return { ok: false, ignored: true };
+    writer = {}; authoritativeWriter = writer;
+    clearTimeout(saveTimer); saveTimer = null;
+    const out = await api("/api/modules", {
+      method: "POST", body: { action, moduleId: options?.moduleId, offerId: options?.offerId }, token,
+    });
+    if (!netActive() || memToken !== token || memUser.id !== userId) return { ok: false, ignored: true };
+    if (out?.ok && out.user) {
+      adoptServerUser(out.user, { reason: "modules" });
+      try { window.dispatchEvent(new CustomEvent("orbit:user-updated", { detail: { userId: memUser.id, revision: memUser.revision, source: "modules" } })); } catch {}
+    }
+    return out || { ok: false, error: "Reponse serveur invalide." };
+  } catch {
+    return { ok: false, error: "Reseau." };
+  } finally {
+    if (writer && authoritativeWriter === writer) {
+      authoritativeWriter = null;
+      if (netActive() && !same(memUser, serverBase)) schedulePush();
+    }
+  }
+}
+
+export async function apiSkylabOperation(action, options = {}) {
+  if (!netActive()) return { ok: false, error: "Session serveur inactive." };
+  if (authoritativeWriter) return { ok: false, error: "Une modification du compte est deja en cours." };
+  const token = memToken;
+  const userId = memUser.id;
+  let writer = null;
+  try {
+    if (saveInFlight) await saveInFlight;
+    if (netHasPendingSave()) {
+      await flushNetUser();
+      if (retrySave) return { ok: false, error: "La sauvegarde precedente attend encore la connexion." };
+    }
+    if (!netActive() || memToken !== token || memUser.id !== userId) return { ok: false, ignored: true };
+    writer = {}; authoritativeWriter = writer;
+    clearTimeout(saveTimer); saveTimer = null;
+    const out = await api("/api/skylab", { method: "POST", body: {
+      action, moduleId: options?.moduleId, enabled: options?.enabled,
+      amounts: options?.amounts, toSky: options?.toSky === true,
+    }, token });
+    if (!netActive() || memToken !== token || memUser.id !== userId) return { ok: false, ignored: true };
+    if (out?.ok && out.user) {
+      adoptServerUser(out.user, { reason: "skylab" });
+      try { window.dispatchEvent(new CustomEvent("orbit:user-updated", { detail: { userId: memUser.id, revision: memUser.revision, source: "skylab" } })); } catch {}
+    }
+    return out || { ok: false, error: "Reponse serveur invalide." };
+  } catch {
+    return { ok: false, error: "Reseau." };
+  } finally {
+    if (writer && authoritativeWriter === writer) {
+      authoritativeWriter = null;
+      if (netActive() && !same(memUser, serverBase)) schedulePush();
+    }
+  }
+}
+
+export async function apiGalaxyGateOperation(action, options = {}) {
+  if (!netActive()) return { ok: false, error: "Session serveur inactive." };
+  if (authoritativeWriter) return { ok: false, error: "Une modification du compte est deja en cours." };
+  const token = memToken;
+  const userId = memUser.id;
+  let writer = null;
+  try {
+    if (saveInFlight) await saveInFlight;
+    if (netHasPendingSave()) {
+      await flushNetUser();
+      if (retrySave) return { ok: false, error: "La sauvegarde precedente attend encore la connexion." };
+    }
+    if (!netActive() || memToken !== token || memUser.id !== userId) return { ok: false, ignored: true };
+    writer = {}; authoritativeWriter = writer;
+    clearTimeout(saveTimer); saveTimer = null;
+    const out = await api("/api/galaxy-gates", { method: "POST", body: {
+      action, gateId: options?.gateId, count: options?.count, armed: options?.armed === true,
+    }, token });
+    if (!netActive() || memToken !== token || memUser.id !== userId) return { ok: false, ignored: true };
+    if (out?.ok && out.user) {
+      adoptServerUser(out.user, { reason: "galaxy-gates" });
+      try { window.dispatchEvent(new CustomEvent("orbit:user-updated", { detail: { userId: memUser.id, revision: memUser.revision, source: "galaxy-gates" } })); } catch {}
+    }
+    return out || { ok: false, error: "Reponse serveur invalide." };
+  } catch {
+    return { ok: false, error: "Reseau." };
+  } finally {
+    if (writer && authoritativeWriter === writer) {
+      authoritativeWriter = null;
       if (netActive() && !same(memUser, serverBase)) schedulePush();
     }
   }
@@ -877,7 +1080,7 @@ function adoptServerUserScoped(user, { base, admin, reason, conflicts }) {
 
 async function pushNow() {
   saveTimer = null;
-  if (identityWriter) { schedulePush(); return { ok: false, busy: true }; }
+  if (authoritativeWriter) { schedulePush(); return { ok: false, busy: true }; }
   if (saveInFlight) {
     if (netActive()) schedulePush();
     return saveInFlight;
@@ -957,7 +1160,7 @@ async function pushSnapshotScoped() {
 export async function flushNetUser() {
   // Un nouvel envoi ecrit deja son cache apres la synchronisation moteur.
   // Pendant un envoi existant, persister quand meme les changements recents.
-  if (saveInFlight || identityWriter) flushAccountCache();
+  if (saveInFlight || authoritativeWriter) flushAccountCache();
   try { clearTimeout(saveTimer); } catch {}
   saveTimer = null;
   return pushNow();

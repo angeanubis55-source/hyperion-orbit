@@ -116,7 +116,8 @@ function pickerHarness(config = {}) {
     camera: { x: 12000, y: 7000 }, enemies: [], TAU: Math.PI * 2,
     normAng: angle => ((angle % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2),
     isImgReady: img => !!(img?.complete && img.naturalWidth > 0),
-    petLockValid: () => false, netplayNpcActive: () => false,
+    petLockValid: () => false, netplayNpcActive: () => false, isSharedZone: () => false,
+    stationCombatTargets: () => [],
     canvas: { style: {} }, petState: { x: 12000, y: 7000 }, petTargetProxy: { id: 'pet' },
     PET_DRAW_W: 170, PET_DRAW_H: 150, netPlayerProxies: new Map(), netPetProxies: new Map(),
     ctx: { save() {}, restore() {}, beginPath() {}, arc() {}, fill() {}, stroke() {},
@@ -201,7 +202,7 @@ test('le clic hors NPC reste disponible pour les joueurs et PET', () => {
   c.enemies.push({ type: 'npc_test', x: 12000, y: 7000, hp: 100, r: 18, spritePlay: true, spriteIdx: 0 });
   c.petLockValid = () => true;
   assert.equal(pick(12080, 7000), c.petTargetProxy);
-  c.petLockValid = () => false; c.netplayNpcActive = () => true;
+  c.petLockValid = () => false; c.isSharedZone = () => true;
   const remote = { id: 'friend', x: 12000, y: 7000, hp: 100 };
   c.netPlayerProxies.set(remote.id, remote);
   assert.equal(pick(12080, 7000), remote);

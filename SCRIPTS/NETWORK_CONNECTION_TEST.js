@@ -77,7 +77,7 @@ test("JPC : protection portail/base transmise, attaque refusee puis autorisee a 
   const context = vm.createContext({ e: target, isJpcBotSheltered,
     npcIsInSafeZone: () => false, // Joueur d'une autre firme.
     performance: { now: () => 10000 }, lastPvpSafeToastAt: 0, showToast: () => {},
-    isOwnPetTarget: () => false, netplayNpcActive: () => true });
+    isOwnPetTarget: () => false, isSharedZone: () => true });
   const start = engine.indexOf("function netPvpBlocked(");
   const end = engine.indexOf("// Propre REX (", start);
   vm.runInContext(engine.slice(start, end), context);

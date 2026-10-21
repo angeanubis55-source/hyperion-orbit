@@ -1,7 +1,7 @@
 // SCRIPTS/ACCOUNT_SERVER.js — Comptes serveur (SQLite, zero dependance).
-// Persistance autoritaire du blob user + auth par token. La logique jeu
-// (credits, inventaire...) reste calculee par le client ; le serveur stocke,
-// horodate et protege les revisions (anti-ecrasement silencieux).
+// Persistance autoritaire du blob user + auth par token. Les achats boutique
+// sont calcules ici ; les autres mutations historiques arrivent encore par
+// snapshot revisionne (anti-ecrasement silencieux).
 // Le client local continue de sanitizer (plafond historique, sentinelle Infinity).
 
 import { createHash, randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
@@ -9,18 +9,29 @@ import { mkdirSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { computeHangarStats } from "../SHIP/SHIP_HANGARS.js";
-import { activeBoosterMults } from "../SRC/DATA/BOOSTERS.js";
+import { activeBoosterMults, getBooster } from "../SRC/DATA/BOOSTERS.js";
 import { pilotSkillMults } from "../SRC/DATA/PILOT_SKILLS.js";
 import { calculateRankPoints } from "../SRC/CORE/PROGRESSION.js";
 import { getShipDesignBaseId, getShipFamilyId, getShipFamilyIds, getShipFamilyName, getShipPackById } from "../SHIP/SHIP_PACKS.js";
 import { DRONE_XP_SHARE, getDroneLevel } from "../DRONE/DRONE_TYPES.js";
 import { DRONE_DESIGNS, getDroneDesign } from "../DRONE/DRONE_DESIGNS.js";
-import { PET_XP_SHARE, getPetLevel } from "../PET/PET_TYPES.js";
+import { createPet, getPetHullPrice, getPetLevel, PET_FUEL_MAX, PET_HULL_MAX_BUYS, PET_XP_SHARE } from "../PET/PET_TYPES.js";
 import { npcMapCreditMultiplier, resolveNpcReward } from "../NPC/NPC_BALANCE.js";
 import { rollNpcAssemblyDirect } from "../NPC/NPC_ASSEMBLY.js";
-import { MODULE_ALL_STATS, MODULE_PCT_BAN, MODULE_SPC_STATS, MODULE_TIER_MALUS, getModuleRarity, getStatMaxPct } from "../SRC/DATA/MODULE_DROPS.js";
+import { MODULE_ALL_STATS, MODULE_DAILY_ROLL_LIMIT, MODULE_PCT_BAN, MODULE_ROLL_COST, MODULE_SELL_PRICES, MODULE_SPC_STATS, MODULE_TIER_MALUS, getModuleRarity, getStatMaxPct } from "../SRC/DATA/MODULE_DROPS.js";
+import { generateShipModule } from "../SRC/DATA/MODULE_GEN.js";
+import { findCatalogItem } from "../SRC/CORE/CATALOG.js";
+import { createDrone, DRONE_FORMATIONS, DRONE_TYPES, getIrisPrice, SPECIAL_DRONE_PRICE } from "../DRONE/DRONE_TYPES.js";
+import { getFaction, getFactionBaseSpawn } from "../SRC/CORE/FACTIONS.js";
+import { CARGO_CAPACITY, cargoAdd, getRefineryRecipe, ORE_SELL_PRICES, refineOreOutput } from "../SRC/DATA/RESOURCES.js";
+import { getPetTradeBonusPct } from "../PET/PET_GEARS.js";
+import { CRAFTING_ENABLED, getCraftingRecipe } from "../SRC/DATA/CRAFTING.js";
+import { isHalloweenEventActive } from "../NPC/NPC_HALLOWEEN.js";
+import { getPassShopOffer, PASS_MODULE_FORCED } from "../SRC/DATA/PASS_SHOP.js";
+import { SKYLAB_INSTANT_TRANSPORT_COST, SKYLAB_MAX_ROBOTS, SKYLAB_RESOURCE_IDS, SKYLAB_ROBOT_CREDIT_COST, SKYLAB_ROBOT_LIFETIME_MS, SKYLAB_TRANSPORT_COOLDOWN_SEC, canStartSkylabUpgrade, getSkylabModuleDef, isCollectorModule, normalizeSkylabState, skylabRobotCount, skylabStorageCap, tickSkylabState } from "../SRC/DATA/SKYLAB.js";
+import { deployBuiltGalaxyGate, normalizeGalaxyGateState, palladiumExchangeForEnergy, setGalaxyGateMultiplierArmed, spinGalaxyGate } from "../SRC/CORE/GALAXY_GATES.js";
 
-const DB_DIR = resolve(process.cwd(), "SERVER_DATA");
+const DB_DIR = resolve(process.env.ORBIT_DATA_DIR || resolve(process.cwd(), "SERVER_DATA"));
 const DB_PATH = join(DB_DIR, "orbit.db");
 
 const FACTIONS = new Set(["mmo", "eic", "vru"]);
@@ -397,6 +408,527 @@ function authUser(req) {
   }
   const u = db.prepare("SELECT * FROM users WHERE id = ?").get(s.user_id);
   return u || null;
+}
+
+function addInventoryCount(data, itemId, quantity) {
+  data.inventory ||= {};
+  data.inventory.counts ||= {};
+  data.inventory.counts[itemId] = Math.max(0, Math.floor(Number(data.inventory.counts[itemId]) || 0)) + quantity;
+}
+
+function applyCatalogPurchase(data, item, requestedQuantity, options = {}) {
+  const isUnique = !!(item.ship?.id || item.design?.id || item.pet?.id || item.drone || item.formation);
+  let quantity = isUnique ? 1 : Math.min(item.give?.ammo ? 1_000_000 : 5000,
+    Math.max(1, Math.floor(Number(requestedQuantity) || 1)));
+  let totalPrice = Math.max(0, Math.floor(Number(item.price) || 0)) * quantity;
+  data.inventory ||= {};
+  data.inventory.modules ||= [];
+  data.inventory.ships ||= [];
+  data.inventory.counts ||= {};
+
+  if (item.petHull) {
+    if (data.pet?.owned !== true) return { error: "P.E.T non possede." };
+    const owned = Math.max(0, Math.min(PET_HULL_MAX_BUYS, Math.floor(Number(data.pet.hullUpgrades) || 0)));
+    if (owned >= PET_HULL_MAX_BUYS) return { error: "Coque+ au maximum." };
+    quantity = Math.min(quantity, PET_HULL_MAX_BUYS - owned);
+    totalPrice = 0;
+    for (let index = 0; index < quantity; index++) totalPrice += getPetHullPrice(owned + index);
+    if (Math.max(0, Math.floor(Number(data.credits) || 0)) < totalPrice) return { error: "Credits insuffisants." };
+    data.credits -= totalPrice;
+    data.pet.hullUpgrades = owned + quantity;
+    addInventoryCount(data, item.id, quantity);
+    return { quantity, totalPrice };
+  }
+  if (item.petFuel) {
+    if (data.pet?.owned !== true) return { error: "P.E.T non possede." };
+    const space = Math.max(0, PET_FUEL_MAX - Math.max(0, Math.floor(Number(data.pet.fuel) || 0)));
+    if (!space) return { error: "Reservoir plein." };
+    quantity = Math.min(quantity, space);
+    totalPrice = Math.max(0, Math.floor(Number(item.price) || 0)) * quantity;
+  }
+  if (item.ship?.id && data.inventory.ships.includes(String(item.ship.id))) return { error: "Deja possede." };
+  if (item.design?.id) {
+    data.inventory.shipDesigns ||= [];
+    const designId = String(item.design.id);
+    if (data.inventory.shipDesigns.includes(designId) || data.inventory.ships.includes(designId)) return { error: "Design deja possede." };
+  }
+  if (item.pet?.id && (data.pet?.owned === true || Number(data.inventory.counts[item.id] || 0) > 0)) return { error: "P.E.T deja possede." };
+  if (item.petGear || item.petProtocol) {
+    if (data.pet?.owned !== true) return { error: "P.E.T non possede." };
+    const required = Math.max(0, Math.floor(Number(item.petLevel) || 0));
+    if (getPetLevel(data.pet.exp) < required) return { error: `P.E.T niveau ${required} requis.` };
+  }
+  if (item.drone?.type) {
+    const type = String(item.drone.type);
+    const definition = DRONE_TYPES[type];
+    if (!definition) return { error: "Drone introuvable." };
+    data.drones ||= { items: [], formations: ["standard"], activeFormation: "standard" };
+    data.drones.items ||= [];
+    const owned = data.drones.items.filter(drone => drone?.type === type).length;
+    if (owned >= definition.maxOwned) return { error: `Limite de ${definition.maxOwned} ${definition.name} atteinte.` };
+    totalPrice = type === "iris" ? getIrisPrice(owned) : SPECIAL_DRONE_PRICE;
+  }
+  if (item.formation?.id) {
+    const formation = DRONE_FORMATIONS.find(entry => entry.id === item.formation.id);
+    if (!formation || !(Number(formation.price) > 0)) return { error: "Formation non disponible en boutique." };
+    data.drones ||= { items: [], formations: ["standard"], activeFormation: "standard" };
+    data.drones.formations ||= ["standard"];
+    if (data.drones.formations.includes(formation.id)) return { error: "Formation deja possedee." };
+    totalPrice = Number(formation.price);
+  }
+  if (!Number.isSafeInteger(totalPrice) || Math.max(0, Math.floor(Number(data.credits) || 0)) < totalPrice) {
+    return { error: "Credits insuffisants." };
+  }
+  data.credits = Math.max(0, Math.floor(Number(data.credits) || 0)) - totalPrice;
+
+  for (const [ammoId, amount] of Object.entries(item.give?.ammo || {})) {
+    if (ammoId === "x1") continue;
+    data.ammo ||= {};
+    data.ammo[ammoId] = Math.max(0, Math.floor(Number(data.ammo[ammoId]) || 0)) + Math.max(0, Math.floor(Number(amount) || 0)) * quantity;
+  }
+  for (const [rocketId, amount] of Object.entries(item.give?.rockets || {})) {
+    data.rockets ||= {};
+    data.rockets[rocketId] = Math.max(0, Math.floor(Number(data.rockets[rocketId]) || 0)) + Math.max(0, Math.floor(Number(amount) || 0)) * quantity;
+  }
+  for (const [resourceId, amount] of Object.entries(item.give?.resources || {})) {
+    data.inventory.resources ||= {};
+    data.inventory.resources[resourceId] = Math.max(0, Math.floor(Number(data.inventory.resources[resourceId]) || 0)) + Math.max(0, Math.floor(Number(amount) || 0)) * quantity;
+  }
+  if (item.give?.ammo || item.give?.rockets || item.module || item.petGear || item.petProtocol || item.ticket?.kind || item.petFuel) {
+    addInventoryCount(data, item.id, quantity);
+  }
+  if (item.petFuel) data.pet.fuel = Math.min(PET_FUEL_MAX, Math.max(0, Math.floor(Number(data.pet.fuel) || 0)) + quantity);
+  if (item.module && !data.inventory.modules.includes(item.id)) data.inventory.modules.push(item.id);
+  if (item.booster?.id) {
+    const booster = getBooster(item.booster.id);
+    if (!booster) return { error: "Booster introuvable." };
+    data.boosters ||= { active: {} };
+    data.boosters.active ||= {};
+    const now = Date.now();
+    const current = Number(data.boosters.active[booster.id] || 0);
+    data.boosters.active[booster.id] = (current > now ? current : now) + Math.max(1, Number(booster.durationSec) || 0) * 1000 * quantity;
+  }
+  if (item.ship?.id) {
+    const shipId = String(item.ship.id);
+    data.inventory.ships.push(shipId);
+    data.hangars ||= [];
+    if (!data.hangars.some(hangar => hangar?.shipId === shipId)) {
+      const faction = getFaction(data.faction);
+      data.hangars.push({ id: `h_${shipId}_${Date.now()}_${randomBytes(6).toString("hex")}`, shipId, active: false,
+        modules: { speed: null, shield: null, laser: null, extras: [] }, lastPos: getFactionBaseSpawn(data.faction), lastMap: `${faction.sector}-1` });
+    }
+  }
+  if (item.design?.id) data.inventory.shipDesigns.push(String(item.design.id));
+  if (item.pet?.id) {
+    addInventoryCount(data, item.id, 1);
+    data.pet = createPet(String(item.pet.id), { pseudo: options.petPseudo, faction: data.faction });
+  }
+  if (item.drone?.type) {
+    const drone = createDrone(String(item.drone.type), `drone_${uuid()}`);
+    data.drones.items.push(drone);
+  }
+  if (item.formation?.id) data.drones.formations.push(String(item.formation.id));
+  return { quantity, totalPrice };
+}
+
+function ammoSellInfo(id) {
+  const key = String(id || "");
+  if (!key || key === "x1") return null;
+  for (const [prefix, field, give] of [["ammo_", "ammo", "ammo"], ["rocket_", "rockets", "rockets"]]) {
+    const item = findCatalogItem(prefix + key);
+    const size = Math.max(1, Math.floor(Number(item?.give?.[give]?.[key]) || 0));
+    const price = Math.max(0, Math.floor(Number(item?.price) || 0));
+    if (item && size > 0 && price > 0) return { field, unit: Math.floor(price * 0.5 / size) };
+  }
+  return null;
+}
+
+function moduleRerollCredits(module) {
+  const explicit = Number(module?.rerollCredits);
+  if (Number.isFinite(explicit) && explicit >= 0) return Math.floor(explicit);
+  let total = 0;
+  for (let index = 0; index < Math.max(0, Math.floor(Number(module?.rerolls) || 0)); index++) {
+    total += Math.max(0, Number(MODULE_ROLL_COST) || 0) * Math.pow(5, index + 1);
+  }
+  return Math.floor(total);
+}
+
+function serverModuleGroupKey(module) {
+  return JSON.stringify({ t: module?.type || "", tier: module?.tier || "", ship: module?.shipId || "",
+    b: module?.bonuses || [], r: Math.max(0, Math.floor(Number(module?.rerolls) || 0)), c: moduleRerollCredits(module) });
+}
+
+function serverModuleSellPrice(module) {
+  return Math.max(0, Number(MODULE_SELL_PRICES[getModuleRarity(module?.bonuses?.length)]) || 0)
+    + Math.floor(moduleRerollCredits(module) * 0.5);
+}
+
+function serverModuleDailyKey(date = new Date()) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+function ensureServerModuleInventory(data) {
+  data.inventory ||= {};
+  data.inventory.counts ||= {};
+  data.inventory.resources ||= {};
+  data.inventory.shipModules ||= [];
+  data.inventory.moduleRollHistory ||= [];
+  data.stats ||= {};
+}
+
+function payServerModuleRoll(data, cost, payWith = "auto") {
+  const tickets = Math.max(0, Math.floor(Number(data.inventory.counts.ticket_module_reroll) || 0));
+  if (payWith !== "credits" && tickets > 0) {
+    data.inventory.counts.ticket_module_reroll = tickets - 1;
+    if (data.inventory.counts.ticket_module_reroll <= 0) delete data.inventory.counts.ticket_module_reroll;
+    return { type: "ticket", amount: 1 };
+  }
+  const price = Math.max(0, Math.floor(Number(cost) || 0));
+  const credits = Math.max(0, Math.floor(Number(data.credits) || 0));
+  if (credits < price) throw Object.assign(new Error("Credits insuffisants."), { client: true });
+  data.credits = credits - price;
+  return { type: "credits", amount: price };
+}
+
+function applyServerModuleOperation(data, body) {
+  ensureServerModuleInventory(data);
+  const action = String(body?.action || "");
+  if (action === "roll") {
+    const day = serverModuleDailyKey();
+    const stored = data.stats.moduleDailyRolls;
+    const count = stored?.day === day ? Math.max(0, Math.floor(Number(stored.count) || 0)) : 0;
+    if (count >= MODULE_DAILY_ROLL_LIMIT) throw Object.assign(new Error(`Limite quotidienne atteinte (${MODULE_DAILY_ROLL_LIMIT} tirages/jour).`), { client: true });
+    const payment = payServerModuleRoll(data, MODULE_ROLL_COST, "credits");
+    const module = generateShipModule(data);
+    module.rerolls = 0; module.rerollCredits = 0;
+    data.inventory.shipModules.push(module);
+    data.inventory.moduleRollHistory.push({ ...module, rollPayment: payment });
+    data.stats.moduleDailyRolls = { day, count: count + 1 };
+    return { module, payment };
+  }
+  if (action === "reroll") {
+    const oldId = String(body?.moduleId || "");
+    const index = data.inventory.shipModules.findIndex(module => String(module?.id || "") === oldId);
+    if (index < 0) throw Object.assign(new Error("Module plus en inventaire : relance impossible."), { client: true });
+    const old = data.inventory.shipModules[index];
+    const rerolls = Math.max(0, Math.floor(Number(old.rerolls) || 0));
+    const cost = MODULE_ROLL_COST * Math.pow(5, rerolls + 1);
+    if (!Number.isSafeInteger(cost)) throw Object.assign(new Error("Limite de relance atteinte."), { client: true });
+    const payment = payServerModuleRoll(data, cost, "auto");
+    const module = generateShipModule(data, {
+      shipId: old.shipId, familyId: old.familyId, type: old.type, tier: old.tier,
+      statCount: Math.max(1, Array.isArray(old.bonuses) ? old.bonuses.length : 1),
+    });
+    module.rerolls = rerolls + 1;
+    module.rerollCredits = moduleRerollCredits(old) + (payment.type === "credits" ? cost : 0);
+    data.inventory.shipModules.splice(index, 1, module);
+    data.inventory.moduleRollHistory.push({ ...module, rollPayment: payment });
+    return { module, payment };
+  }
+  if (action === "pass") {
+    if (!isHalloweenEventActive()) throw Object.assign(new Error("Event Halloween termine."), { client: true });
+    const offer = getPassShopOffer(body?.offerId);
+    if (!offer) throw Object.assign(new Error("Offre inconnue."), { client: true });
+    const keys = Math.max(0, Math.floor(Number(data.inventory.resources.battlepass_key) || 0));
+    if (keys < offer.cost) throw Object.assign(new Error(`Cles insuffisantes : ${keys} / ${offer.cost}.`), { client: true });
+    data.inventory.resources.battlepass_key = keys - offer.cost;
+    let module = null;
+    if (offer.kind === "module") {
+      const forced = PASS_MODULE_FORCED[offer.rarity];
+      module = generateShipModule(data, forced);
+      module.rerolls = 0; module.rerollCredits = 0;
+      data.inventory.shipModules.push(module);
+      data.inventory.moduleRollHistory.push({ ...module, rollPayment: { type: "keys", amount: offer.cost } });
+    } else if (offer.kind === "resources") {
+      for (const [id, amount] of Object.entries(offer.resources)) data.inventory.resources[id] = Math.max(0, Math.floor(Number(data.inventory.resources[id]) || 0)) + amount;
+    } else if (offer.kind === "item") {
+      data.inventory.counts[offer.itemId] = Math.max(0, Math.floor(Number(data.inventory.counts[offer.itemId]) || 0)) + 1;
+    }
+    return { module, payment: { type: "keys", amount: offer.cost } };
+  }
+  throw Object.assign(new Error("Operation module inconnue."), { client: true });
+}
+
+function serverCargoCapacity(data) {
+  let pct = 0;
+  try { pct = Number(pilotSkillMults(data?.pilotSkills)?.cargoPct) || 0; } catch {}
+  return Math.max(1, Math.floor(CARGO_CAPACITY * (1 + Math.max(0, pct) / 100)));
+}
+
+function syncServerSkylab(data, now = Date.now()) {
+  data.skylab = normalizeSkylabState(data.skylab, now);
+  const last = Number(data.skylab.lastTickAt) || now;
+  const elapsed = Math.max(0, Math.min(12 * 3600, (now - last) / 1000));
+  return tickSkylabState(data.skylab, now, elapsed);
+}
+
+function serverSkylabAmounts(raw) {
+  const amounts = {};
+  for (const id of SKYLAB_RESOURCE_IDS) {
+    const value = Math.max(0, Math.floor(Number(raw?.[id]) || 0));
+    if (value > 0) amounts[id] = value;
+  }
+  return amounts;
+}
+
+function moveServerSkylab(data, amounts, toSky) {
+  data.inventory ||= {}; data.inventory.resources ||= {};
+  const sky = data.skylab;
+  const moved = {};
+  let totalMoved = 0;
+  for (const [id, requested] of Object.entries(amounts)) {
+    if (id === "xenomit") continue;
+    if (toSky) {
+      const inShip = Math.max(0, Math.floor(Number(data.inventory.resources[id]) || 0));
+      const room = Math.max(0, skylabStorageCap(sky, id) - Math.floor(Number(sky.stock[id]) || 0));
+      const quantity = Math.min(requested, inShip, room);
+      if (!(quantity > 0)) continue;
+      data.inventory.resources[id] = inShip - quantity;
+      if (data.inventory.resources[id] <= 0) delete data.inventory.resources[id];
+      sky.stock[id] = Math.max(0, Number(sky.stock[id]) || 0) + quantity;
+      moved[id] = quantity; totalMoved += quantity;
+    } else {
+      const inSky = Math.max(0, Math.floor(Number(sky.stock[id]) || 0));
+      if (!(inSky > 0)) continue;
+      const { added } = cargoAdd(data.inventory.resources, id, Math.min(requested, inSky), serverCargoCapacity(data));
+      if (!(added > 0)) continue;
+      sky.stock[id] = Math.max(0, Number(sky.stock[id]) || 0) - added;
+      data.inventory.resources[id] = Math.max(0, Math.floor(Number(data.inventory.resources[id]) || 0)) + added;
+      moved[id] = added; totalMoved += added;
+    }
+  }
+  return { moved, totalMoved };
+}
+
+function applyServerSkylabOperation(data, body, now = Date.now()) {
+  const tick = syncServerSkylab(data, now);
+  const sky = data.skylab;
+  const action = String(body?.action || "sync");
+  if (action === "sync") return { completed: tick.completed };
+  if (action === "upgrade") {
+    const moduleId = String(body?.moduleId || "");
+    const check = canStartSkylabUpgrade(sky, moduleId, Number(data.credits || 0), now);
+    if (!check.ok) throw Object.assign(new Error(check.error), { client: true });
+    data.credits = Math.max(0, Math.floor(Number(data.credits) || 0) - check.cost.credits);
+    for (const [id, amount] of Object.entries(check.cost.resEach)) sky.stock[id] = Math.max(0, Math.floor(Number(sky.stock[id]) || 0) - amount);
+    sky.modules[moduleId].upgrading = { to: check.to, finishesAt: now + check.cost.timeSecGame * 1000 };
+    sky.lastTickAt = now;
+    return { moduleId, to: check.to, cost: check.cost, completed: tick.completed };
+  }
+  if (action === "toggle") {
+    const moduleId = String(body?.moduleId || "");
+    if (!getSkylabModuleDef(moduleId)) throw Object.assign(new Error("Module inconnu."), { client: true });
+    if (["basic", "solar", "storage", "transport"].includes(moduleId)) throw Object.assign(new Error("Ce module reste toujours actif."), { client: true });
+    sky.modules[moduleId].enabled = body?.enabled !== false;
+    return { moduleId, enabled: sky.modules[moduleId].enabled, completed: tick.completed };
+  }
+  if (action === "robot") {
+    const moduleId = String(body?.moduleId || "");
+    if (!isCollectorModule(moduleId)) throw Object.assign(new Error("Robots reserves aux collecteurs."), { client: true });
+    const module = sky.modules[moduleId];
+    if (Math.floor(Number(module?.level) || 0) < 1) throw Object.assign(new Error("Construis d'abord ce collecteur."), { client: true });
+    if (skylabRobotCount(module, now).total >= SKYLAB_MAX_ROBOTS) throw Object.assign(new Error(`Maximum ${SKYLAB_MAX_ROBOTS} robots par collecteur.`), { client: true });
+    const credits = Math.max(0, Math.floor(Number(data.credits) || 0));
+    if (credits < SKYLAB_ROBOT_CREDIT_COST) throw Object.assign(new Error("Credits insuffisants."), { client: true });
+    data.credits = credits - SKYLAB_ROBOT_CREDIT_COST;
+    module.robots.push({ elite: false, expiresAt: now + SKYLAB_ROBOT_LIFETIME_MS });
+    return { moduleId, price: SKYLAB_ROBOT_CREDIT_COST, completed: tick.completed };
+  }
+  if (action === "transport" || action === "instant") {
+    if (Math.floor(Number(sky.modules?.transport?.level) || 0) < 1) throw Object.assign(new Error("Module de transport indisponible."), { client: true });
+    const amounts = serverSkylabAmounts(body?.amounts);
+    delete amounts.xenomit;
+    if (!Object.keys(amounts).length) throw Object.assign(new Error("Choisis une quantite a transporter."), { client: true });
+    const toSky = body?.toSky === true;
+    if (action === "transport" && Number(sky.transportReadyAt) > now) {
+      const wait = Math.ceil((Number(sky.transportReadyAt) - now) / 1000);
+      throw Object.assign(new Error(`Transporteur en vol (${wait}s).`), { client: true });
+    }
+    if (action === "instant" && Math.max(0, Math.floor(Number(data.credits) || 0)) < SKYLAB_INSTANT_TRANSPORT_COST) {
+      throw Object.assign(new Error("Credits insuffisants pour l'envoi immediat."), { client: true });
+    }
+    const moved = moveServerSkylab(data, amounts, toSky);
+    if (!(moved.totalMoved > 0)) throw Object.assign(new Error("Rien a transporter (stocks vides ou pleins)."), { client: true });
+    if (action === "instant") data.credits = Math.max(0, Math.floor(Number(data.credits) || 0) - SKYLAB_INSTANT_TRANSPORT_COST);
+    else sky.transportReadyAt = now + SKYLAB_TRANSPORT_COOLDOWN_SEC * 1000;
+    sky.lastTickAt = now;
+    return { ...moved, cost: action === "instant" ? SKYLAB_INSTANT_TRANSPORT_COST : 0, completed: tick.completed };
+  }
+  throw Object.assign(new Error("Operation Skylab inconnue."), { client: true });
+}
+
+function applyServerGalaxyGateOperation(data, body) {
+  data.galaxyGates = normalizeGalaxyGateState(data.galaxyGates);
+  data.inventory ||= {}; data.inventory.resources ||= {};
+  data.ammo ||= {}; data.rockets ||= {};
+  const action = String(body?.action || "");
+  if (action === "spin") {
+    const gateId = String(body?.gateId || "").toLowerCase();
+    const count = Math.max(1, Math.min(100, Math.floor(Number(body?.count) || 1)));
+    const result = spinGalaxyGate(data.galaxyGates, gateId, count, data.credits, Math.random);
+    if (!result.ok) throw Object.assign(new Error(result.error || "Spin impossible."), { client: true });
+    data.galaxyGates = result.state;
+    data.credits = result.credits;
+    for (const [id, amount] of Object.entries(result.rewards?.ammo || {})) {
+      data.ammo[id] = Math.max(0, Math.floor(Number(data.ammo[id]) || 0)) + Math.max(0, Math.floor(Number(amount) || 0));
+    }
+    for (const [id, amount] of Object.entries(result.rewards?.rockets || {})) {
+      data.rockets[id] = Math.max(0, Math.floor(Number(data.rockets[id]) || 0)) + Math.max(0, Math.floor(Number(amount) || 0));
+    }
+    return { performed: result.performed, rewards: result.rewards, state: result.state };
+  }
+  if (action === "multiplier") {
+    const result = setGalaxyGateMultiplierArmed(data.galaxyGates, body?.gateId, body?.armed === true);
+    if (!result.ok) throw Object.assign(new Error("Aucun multiplicateur disponible."), { client: true });
+    data.galaxyGates = result.state;
+    return { state: result.state };
+  }
+  if (action === "deploy") {
+    const result = deployBuiltGalaxyGate(data.galaxyGates, body?.gateId);
+    if (!result.ok) throw Object.assign(new Error("Cette Gate ne peut pas etre envoyee sur la map."), { client: true });
+    data.galaxyGates = result.state;
+    return { state: result.state };
+  }
+  if (action === "palladium") {
+    const owned = Math.max(0, Math.floor(Number(data.inventory.resources.palladium) || 0));
+    const exchange = palladiumExchangeForEnergy(owned, Infinity);
+    if (!(exchange.energies > 0)) throw Object.assign(new Error("Palladium insuffisant."), { client: true });
+    data.inventory.resources.palladium = exchange.remaining;
+    data.galaxyGates.energy += exchange.energies;
+    return { energies: exchange.energies, cost: exchange.cost };
+  }
+  throw Object.assign(new Error("Operation Galaxy Gate inconnue."), { client: true });
+}
+
+function visitEquipmentFits(data, callback) {
+  for (const hangar of data.hangars || []) {
+    for (const config of ["1", "2"]) callback(hangar?.fits?.[config], ["lasers", "gens", "extras", "shipMods"]);
+  }
+  for (const drone of data.drones?.items || []) {
+    for (const perHangar of Object.values(drone?.fitsByHangar || {})) for (const config of ["1", "2"]) callback(perHangar?.[config], ["equipment"]);
+    for (const config of ["1", "2"]) callback(drone?.fits?.[config], ["equipment"]);
+    callback(drone?.fit, ["equipment"]);
+  }
+  if (data.pet?.owned === true) {
+    for (const perHangar of Object.values(data.pet.fitsByHangar || {})) for (const config of ["1", "2"]) callback(perHangar?.[config], ["lasers", "generators", "gears", "protocols"]);
+    for (const config of ["1", "2"]) callback(data.pet.fits?.[config], ["lasers", "generators", "gears", "protocols"]);
+    callback(data.pet.fit, ["lasers", "generators", "gears", "protocols"]);
+  }
+}
+
+function reservedCatalogCopies(data, itemId) {
+  let reserved = 0;
+  const count = values => Array.isArray(values) ? values.filter(value => String(value || "") === itemId).length : 0;
+  for (const hangar of data.hangars || []) for (const config of ["1", "2"]) {
+    let used = 0;
+    const shipFit = hangar?.fits?.[config] || {};
+    for (const group of ["lasers", "gens", "extras"]) used += count(shipFit[group]);
+    for (const drone of data.drones?.items || []) {
+      const fit = drone?.fitsByHangar?.[String(hangar.id)]?.[config] || drone?.fits?.[config] || drone?.fit;
+      used += count(fit?.equipment);
+    }
+    if (data.pet?.owned === true) {
+      const fit = data.pet?.fitsByHangar?.[String(hangar.id)]?.[config] || data.pet?.fits?.[config] || data.pet?.fit;
+      for (const group of ["lasers", "generators", "gears", "protocols"]) used += count(fit?.[group]);
+    }
+    reserved = Math.max(reserved, used);
+  }
+  return reserved;
+}
+
+function stripCatalogItem(data, itemId) {
+  let stripped = 0;
+  visitEquipmentFits(data, (fit, groups) => {
+    if (!fit) return;
+    for (const group of groups) if (Array.isArray(fit[group])) {
+      fit[group] = fit[group].map(value => {
+        if (String(value || "") !== itemId) return value;
+        stripped++; return null;
+      });
+    }
+  });
+  return stripped;
+}
+
+function equippedTraderLevel(data) {
+  const hangar = (data.hangars || []).find(entry => entry?.active) || data.hangars?.[0];
+  const config = String(Number(hangar?.activeConfig) === 2 ? 2 : 1);
+  const perHangar = data.pet?.fitsByHangar?.[String(hangar?.id || "")]?.[config];
+  const fit = perHangar || data.pet?.fits?.[config] || data.pet?.fit;
+  let level = 0;
+  for (const itemId of fit?.gears || []) {
+    const gear = findCatalogItem(String(itemId || ""))?.petGear;
+    if (gear?.key === "tra") level = Math.max(level, Math.floor(Number(gear.level) || 0));
+  }
+  return level;
+}
+
+function addServerHangar(data, shipId) {
+  data.hangars ||= [];
+  if (data.hangars.some(hangar => hangar?.shipId === shipId)) return;
+  const faction = getFaction(data.faction);
+  data.hangars.push({ id: `h_${shipId}_${Date.now()}_${randomBytes(6).toString("hex")}`, shipId, active: false,
+    modules: { speed: null, shield: null, laser: null, extras: [] }, lastPos: getFactionBaseSpawn(data.faction), lastMap: `${faction.sector}-1` });
+}
+
+function applyServerCraft(data, recipe, requestedQuantity) {
+  const quantity = Math.min(100, Math.max(1, Math.floor(Number(requestedQuantity) || 1)));
+  if (!CRAFTING_ENABLED) return { error: "Assemblage desactive." };
+  if (recipe.event === "halloween" && !isHalloweenEventActive()) return { error: "Event Halloween termine." };
+  if (Object.keys(recipe.output?.ships || {}).length && quantity !== 1) return { error: "Un vaisseau se fabrique un par un." };
+  if (Object.keys(recipe.output?.pet || {}).length && quantity !== 1) return { error: "Un P.E.T se fabrique un par un." };
+  data.inventory ||= {}; data.inventory.resources ||= {}; data.inventory.counts ||= {}; data.inventory.modules ||= []; data.inventory.ships ||= [];
+  data.drones ||= { items: [], formations: ["standard"], activeFormation: "standard" };
+  data.drones.items ||= []; data.drones.formations ||= ["standard"];
+  for (const shipId of Object.keys(recipe.output?.ships || {})) if (data.inventory.ships.includes(shipId)) return { error: "Ce vaisseau est deja possede." };
+  for (const [type, amount] of Object.entries(recipe.output?.drones || {})) {
+    const definition = DRONE_TYPES[type];
+    const owned = data.drones.items.filter(drone => drone?.type === type).length;
+    if (!definition || owned + Math.max(0, Number(amount) || 0) * quantity > definition.maxOwned) return { error: "Limite de drones depassee." };
+  }
+  for (const formationId of Object.keys(recipe.output?.formations || {})) if (data.drones.formations.includes(formationId)) return { error: "Formation deja possedee." };
+  if (Object.keys(recipe.output?.pet || {}).length && data.pet?.owned === true) return { error: "P.E.T deja possede." };
+  const creditCost = Math.max(0, Math.floor(Number(recipe.costs?.credits) || 0)) * quantity;
+  if (Math.max(0, Math.floor(Number(data.credits) || 0)) < creditCost) return { error: "Credits insuffisants." };
+  for (const [resourceId, unitCost] of Object.entries(recipe.costs?.resources || {})) {
+    const required = Math.max(0, Math.floor(Number(unitCost) || 0)) * quantity;
+    if (Math.max(0, Math.floor(Number(data.inventory.resources[resourceId]) || 0)) < required) return { error: `Ressource insuffisante : ${resourceId}.` };
+  }
+  for (const [itemId, unitCost] of Object.entries(recipe.costs?.items || {})) {
+    const required = Math.max(0, Math.floor(Number(unitCost) || 0)) * quantity;
+    const owned = Math.max(0, Math.floor(Number(data.inventory.counts[itemId]) || 0));
+    if (owned < required) return { error: `Objet insuffisant : ${itemId}.` };
+    if (owned - required < reservedCatalogCopies(data, itemId)) return { error: "Objet equipe : retire-le avant de l'assembler." };
+  }
+  const diskCost = Math.max(0, Math.floor(Number(recipe.costs?.logDisks) || 0)) * quantity;
+  if (Math.max(0, Math.floor(Number(data.pilotSkills?.disks) || 0)) < diskCost) return { error: "Disques de log insuffisants." };
+  for (const [ammoId, unitCost] of Object.entries(recipe.costs?.ammo || {})) {
+    const required = Math.max(0, Math.floor(Number(unitCost) || 0)) * quantity;
+    if (Math.max(0, Math.floor(Number(data.ammo?.[ammoId]) || 0)) < required) return { error: `Munitions insuffisantes : ${ammoId}.` };
+  }
+  data.credits = Math.max(0, Math.floor(Number(data.credits) || 0)) - creditCost;
+  for (const [resourceId, unitCost] of Object.entries(recipe.costs?.resources || {})) data.inventory.resources[resourceId] -= Math.max(0, Math.floor(Number(unitCost) || 0)) * quantity;
+  for (const [itemId, unitCost] of Object.entries(recipe.costs?.items || {})) {
+    data.inventory.counts[itemId] -= Math.max(0, Math.floor(Number(unitCost) || 0)) * quantity;
+    if (data.inventory.counts[itemId] <= 0) { delete data.inventory.counts[itemId]; data.inventory.modules = data.inventory.modules.filter(value => value !== itemId); }
+  }
+  if (diskCost > 0) { data.pilotSkills ||= {}; data.pilotSkills.disks = Math.max(0, Math.floor(Number(data.pilotSkills.disks) || 0)) - diskCost; }
+  data.ammo ||= {};
+  for (const [ammoId, unitCost] of Object.entries(recipe.costs?.ammo || {})) data.ammo[ammoId] -= Math.max(0, Math.floor(Number(unitCost) || 0)) * quantity;
+  for (const [resourceId, amount] of Object.entries(recipe.output?.resources || {})) data.inventory.resources[resourceId] = Math.max(0, Math.floor(Number(data.inventory.resources[resourceId]) || 0)) + Math.max(0, Math.floor(Number(amount) || 0)) * quantity;
+  for (const [itemId, amount] of Object.entries(recipe.output?.items || {})) addInventoryCount(data, itemId, Math.max(0, Math.floor(Number(amount) || 0)) * quantity);
+  data.rockets ||= {};
+  for (const [rocketId, amount] of Object.entries(recipe.output?.rockets || {})) data.rockets[rocketId] = Math.max(0, Math.floor(Number(data.rockets[rocketId]) || 0)) + Math.max(0, Math.floor(Number(amount) || 0)) * quantity;
+  for (const shipId of Object.keys(recipe.output?.ships || {})) { data.inventory.ships.push(shipId); addServerHangar(data, shipId); }
+  for (const [type, amount] of Object.entries(recipe.output?.drones || {})) for (let index = 0; index < Math.max(0, Math.floor(Number(amount) || 0)) * quantity; index++) data.drones.items.push(createDrone(type, `drone_${uuid()}`));
+  for (const formationId of Object.keys(recipe.output?.formations || {})) data.drones.formations.push(formationId);
+  for (const petCatalogId of Object.keys(recipe.output?.pet || {})) {
+    const item = findCatalogItem(petCatalogId);
+    if (!item?.pet?.id) continue;
+    addInventoryCount(data, item.id, 1); data.pet = createPet(String(item.pet.id), { faction: data.faction });
+  }
+  for (const [ammoId, amount] of Object.entries(recipe.output?.ammo || {})) if (ammoId !== "x1") data.ammo[ammoId] = Math.max(0, Math.floor(Number(data.ammo[ammoId]) || 0)) + Math.max(0, Math.floor(Number(amount) || 0)) * quantity;
+  return { quantity, recipeId: recipe.id };
 }
 
 function newSession(userId) {
@@ -2384,6 +2916,267 @@ export function handleAccountApi(req, res) {
     if (key === norm(me.pseudo)) return json(res, 200, { ok: true, free: true, yours: true });
     const clash = db.prepare("SELECT id FROM users WHERE pseudo_norm = ?").get(key);
     return json(res, 200, { ok: true, free: !clash });
+  }
+  if (pathname === "/api/galaxy-gates" && req.method === "POST") {
+    if (rateLimited(`${ip}:/api/galaxy-gates`, 180)) return json(res, 429, { ok: false, error: "Trop d'operations, reessaie dans un instant." });
+    readBody(req, res, (body) => {
+      const me = authUser(req);
+      if (!me) return json(res, 401, { ok: false, error: "Session invalide." });
+      let inTx = false;
+      try {
+        db.exec("BEGIN IMMEDIATE"); inTx = true;
+        const row = db.prepare("SELECT * FROM users WHERE id = ?").get(me.id);
+        if (!row) throw new Error("Compte introuvable");
+        const data = rowToPublic(row);
+        const result = applyServerGalaxyGateOperation(data, body);
+        const now = Date.now();
+        const revision = Math.max(Math.floor(Number(data.revision) || 0), Number(row.revision) || 0) + 1;
+        data.revision = revision; data.updatedAt = now;
+        db.prepare("UPDATE users SET data = ?, revision = ?, updated_at = ? WHERE id = ?")
+          .run(JSON.stringify(data), revision, now, row.id);
+        db.exec("COMMIT"); inTx = false;
+        return json(res, 200, { ok: true, user: data, ...result });
+      } catch (error) {
+        if (inTx) { try { db.exec("ROLLBACK"); } catch {} }
+        return json(res, error?.client ? 409 : 500, { ok: false, error: error?.client ? error.message : "Erreur serveur." });
+      }
+    });
+    return true;
+  }
+  if (pathname === "/api/skylab" && req.method === "POST") {
+    if (rateLimited(`${ip}:/api/skylab`, 120)) return json(res, 429, { ok: false, error: "Trop d'operations, reessaie dans un instant." });
+    readBody(req, res, (body) => {
+      const me = authUser(req);
+      if (!me) return json(res, 401, { ok: false, error: "Session invalide." });
+      let inTx = false;
+      try {
+        db.exec("BEGIN IMMEDIATE"); inTx = true;
+        const row = db.prepare("SELECT * FROM users WHERE id = ?").get(me.id);
+        if (!row) throw new Error("Compte introuvable");
+        const data = rowToPublic(row);
+        const result = applyServerSkylabOperation(data, body, Date.now());
+        const now = Date.now();
+        const revision = Math.max(Math.floor(Number(data.revision) || 0), Number(row.revision) || 0) + 1;
+        data.revision = revision; data.updatedAt = now;
+        db.prepare("UPDATE users SET data = ?, revision = ?, updated_at = ? WHERE id = ?")
+          .run(JSON.stringify(data), revision, now, row.id);
+        db.exec("COMMIT"); inTx = false;
+        return json(res, 200, { ok: true, user: data, ...result });
+      } catch (error) {
+        if (inTx) { try { db.exec("ROLLBACK"); } catch {} }
+        return json(res, error?.client ? 409 : 500, { ok: false, error: error?.client ? error.message : "Erreur serveur." });
+      }
+    });
+    return true;
+  }
+  if (pathname === "/api/modules" && req.method === "POST") {
+    if (rateLimited(`${ip}:/api/modules`, 120)) return json(res, 429, { ok: false, error: "Trop d'operations, reessaie dans un instant." });
+    readBody(req, res, (body) => {
+      const me = authUser(req);
+      if (!me) return json(res, 401, { ok: false, error: "Session invalide." });
+      let inTx = false;
+      try {
+        db.exec("BEGIN IMMEDIATE"); inTx = true;
+        const row = db.prepare("SELECT * FROM users WHERE id = ?").get(me.id);
+        if (!row) throw new Error("Compte introuvable");
+        const data = rowToPublic(row);
+        const result = applyServerModuleOperation(data, body);
+        const now = Date.now();
+        const revision = Math.max(Math.floor(Number(data.revision) || 0), Number(row.revision) || 0) + 1;
+        data.revision = revision; data.updatedAt = now;
+        db.prepare("UPDATE users SET data = ?, revision = ?, updated_at = ? WHERE id = ?")
+          .run(JSON.stringify(data), revision, now, row.id);
+        db.exec("COMMIT"); inTx = false;
+        return json(res, 200, { ok: true, user: data, ...result });
+      } catch (error) {
+        if (inTx) { try { db.exec("ROLLBACK"); } catch {} }
+        return json(res, error?.client ? 409 : 500, { ok: false, error: error?.client ? error.message : "Erreur serveur." });
+      }
+    });
+    return true;
+  }
+  if (pathname === "/api/production" && req.method === "POST") {
+    if (rateLimited(`${ip}:/api/production`, 180)) return json(res, 429, { ok: false, error: "Trop d'operations, reessaie dans un instant." });
+    readBody(req, res, (body) => {
+      const me = authUser(req);
+      if (!me) return json(res, 401, { ok: false, error: "Session invalide." });
+      const action = String(body?.action || "");
+      const recipeId = String(body?.recipeId || "");
+      const requested = Math.floor(Number(body?.quantity ?? 1));
+      if (!recipeId || !Number.isSafeInteger(requested) || requested < 1 || requested > 1_000_000) return json(res, 400, { ok: false, error: "Operation invalide." });
+      let inTx = false;
+      try {
+        db.exec("BEGIN IMMEDIATE"); inTx = true;
+        const row = db.prepare("SELECT * FROM users WHERE id = ?").get(me.id);
+        if (!row) throw new Error("Compte introuvable");
+        const data = rowToPublic(row);
+        let result;
+        if (action === "refine") {
+          const recipe = getRefineryRecipe(recipeId);
+          if (!recipe) throw Object.assign(new Error("Recette introuvable."), { client: true });
+          data.inventory ||= {}; data.inventory.resources ||= {};
+          const refined = refineOreOutput(data.inventory.resources, recipe, requested);
+          if (refined.quantity <= 0) throw Object.assign(new Error("Minerais insuffisants."), { client: true });
+          for (const [resourceId, amount] of Object.entries(recipe.inputs)) data.inventory.resources[resourceId] = Math.max(0, Math.floor(Number(data.inventory.resources[resourceId]) || 0)) - Math.max(0, Math.floor(Number(amount) || 0)) * refined.quantity;
+          data.inventory.resources[recipe.output.id] = Math.max(0, Math.floor(Number(data.inventory.resources[recipe.output.id]) || 0)) + refined.gained;
+          result = { recipeId: recipe.id, quantity: refined.quantity, gained: refined.gained };
+        } else if (action === "craft") {
+          const recipe = getCraftingRecipe(recipeId);
+          if (!recipe) throw Object.assign(new Error("Recette introuvable."), { client: true });
+          result = applyServerCraft(data, recipe, requested);
+          if (result.error) throw Object.assign(new Error(result.error), { client: true });
+        } else throw Object.assign(new Error("Operation inconnue."), { client: true });
+        const now = Date.now();
+        const revision = Math.max(Math.floor(Number(data.revision) || 0), Number(row.revision) || 0) + 1;
+        data.revision = revision; data.updatedAt = now;
+        db.prepare("UPDATE users SET data = ?, revision = ?, updated_at = ? WHERE id = ?")
+          .run(JSON.stringify(data), revision, now, row.id);
+        db.exec("COMMIT"); inTx = false;
+        return json(res, 200, { ok: true, user: data, ...result });
+      } catch (error) {
+        if (inTx) { try { db.exec("ROLLBACK"); } catch {} }
+        return json(res, error?.client ? 409 : 500, { ok: false, error: error?.client ? error.message : "Erreur serveur." });
+      }
+    });
+    return true;
+  }
+  if (pathname === "/api/shop/sell" && req.method === "POST") {
+    if (rateLimited(`${ip}:/api/shop/sell`, 120)) return json(res, 429, { ok: false, error: "Trop de ventes, reessaie dans un instant." });
+    readBody(req, res, (body) => {
+      const me = authUser(req);
+      if (!me) return json(res, 401, { ok: false, error: "Session invalide." });
+      const kind = String(body?.kind || "equipment");
+      const id = String(body?.id || "");
+      const quantity = Math.floor(Number(body?.quantity ?? 1));
+      if (!id || !Number.isSafeInteger(quantity) || quantity < 1 || quantity > 1_000_000) {
+        return json(res, 400, { ok: false, error: "Vente invalide." });
+      }
+      let inTx = false;
+      try {
+        db.exec("BEGIN IMMEDIATE"); inTx = true;
+        const row = db.prepare("SELECT * FROM users WHERE id = ?").get(me.id);
+        if (!row) throw new Error("Compte introuvable");
+        const data = rowToPublic(row);
+        data.inventory ||= {}; data.inventory.counts ||= {}; data.inventory.resources ||= {};
+        let soldQuantity = quantity, gainEach = 0, gain = 0, stripped = 0;
+        if (kind === "ammo") {
+          const info = ammoSellInfo(id);
+          const store = info?.field === "rockets" ? data.rockets : data.ammo;
+          const stock = Math.max(0, Math.floor(Number(store?.[id]) || 0));
+          if (!info || stock < quantity) throw Object.assign(new Error("Pas assez de munitions."), { client: true });
+          gainEach = info.unit; gain = gainEach * quantity; store[id] = stock - quantity;
+          if (info.field === "ammo" && data.ammoActive !== "x1" && !(Number(data.ammo?.[data.ammoActive]) > 0)) {
+            data.ammoActive = "x1"; data.ammo.active = "x1";
+          }
+        } else if (kind === "module") {
+          const all = Array.isArray(data.inventory.shipModules) ? data.inventory.shipModules : [];
+          const owned = all.filter(module => serverModuleGroupKey(module) === id);
+          if (owned.length < quantity) throw Object.assign(new Error("Pas assez d'exemplaires."), { client: true });
+          gainEach = serverModuleSellPrice(owned[0]);
+          if (!(gainEach > 0)) throw Object.assign(new Error("Ce module ne se vend pas ici."), { client: true });
+          const mounted = new Set();
+          for (const hangar of data.hangars || []) for (const config of ["1", "2"]) {
+            for (const moduleId of hangar?.fits?.[config]?.shipMods || []) if (moduleId) mounted.add(String(moduleId));
+          }
+          const free = owned.filter(module => !mounted.has(String(module?.id)));
+          const selected = free.slice(0, quantity);
+          if (selected.length < quantity) {
+            if (body?.force !== true) throw Object.assign(new Error("Module equipe : retire-le avant de le vendre."), { client: true });
+            selected.push(...owned.filter(module => mounted.has(String(module?.id))).slice(0, quantity - selected.length));
+          }
+          const soldIds = new Set(selected.map(module => String(module?.id)));
+          visitEquipmentFits(data, (fit, groups) => {
+            if (!fit || !groups.includes("shipMods") || !Array.isArray(fit.shipMods)) return;
+            fit.shipMods = fit.shipMods.map(value => {
+              if (!soldIds.has(String(value || ""))) return value;
+              stripped++; return null;
+            });
+          });
+          data.inventory.shipModules = all.filter(module => !soldIds.has(String(module?.id)));
+          gain = gainEach * quantity;
+        } else if (kind === "ore") {
+          const unit = Math.max(0, Math.floor(Number(ORE_SELL_PRICES[id]) || 0));
+          const owned = Math.max(0, Math.floor(Number(data.inventory.resources[id]) || 0));
+          if (!(unit > 0)) throw Object.assign(new Error("Ce minerai ne se vend pas ici."), { client: true });
+          if (owned <= 0) throw Object.assign(new Error("Stock vide."), { client: true });
+          soldQuantity = owned;
+          const traderLevel = body?.trader === true ? equippedTraderLevel(data) : 0;
+          const bonusPct = traderLevel > 0 ? getPetTradeBonusPct(traderLevel) : 0;
+          gainEach = unit;
+          gain = Math.floor(owned * unit * (1 + bonusPct / 100));
+          data.inventory.resources[id] = 0;
+        } else {
+          const item = findCatalogItem(id);
+          if (!item) throw Object.assign(new Error("Item introuvable."), { client: true });
+          if (item.ship || item.design || item.pet || item.ticket || !(Number(item.price) > 0)) {
+            throw Object.assign(new Error("Cet article ne peut pas etre vendu."), { client: true });
+          }
+          const owned = Math.max(0, Math.floor(Number(data.inventory.counts[id]) || 0));
+          if (owned < quantity) throw Object.assign(new Error("Pas assez d'exemplaires."), { client: true });
+          const reserved = reservedCatalogCopies(data, id);
+          if (owned - quantity < reserved) {
+            if (body?.force !== true) throw Object.assign(new Error("Objet equipe : retire-le avant de le vendre."), { client: true });
+            stripped = stripCatalogItem(data, id);
+          }
+          if (owned - quantity < reservedCatalogCopies(data, id)) throw Object.assign(new Error("Objet encore equipe."), { client: true });
+          data.inventory.counts[id] = owned - quantity;
+          if (data.inventory.counts[id] <= 0) {
+            delete data.inventory.counts[id];
+            if (Array.isArray(data.inventory.modules)) data.inventory.modules = data.inventory.modules.filter(value => value !== id);
+          }
+          gainEach = Math.floor(Number(item.price) * 0.5); gain = gainEach * quantity;
+        }
+        if (!Number.isSafeInteger(gain) || gain < 0) throw new Error("Gain invalide");
+        data.credits = Math.max(0, Math.floor(Number(data.credits) || 0)) + gain;
+        const now = Date.now();
+        const revision = Math.max(Math.floor(Number(data.revision) || 0), Number(row.revision) || 0) + 1;
+        data.revision = revision; data.updatedAt = now;
+        db.prepare("UPDATE users SET data = ?, revision = ?, updated_at = ? WHERE id = ?")
+          .run(JSON.stringify(data), revision, now, row.id);
+        db.exec("COMMIT"); inTx = false;
+        return json(res, 200, { ok: true, user: data, quantity: soldQuantity, gain, gained: gain, gainEach, stripped });
+      } catch (error) {
+        if (inTx) { try { db.exec("ROLLBACK"); } catch {} }
+        return json(res, error?.client ? 409 : 500, { ok: false, error: error?.client ? error.message : "Erreur serveur." });
+      }
+    });
+    return true;
+  }
+  if (pathname === "/api/shop/buy" && req.method === "POST") {
+    if (rateLimited(`${ip}:/api/shop/buy`, 120)) return json(res, 429, { ok: false, error: "Trop d'achats, reessaie dans un instant." });
+    readBody(req, res, (body) => {
+      const me = authUser(req);
+      if (!me) return json(res, 401, { ok: false, error: "Session invalide." });
+      const item = findCatalogItem(String(body?.itemId || ""));
+      if (!item || item.shopHidden === true) return json(res, 400, { ok: false, error: "Article non vendu en boutique." });
+      const rawQuantity = Number(body?.quantity ?? 1);
+      if (!Number.isSafeInteger(rawQuantity) || rawQuantity < 1 || rawQuantity > 1_000_000) {
+        return json(res, 400, { ok: false, error: "Quantite invalide." });
+      }
+      let inTx = false;
+      try {
+        db.exec("BEGIN IMMEDIATE"); inTx = true;
+        const row = db.prepare("SELECT * FROM users WHERE id = ?").get(me.id);
+        if (!row) throw new Error("Compte introuvable");
+        const data = rowToPublic(row);
+        const purchase = applyCatalogPurchase(data, item, rawQuantity, { petPseudo: body?.petPseudo });
+        if (purchase.error) {
+          db.exec("ROLLBACK"); inTx = false;
+          return json(res, 409, { ok: false, error: purchase.error, user: rowToPublic(row) });
+        }
+        const now = Date.now();
+        const revision = Math.max(Math.floor(Number(data.revision) || 0), Number(row.revision) || 0) + 1;
+        data.revision = revision; data.updatedAt = now;
+        db.prepare("UPDATE users SET data = ?, revision = ?, updated_at = ? WHERE id = ?")
+          .run(JSON.stringify(data), revision, now, row.id);
+        db.exec("COMMIT"); inTx = false;
+        return json(res, 200, { ok: true, user: data, ...purchase });
+      } catch {
+        if (inTx) { try { db.exec("ROLLBACK"); } catch {} }
+        return json(res, 500, { ok: false, error: "Erreur serveur." });
+      }
+    });
+    return true;
   }
   if (pathname === "/api/save" && req.method === "POST") {
     if (rateLimited(`${ip}:/api/save`, 120)) return json(res, 429, { ok: false, error: "Trop de sauvegardes, reessaie dans un instant." });

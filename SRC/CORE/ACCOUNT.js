@@ -1,7 +1,7 @@
 // SRC/CORE/ACCOUNT.js
 "use strict";
 
-import { bootNetFromCache, flushNetUser, netActive, netCurrent, netHasPendingSave, netList, netSetCurrent, netStore, noteNetConsumption, noteNetCreditGain, noteNetEquipmentSold, noteNetGateEnergy, noteNetPurchase, noteNetResourceGain, noteNetSelection, noteNetSkylabMoved, noteNetUpgradeCharge } from "./ACCOUNT_NET.js";
+import { apiGalaxyGateOperation, apiModuleOperation, apiProduction, apiShopBuyItem, apiShopSell, apiSkylabOperation, bootNetFromCache, flushNetUser, netActive, netCurrent, netHasPendingSave, netList, netSetCurrent, netStore, noteNetConsumption, noteNetCreditGain, noteNetEquipmentSold, noteNetGateEnergy, noteNetPurchase, noteNetResourceGain, noteNetSelection, noteNetSkylabMoved, noteNetUpgradeCharge } from "./ACCOUNT_NET.js";
 // Multi : session serveur restauree au chargement (token + cache local),
 // puis refresh async via /api/me (revision canonique).
 try { bootNetFromCache(); } catch {}
@@ -20,6 +20,8 @@ import { isHalloweenEventActive } from "../../NPC/NPC_HALLOWEEN.js";
 import { getRefineryRecipe, refineOreOutput, isOreResource, ORE_SELL_PRICES, UPGRADE_SLOT_ORES, upgradeOreCapacity, planAutoUpgradeCharges, cargoAdd, cargoFree, CARGO_CAPACITY } from "../DATA/RESOURCES.js";
 import { getModuleRarity, MODULE_DAILY_ROLL_LIMIT, MODULE_ROLL_COST, MODULE_SELL_PRICES } from "../DATA/MODULE_DROPS.js";
 import { generateShipModule } from "../DATA/MODULE_GEN.js";
+import { getPassShopOffer, PASS_MODULE_FORCED } from "../DATA/PASS_SHOP.js";
+export { PASS_MODULE_KEY_COSTS, PASS_SHOP_OFFERS } from "../DATA/PASS_SHOP.js";
 import {
   AUCTION_ACTIVE_LOTS,
   AUCTION_CYCLE_VERSION,
@@ -79,6 +81,9 @@ const NPC_KILL_BREAKDOWN_VERSION = 1;
 const QUEST_HONOR_VERSION = 1;
 const QUEST_REWARD_VERSION = 1;
 const GALAXY_GATE_DATA_RESET_VERSION = 1;
+// Les comptes mémoire ne subsistent que pour les tests unitaires Node. Dans
+// le navigateur, token + cache serveur sont l'unique source de session.
+const LOCAL_ACCOUNT_TEST_ONLY = typeof window === "undefined";
 
 const STARTER_SHIP_ID = "PhoenixBleu";
 
@@ -105,6 +110,7 @@ function safeParse(raw, fallback) {
 function readUsers() {
   // Multi : comptes serveur en memoire (push debounce vers /api/save).
   try { if (netActive()) return netList(); } catch {}
+  if (!LOCAL_ACCOUNT_TEST_ONLY) return [];
   const raw = localStorage.getItem(USERS_KEY);
   // Cache mémoire : évite un JSON.parse de ~1.6MB à chaque lecture
   // (getCurrentUserFull est appelé à chaque frame de sauvegarde).
@@ -119,6 +125,7 @@ function readUsers() {
 function writeUsers(users, options = {}) {
   // Multi : memoire + push serveur (memes garde-fous que le legacy).
   try { if (netActive()) { netStore(Array.isArray(users) ? users : [], options); return; } } catch {}
+  if (!LOCAL_ACCOUNT_TEST_ONLY) return;
   const list = Array.isArray(users) ? users : [];
   // Borne l'historique de roulette avant sérialisation : c'est ce qui
   // faisait gonfler orbit_users à 1.6MB -> 600ms de freeze par save.
@@ -138,6 +145,7 @@ function writeUsers(users, options = {}) {
 
 function readCurrent() {
   try { if (netActive()) return netCurrent(); } catch {}
+  if (!LOCAL_ACCOUNT_TEST_ONLY) return null;
   const cur = safeParse(localStorage.getItem(CUR_KEY), null);
   // Validation schéma minimale : sans id valide, on ignore (save corrompue / manuelle).
   if (!cur || typeof cur !== "object" || Array.isArray(cur)) return null;
@@ -152,6 +160,7 @@ function writeCurrent(cur) {
   // Non nulle en mode net : ignore (la session derive de l'utilisateur).
   try { netSetCurrent(cur); } catch {}
   if (netActive()) return;
+  if (!LOCAL_ACCOUNT_TEST_ONLY) return;
   if (!cur) localStorage.removeItem(CUR_KEY);
   else localStorage.setItem(CUR_KEY, JSON.stringify(cur));
 }
@@ -1310,6 +1319,7 @@ function getActiveHangar(u) {
 // Exports demandés
 // ---------------------------
 export function register({ pseudo, email, password, faction }) {
+  if (!LOCAL_ACCOUNT_TEST_ONLY) return { ok: false, error: "Le serveur est obligatoire." };
   pseudo = String(pseudo || "").trim();
   email = String(email || "").trim().toLowerCase();
   password = String(password || "");
@@ -1353,6 +1363,7 @@ export function register({ pseudo, email, password, faction }) {
 }
 
 export function login(pseudoOrEmail, password) {
+  if (!LOCAL_ACCOUNT_TEST_ONLY) return { ok: false, error: "Le serveur est obligatoire." };
   const users = readUsers();
   const key = norm(pseudoOrEmail);
   const pass = String(password || "");
@@ -2369,6 +2380,11 @@ export function consumeCurrentUserGalaxyGate(gateId) {
   return { ok: true, user: u };
 }
 
+export const spinCurrentUserGalaxyGateOnline = (gateId, count = 1) => apiGalaxyGateOperation("spin", { gateId, count });
+export const armCurrentUserGalaxyGateMultiplierOnline = (gateId, armed = true) => apiGalaxyGateOperation("multiplier", { gateId, armed });
+export const deployCurrentUserGalaxyGateOnline = gateId => apiGalaxyGateOperation("deploy", { gateId });
+export const exchangeCurrentUserPalladiumForEnergyOnline = () => apiGalaxyGateOperation("palladium");
+
 // ✅ Gate Eternal (onglet Spéciaux) : pas de spin ni de pièces, 1 CPU =
 // 1 gate posée immédiatement. Pas de stock : impossible d'en cumuler.
 // Boucles : loopsDone = cycles de 11 vagues terminés (multiplicateur ×N).
@@ -3119,6 +3135,16 @@ export function _dangerResetAll() {
   return { ok: true };
 }
 
+// En multi, toute la boutique catalogue est calculée et enregistrée par le
+// serveur. Les gains gratuits (enchères/récompenses) gardent le chemin interne.
+export async function buyShopItem(itemId, requestedQuantity = 1, options = {}) {
+  const item = findCatalogItem(itemId);
+  if (netActive() && item && options.free !== true) {
+    return apiShopBuyItem(itemId, requestedQuantity, options);
+  }
+  return buyItem(itemId, requestedQuantity, options);
+}
+
 export function sellItem(itemId, qty = 1, options = {}) {
   const u = getCurrentUserForMutation();
   if (!u) return { ok: false, error: "Non connecté." };
@@ -3212,6 +3238,11 @@ export function sellItem(itemId, qty = 1, options = {}) {
   writeCurrent({ id: u.id, pseudo: u.pseudo, email: u.email });
 
   return { ok: true, user: u, gain, gainEach, stripped };
+}
+
+export async function sellInventoryItem(itemId, qty = 1, options = {}) {
+  if (netActive()) return apiShopSell(ammoPackUnitPrice(itemId) ? "ammo" : "equipment", itemId, qty, options);
+  return sellItem(itemId, qty, options);
 }
 
 // ---------------------------
@@ -3571,6 +3602,11 @@ export function sellShipModules(groupKey, qty = 1, options = {}) {
   return { ok: true, user: u, gain, gainEach: unitAvg, quantity: toSell.length, stripped };
 }
 
+export async function sellShipModulesOnline(groupKey, qty = 1, options = {}) {
+  if (netActive()) return apiShopSell("module", groupKey, qty, options);
+  return sellShipModules(groupKey, qty, options);
+}
+
 // ---------------------------
 // ✅ Tirages quotidiens (nouveaux modules uniquement, relances illimitées)
 // ---------------------------
@@ -3744,37 +3780,9 @@ export function buyAndAddShipModule(cost, moduleObj, options = {}) {
   };
 }
 
-// Boutique du passe de combat Halloween : tirage instantané payé en clés.
-// Rareté forcée (pas de loterie inter-raretés), paliers croissants.
-// Comme en boutique : module ajouté + historique, sans animation de roue.
-export const PASS_MODULE_KEY_COSTS = Object.freeze({ common: 2, rare: 5, epic: 12, legendary: 25 });
-const PASS_MODULE_FORCED = Object.freeze({
-  common: Object.freeze({ tier: "x1", statCount: 1 }),
-  rare: Object.freeze({ tier: "x2", statCount: 2 }),
-  epic: Object.freeze({ tier: "x3", statCount: 3 }),
-  legendary: Object.freeze({ tier: "x3", statCount: 4 }),
-});
-
-// Offres de la boutique du passe (clés) : modules à rareté forcée,
-// packs de ressources, laser Xénocide (reste aussi en boutique crédits).
-export const PASS_SHOP_OFFERS = Object.freeze([
-  Object.freeze({ id: "mod_common", kind: "module", rarity: "common", cost: 2, label: "Module Commun" }),
-  Object.freeze({ id: "mod_rare", kind: "module", rarity: "rare", cost: 5, label: "Module Rare" }),
-  Object.freeze({ id: "mod_epic", kind: "module", rarity: "epic", cost: 12, label: "Module Épique" }),
-  Object.freeze({ id: "mod_legendary", kind: "module", rarity: "legendary", cost: 25, label: "Module Légendaire" }),
-  Object.freeze({ id: "res_mucosum", kind: "resources", cost: 1, label: "Mucosum ×25", resources: Object.freeze({ mucosum: 25 }) }),
-  Object.freeze({ id: "res_scrap", kind: "resources", cost: 1, label: "Scrap ×25", resources: Object.freeze({ scrap: 25 }) }),
-  Object.freeze({ id: "res_plasmide", kind: "resources", cost: 1, label: "Plasmide ×15", resources: Object.freeze({ plasmide: 15 }) }),
-  Object.freeze({ id: "res_alloy", kind: "resources", cost: 2, label: "Alliage hybride ×5", resources: Object.freeze({ hybrid_alloy: 5 }) }),
-  Object.freeze({ id: "res_prismatium", kind: "resources", cost: 2, label: "Prismatium ×10", resources: Object.freeze({ prismatium: 10 }) }),
-  Object.freeze({ id: "res_aurus", kind: "resources", cost: 2, label: "Aurus ×10", resources: Object.freeze({ aurus: 10 }) }),
-  Object.freeze({ id: "res_rinusk", kind: "resources", cost: 5, label: "Rinusk ×50 + Traceurs ×10", resources: Object.freeze({ rinusk: 50, blacklight_trace: 10 }) }),
-  Object.freeze({ id: "res_kyhalon", kind: "resources", cost: 5, label: "Kyhalon ×10 + Tetrathrin ×10", resources: Object.freeze({ kyhalon: 10, tetrathrin: 10 }) }),
-  Object.freeze({ id: "laser_xenocide", kind: "item", itemId: "laser_lf6", cost: 333, label: "Laser Xénocide" }),
-]);
-
-export function getPassShopOffer(offerId) {
-  return PASS_SHOP_OFFERS.find((o) => o.id === offerId) || null;
+export async function buyAndAddShipModuleOnline() {
+  if (!netActive()) return { ok: false, error: "Session serveur inactive." };
+  return apiModuleOperation("roll");
 }
 
 export function buyPassModuleWithKeys(rarityId) {
@@ -3830,6 +3838,11 @@ export function buyPassShopOffer(offerId) {
   if (netActive()) flushNetUser().catch(() => {});
   writeCurrent({ id: u.id, pseudo: u.pseudo, email: u.email });
   return { ok: true, user: u, module: moduleObj, payment: { type: "keys", amount: cost } };
+}
+
+export async function buyPassShopOfferOnline(offerId) {
+  if (!netActive()) return { ok: false, error: "Session serveur inactive." };
+  return apiModuleOperation("pass", { offerId });
 }
 
 // ✅ Reroll ATOMIQUE (1 seule sauvegarde) : paiement + remplacement.
@@ -3896,6 +3909,11 @@ export function buyAndReplaceShipModule(cost, oldId, newModule, options = {}) {
     ticket: usedTicket,
     payment: usedTicket ? { type: "ticket", amount: 1 } : { type: "credits", amount: cost },
   };
+}
+
+export async function buyAndReplaceShipModuleOnline(oldId) {
+  if (!netActive()) return { ok: false, error: "Session serveur inactive." };
+  return apiModuleOperation("reroll", { moduleId: oldId });
 }
 
 // ✅ Hangar ID (verrou de session)
@@ -4121,6 +4139,15 @@ export function craftCurrentUserRecipe(recipeId, requestedQuantity = 1) {
   return { ok: true, user: u, recipe, quantity };
 }
 
+export async function craftCurrentUserRecipeOnline(recipeId, requestedQuantity = 1) {
+  if (netActive()) {
+    const out = await apiProduction("craft", recipeId, Math.min(100, Math.max(1, Math.floor(Number(requestedQuantity) || 1))));
+    if (out?.ok) out.recipe = getCraftingRecipe(recipeId);
+    return out;
+  }
+  return craftCurrentUserRecipe(recipeId, requestedQuantity);
+}
+
 // Passe de combat Halloween : récupère les clés d'un objectif terminé.
 // Les clés sont stockées en ressources (utilisables plus tard).
 export function claimBattlepassObjective(objId) {
@@ -4169,6 +4196,16 @@ export function refineCurrentUserOre(recipeId, requestedQuantity = 1, options = 
   return { ok: true, user: u, recipe, quantity, gained };
 }
 
+export async function refineCurrentUserOreOnline(recipeId, requestedQuantity = 1) {
+  if (netActive()) {
+    const quantity = requestedQuantity === Infinity ? 1_000_000 : Math.min(1_000_000, Math.max(1, Math.floor(Number(requestedQuantity) || 1)));
+    const out = await apiProduction("refine", recipeId, quantity);
+    if (out?.ok) out.recipe = getRefineryRecipe(recipeId);
+    return out;
+  }
+  return refineCurrentUserOre(recipeId, requestedQuantity);
+}
+
 // Vente de minerais au comptoir pirate (prix fixes, tout le stock du minerai).
 // bonusPct : bonus Cargo Trader du P.E.T (0 = plein tarif).
 export function sellCurrentUserOre(resourceId, bonusPct = 0) {  const u = getCurrentUserForMutation();
@@ -4191,6 +4228,11 @@ export function sellCurrentUserOre(resourceId, bonusPct = 0) {  const u = getCur
   if (netActive()) noteNetConsumption("ores", id, owned);
   noteNetEquipmentSold({ credits: gained });
   return { ok: true, user: u, resourceId: id, quantity: owned, gained };
+}
+
+export async function sellCurrentUserOreOnline(resourceId, useTrader = false) {
+  if (netActive()) return apiShopSell("ore", resourceId, 1, { trader: useTrader === true });
+  return sellCurrentUserOre(resourceId, useTrader ? 0 : 0);
 }
 
 // Échange Palladium -> énergie Galaxy (10:1, comptoir pirate). Tout le possible.
@@ -4491,6 +4533,14 @@ export function tickCurrentUserSkylab(nowMs = Date.now(), dtRealSec = 1) {
   const res = tickSkylabState(sky, now, dtRealSec);
   return { ok: true, user: u, completed: res.completed };
 }
+
+export const syncCurrentUserSkylabOnline = () => apiSkylabOperation("sync");
+export const startSkylabUpgradeOnline = moduleId => apiSkylabOperation("upgrade", { moduleId });
+export const setSkylabModuleEnabledOnline = (moduleId, enabled) => apiSkylabOperation("toggle", { moduleId, enabled });
+export const buySkylabRobotOnline = moduleId => apiSkylabOperation("robot", { moduleId });
+export const transportSkylabToShipOnline = amounts => apiSkylabOperation("transport", { amounts, toSky: false });
+export const loadSkylabFromShipOnline = amounts => apiSkylabOperation("transport", { amounts, toSky: true });
+export const instantSkylabTransportOnline = (amounts, toSky = false) => apiSkylabOperation("instant", { amounts, toSky });
 
 // ---------------------------
 // Enchères façon DarkOrbit : lots fixes horaires, mise réservée.

@@ -353,7 +353,7 @@ test("GG : un changement de carte ne valide pas la gate en voyant sa liste NPC p
 });
 
 test("Lambda : boss tues en premier ou en dernier, fin unique apres les 22 NPC", () => {
-  const from = engine.indexOf('    if (e._onKill && !(e._netUid && netplayNpcActive())) {');
+  const from = engine.indexOf('    if (e._onKill && !(e._netUid && isSharedZone())) {');
   const to = engine.indexOf('    if (e.type === "npc_Protegit"', from);
   assert.ok(from > 0 && to > from);
   for (const bossFirst of [true, false]) {
@@ -361,7 +361,7 @@ test("Lambda : boss tues en premier ou en dernier, fin unique apres les 22 NPC",
     const enemies = plan.spawns.flatMap(spawn => Array.from({ length: spawn.count }, () => ({
       type: spawn.type, hp: 1, _onKill: spawn.onKill })));
     c.enemies = bossFirst ? enemies : enemies.reverse();
-    c.netplayNpcActive = () => false; c.isEntityJammed = () => true;
+    c.isSharedZone = () => false; c.isEntityJammed = () => true;
     vm.runInContext(`function handleDeath(e) { ${engine.slice(from, to)} }`, c);
     while (c.enemies.length) {
       const enemy = c.enemies[0]; enemy.hp = 0;

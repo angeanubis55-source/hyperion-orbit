@@ -541,7 +541,7 @@ test("Aegis : les ticks locaux transmettent les gains réels et +0, sans annonce
   const sent = [], player = { hp: 99000, hpMax: 100000, sh: 49000, shMax: 50000 };
   let ally = null;
   const context = vm.createContext({ player, pickHealAlly: () => ally, addFloatText: () => {},
-    sendSkillUse: (...args) => sent.push(args), DMG_FMT: { format: String }, netplayNpcActive: () => false });
+    sendSkillUse: (...args) => sent.push(args), DMG_FMT: { format: String }, isSharedZone: () => false });
   vm.runInContext(section(engine, "function healAllyOrSelf(", "function drawAegisRepairPod("), context);
   for (const shield of [false, true]) {
     const skill = shield ? "ability_aegis_shield-repair" : "ability_aegis_hp-repair";

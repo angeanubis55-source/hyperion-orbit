@@ -39,14 +39,16 @@ test('le plan laisse les entrees intactes et ne distribue que des unites entiere
 
 const engine = readFileSync(new URL('../SRC/CORE/ORBIT_ENGINE.js', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
 function engineFunction(name) {
-  const from = engine.indexOf(`function ${name}(`), end = from + engine.slice(from).search(/^}$/m);
+  const asyncFrom = engine.indexOf(`async function ${name}(`);
+  const from = asyncFrom >= 0 ? asyncFrom : engine.indexOf(`function ${name}(`), end = from + engine.slice(from).search(/^}$/m);
   assert.ok(from >= 0 && end > from); return engine.slice(from, end + 1);
 }
 function refinery(resources, selections, equipment = true, ores = false) {
   const user = { id: 'refinery-test', inventory: { resources: { ...resources } }, upgrades: {} };
   const saved = [], ctx = vm.createContext({
     account: { user }, ui: { refineryAuto: { checked: ores }, refineryAutoUpgrades: { checked: equipment } },
-    REFINERY_RECIPES, chargeShipUpgradesAutomatically, refineCurrentUserOre,
+    REFINERY_RECIPES, chargeShipUpgradesAutomatically,
+    refineCurrentUserOreOnline: async (recipeId, quantity) => refineCurrentUserOre(recipeId, quantity, { user, deferSave: true }),
     localStorage: { setItem() {} }, loadAccountUser() {}, applyCurrentConfigStats() { ctx.stats++; },
     saveUser(user) { saved.push(structuredClone(user)); }, stats: 0, started: true,
   });
@@ -55,61 +57,61 @@ function refinery(resources, selections, equipment = true, ores = false) {
     ['refineryEquipmentPrefsKey', 'saveRefineryEquipmentPrefs', 'refineryChargeEquipment', 'refineryRefineAll', 'maybeRefineryAuto', 'tickRefineryAuto'].map(engineFunction).join('\n'), ctx);
   return { ctx, user, saved };
 }
-test('les deux automatismes decoches ne touchent ni minerais ni equipement', () => {
+test('les deux automatismes decoches ne touchent ni minerais ni equipement', async () => {
   const { ctx, user } = refinery({ promerium: 100 }, all, false, false);
-  assert.equal(ctx.maybeRefineryAuto(), 0);
+  assert.equal(await ctx.maybeRefineryAuto(), 0);
   assert.equal(user.inventory.resources.promerium, 100); assert.deepEqual(user.upgrades, {});
 });
-test('auto-raffinage charge le produit choisi avant la transformation suivante et sauvegarde une seule fois', () => {
+test('auto-raffinage charge le produit choisi avant la transformation suivante et sauvegarde une seule fois', async () => {
   const { ctx, user, saved } = refinery({ prometid: 400, duranium: 400, xenomit: 40 }, all, true, true);
-  ctx.maybeRefineryAuto();
+  await ctx.maybeRefineryAuto();
   for (const slot of Object.keys(all)) assert.equal(user.upgrades[slot].stock, 100);
   assert.equal(user.inventory.resources.promerium, 0);
   assert.equal(user.inventory.resources.seprom || 0, 0);
   assert.equal(saved.length, 1); assert.equal(ctx.stats, 1);
 });
 
-test('le lot de trois secondes cumule les collectes, raffine et charge avec une seule sauvegarde', () => {
+test('le lot de trois secondes cumule les collectes, raffine et charge avec une seule sauvegarde', async () => {
   const { ctx, user, saved } = refinery({ prometid: 200, duranium: 200, xenomit: 20 }, all, true, true);
-  ctx.tickRefineryAuto(1);
+  await ctx.tickRefineryAuto(1);
   user.inventory.resources.prometid += 200;
   user.inventory.resources.duranium += 200;
   user.inventory.resources.xenomit += 20;
-  ctx.tickRefineryAuto(1);
+  await ctx.tickRefineryAuto(1);
   assert.equal(saved.length, 0); assert.equal(ctx.stats, 0);
   assert.equal(user.inventory.resources.prometid, 400); assert.deepEqual(user.upgrades, {});
-  ctx.tickRefineryAuto(1);
+  await ctx.tickRefineryAuto(1);
   for (const slot of Object.keys(all)) assert.equal(user.upgrades[slot].stock, 100);
   assert.equal(user.inventory.resources.promerium, 0);
   assert.equal(saved.length, 1); assert.equal(ctx.stats, 1);
-  ctx.tickRefineryAuto(3);
+  await ctx.tickRefineryAuto(3);
   assert.equal(saved.length, 1); assert.equal(ctx.stats, 1, 'lot vide sans recalcul');
 });
 
-test('le meme timer fonctionne avec chacun des deux automatismes seul', () => {
+test('le meme timer fonctionne avec chacun des deux automatismes seul', async () => {
   const classic = refinery({ prometium: 100, endurium: 100 }, {}, false, true);
-  classic.ctx.tickRefineryAuto(2.5);
+  await classic.ctx.tickRefineryAuto(2.5);
   assert.equal(classic.user.inventory.resources.prometid || 0, 0);
-  classic.ctx.tickRefineryAuto(0.5);
+  await classic.ctx.tickRefineryAuto(0.5);
   assert.equal(classic.user.inventory.resources.prometid, 5);
   assert.equal(classic.saved.length, 1); assert.equal(classic.ctx.stats, 0);
 
   const equipment = refinery({ promerium: 120, prometium: 100, endurium: 100 }, all, true, false);
-  equipment.ctx.tickRefineryAuto(2.5);
+  await equipment.ctx.tickRefineryAuto(2.5);
   assert.deepEqual(equipment.user.upgrades, {});
-  equipment.ctx.tickRefineryAuto(0.5);
+  await equipment.ctx.tickRefineryAuto(0.5);
   assert.equal(equipment.user.inventory.resources.prometium, 100, 'raffinage classique desactive');
   for (const slot of Object.keys(all)) assert.equal(equipment.user.upgrades[slot].stock, 300);
   assert.equal(equipment.saved.length, 1); assert.equal(equipment.ctx.stats, 1);
 });
 
-test('desactiver les automatismes remet leur delai a zero', () => {
+test('desactiver les automatismes remet leur delai a zero', async () => {
   const { ctx, user, saved } = refinery({ promerium: 120 }, all, true, false);
-  ctx.tickRefineryAuto(2);
-  ctx.ui.refineryAutoUpgrades.checked = false; ctx.tickRefineryAuto(1);
-  ctx.ui.refineryAutoUpgrades.checked = true; ctx.tickRefineryAuto(1);
+  await ctx.tickRefineryAuto(2);
+  ctx.ui.refineryAutoUpgrades.checked = false; await ctx.tickRefineryAuto(1);
+  ctx.ui.refineryAutoUpgrades.checked = true; await ctx.tickRefineryAuto(1);
   assert.deepEqual(user.upgrades, {}); assert.equal(saved.length, 0);
-  ctx.tickRefineryAuto(2);
+  await ctx.tickRefineryAuto(2);
   assert.equal(saved.length, 1);
 });
 test('le chargement automatique cumule le stock existant du meme minerai', () => {

@@ -1,6 +1,6 @@
 "use strict";
 
-import { register, login, getCurrentUserPublic, findLocalUserForMigration } from "../SRC/CORE/ACCOUNT.js";
+import { getCurrentUserPublic, findLocalUserForMigration } from "../SRC/CORE/ACCOUNT.js";
 import { serverOnline, apiRegister, apiLogin } from "../SRC/CORE/ACCOUNT_NET.js";
 
 const $ = (id) => document.getElementById(id);
@@ -42,10 +42,14 @@ let netServer = false;
 try {
   showMsg("Connexion…", true);
   netServer = await serverOnline(1500);
-  showMsg(netServer ? "Mode en ligne : comptes sur le serveur." : "Mode local : serveur injoignable.", netServer);
+  showMsg(netServer ? "Mode en ligne : comptes sur le serveur." : "Serveur injoignable. Connexion impossible.", netServer);
+  $("btnLogin").disabled = !netServer;
+  $("btnRegister").disabled = !netServer;
   setTimeout(() => { if (!msgEl.textContent.startsWith("⚠️") && !msgEl.textContent.startsWith("❌")) { msgEl.textContent = ""; msgEl.className = "msg"; } }, 2500);
 } catch {
   netServer = false;
+  $("btnLogin").disabled = true;
+  $("btnRegister").disabled = true;
 }
 
 // Tab switching
@@ -111,6 +115,10 @@ $("btnLogin").addEventListener("click", async (e) => {
       return;
     }
 
+    if (!netServer) {
+      showMsg("Serveur injoignable. Connexion impossible.", false);
+      return;
+    }
     if (netServer) {
       showMsg("Connexion au serveur…", true);
       $("btnLogin").disabled = true;
@@ -132,19 +140,6 @@ $("btnLogin").addEventListener("click", async (e) => {
       return;
     }
 
-    const out = login(pseudo, password);
-    if (!out || out.ok === false) {
-      showMsg(out?.error || "❌ Échec de connexion", false);
-      return;
-    }
-
-    try {
-      if (rememberMe && rememberMe.checked) localStorage.setItem(REMEMBER_KEY, pseudo);
-      else localStorage.removeItem(REMEMBER_KEY);
-    } catch {}
-
-    showMsg("✅ Session active - Bienvenue pilote!", true);
-    setTimeout(goProfile, 800);
   } catch (e) {
     console.error(e);
     showMsg(e?.message || "❌ Erreur de connexion", false);
@@ -178,6 +173,10 @@ $("btnRegister").addEventListener("click", async (e) => {
       return;
     }
 
+    if (!netServer) {
+      showMsg("Serveur injoignable. Inscription impossible.", false);
+      return;
+    }
     if (netServer) {
       showMsg("Création du compte sur le serveur…", true);
       $("btnRegister").disabled = true;
@@ -199,20 +198,6 @@ $("btnRegister").addEventListener("click", async (e) => {
       return;
     }
 
-    const out = register({
-      pseudo,
-      email,
-      password: p1,
-      faction,
-    });
-
-    if (!out || out.ok === false) {
-      showMsg(out?.error || "❌ Échec de création", false);
-      return;
-    }
-
-    showMsg("✅ Compte pilote créé - Session active!", true);
-    setTimeout(goProfile, 800);
   } catch (e) {
     console.error(e);
     showMsg(e?.message || "❌ Erreur d'inscription", false);

@@ -629,6 +629,7 @@ function refreshCombatProfile(state, accountId, map, message = {}) {
 }
 
 const root = resolve(process.cwd());
+const dataRoot = resolve(process.env.ORBIT_DATA_DIR || join(root, "SERVER_DATA"));
 const portArg = process.argv.find((arg) => arg.startsWith("--port="))?.slice(7);
 const PORT = Number(portArg || process.env.PORT || 8080) || 8080;
 const PUBLIC_DIRS = new Set(["ASSETS", "AUDIO", "COMBAT", "DRONE", "MAPS", "NPC", "PET", "PUBLIC", "QUEST", "SHIP", "SRC", "UI"]);
@@ -677,7 +678,7 @@ function setSecurityHeaders(response) {
 // --- Panneau admin (/admin.html) : mot de passe via ORBIT_ADMIN_PASS,
 // sinon genere une fois et persiste dans SERVER_DATA/.admin_pass
 // (retrouvable en SSH via `cat SERVER_DATA/.admin_pass`, jamais dans git).
-const ADMIN_PASS_FILE = join(root, "SERVER_DATA", ".admin_pass");
+const ADMIN_PASS_FILE = join(dataRoot, ".admin_pass");
 function loadOrCreateAdminPass() {
   const env = String(process.env.ORBIT_ADMIN_PASS || "").trim();
   if (env) return { pass: env, fromFile: false };
@@ -699,7 +700,7 @@ const chatMutes = new Set(); // ids prives de chat (persistants, ids stables)
 // --- Bannissements temporaires (panneau admin) : bloques par compte (id
 // stable) + par pseudo (anti-evasion par deconnexion). Persistes dans
 // SERVER_DATA/bans.json, expiration paresseuse (nettoyes a la lecture).
-const BANS_FILE = join(root, "SERVER_DATA", "bans.json");
+const BANS_FILE = join(dataRoot, "bans.json");
 let bans = new Map(); // key -> { key, pseudo, reason, until (ms|null), at }
 try {
   const raw = JSON.parse(readFileSync(BANS_FILE, "utf8") || "{}");
@@ -1362,7 +1363,7 @@ const mimeTypes = {
   ".woff2": "font/woff2",
 };
 
-// --- HTTP statique (meme comportement que GAME_SERVER.js) + API comptes ---
+// --- Serveur unique : HTTP statique + API comptes + WebSocket ---
 const server = createServer(async (request, response) => {
   try {
     setSecurityHeaders(response);
@@ -1434,7 +1435,7 @@ const PLAYER_NEAR_PLAYER_RADIUS = 2600;
 const PLAYER_STATIC_REFRESH_TICKS = 10; // garde-fou de resynchronisation : 500 ms
 const rooms = new Map(); // mapId(lower) -> Map(id -> { ws, state })
 const npcSims = new Map(); // mapId(lower) -> ZoneNpcSim | null | Promise
-const NPC_RESPAWNS_FILE = join(root, "SERVER_DATA", "npc_respawns.json");
+const NPC_RESPAWNS_FILE = join(dataRoot, "npc_respawns.json");
 let savedNpcRespawns = {};
 try {
   const parsed = JSON.parse(readFileSync(NPC_RESPAWNS_FILE, "utf8") || "{}");

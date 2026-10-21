@@ -149,7 +149,7 @@ window.__GO_TO_MAP__ = (mapId, spawnId = null) => {
 };
 
 // ✅ guard : si pas connecté → auth
-if (!localStorage.getItem("orbit_current_user")) {
+if (!localStorage.getItem("orbit_token") || !localStorage.getItem("orbit_current_user")) {
   location.href = "./PUBLIC/AUTH.html";
 }
 

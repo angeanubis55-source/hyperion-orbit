@@ -15,7 +15,7 @@ const networks = {
 };
 assert.ok(networks[networkName], 'Unknown network profile');
 
-const server = spawn(process.execPath, ['SCRIPTS/GAME_SERVER.js'], { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
+const server = spawn(process.execPath, ['SCRIPTS/MULTI_SERVER.js'], { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
 const serverErrors = [];
 server.stderr.on('data', data => serverErrors.push(String(data)));
 let browser;

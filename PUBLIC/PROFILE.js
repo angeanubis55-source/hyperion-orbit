@@ -5,7 +5,7 @@ import { inventoryPage } from "../UI/UI_INVENTORY.js";
 import {
   getCurrentUserFull,
   logout,
-  buyItem,
+  buyShopItem,
   sellItem,
   setActiveHangar,
   setHangarDesign,
@@ -14,8 +14,8 @@ import {
   buyModuleRoll,
   addShipModule,
   replaceShipModule,
-  buyAndAddShipModule,
-  buyAndReplaceShipModule,
+  buyAndAddShipModuleOnline,
+  buyAndReplaceShipModuleOnline,
   moduleDailyRollInfo,
   moduleRerollInvested,
   shipModuleGroupKey,
@@ -27,8 +27,6 @@ import {
   updateCurrentUserPetPseudo,
   changeCurrentUserPassword,
   changeCurrentUserFaction,
-  buyCurrentUserDrone,
-  buyCurrentUserDroneFormation,
   setCurrentUserDroneFormation,
   getDroneFit,
   getPetFit,
@@ -2318,8 +2316,8 @@ card.className = "shipCard" + (owned ? " owned" : "");
         showConfirm(
           'Confirmer l\'achat',
           `Voulez-vous acheter le vaisseau "${shipName}" pour ${priceFormatted} crédits ?`,
-          () => {
-            const out = buyItem(it.id);
+          async () => {
+            const out = await buyShopItem(it.id);
             if (!out?.ok) {
               showToast(out?.error || "Achat impossible", 'error');
               return;
@@ -2788,21 +2786,19 @@ function renderExtrasRoulette(user) {
   // 🎰 TIRAGE DE BASE — sauvegarde ATOMIQUE avant l'animation : si l'onglet
   // se ferme / la boutique se réduit pendant les 900 ms de la roue, le module
   // est déjà persisté (inventaire + historique). L'arrêt ne fait qu'afficher.
-  const handleBaseRoll = () => {
+  const handleBaseRoll = async () => {
     if (rolling) return;
     moduleReroll = null; // un nouveau tirage de base "casse" la possibilité de reroll
 
     const u2 = getCurrentUserFull();
     if (!u2) { setMsg("Non connecté.", false); return; }
-    const mod = generateShipModule(u2);
-    mod.rerolls = 0;
-    mod.rerollCredits = 0;
-
-    const saved = buyAndAddShipModule(MODULE_ROLL_COST, mod, { payWith: "credits" });
+    const saved = await buyAndAddShipModuleOnline();
     if (!saved?.ok) {
       setMsg(saved?.error || "Achat impossible.", false);
       return;
     }
+    const mod = saved.module;
+    if (!mod) { setMsg("Resultat du tirage invalide.", false); return; }
     user = getCurrentUserFull() || saved.user;
 
     // Le nouveau tirage doit toujours être visible : on lève le filtre
@@ -2867,7 +2863,7 @@ function renderExtrasRoulette(user) {
   // 🔁 REROLL du module courant : même type/tier/rareté/vaisseau/famille,
   // seuls les % changent. Prix multiplié par 5 à chaque relance.
   // Sauvegarde ATOMIQUE avant l'animation (même raison que le tirage).
-  const handleReroll = () => {
+  const handleReroll = async () => {
     if (!moduleReroll) return;
     if (rolling) { setMsg("Tirage en cours, patiente…", false); return; }
 
@@ -2903,11 +2899,14 @@ function renderExtrasRoulette(user) {
     // crédits = +cost) à partir de l'ancien module : on ne pré-remplit pas.
 
     // Relance : ticket automatique si dispo, sinon crédits (pas de choix).
-    const repl = buyAndReplaceShipModule(cost, oldId, newMod);
+    const repl = await buyAndReplaceShipModuleOnline(oldId);
     if (!repl?.ok) {
       setMsg(repl?.error || "Achat impossible.", false);
       return;
     }
+    const serverModule = repl.module;
+    if (!serverModule) { setMsg("Resultat de la relance invalide.", false); return; }
+    Object.assign(newMod, serverModule);
     user = getCurrentUserFull() || repl.user;
     moduleReroll.currentId = newMod.id;
     moduleReroll.rerolls = newMod.rerolls;
@@ -3676,8 +3675,8 @@ if (isDrone) {
       showPetNamingModal({
         itemName,
         totalPrice,
-        onConfirm: (petPseudo) => {
-          const out = buyItem(it.id, quantity, { petPseudo, petFaction: user?.faction });
+        onConfirm: async (petPseudo) => {
+          const out = await buyShopItem(it.id, quantity, { petPseudo, petFaction: user?.faction });
           if (!out?.ok) {
             showToast(out?.error || "Achat impossible", 'error');
             return;
@@ -3697,12 +3696,8 @@ if (isDrone) {
     showConfirm(
       'Confirmer l\'achat',
       `Voulez-vous acheter ${quantity > 1 ? `${formatNumber(quantity)} × ` : ""}"${itemName}" pour ${formatNumber(totalPrice)} crédits ?`,
-      () => {
-        const out = isDrone
-          ? buyCurrentUserDrone(it.drone.type)
-          : isFormation
-            ? buyCurrentUserDroneFormation(it.formation.id)
-            : buyItem(it.id, quantity);
+      async () => {
+        const out = await buyShopItem(it.id, quantity);
         if (!out?.ok) {
           showToast(out?.error || "Achat impossible", 'error');
           return;
@@ -6732,6 +6727,7 @@ window.addEventListener("orbit:user-updated", event => {
     accountRefreshFrame = 0;
     user = getCurrentUserFull();
     if (!user) return;
+    const fitOpen = !!(fitOverlayEl && fitOverlayEl.style.display !== "none" && fitState.hangarId);
     reconcileFitInventory(user);
     if (profileIsVisible()) {
       renderHeader(user);
@@ -6739,8 +6735,10 @@ window.addEventListener("orbit:user-updated", event => {
     }
     if (settingsAccountVisible()) renderAccount(user);
     if (shopIsVisible() && shopTab !== "extras") renderShop(user);
-    if (hangarIsVisible()) renderHangars(user);
-    if (fitOverlayEl && fitOverlayEl.style.display !== "none" && fitState.hangarId) {
+    // Ne pas reconstruire le panneau Hangars pendant l'édition : son innerHTML
+    // contient la modale et détruirait le brouillon ainsi que ses boutons.
+    if (hangarIsVisible() && !fitOpen) renderHangars(user);
+    if (fitOpen) {
       renderDroneEquipment(user);
       renderInventoryPalette();
     }

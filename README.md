@@ -15,7 +15,7 @@ avertissement SmartScreen : `Informations complémentaires` > `Exécuter quand m
 
 ## Lancer le projet (développeurs)
 
-Le projet utilise les modules JavaScript natifs et doit être servi par un serveur HTTP local.
+Le projet utilise les modules JavaScript natifs et le serveur multijoueur est obligatoire.
 
 ```powershell
 npm run server
@@ -46,7 +46,7 @@ npm run benchmark
 - cartes et portails dynamiques ;
 - combat contre les NPC ;
 - hangars, équipements et configurations ;
-- sauvegarde locale versionnée ;
+- comptes et progression sauvegardés sur le serveur ;
 - interface de profil et boutique.
 
-Le stockage actuel est prévu pour une expérience locale. Une version multijoueur devra utiliser un serveur autoritaire pour les comptes, l’économie et le combat.
+Les cartes normales sont exclusivement multijoueur. Les Galaxy Gates restent des instances privées simulées localement, tout en conservant une session serveur active.

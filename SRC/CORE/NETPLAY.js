@@ -1,5 +1,6 @@
 // SRC/CORE/NETPLAY.js — Etape 1 multi : se voir a 2 sur la meme map.
-// Solo-safe : si le WS est injoignable, le jeu continue en solo sans erreur.
+// Le WebSocket est obligatoire sur les cartes partagees. Les Galaxy Gates
+// restent des instances privees locales, avec la session serveur conservee.
 // Protocole compatible SCRIPTS/MULTI_SERVER.js (rooms par map, snapshot 20 Hz).
 
 import { NETWORK_TIMING_GRACE_SEC } from "./NETWORK_TIMING.js";
@@ -930,7 +931,7 @@ function prune() {
 
 export function ensureNetplayConnection() {
   if (connectTried || noReconnect) return;
-  // file:// ou preview sans serveur : reste en solo.
+  // file:// et les previews sans serveur ne peuvent pas lancer une partie.
   try {
     if (!/^https?:$/.test(location.protocol)) return;
   } catch { return; }
@@ -2026,9 +2027,8 @@ function sendNow(local, force = false) {
       // Sans cette purge, syncNetNpcs pouvait recreer pendant quelques
       // images les NPC du secteur precedent (les "NPC fantomes").
       clearInstanceGameplay();
-      // Pendant l'attente du premier snapshot, conserve le mode NPC serveur :
-      // le spawner local ne doit pas fabriquer une population provisoire qui
-      // disparaitrait 50 ms plus tard. Le repli solo revient apres 3 secondes.
+      // Pendant l'attente du premier snapshot, conserve le mode NPC serveur.
+      // Une zone ne doit jamais fabriquer une population locale provisoire.
       if (instanceMode !== true) lastNpcSnapMs = performance.now();
       const out = { t: "map", map };
       if (instanceMode === true) out.instance = true;

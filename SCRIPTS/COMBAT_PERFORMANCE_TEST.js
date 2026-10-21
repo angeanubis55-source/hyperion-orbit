@@ -86,6 +86,7 @@ function salvoHarness({ ammo = 'x4', stock = 100, pair = false } = {}) {
     SIDE_OFFSET: 12, SIDE_DMG_SPLIT: 0.5, ENTITY_LIMITS: { playerBullets: 1000 },
     QA_BURST_TIME: HYPERION_QA_BURST_SEC, HYPERION_QA_DAMAGE, HYPERION_QA_SALVOS,
     getNetSelf: () => null, netPvpBlocked: () => false, hyperionTargetBlocked: () => false,
+    laserBaseDamageForTarget: () => 1000,
     getEnemyById: id => id === target.id && target.hp > 0 ? target : null,
     dist2: (ax, ay, bx, by) => (ax - bx) ** 2 + (ay - by) ** 2,
     bulletLifeForRange: () => 1, addCappedProjectile: (list, bullet) => list.push(bullet),
@@ -97,6 +98,7 @@ function salvoHarness({ ammo = 'x4', stock = 100, pair = false } = {}) {
     buoyDamageMult: one, valourDamageMult: one, berserkDamageMult: one, holoDamageMult: one,
     scrambleDamageMult: one, specDamageMult: one, tempestDischargeMult: one, shipPassiveDamageMult: one,
     breakPoliceCloak: noop, playPlayerShot: noop, consumeUpgradeStock: noop, maybeTriggerLaser: noop,
+    cancelOwnStationAttack: () => false,
     mirrorConsumedStock: noop, markProgressDirty: noop, updateAmmoUI: noop,
     updateCurrentUserProgress: () => ({}), showNotification: noop, announceLaserCombatRange: noop,
     sendSkillUse: noop, startQaCooldown: noop,
@@ -323,26 +325,22 @@ test('le choix manuel de munition reste sauvegarde immediatement', () => {
   assert.equal(ctx.player.ammo.active, 'x1'); assert.deepEqual(patches, ['x4', 'x1']); assert.equal(dirty, 2);
 });
 
-test("Skylab : la déconnexion stabilise le stock et une coupure rattrape toute la production différée", () => {
+test("Skylab : aucune production locale et synchronisation serveur apres deconnexion", () => {
   const source = readFileSync(new URL("../UI/UI_SKYLAB.js", import.meta.url), "utf8").replace(/\r\n/g, "\n");
   const user = { skylab: createDefaultSkylabState(1000) };
   user.skylab.modules.prometium_collector.level = 2;
-  const expected = normalizeSkylabState(structuredClone(user.skylab));
   const before = structuredClone(user.skylab);
-  let closing = true;
+  let closing = true, syncs = 0;
   const context = vm.createContext({ ctx: { getUser: () => user }, isLogoutPending: () => closing,
-    deferredProductionSeconds: 0, Date: { now: () => 20000 }, normalizeSkylabState, tickSkylabState,
-    lastDirtyMark: 20000, lastDynamicRefresh: 20000 });
+    Date: { now: () => 20000 }, els: () => ({ root: null }), requestSkylabSync: () => { syncs++; },
+    syncInFlight: false, lastServerSync: -50000, lastDynamicRefresh: 20000 });
   vm.runInContext(engineFunction("tickSkylabProduction", source), context);
   context.tickSkylabProduction(0.5); context.tickSkylabProduction(0.5);
-  assert.deepEqual(user.skylab, before, "aucun gain n'arrive derrière la sauvegarde finale");
+  assert.deepEqual(user.skylab, before, "aucun gain n'arrive depuis l'horloge du navigateur");
+  assert.equal(syncs, 0);
   closing = false; context.tickSkylabProduction(1);
-  tickSkylabState(expected, 20000, 2);
-  assert.deepEqual(user.skylab.stock, expected.stock);
-  assert.ok(user.skylab.stock.prometium > before.stock.prometium);
-  assert.equal(user.skylab.lastTickAt, 20000);
-  context.tickSkylabProduction(1); tickSkylabState(expected, 20000, 1);
-  assert.deepEqual(user.skylab.stock, expected.stock, "la période différée n'est pas comptée deux fois");
+  assert.equal(syncs, 1, "le serveur reprend la production apres la deconnexion");
+  assert.deepEqual(user.skylab, before);
 });
 
 test("stockage des cargos : aucune serialisation dans la frame, etat recent et flush a la fermeture", () => {
@@ -452,7 +450,8 @@ function targetHarness(enemies) {
     stopAttack: () => { stops++; context.attackActive = false; },
     petLockValid: () => true, getEnemyById: id => enemies.find(e => e.id === id),
     player: { shPen: 0 }, NPC_TYPES: {}, rules: {}, damageEnemyLayers,
-    blMapDamageMult: () => 1, diminishWeakened: () => false, holoEnemyWeakened: () => false,
+    blMapDamageMult: () => 1, sundayDamageMult: () => 1,
+    diminishWeakened: () => false, holoEnemyWeakened: () => false, isSharedZone: () => true,
     triggerBossEncounterPhase: () => {}, sendNetHit: () => {}, breakLocalRepairLinks: () => {}, netplayNpcActive: () => true,
   });
   const damage = engineFunction('refreshCubikonFromMinionHit') + '\n' + engine.slice(engine.indexOf("function damageEnemy("), engine.indexOf("function applyRocketHit("));
@@ -480,7 +479,7 @@ test("lock NPC : impact predit lethal avant processDeaths, correction serveur sa
   assert.equal(h.stops(), 0);
 });
 
-test("lock : morts confirmees serveur et solo liberent la cible", () => {
+test("lock : morts confirmees serveur et retraits liberent la cible", () => {
   for (const verdict of [true, false]) {
     const npc = { id: 1, _netUid: "npc1", hp: 100 };
     const h = targetHarness([npc]); h.target.set(npc);
@@ -515,7 +514,7 @@ test("affichage des gains : format francais preserve", () => {
   }
 });
 
-test("raffinage auto : chaine complete, une sauvegarde, debits reseau conserves", () => {
+test("raffinage auto : chaine complete, une sauvegarde, debits reseau conserves", async () => {
   const source = readFileSync(new URL("../SRC/CORE/ACCOUNT.js", import.meta.url), "utf8").replace(/\r\n/g, "\n");
   const user = { inventory: { resources: { prometium: 10000, endurium: 10000, terbium: 10000, xenomit: 1000 } } };
   const expected = structuredClone(user);
@@ -543,14 +542,17 @@ test("raffinage auto : chaine complete, une sauvegarde, debits reseau conserves"
     netActive: () => true, noteNetConsumption: (field, id, count) => { assert.equal(field, "ores"); debits[id] = (debits[id] || 0) + count; },
     getCurrentUserFull: () => { reads++; return user; }, ensureUserShape: u => u,
     saveUser: (u, options) => { assert.equal(u, user); assert.equal(options.source, "progress"); saves++; },
+    refineCurrentUserOreOnline: async (recipeId, quantity) => context.refineCurrentUserOre(recipeId, quantity, { user, deferSave: true }),
+    refineryServerBusy: false,
   });
-  vm.runInContext(engineFunction("refineCurrentUserOre", source) + "\n" + engineFunction("refineryChargeEquipment") + "\n" + engineFunction("refineryRefineAll"), context);
-  assert.equal(context.refineryRefineAll(), expectedGain);
+  const asyncRefine = engine.slice(engine.indexOf("async function refineryRefineAll("), engine.indexOf("\n}\n\nasync function maybeRefineryAuto", engine.indexOf("async function refineryRefineAll(")) + 2);
+  vm.runInContext(engineFunction("refineCurrentUserOre", source) + "\n" + engineFunction("refineryChargeEquipment") + "\n" + asyncRefine, context);
+  assert.equal(await context.refineryRefineAll(), expectedGain);
   assert.deepEqual(user, expected);
   assert.deepEqual(debits, expectedDebits);
   assert.equal(reads, 0);
   assert.equal(saves, 1);
-  assert.equal(context.refineryRefineAll(), 0);
+  assert.equal(await context.refineryRefineAll(), 0);
   assert.equal(saves, 1);
 });
 
@@ -659,7 +661,7 @@ test('la mini-carte reste reactive aux changements de carte et de taille sans re
     account: { user: {} }, player: { x: 21000, y: 6220 }, WORLD: { w: 30000, h: 18000 },
     enemies: Array.from({ length: 101 }, (_, id) => ({ id, hp: 100 })),
     minimapAllies: () => [], getInteractivePortals: () => [], gateReturnPortal: null,
-    isZoneMap: true, zoneSafe: null, zoneWalls: [], rules: {}, moveTarget: {}, miniPing: {}, camera: {},
+    isZoneMap: true, zoneStation: null, zoneSafe: null, zoneWalls: [], rules: {}, moveTarget: {}, miniPing: {}, camera: {},
     innerWidth: 1600, innerHeight: 900, Target: { get: () => null },
     renderMinimap: (_, options) => draws.push(options),
   });
@@ -806,7 +808,7 @@ function shotHarness({ shared = true, active = true, shots = false, impacts = fa
   const player = { x: 100, y: 100, hp: 100, ddolT: 0 };
   const combatTarget = target === "player" ? player : { x: 100, y: 100, hp: 100, id: 2, _netVisual: target === "friend" };
   const projectiles = [];
-  const context = vm.createContext({ player, GAME_SETTINGS: { npcExplosions: impacts },
+  const context = vm.createContext({ player, GAME_SETTINGS: { npcExplosions: impacts }, isSharedZone: () => shared,
     netplayNpcActive: () => active, displayNpcShotsOn: () => shots, fxDensityMult: () => density,
     safeZoneActive: false, playerIsInSafeZone: () => false, npcPortalCalm: () => false,
     isPlayerUntargetable: () => false, rules: {},
@@ -824,12 +826,13 @@ test("NPC partagé : pas de projectile invisible vers les joueurs si tirs et imp
   assert.equal(shotHarness().length, 0);
   assert.equal(shotHarness({ target: "friend" }).length, 0);
 });
-test("projectiles à dégâts locaux, repli solo et visuels activés conservés", () => {
-  for (const options of [{ shared: false }, { active: false }, { target: "escort" }, { shots: true }, { impacts: true }]) {
+test("projectiles privés et visuels activés conservés, sans repli quand le réseau est inactif", () => {
+  for (const options of [{ shared: false }, { target: "escort" }, { shots: true }, { impacts: true }]) {
     const shots = shotHarness(options);
     assert.equal(shots.length, 1, JSON.stringify(options));
     assert.equal(shots[0].dmg, 10);
   }
+  assert.equal(shotHarness({ active: false }).length, 0);
   assert.equal(shotHarness({ impacts: true, density: 0 }).length, 0);
 });
 

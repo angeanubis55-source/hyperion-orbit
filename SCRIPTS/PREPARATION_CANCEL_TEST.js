@@ -27,6 +27,7 @@ function harness() {
     phoneControls: null,
     player: { hp: 100, hpMax: 100, sh: 100, shMax: 100, shAbsorb: 1, dead: false, iFrames: 0, invincibleT: 0, x: 100, y: 100, r: 18 },
     started: true, account: { user }, window: { __CURRENT_MAP_ID__: '1-1' },
+    document: { body: { classList: { contains: () => false } } },
     structuredClone, netActive: () => false,
     HANGAR_SWAP_DURATION: 3, HANGAR_SWAP_HALF_DURATION: 1.5, HANGAR_SWAP_FX: { frames: 1 },
     WORLD: { w: 10000, h: 10000 }, camera: {}, moveTarget: {}, REPAIR: { cooldown: 5 },

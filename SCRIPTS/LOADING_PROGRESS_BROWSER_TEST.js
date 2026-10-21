@@ -5,7 +5,7 @@ import { chromium } from "playwright-core";
 import { fileURLToPath } from "node:url";
 
 // Serveur statique et stockage navigateur isole : aucun compte reel utilise.
-const server = spawn(process.execPath, [fileURLToPath(new URL("./GAME_SERVER.js", import.meta.url))], {
+const server = spawn(process.execPath, [fileURLToPath(new URL("./MULTI_SERVER.js", import.meta.url))], {
   windowsHide: true, stdio: ["ignore", "pipe", "pipe"],
 });
 let browser;

@@ -31,18 +31,18 @@ import {
   skylabStorageCap,
   skylabUpgradeCost,
   skylabXenoRatePerHour,
-  tickSkylabState,
 } from "../SRC/DATA/SKYLAB.js";
 import { getResourceName, cargoFree, CARGO_CAPACITY } from "../SRC/DATA/RESOURCES.js";
 import { formatInteger } from "../SRC/CORE/NUMBER_FORMAT.js";
 import {
-  buySkylabRobot,
-  instantSkylabTransport,
+  buySkylabRobotOnline,
+  instantSkylabTransportOnline,
   isLogoutPending,
-  loadSkylabFromShip,
-  setSkylabModuleEnabled,
-  startSkylabUpgrade,
-  transportSkylabToShip,
+  loadSkylabFromShipOnline,
+  setSkylabModuleEnabledOnline,
+  startSkylabUpgradeOnline,
+  syncCurrentUserSkylabOnline,
+  transportSkylabToShipOnline,
 } from "../SRC/CORE/ACCOUNT.js";
 
 let ctx = null;
@@ -53,8 +53,8 @@ try {
   if (localStorage.getItem("orbit_skylab_dir") === "toSky") transportDir = "toSky";
 } catch {}
 let lastDynamicRefresh = 0;
-let lastDirtyMark = 0;
-let deferredProductionSeconds = 0;
+let lastServerSync = 0;
+let syncInFlight = false;
 
 const NODE_POS = Object.freeze({
   // Zone modules officielle 772x364 (internalSkylab.css : #modules).
@@ -570,7 +570,7 @@ function after(ok, error, successMsg) {
   if (successMsg) ctx?.toast?.(successMsg, 1.8);
 }
 
-function onSkylabClick(event) {
+async function onSkylabClick(event) {
   const btn = event.target instanceof Element ? event.target.closest("[data-sky-action]") : null;
   if (!btn) return;
   const action = btn.dataset.skyAction;
@@ -587,7 +587,7 @@ function onSkylabClick(event) {
     return;
   }
   if (action === "upgrade") {
-    const res = startSkylabUpgrade(btn.dataset.module);
+    const res = await startSkylabUpgradeOnline(btn.dataset.module);
     if (!res?.ok) { ctx?.toast?.(res?.error || "Impossible.", 2.2); return; }
     after(true, "", `${getSkylabModuleDef(btn.dataset.module)?.name || "Module"} : amélioration lancée.`);
     return;
@@ -595,14 +595,14 @@ function onSkylabClick(event) {
   if (action === "toggle") {
     const sky = liveSkylab();
     const cur = sky?.modules?.[btn.dataset.module];
-    const res = setSkylabModuleEnabled(btn.dataset.module, !(cur?.enabled !== false));
+    const res = await setSkylabModuleEnabledOnline(btn.dataset.module, !(cur?.enabled !== false));
     if (!res?.ok) { ctx?.toast?.(res?.error || "Impossible.", 2); return; }
     after(true, "", null);
     renderSkylabWindow();
     return;
   }
   if (action === "robot") {
-    const res = buySkylabRobot(btn.dataset.module);
+    const res = await buySkylabRobotOnline(btn.dataset.module);
     if (!res?.ok) { ctx?.toast?.(res?.error || "Impossible.", 2.2); return; }
     after(true, "", "Robot +5 % ajouté (12 h).");
     return;
@@ -645,12 +645,12 @@ function onSkylabClick(event) {
     }
     const toSky = transportDir === "toSky";
     if (action === "send-instant") {
-      const res = instantSkylabTransport(amounts, toSky);
+      const res = await instantSkylabTransportOnline(amounts, toSky);
       if (!res?.ok) { ctx?.toast?.(res?.error || "Impossible.", 2.2); return; }
       after(true, "", `Envoi immédiat : +${formatInteger(res.totalMoved)} ressources.`);
       return;
     }
-    const res = toSky ? loadSkylabFromShip(amounts) : transportSkylabToShip(amounts);
+    const res = toSky ? await loadSkylabFromShipOnline(amounts) : await transportSkylabToShipOnline(amounts);
     if (!res?.ok) { ctx?.toast?.(res?.error || "Impossible.", 2.2); return; }
     after(true, "", toSky
       ? `Chargé vers le Skylab : +${formatInteger(res.totalMoved)} ressources.`
@@ -678,43 +678,33 @@ function onSkylabInput(event) {
 
 export function tickSkylabProduction(dtRealSec) {
   if (!ctx) return;
-  const elapsed = Math.max(0, Number(dtRealSec) || 0);
-  // Stabiliser le compte pendant sa confirmation de déconnexion. Si elle
-  // échoue, la production différée reprend sans perdre ce temps écoulé.
-  if (isLogoutPending()) {
-    deferredProductionSeconds += elapsed;
-    return;
-  }
-  let user = null;
-  try {
-    user = ctx.getUser?.();
-  } catch {
-    return;
-  }
-  if (!user) return;
-  user.skylab = normalizeSkylabState(user.skylab);
   const now = Date.now();
-  let res;
-  try {
-    res = tickSkylabState(user.skylab, now, elapsed + deferredProductionSeconds);
-    deferredProductionSeconds = 0;
-  } catch { return; }
-  if (res?.completed?.length) {
-    for (const moduleId of res.completed) {
-      const def = getSkylabModuleDef(moduleId);
-      const level = user.skylab.modules?.[moduleId]?.level;
-      ctx.notify?.(`Skylab : ${def?.name || moduleId} niveau ${level} terminé !`, 3, "reward");
-    }
-    ctx.markDirty?.();
-    lastDirtyMark = now;
-  } else if (now - lastDirtyMark > 60000) {
-    // Production en continu : sauvegarde trickle toutes les 60 s max.
-    ctx.markDirty?.();
-    lastDirtyMark = now;
-  }
+  const root = els().root;
+  const visible = root && root.style.display !== "none" && !root.classList.contains("gameWinMinimized");
+  const syncInterval = visible ? 3000 : 60000;
+  if (!isLogoutPending() && !syncInFlight && now - lastServerSync >= syncInterval) requestSkylabSync();
   if (now - lastDynamicRefresh > 1000) {
     lastDynamicRefresh = now;
     try { refreshSkylabDynamic(); } catch {}
+  }
+}
+
+async function requestSkylabSync() {
+  if (syncInFlight || isLogoutPending()) return;
+  syncInFlight = true;
+  try {
+    const res = await syncCurrentUserSkylabOnline();
+    if (!res?.ok) return;
+    lastServerSync = Date.now();
+    for (const moduleId of res.completed || []) {
+      const user = ctx?.getUser?.();
+      const def = getSkylabModuleDef(moduleId);
+      const level = user?.skylab?.modules?.[moduleId]?.level;
+      ctx?.notify?.(`Skylab : ${def?.name || moduleId} niveau ${level} terminé !`, 3, "reward");
+    }
+    try { refreshSkylabDynamic(); } catch {}
+  } finally {
+    syncInFlight = false;
   }
 }
 
@@ -763,17 +753,5 @@ export function initSkylabUI(context) {
 
 // Production pendant l'absence (plafonnée à 12 h réelles).
 function catchUpOffline() {
-  try {
-    const user = ctx?.getUser?.();
-    if (!user) return;
-    user.skylab = normalizeSkylabState(user.skylab);
-    const now = Date.now();
-    const elapsed = Math.max(0, Math.min(12 * 3600, (now - Number(user.skylab.lastTickAt || now)) / 1000));
-    if (elapsed < 1) return;
-    const res = tickSkylabState(user.skylab, now, elapsed);
-    ctx.markDirty?.();
-    if (res?.completed?.length) {
-      ctx.notify?.(`Skylab : ${res.completed.length} amélioration(s) terminée(s) pendant ton absence.`, 3, "reward");
-    }
-  } catch {}
+  requestSkylabSync().catch(() => {});
 }
