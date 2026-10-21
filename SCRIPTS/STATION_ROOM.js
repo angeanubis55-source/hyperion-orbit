@@ -24,10 +24,10 @@ import {
 } from "../SRC/DATA/BATTLESTATION.js";
 
 const STATE_FILE = process.env.ORBIT_STATION_FILE || "SERVER_DATA/station_state.json";
-// TODO TEST : 5 s pour tester, repasser à 60000 après.
-const INSTALL_CD_MS = 5000;
-// Réparation : 25 000 PV/s pendant 10 s (cœur + modules en vie).
-const REPAIR_RATE = 25000;
+const INSTALL_CD_MS = 60000;
+// Réparation : 85 000 PV/s sur le cœur, 42 500 PV/s par module, pendant 10 s.
+const REPAIR_HUB_RATE = 85000;
+const REPAIR_SLOT_RATE = 42500;
 const REPAIR_MS = 10000;
 // Maps avec station (étendre à la réplication demandée).
 export const STATION_MAPS = new Set(["1-3"]);
@@ -254,7 +254,8 @@ function restore() {
       if (st.repair && typeof st.repair === "object" && Number(st.repair.until) > Date.now()) {
         fresh.repair = {
           until: Number(st.repair.until),
-          rate: Math.max(1, Number(st.repair.rate) || 25000),
+          rateHub: Math.max(1, Number(st.repair.rateHub) || 85000),
+          rateSlot: Math.max(1, Number(st.repair.rateSlot) || 42500),
           startedAt: Number(st.repair.startedAt) || Date.now(),
           lastTick: Date.now(),
         };
@@ -309,16 +310,18 @@ export function getStationSync(mapId, viewerClan) {
       const from = Math.max(Number(rp.lastTick) || 0, Number(rp.startedAt) || 0);
       const to = Math.min(nowMs, Number(rp.until) || 0);
       if (to > from) {
-        const add = Math.max(0, Number(rp.rate) || 0) * (to - from) / 1000;
-        if (add > 0) {
+        const dt = (to - from) / 1000;
+        const addHub = Math.max(0, Number(rp.rateHub) || 0) * dt;
+        const addSlot = Math.max(0, Number(rp.rateSlot) || 0) * dt;
+        if (addHub > 0 || addSlot > 0) {
           const inst = st.instances[st.built.clan];
-          if (inst.hub && Number(inst.hub.hp) > 0) {
-            inst.hub.hp = Math.min(Number(inst.hub.hpMax) || STATION_CORE_HP, Number(inst.hub.hp) + add);
+          if (addHub > 0 && inst.hub && Number(inst.hub.hp) > 0) {
+            inst.hub.hp = Math.min(Number(inst.hub.hpMax) || STATION_CORE_HP, Number(inst.hub.hp) + addHub);
           }
-          for (const sid of STATION_SLOT_IDS) {
+          if (addSlot > 0) for (const sid of STATION_SLOT_IDS) {
             const p = inst.slots[sid];
             if (p && Number(p.hp) > 0) {
-              p.hp = Math.min(Number(p.hpMax) || STATION_MODULE_HP, Number(p.hp) + add);
+              p.hp = Math.min(Number(p.hpMax) || STATION_MODULE_HP, Number(p.hp) + addSlot);
             }
           }
           rp.lastTick = to;
@@ -406,7 +409,7 @@ export function getStationSync(mapId, viewerClan) {
     perClan,
     // Réparation en cours : le client décompte et resync pendant 10 s.
     repair: st.repair && Number(st.repair.until) > 0
-      ? { until: Number(st.repair.until), rate: Number(st.repair.rate) || REPAIR_RATE }
+      ? { until: Number(st.repair.until), rateHub: Math.max(1, Number(st.repair.rateHub) || REPAIR_HUB_RATE), rateSlot: Math.max(1, Number(st.repair.rateSlot) || REPAIR_SLOT_RATE) }
       : null,
     // Chiffres alliés récents (comme msg.npc.dmg) : le client filtre ses
     // propres tirs (déjà affichés en local) et n'affiche que la cible lockée.
@@ -476,15 +479,15 @@ export function handleStationInstall({ map, slot, resourceId }, who) {
     if (bInst.slots[bSlotId]?.resourceId || bInst.slots[bSlotId]?.replace) {
       return { status: "reject", reason: "Emplacement déjà occupé." };
     }
-    // Unicité stricte : 1 seul exemplaire de chaque module (posé ou en
-    // cours de remplacement) par station.
+    // Unicité : 1 seul exemplaire de chaque module SPÉCIAL (DMG/EXP/HON/REP),
+    // posé ou en cours de remplacement. Lasers et roquettes : cumulables.
     const taken = new Set();
     for (const sid of STATION_SLOT_IDS) {
       const p = bInst.slots[sid];
       if (p?.resourceId) taken.add(String(p.resourceId));
       if (p?.replace?.resourceId) taken.add(String(p.replace.resourceId));
     }
-    if (taken.has(bId)) {
+    if (STATION_UNIQUE_MODULES.includes(bId) && taken.has(bId)) {
       return { status: "reject", reason: "Un seul exemplaire par station." };
     }
     if (userBusy(bInst, userId, now)) {
@@ -696,7 +699,7 @@ export function handleStationRepair({ map }, who) {
       return p && Number(p.hp) > 0 && Number(p.hp) < (Number(p.hpMax) || STATION_MODULE_HP);
     });
   if (!needsHeal) return { status: "reject", reason: "Rien à réparer." };
-  st.repair = { until: now + REPAIR_MS, rate: REPAIR_RATE, startedAt: now, lastTick: now };
+  st.repair = { until: now + REPAIR_MS, rateHub: REPAIR_HUB_RATE, rateSlot: REPAIR_SLOT_RATE, startedAt: now, lastTick: now };
   persist();
   try { console.log(`[station:${key}] réparation engagée par ${String(who?.pseudo || "").slice(0, 20)} [${clan}]`); } catch {}
   return { status: "ok" };

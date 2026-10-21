@@ -20293,31 +20293,39 @@ function tickStationLogic() {
       if (isStationWindowOpen()) window.GameWindowManager?.minimize?.("stationWindow");
     }
     // Flottant fixe +25 000/s pendant un cycle actif, membres du clan
-    // uniquement (même chiffre sur tous les écrans, comme les dégâts alliés).
+    // uniquement (même chiffre sur tous les écrans). On marque les pièces
+    // ayant vraiment gagné des PV (même devenues pleines entre-temps).
     try {
       const rep = zoneStation.repair;
-      if (rep && Number(rep.until) > Date.now()) {
-        const nowMs = Date.now();
-        if (nowMs - (tickStationLogic._repairFloatT || 0) >= 1000) {
-          tickStationLogic._repairFloatT = nowMs;
-          let clanView = false;
-          try { clanView = stationOwnedByMyClan(); } catch {}
-          if (!clanView) {
-            tickStationLogic._repairFloatT = 0;
-          } else {
-          const fixed = Math.max(1, Number(rep.rate) || 25000);
-          if (zoneStation.hub && Number(zoneStation.hubHp) > 0
-            && Number(zoneStation.hubHp) < (Number(zoneStation.hubHpMax) || STATION_CORE_HP)) {
-            stationRepairFloatAt(Number(zoneStation.x), Number(zoneStation.y) - 235, fixed);
+      const repActive = rep && Number(rep.until) > Date.now();
+      const prev = tickStationLogic._repairHp || (tickStationLogic._repairHp = new Map());
+      const marks = tickStationLogic._repairMarks || (tickStationLogic._repairMarks = { hub: 0, slots: {} });
+      if (repActive) {
+        const mark = (key, cur, slotId) => {
+          const c = Math.max(0, Number(cur) || 0);
+          const had = prev.has(key) ? prev.get(key) : null;
+          prev.set(key, c);
+          if (had == null || !(c > had)) return;
+          if (slotId) marks.slots[slotId] = (marks.slots[slotId] || 0) + (c - had);
+          else marks.hub += c - had;
+        };
+        mark("hub", zoneStation.hubHp);
+        for (const slot of zoneStation.slots || []) {
+          if (!slot?.id || !slot.resourceId) {
+            if (slot?.id) prev.delete(`slot:${slot.id}`);
+            continue;
           }
-          for (const slot of zoneStation.slots || []) {
-            if (slot?.resourceId && Number(slot.hp) > 0
-              && Number(slot.hp) < (Number(slot.hpMax) || STATION_MODULE_HP)) {
-              stationRepairFloatAt(Number(zoneStation.x) + (Number(slot.dx) || 0), Number(zoneStation.y) + (Number(slot.dy) || 0) - 160, fixed);
-            }
-          }
-          }
+          mark(`slot:${slot.id}`, slot.hp, slot.id);
         }
+        if (Date.now() - (tickStationLogic._repairFloatT || 0) >= 1000) {
+          tickStationLogic._repairFloatT = Date.now();
+          flushRepairFloats(zoneStation, marks, rep);
+          marks.hub = 0;
+          marks.slots = {};
+        }
+      } else {
+        if (tickStationLogic._repairHp) tickStationLogic._repairHp.clear();
+        if (tickStationLogic._repairMarks) { tickStationLogic._repairMarks.hub = 0; tickStationLogic._repairMarks.slots = {}; }
       }
     } catch {}
     for (const ev of events) {
@@ -25707,7 +25715,7 @@ const ENTITY_LIMITS = Object.freeze({
   enemyBullets: 900,
   explosions: 48,
   sparks: 180,
-  floatTexts: 140,
+  floatTexts: 260,
   lasers: 80,
   pulseFxs: 12,
   smbFxs: 12,
@@ -34318,7 +34326,7 @@ jumpBaseFade: 1,
         }
         // Réparation solo en cours : reprise (sans rattrapage du temps écoulé).
         if (saved.repair && typeof saved.repair === "object" && Number(saved.repair.until) > Date.now()) {
-          zoneStation.repair = { until: Number(saved.repair.until), rate: STATION_REPAIR_RATE, lastTick: Date.now() };
+          zoneStation.repair = { until: Number(saved.repair.until), rateHub: STATION_REPAIR_HUB, rateSlot: STATION_REPAIR_SLOT, lastTick: Date.now() };
         }
         for (const slot of zoneStation.slots || []) {
           if (slot?.resourceId && !(Number(slot.hp) > 0)) {
@@ -38944,8 +38952,9 @@ function stationBuild() {
   stationRefresh("Station construite !");
 }
 
-// Réparation : 25 000 PV/s pendant 10 s sur le cœur et les modules en vie.
-const STATION_REPAIR_RATE = 25000;
+// Réparation : 85 000 PV/s sur le cœur, 42 500 PV/s par module, pendant 10 s.
+const STATION_REPAIR_HUB = 85000;
+const STATION_REPAIR_SLOT = 42500;
 const STATION_REPAIR_MS = 10000;
 
 function stationRepair() {
@@ -38981,7 +38990,7 @@ function stationRepair() {
     return;
   }
   const now = Date.now();
-  st.repair = { until: now + STATION_REPAIR_MS, rate: STATION_REPAIR_RATE, lastTick: now };
+  st.repair = { until: now + STATION_REPAIR_MS, rateHub: STATION_REPAIR_HUB, rateSlot: STATION_REPAIR_SLOT, lastTick: now };
   account.user = u;
   stationPersist();
   stationRefresh("Réparation engagée !");
@@ -39007,47 +39016,64 @@ function stationRepairTick() {
   }
   const now = Date.now();
   const rp = st.repair;
-  st._repairFloatT ||= 0;
+  // Cumul des gains réels par pièce : une pièce soignée (même devenue
+  // pleine en cours de seconde) affiche quand même son +25 000 fixe.
+  st._repairAcc ||= { t: now, hub: 0, slots: {} };
+  const acc = st._repairAcc;
   if (now >= Number(rp.until) || 0) {
+    flushRepairFloats(st, acc, rp);
     st.repair = null;
+    st._repairAcc = null;
     try { stationPersist(); } catch {}
     try { stationRefresh(); } catch {}
     return;
   }
   const last = Math.min(now, Math.max(Number(rp.lastTick) || now, Number(rp.startedAt) || now));
-  const add = Math.max(0, (Number(rp.rate) || STATION_REPAIR_RATE)) * Math.max(0, now - last) / 1000;
+  const dt = Math.max(0, now - last) / 1000;
+  const addHub = Math.max(0, (Number(rp.rateHub) || STATION_REPAIR_HUB)) * dt;
+  const addSlot = Math.max(0, (Number(rp.rateSlot) || STATION_REPAIR_SLOT)) * dt;
   rp.lastTick = now;
-  if (add > 0) {
+  if (addHub > 0) {
     if (st.hub && Number(st.hubHp) > 0) {
-      st.hubHp = Math.min(Number(st.hubHpMax) || STATION_CORE_HP, Number(st.hubHp) + add);
+      const before = Number(st.hubHp);
+      st.hubHp = Math.min(Number(st.hubHpMax) || STATION_CORE_HP, before + addHub);
+      if (st.hubHp > before) acc.hub += st.hubHp - before;
     }
+  }
+  if (addSlot > 0) {
     for (const slot of st.slots || []) {
       if (slot?.resourceId && Number(slot.hp) > 0) {
-        slot.hp = Math.min(Number(slot.hpMax) || STATION_MODULE_HP, Number(slot.hp) + add);
+        const before = Number(slot.hp);
+        slot.hp = Math.min(Number(slot.hpMax) || STATION_MODULE_HP, before + addSlot);
+        if (slot.hp > before && slot.id) acc.slots[slot.id] = (acc.slots[slot.id] || 0) + (slot.hp - before);
       }
     }
   }
-  // Flottant fixe +25 000/s sur le cœur et les modules en vie non pleins.
-  // Membres du clan uniquement.
-  if (now - st._repairFloatT >= 1000) {
-    st._repairFloatT = now;
-    let clanView = false;
-    try { clanView = stationOwnedByMyClan(); } catch {}
-    if (!clanView) {
-      try { stationPersist(); } catch {}
-      return;
-    }
-    const fixed = Math.max(1, Number(rp.rate) || STATION_REPAIR_RATE);
-    if (st.hub && Number(st.hubHp) > 0 && Number(st.hubHp) < (Number(st.hubHpMax) || STATION_CORE_HP)) {
-      stationRepairFloatAt(Number(st.x), Number(st.y) - 235, fixed);
-    }
-    for (const slot of st.slots || []) {
-      if (slot?.resourceId && Number(slot.hp) > 0 && Number(slot.hp) < (Number(slot.hpMax) || STATION_MODULE_HP)) {
-        stationRepairFloatAt(Number(st.x) + (Number(slot.dx) || 0), Number(st.y) + (Number(slot.dy) || 0) - 160, fixed);
-      }
-    }
+  // Flottant fixe +25 000/s par pièce soignée, membres du clan uniquement.
+  if (now - acc.t >= 1000) {
+    flushRepairFloats(st, acc, rp);
+    acc.t = now;
+    acc.hub = 0;
+    acc.slots = {};
     try { stationPersist(); } catch {}
   }
+}
+
+// Affiche le taux fixe par pièce (+85 000 cœur, +42 500 modules)
+// pour chaque pièce ayant gagné des PV dans la seconde.
+function flushRepairFloats(st, acc, rp) {
+  try {
+    let clanView = false;
+    try { clanView = stationOwnedByMyClan(); } catch {}
+    if (!clanView) return;
+    if (acc.hub > 0) stationRepairFloatAt(Number(st.x), Number(st.y) - 235, Math.max(1, Number(rp?.rateHub) || STATION_REPAIR_HUB));
+    const fixedSlot = Math.max(1, Number(rp?.rateSlot) || STATION_REPAIR_SLOT);
+    for (const slot of st.slots || []) {
+      if (slot?.id && acc.slots[slot.id] > 0) {
+        stationRepairFloatAt(Number(st.x) + (Number(slot.dx) || 0), Number(st.y) + (Number(slot.dy) || 0) - 160, fixedSlot);
+      }
+    }
+  } catch {}
 }
 
 ui.stationRows?.addEventListener("dragstart", (event) => {

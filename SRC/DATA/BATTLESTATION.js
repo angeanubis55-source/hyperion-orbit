@@ -12,11 +12,11 @@ export const STATION_HUB = Object.freeze({
   h: 350,
 });
 
-// Valeurs niveau 1 de la CBS officielle. Le cœur cumule la coque et le
+// Valeurs niveau 1 de la CBS officielle, x3. Le cœur cumule la coque et le
 // déflecteur (80 % de la coque après le rééquilibrage officiel).
-export const STATION_MODULE_HP = 1_560_000;
-export const STATION_HULL_HP = 5_850_000;
-export const STATION_DEFLECTOR_HP = 4_680_000;
+export const STATION_MODULE_HP = 4_680_000;
+export const STATION_HULL_HP = 17_550_000;
+export const STATION_DEFLECTOR_HP = 14_040_000;
 export const STATION_CORE_HP = STATION_HULL_HP + STATION_DEFLECTOR_HP;
 
 // Base vide (astéroïde non conquis) : affichée tant que le hub n'est pas posé.
@@ -91,8 +91,7 @@ export const STATION_WEAPON_STATS = Object.freeze({
 
 // Durée d'installation d'un module (comme l'officiel) : 60 s avec
 // compte à rebours circulaire dans la fenêtre.
-// TODO TEST : 5 s pour tester, repasser à 60 après.
-export const STATION_INSTALL_CD_SEC = 5;
+export const STATION_INSTALL_CD_SEC = 60;
 
 // Couleurs de l'anneau de propriété (vue + minimap) :
 // vert = à nous (notre clan, allié), jaune = NAP,

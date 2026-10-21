@@ -210,7 +210,7 @@ function applyStationView(zoneStation, msg) {
   zoneStation.built = msg.built === true;
   zoneStation.owner = msg.owner && typeof msg.owner === "object" ? { ...msg.owner } : {};
   zoneStation.repair = (msg.repair && typeof msg.repair === "object" && Number(msg.repair.until) > 0)
-    ? { until: Number(msg.repair.until), rate: Math.max(1, Number(msg.repair.rate) || 25000) }
+    ? { until: Number(msg.repair.until), rateHub: Math.max(1, Number(msg.repair.rateHub) || 85000), rateSlot: Math.max(1, Number(msg.repair.rateSlot) || 42500) }
     : null;
   zoneStation.placed = Math.max(0, Number(msg.placed) || 0);
   zoneStation.total = Math.max(1, Number(msg.total) || 10);
