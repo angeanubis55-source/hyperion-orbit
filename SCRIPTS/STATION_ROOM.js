@@ -84,24 +84,28 @@ export function stationShotFired(mapId, slot, periodMs, now) {
   (combatNext[key] ||= {})[String(slot)] = now + Math.max(100, Number(periodMs) || 1000);
 }
 
-// Hostile pour la base ? Même clan : non. Guerre : oui. Même firme sans
-// guerre : non (bleu). Sinon (autre firme, sans clan) : oui.
+// Hostile pour la base ? Même clan : non. Guerre (clan connu) : oui.
+// NAP/alliance : non. Sinon : autre firme = oui (même sans clan, comme
+// le pseudo rouge en jeu), même firme = non (bleu). Sans aucune info : non.
 export function isStationFoe(ownerClan, ownerFirm, victimClan, victimFirm) {
   const oc = String(ownerClan || "").toUpperCase();
   const vc = String(victimClan || "").toUpperCase();
-  if (!vc || vc === oc) return false;
+  if (vc && vc === oc) return false;
   const of = String(ownerFirm || "").toLowerCase();
   const vf = String(victimFirm || "").toLowerCase();
-  if (of && of === vf) {
+  if (vc) {
     try {
       const a = clanIdOfTag(oc), b = clanIdOfTag(vc);
       if (a && b) {
-        const rows = diploBetween(a, b);
-        if (Array.isArray(rows) && rows.some((r) => String(r.status) === "active" && String(r.kind) === "war")) return true;
+        const rows = Array.isArray(diploBetween(a, b)) ? diploBetween(a, b) : [];
+        const active = rows.filter((r) => String(r.status) === "active");
+        if (active.some((r) => String(r.kind) === "war")) return true;
+        if (active.some((r) => String(r.kind) === "nap" || String(r.kind) === "alliance")) return false;
       }
     } catch {}
-    return false;
   }
+  if (of && of === vf) return false;
+  if (!vc && !vf) return false;
   return true;
 }
 const VALID_PARTS = new Set([STATION_HUB.resourceId, ...Object.keys(STATION_MODULE_SPRITES || {})]);

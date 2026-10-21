@@ -4222,9 +4222,21 @@ setInterval(() => {
 // leur simulation reste à 20 Hz et les NPC actifs/proches restent toujours
 // dans chaque snapshot. Les joueurs lointains restent, eux, à 10 Hz.
 // Défense de la Base de Combat : chaque module laser/roquette tire seul sur
-// les joueurs hostiles (rouges) non camouflés à sa portée. 2 Hz suffisent
-// (les cadences 1 s / 3 s sont gérées par module).
-let stationDefenseTick = 0;
+// les joueurs hostiles (rouges) non camouflés à sa portée. Appelée à 20 Hz
+// (les cadences 1 s / 3 s sont gérées par module). Hostilité mise en cache
+// 30 s (clan + diplo changent rarement ; évite les lectures DB par tick).
+const stationFoeCache = new Map();
+function stationFoeCached(ownerClan, ownerFirm, vClan, vFirm) {
+  const k = `${ownerClan}|${ownerFirm}|${vClan}|${vFirm}`;
+  const e = stationFoeCache.get(k);
+  const now = Date.now();
+  if (e && now - e.at < 30000) return e.foe;
+  let foe = false;
+  try { foe = isStationFoe(ownerClan, ownerFirm, vClan, vFirm); } catch {}
+  stationFoeCache.set(k, { foe, at: now });
+  if (stationFoeCache.size > 200) stationFoeCache.clear();
+  return foe;
+}
 function tickStationDefense(map, room, now) {
   try {
     if (!hasStationMap(map) || !room || !room.size) return;
@@ -4247,7 +4259,7 @@ function tickStationDefense(map, room, now) {
         let vClan = "";
         try { vClan = aid ? clanTagOfUser(aid) : ""; } catch {}
         const vFirm = String(acct?.faction || "").toLowerCase();
-        if (!isStationFoe(def.clan, def.firm, vClan, vFirm)) continue;
+        if (!stationFoeCached(def.clan, def.firm, vClan, vFirm)) continue;
         const dx = Number(s.x) - mod.x, dy = Number(s.y) - mod.y;
         const d2 = dx * dx + dy * dy;
         if (!(d2 <= bestD2)) continue;
@@ -4314,7 +4326,7 @@ function tickStationDefense(map, room, now) {
           broadcastRoom(room, JSON.stringify({ t: "shot", map, by,
             x: Math.round(mod.x), y: Math.round(mod.y),
             tx: Math.round(Number(best.x)), ty: Math.round(Number(best.y)),
-            key: "x1", n: 1 }));
+            key: "x1", n: 1, station: true }));
         }
       } catch {}
     }
@@ -4502,12 +4514,9 @@ setInterval(() => {
         try { retryNpcSim(key, now); } catch {}
       }
     } catch {}
-    // Défense de la Base de Combat (2 Hz : les cadences 1 s / 3 s des
-    // modules sont gérées par module via leurs cooldowns).
-    try {
-      stationDefenseTick = (Number(stationDefenseTick) || 0) + 1;
-      if (stationDefenseTick % 10 === 0) tickStationDefense(key, room, now);
-    } catch {}
+    // Défense de la Base de Combat (chaque tick : les cadences 1 s / 3 s
+    // des modules sont gérées par module via leurs cooldowns).
+    try { tickStationDefense(key, room, now); } catch {}
     // Raid Low : contrôleur de vagues en groupe (ralliement -> 5 s ->
     // vagues enchaînées -> Century Falcon -> récompense fixe).
     if (key === "low") {

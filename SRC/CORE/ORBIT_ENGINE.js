@@ -20265,12 +20265,14 @@ function tickStationLogic() {
     ensureStationSync(map, zoneStation);
     // Compte à rebours affiché à chaque frame (fenêtre ouverte uniquement).
     try { stationTickCooldowns(); } catch {}
-    // Remplacements et réparations sont résolus par le serveur, puis resynchronisés.
+    // Remplacements : bascule solo à échéance, resync partagée à échéance
+    // (le serveur applique paresseusement au sync suivant).
     // Réparation partagée : resync ~1/s pendant le cycle + 3 s de grâce
     // (le serveur applique au fil des syncs, visible par tous).
+    // Comparaisons en heure serveur estimée (décalage d'horloge possible).
     try {
       if (stationSharedActive()) {
-        const now = Date.now();
+        const now = serverNow();
         const done = (zoneStation.slots || []).some((s) => s?.replace && Number(s.replace.cooldownUntil) <= now);
         const rep = zoneStation.repair;
         const repActive = rep && Number(rep.until) > now;
@@ -20280,6 +20282,9 @@ function tickStationLogic() {
           tickStationLogic._repairSyncReq = now;
           requestStationSync(map);
         }
+      } else {
+        stationResolveReplaces();
+        stationRepairTick();
       }
     } catch {}
     const pump = pumpStationNet(zoneStation, map);
@@ -20292,12 +20297,13 @@ function tickStationLogic() {
       zoneStation.cbsButtonPressed = false;
       if (isStationWindowOpen()) window.GameWindowManager?.minimize?.("stationWindow");
     }
-    // Flottant fixe +25 000/s pendant un cycle actif, membres du clan
-    // uniquement (même chiffre sur tous les écrans). On marque les pièces
-    // ayant vraiment gagné des PV (même devenues pleines entre-temps).
+    // Flottant fixe +42 500/+85 000 par seconde pendant un cycle actif,
+    // membres du clan uniquement (même chiffre sur tous les écrans).
+    // On marque les pièces ayant vraiment gagné des PV (même devenues
+    // pleines entre-temps). Heures serveur (décalage d'horloge possible).
     try {
       const rep = zoneStation.repair;
-      const repActive = rep && Number(rep.until) > Date.now();
+      const repActive = rep && Number(rep.until) > serverNow();
       const prev = tickStationLogic._repairHp || (tickStationLogic._repairHp = new Map());
       const marks = tickStationLogic._repairMarks || (tickStationLogic._repairMarks = { hub: 0, slots: {} });
       if (repActive) {
@@ -35955,7 +35961,7 @@ function spawnNetShotVisual(ev) {
   const key = String(ev.key || "x1").toLowerCase();
   const ammo = (typeof PLAYER_BULLET_SPRITES !== "undefined" && PLAYER_BULLET_SPRITES[key]) ? key : "x1";
   const n = Math.max(1, Math.min(2, Math.round(Number(ev.n) || 1)));
-  const tgtId = netVisualTarget(tx, ty, 400, ev);
+  const tgtId = netVisualTarget(tx, ty, ev.station === true ? 1200 : 400, ev);
   if (tgtId == null) return;
   const sab = ev.sab === true;
   const shotSound = sab ? PLAYER_SHOT_SFX.sab : (PLAYER_SHOT_SFX[key] || PLAYER_SHOT_SFX.x1);
@@ -36036,7 +36042,7 @@ function spawnNetRocketVisual(ev) {
   const spd = Math.max(500, Math.min(20000, Number(ev.spd) || 1500));
   const dist = Math.hypot(tx - sx0, ty - sy0);
   if (!(dist > 40) || dist > 5000) return;
-  const tgtId = netVisualTarget(tx, ty, 500, ev);
+  const tgtId = netVisualTarget(tx, ty, ev.station === true ? 1200 : 500, ev);
   if (tgtId == null) return;
   const ang = Math.atan2(ty - sy0, tx - sx0);
   const prange = Math.max(200, Number(ev.prange) || 1000);
@@ -38277,8 +38283,22 @@ function stationInventoryIds() {
   return [STATION_HUB.resourceId, ...Object.keys(STATION_MODULE_SPRITES)];
 }
 
+// Heure de référence des minuteurs de station : l'horloge serveur estimée
+// via les snapshots (20 Hz) quand on est connecté — les cooldowns et la
+// réparation sont horodatés côté serveur, et les deux horloges peuvent
+// différer de quelques secondes. Sinon : heure locale (solo).
+function serverNow() {
+  try {
+    if (netConnected()) {
+      const t = Number(netGameTimeMs());
+      if (Number.isFinite(t) && t > 0) return t;
+    }
+  } catch {}
+  return Date.now();
+}
+
 function stationCooldownLeft(until) {
-  const left = Math.ceil((Math.max(0, Number(until) || 0) - Date.now()) / 1000);
+  const left = Math.ceil((Math.max(0, Number(until) || 0) - serverNow()) / 1000);
   return left > 0 ? left : 0;
 }
 
@@ -38327,7 +38347,7 @@ function stationClanProgress() {
 }
 
 function stationSharedClanRows() {
-  const now = Date.now();
+  const now = serverNow();
   return (Array.isArray(zoneStation?.perClan) ? zoneStation.perClan : [])
     .filter((entry) => entry && String(entry.clan || ""))
     .map((entry) => {
@@ -38346,7 +38366,7 @@ function stationSharedClanRows() {
 function stationTickCooldowns() {
   if (typeof isStationWindowOpen !== "function" || !isStationWindowOpen()) return;
   const nodes = document.querySelectorAll("#stationArena [data-station-cd]");
-  const now = Date.now();
+  const now = serverNow();
   let alive = false;
   for (const node of nodes) {
     const id = String(node.dataset.stationCd || "");
@@ -38400,7 +38420,7 @@ function stationTickCooldowns() {
   try {
     const rbtn = document.getElementById("stationRepairBtn");
     if (rbtn) {
-      const left = Math.max(0, Math.ceil((Number(zoneStation?.repair?.until) - now) / 1000));
+      const left = Math.max(0, Math.ceil((Number(zoneStation?.repair?.until) - serverNow()) / 1000));
       if (left > 0) {
         rbtn.disabled = true;
         const label = `Réparation ${left}s`;
@@ -38450,7 +38470,7 @@ function renderStationWindow(message = "") {
   // 10 s, cœur + modules en vie). Sinon lignes par clan (Clan + barre + %).
   if (ui.stationClans) {
     if (st?.built) {
-      const repLeft = Math.max(0, Math.ceil((Number(st?.repair?.until) - Date.now()) / 1000));
+      const repLeft = Math.max(0, Math.ceil((Number(st?.repair?.until) - serverNow()) / 1000));
       ui.stationClans.innerHTML = `<button id="stationRepairBtn" class="stationRepairBtn" type="button"${repLeft > 0 ? " disabled" : ""}>`
         + `${repLeft > 0 ? `Réparation ${repLeft}s` : "Réparation"}</button>`;
     } else {
@@ -39017,7 +39037,7 @@ function stationRepairTick() {
   const now = Date.now();
   const rp = st.repair;
   // Cumul des gains réels par pièce : une pièce soignée (même devenue
-  // pleine en cours de seconde) affiche quand même son +25 000 fixe.
+  // pleine en cours de seconde) affiche quand même son montant fixe.
   st._repairAcc ||= { t: now, hub: 0, slots: {} };
   const acc = st._repairAcc;
   if (now >= Number(rp.until) || 0) {
@@ -39049,7 +39069,8 @@ function stationRepairTick() {
       }
     }
   }
-  // Flottant fixe +25 000/s par pièce soignée, membres du clan uniquement.
+  // Flottant fixe par pièce soignée (+85 000 cœur, +42 500 modules),
+  // membres du clan uniquement.
   if (now - acc.t >= 1000) {
     flushRepairFloats(st, acc, rp);
     acc.t = now;
