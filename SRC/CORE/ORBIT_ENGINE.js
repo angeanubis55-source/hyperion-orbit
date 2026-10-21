@@ -40461,8 +40461,8 @@ function formatDeflectCountdown(ms) {
 // - charge : "Ouvert : X - Déflecteur : Y"
 // - coupure : "Déflecteur [ OFF ] : X - Temps de Déflecteur : Y"
 // - bouclier : "Déflecteur [ ON ] : X"
-// `active` = timer seul pour les non-membres : banque cumulée en charge,
-// compte à rebours OFF en coupure, temps de bouclier en shield.
+// `active` = timer seul pour les non-membres : même X qui descend que nous
+// (fin de charge en ouvert, fin de coupure en OFF, bouclier en ON).
 function stationDeflectLabel() {
   try {
     const dd = stationDeflectDisplay();
@@ -40478,7 +40478,7 @@ function stationDeflectLabel() {
     }
     const bankTxt = formatDeflectCountdown(dd.bankSec * 1000);
     const left = formatDeflectCountdown(dd.chargeMs);
-    return { phase: dd.phase, text: `Ouvert : ${left} - Déflecteur : ${bankTxt}`, active: bankTxt };
+    return { phase: dd.phase, text: `Ouvert : ${left} - Déflecteur : ${bankTxt}`, active: left };
   } catch { return null; }
 }
 
