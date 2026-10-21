@@ -513,7 +513,7 @@ import { loadServerMaps, mapTransition, validArrival, reviveArrival, baseArrival
 import { getFactionHomeMap } from "../SRC/CORE/FACTIONS.js";
 import { handleSocialMessage, socialPeerGone, socialPeerChanged, socialDescribeGroup, socialGroupOf } from "./SOCIAL_ROOM.js";
 import { getAuctionSync, handleAuctionBid, pollAuctionCycle, auctionRoomStatus } from "./AUCTION_ROOM.js";
-import { getStationSync, handleStationInstall, handleStationUninstall, handleStationBuild, handleStationReplace, handleStationCancelReplace, handleStationRepair, handleStationHit, hasStationMap } from "./STATION_ROOM.js";
+import { getStationSync, handleStationInstall, handleStationUninstall, handleStationBuild, handleStationReplace, handleStationCancelReplace, handleStationRepair, handleStationHit, hasStationMap, getStationDefense, stationShotReady, stationShotFired, isStationFoe } from "./STATION_ROOM.js";
 import { GAME_VERSION } from "../SRC/DATA/VERSION.js";
 import { COLLECTABLE_TYPES } from "../SRC/DATA/COLLECTABLES.js";
 import { HALLOWEEN_END, HALLOWEEN_START, HALLOWEEN_TIME_ZONE, isHalloweenBossVariant, isHalloweenEventActive } from "../NPC/NPC_HALLOWEEN.js";
@@ -4221,6 +4221,105 @@ setInterval(() => {
 // Les NPC inactifs a plus de 2 000 unites voyagent a 1 Hz, repartis sur les ticks ;
 // leur simulation reste à 20 Hz et les NPC actifs/proches restent toujours
 // dans chaque snapshot. Les joueurs lointains restent, eux, à 10 Hz.
+// Défense de la Base de Combat : chaque module laser/roquette tire seul sur
+// les joueurs hostiles (rouges) non camouflés à sa portée. 2 Hz suffisent
+// (les cadences 1 s / 3 s sont gérées par module).
+let stationDefenseTick = 0;
+function tickStationDefense(map, room, now) {
+  try {
+    if (!hasStationMap(map) || !room || !room.size) return;
+    const def = getStationDefense(map);
+    if (!def || !def.modules.length) return;
+    const sim = npcSims.get(map);
+    for (const mod of def.modules) {
+      if (!stationShotReady(map, mod.slot, now)) continue;
+      // Ennemi le plus proche à portée : hostile, en vie, visible, non protégé.
+      let best = null, bestPid = "", bestD2 = mod.range * mod.range;
+      for (const [pid, pentry] of room) {
+        const s = pentry?.state;
+        if (!s || s._posOk !== true) continue;
+        if (s.pvpDead === true || !(Number(s.hp) > 0)) continue;
+        if (s.cloaked === true || s.cloakCpu === true) continue;
+        if (s.safe === true || s.serverSafe === true) continue;
+        if (Number(s._graceUntil || 0) > now) continue;
+        const acct = s._account || null;
+        const aid = acct?.id != null ? String(acct.id) : "";
+        let vClan = "";
+        try { vClan = aid ? clanTagOfUser(aid) : ""; } catch {}
+        const vFirm = String(acct?.faction || "").toLowerCase();
+        if (!isStationFoe(def.clan, def.firm, vClan, vFirm)) continue;
+        const dx = Number(s.x) - mod.x, dy = Number(s.y) - mod.y;
+        const d2 = dx * dx + dy * dy;
+        if (!(d2 <= bestD2)) continue;
+        bestD2 = d2;
+        best = s;
+        bestPid = String(pid);
+      }
+      if (!best) continue;
+      stationShotFired(map, mod.slot, mod.periodMs, now);
+      const by = `station:${mod.slot}`;
+      const dmg = Math.max(1, Math.round(Number(mod.dmg) * (0.95 + Math.random() * 0.1)));
+      const hitNow = Date.now();
+      if (best.pvpDead === true || !(Number(best.hp) > 0)) continue;
+      if (tempestBackupActive(best, hitNow)) continue;
+      if (hitNow < Number(best.ishUntil || 0) || hitNow < Number(best.iemUntil || 0)) continue;
+      const scramble = activeAbility(best, "ability_mimesis_scramble", hitNow);
+      if (Math.random() < Math.max(0, Math.min(0.9, (Number(best.evade) || 0) + (scramble ? 0.65 : 0)))) continue;
+      const wasAlive = Number(best.hp) > 0;
+      let applied = 0, appliedHp = 0, appliedSh = 0;
+      try {
+        const res = applyServerAbilityDamage(room, sim, best, dmg, 0, hitNow, by);
+        applied = Math.max(0, Math.round(Number(res?.total) || 0));
+        appliedHp = Math.max(0, Math.round(Number(res?.hp) || 0));
+        appliedSh = Math.max(0, Math.round(Number(res?.sh) || 0));
+      } catch {}
+      best.hp = Math.max(0, Number(best.hp) || 0);
+      best.sh = Math.max(0, Number(best.sh) || 0);
+      best.dmgBlockUntil = hitNow + 500;
+      best.npcAt = hitNow;
+      best.npcFrom = by;
+      best.npcDamage = Math.max(0, Math.round((Number(best.npcDamage) || 0) + applied));
+      best.npcHpDamage = Math.max(0, Math.round((Number(best.npcHpDamage) || 0) + appliedHp));
+      best.npcShDamage = Math.max(0, Math.round((Number(best.npcShDamage) || 0) + appliedSh));
+      best.npcSeq = Math.max(0, Math.floor(Number(best.npcSeq) || 0)) + 1;
+      best.pvpFrom = by;
+      if (applied > 0) {
+        try {
+          let feed = pvpFeeds.get(map);
+          if (!feed) { feed = new Map(); pvpFeeds.set(map, feed); }
+          const fkey = `${bestPid}|${by}`;
+          const prior = feed.get(fkey);
+          feed.set(fkey, { uid: String(bestPid), by, total: Math.round((Number(prior?.total) || 0) + applied) });
+        } catch {}
+      }
+      if (Number(best.hp) <= 0 && wasAlive !== false) {
+        if (!triggerTempestBackup(best, room, hitNow)) {
+          best.pvpDead = true;
+          best.dead = true;
+          try { clearAbilityFx(best); } catch {}
+        }
+      }
+      // Visuels pour tous : laser x1 depuis le centre du module, roquette
+      // en arc avec fumée rouge (départ vers le haut, voir client).
+      try {
+        if (mod.kind === "rocket") {
+          const ang = Math.atan2(Number(best.y) - mod.y, Number(best.x) - mod.x);
+          broadcastRoom(room, JSON.stringify({ t: "rshot", map, by, kind: "r310",
+            x: Math.round(mod.x), y: Math.round(mod.y), ang: Math.round(ang * 100) / 100,
+            tx: Math.round(Number(best.x)), ty: Math.round(Number(best.y)),
+            spd: Math.max(500, 900 + Math.hypot(Number(best.x) - mod.x, Number(best.y) - mod.y) * 1.1),
+            arcDir: Math.random() < 0.5 ? -1 : 1, arcScale: 1, arcBoost: 15, prange: mod.range,
+            miss: false, station: true, v: (tickStationDefense._v = (Number(tickStationDefense._v) || 0) + 1) }));
+        } else {
+          broadcastRoom(room, JSON.stringify({ t: "shot", map, by,
+            x: Math.round(mod.x), y: Math.round(mod.y),
+            tx: Math.round(Number(best.x)), ty: Math.round(Number(best.y)),
+            key: "x1", n: 1 }));
+        }
+      } catch {}
+    }
+  } catch {}
+}
 let snapshotTick = 0;
 setInterval(() => {
   const now = Date.now();
@@ -4402,6 +4501,12 @@ setInterval(() => {
         // au lieu de laisser la map vide définitivement.
         try { retryNpcSim(key, now); } catch {}
       }
+    } catch {}
+    // Défense de la Base de Combat (2 Hz : les cadences 1 s / 3 s des
+    // modules sont gérées par module via leurs cooldowns).
+    try {
+      stationDefenseTick = (Number(stationDefenseTick) || 0) + 1;
+      if (stationDefenseTick % 10 === 0) tickStationDefense(key, room, now);
     } catch {}
     // Raid Low : contrôleur de vagues en groupe (ralliement -> 5 s ->
     // vagues enchaînées -> Century Falcon -> récompense fixe).

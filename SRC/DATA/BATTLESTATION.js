@@ -78,18 +78,31 @@ export const STATION_UNIQUE_MODULES = Object.freeze([
   "station_module_rep",
 ]);
 
+// Défense de la base : chaque module laser/roquette tire seul sur les
+// ennemis (joueurs hostiles non camouflés) à sa portée. Dégâts par tir,
+// cadence par module. Le Cœur ne tire pas.
+export const STATION_WEAPON_STATS = Object.freeze({
+  station_laser_1: Object.freeze({ kind: "laser", range: 700, dmg: 25000, periodMs: 1000 }),
+  station_laser_2: Object.freeze({ kind: "laser", range: 750, dmg: 30000, periodMs: 1000 }),
+  station_laser_3: Object.freeze({ kind: "laser", range: 850, dmg: 35000, periodMs: 1000 }),
+  station_rocket_1: Object.freeze({ kind: "rocket", range: 700, dmg: 75000, periodMs: 3000 }),
+  station_rocket_2: Object.freeze({ kind: "rocket", range: 750, dmg: 85000, periodMs: 3000 }),
+});
+
 // Durée d'installation d'un module (comme l'officiel) : 60 s avec
 // compte à rebours circulaire dans la fenêtre.
 // TODO TEST : 5 s pour tester, repasser à 60 après.
 export const STATION_INSTALL_CD_SEC = 5;
 
 // Couleurs de l'anneau de propriété (vue + minimap) :
-// vert = à nous (notre clan, allié ou même firme), jaune = NAP,
-// rouge = ennemie (autre firme ou clan en guerre), gris = vide.
+// vert = à nous (notre clan, allié), jaune = NAP,
+// rouge = ennemie (autre firme ou clan en guerre), bleu = amie
+// (même firme, pas en guerre), gris = vide.
 export const STATION_RING_COLORS = Object.freeze({
   own: "#35d957",
   nap: "#ffd60a",
   enemy: "#ff3b57",
+  friendly: "#3b9dff",
   empty: "#9aa3ad",
 });
 // Emplacement détruit : 59 frames jouées à la destruction d'un module,

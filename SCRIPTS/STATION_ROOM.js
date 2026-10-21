@@ -11,7 +11,7 @@
 
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
-import { getAccountGameplayData, clanTagOfUser } from "./ACCOUNT_SERVER.js";
+import { getAccountGameplayData, clanTagOfUser, clanIdOfTag, diploBetween } from "./ACCOUNT_SERVER.js";
 import {
   STATION_HUB,
   STATION_CORE_HP,
@@ -20,6 +20,7 @@ import {
   STATION_MODULE_SPRITES,
   STATION_SLOT_IDS,
   STATION_UNIQUE_MODULES,
+  STATION_WEAPON_STATS,
 } from "../SRC/DATA/BATTLESTATION.js";
 
 const STATE_FILE = process.env.ORBIT_STATION_FILE || "SERVER_DATA/station_state.json";
@@ -30,6 +31,79 @@ const REPAIR_RATE = 25000;
 const REPAIR_MS = 10000;
 // Maps avec station (étendre à la réplication demandée).
 export const STATION_MAPS = new Set(["1-3"]);
+
+// --- Défense de la base -------------------------------------------------
+// Centre de la station par map (voir MAPS/1-3/STATION.js : milieu entre le
+// portail LOW (1000,1000) et le portail 2-3 (10232,1000)).
+const STATION_POS = Object.freeze({ "1-3": Object.freeze({ x: 5616, y: 1000 }) });
+
+// État de tir : mapId -> { slotId: prochain tir autorisé (ms) }. Transitoire.
+const combatNext = {};
+
+// Modules d'armes en état de tirer (base construite uniquement) :
+// { clan, firm, modules: [{ slot, resourceId, x, y, kind, range, dmg, periodMs }] }.
+export function getStationDefense(mapId) {
+  const key = String(mapId || "").toLowerCase();
+  if (!STATION_MAPS.has(key)) return null;
+  const st = getStation(key);
+  if (!st.built?.clan) return null;
+  const inst = st.instances[st.built.clan];
+  if (!inst) return null;
+  const center = STATION_POS[key];
+  if (!center) return null;
+  const modules = [];
+  STATION_SLOT_IDS.forEach((id, i) => {
+    const p = inst.slots[id];
+    const spec = p?.resourceId ? STATION_WEAPON_STATS[p.resourceId] : null;
+    if (!p?.resourceId || !spec) return;
+    if (!(Number(p.hp) > 0)) return;
+    if (p.replace) return; // en cours de remplacement : silencieux.
+    const off = STATION_SLOT_OFFSETS[i] || { x: 0, y: 0 };
+    modules.push({
+      slot: id,
+      resourceId: String(p.resourceId),
+      x: center.x + Number(off.x || 0),
+      y: center.y + Number(off.y || 0),
+      kind: spec.kind,
+      range: spec.range,
+      dmg: spec.dmg,
+      periodMs: spec.periodMs,
+    });
+  });
+  if (!modules.length) return null;
+  return { clan: String(st.built.clan || ""), firm: String(st.owner?.firm || "").toLowerCase(), modules };
+}
+
+export function stationShotReady(mapId, slot, now) {
+  const key = String(mapId || "").toLowerCase();
+  return Number(combatNext[key]?.[slot] || 0) <= now;
+}
+
+export function stationShotFired(mapId, slot, periodMs, now) {
+  const key = String(mapId || "").toLowerCase();
+  (combatNext[key] ||= {})[String(slot)] = now + Math.max(100, Number(periodMs) || 1000);
+}
+
+// Hostile pour la base ? Même clan : non. Guerre : oui. Même firme sans
+// guerre : non (bleu). Sinon (autre firme, sans clan) : oui.
+export function isStationFoe(ownerClan, ownerFirm, victimClan, victimFirm) {
+  const oc = String(ownerClan || "").toUpperCase();
+  const vc = String(victimClan || "").toUpperCase();
+  if (!vc || vc === oc) return false;
+  const of = String(ownerFirm || "").toLowerCase();
+  const vf = String(victimFirm || "").toLowerCase();
+  if (of && of === vf) {
+    try {
+      const a = clanIdOfTag(oc), b = clanIdOfTag(vc);
+      if (a && b) {
+        const rows = diploBetween(a, b);
+        if (Array.isArray(rows) && rows.some((r) => String(r.status) === "active" && String(r.kind) === "war")) return true;
+      }
+    } catch {}
+    return false;
+  }
+  return true;
+}
 const VALID_PARTS = new Set([STATION_HUB.resourceId, ...Object.keys(STATION_MODULE_SPRITES || {})]);
 const MAX_STR = 64;
 

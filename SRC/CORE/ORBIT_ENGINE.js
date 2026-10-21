@@ -35211,39 +35211,64 @@ mini.addEventListener("pointerup", (e) => {
   try { mini.releasePointerCapture(e.pointerId); } catch {}
 }, { passive: true });
 
-// Multi : allies minimap = escortes + joueurs distants (vert notre clan,
-// bleu sans clan ou même firme pas en guerre, orange NAP, rouge guerre/autre firme).
+// Couleurs relationnelles UNIFIÉES (jeu + minimap + station) :
+// même clan/allié = vert, guerre = rouge, NAP = orange,
+// même firme ou sans clan = bleu, sinon rouge. Groupe = jaune (overlay).
+const RELATION_COLORS = Object.freeze({
+  own: Object.freeze({ map: "rgba(105,255,140,0.98)", mini: "rgba(105,255,140,0.95)", hex: "#35d957" }),
+  ally: Object.freeze({ map: "rgba(105,255,140,0.98)", mini: "rgba(105,255,140,0.95)", hex: "#35d957" }),
+  war: Object.freeze({ map: "rgba(255,65,82,0.98)", mini: "rgba(255,70,90,0.95)", hex: "#ff3b57" }),
+  red: Object.freeze({ map: "rgba(255,65,82,0.98)", mini: "rgba(255,70,90,0.95)", hex: "#ff3b57" }),
+  nap: Object.freeze({ map: "rgba(255,160,60,0.98)", mini: "rgba(255,160,60,0.95)", hex: "#ffd60a" }),
+  blue: Object.freeze({ map: "rgba(80,225,255,0.98)", mini: "rgba(80,160,255,0.95)", hex: "#3b9dff" }),
+  group: Object.freeze({ map: "rgba(255,229,138,0.98)", mini: "rgba(255,229,138,0.95)", hex: "#ffd60a" }),
+});
+function isSameFirm(firm) {
+  try {
+    const myFirm = String(normalizeFactionId(account.user?.faction) || "").toLowerCase();
+    return myFirm !== "" && String(normalizeFactionId(firm) || "").toLowerCase() === myFirm;
+  } catch { return false; }
+}
+// Clé relationnelle unique : own > war > nap > ally > même firme / sans clan (blue) > ennemi (red).
+function relationKey(tag, firm) {
+  const clean = String(tag || "").toUpperCase().slice(0, 5);
+  let myClan = "";
+  try { myClan = String(getMyClanTag() || "").toUpperCase(); } catch {}
+  if (myClan && clean === myClan) return "own";
+  let rel = "";
+  if (clean) {
+    try { rel = getClanRelation(clean); } catch {}
+  }
+  if (rel === "war") return "war";
+  if (rel === "nap") return "nap";
+  if (rel === "ally") return "ally";
+  if (isSameFirm(firm) || !clean) return "blue";
+  return "red";
+}
+function isPlayerGrouped(id) {
+  if (id == null) return false;
+  try {
+    return !!getNetGroup()?.members?.some((member) => String(member.id) === String(id));
+  } catch { return false; }
+}
+
+// Multi : allies minimap = escortes + joueurs distants (même règle unifiée
+// que les pseudos en jeu : vert clan/allié, orange NAP, rouge guerre/autre
+// firme, bleu même firme ou sans clan, jaune groupe sauf guerre).
 function minimapAllies() {
   try {
     const remotes = getNetplayRemotes();
     if (!remotes || !remotes.size) return escortShips;
-    const myFirm = String(account.user?.faction || "").toLowerCase();
-    let myClan = "";
-    try { myClan = String(getMyClanTag() || "").toUpperCase(); } catch { myClan = ""; }
     const dots = [];
     for (const rr of remotes.values()) {
       if (!rr || rr.dead) continue;
       // Camouflage d'aptitude : pas de point (le CPU garde le sien).
       if (rr.cloaked === true) continue;
-      const firm = String(rr.firm || "").toLowerCase();
-      const same = myFirm !== "" && firm === myFirm;
       const tag = String(rr.clan || "").toUpperCase().slice(0, 5);
-      let color;
-      if (myClan !== "" && tag === myClan) {
-        color = "rgba(105,255,140,0.95)";
-      } else if (!tag) {
-        // Sans clan : bleu.
-        color = "rgba(80,160,255,0.95)";
-      } else {
-        let rel = "";
-        try { rel = getClanRelation(tag); } catch {}
-        if (rel === "war") color = "rgba(255,70,90,0.95)";
-        // Même firme, pas en guerre : bleu.
-        else if (same) color = "rgba(80,160,255,0.95)";
-        else if (rel === "nap") color = "rgba(255,160,60,0.95)";
-        else if (rel === "ally") color = "rgba(105,255,140,0.95)";
-        else color = "rgba(255,70,90,0.95)";
-      }
+      const key = relationKey(tag, rr.firm);
+      let color = RELATION_COLORS[key].mini;
+      // Groupe : jaune (sauf guerre : le danger prime).
+      if (key !== "war" && isPlayerGrouped(rr.id)) color = RELATION_COLORS.group.mini;
       dots.push({
         x: Number(rr.rx ?? rr.x), y: Number(rr.ry ?? rr.y), hp: 1, r: 18, _net: true,
         _netPlayer: String(rr.id),
@@ -36015,6 +36040,9 @@ function spawnNetRocketVisual(ev) {
   const netVolleyR = Number.isFinite(Number(ev.v))
     ? `net:${String(ev.by || "?")}:${Math.floor(Number(ev.v))}`
     : `net:${String(ev.by || "?")}:${Math.floor(Math.random() * 1e9)}`;
+  // Roquette de station : départ vers le haut puis arc (comme un
+  // lance-roquettes), fumée rouge au lieu de l'arc-en-ciel.
+  const stationShot = ev.station === true;
   try {
     addCappedProjectile(bullets, {
       x: sx0, y: sy0,
@@ -36023,12 +36051,13 @@ function spawnNetRocketVisual(ev) {
       dmg: 0, key: rkey, side: "player", targetId: tgtId,
       homing: true, visual: true, spd,
       volleyId: netVolleyR, volleySize: 1,
-      miss: netMissR, isSab: false, isRocket: true, isLauncherRocket: isLauncher,
+      miss: netMissR, isSab: false, isRocket: true, isLauncherRocket: isLauncher || stationShot,
       prec: ev.prec === true,
-      launcherDepartureX: Math.cos(ang), launcherDepartureY: Math.sin(ang), launcherDepartureT: 0,
+      launcherDepartureX: stationShot ? 0 : Math.cos(ang), launcherDepartureY: stationShot ? -1 : Math.sin(ang), launcherDepartureT: 0,
       arcDist0: dist, arcT: 0,
       arcKick0: arcDir * arcScale * spd * Math.tan((70 + arcBoost - Math.min(1, dist / prange) * 25) * Math.PI / 180),
       smokeT: 0, smokeHue: Math.floor(Math.random() * 360),
+      stationSmoke: stationShot || undefined,
       _netVisual: true,
       // Tir d'un bot JPC (uid map#jpcN) : exempté du cull capteur comme
       // les streaks (le farm a lieu loin du joueur).
@@ -37225,8 +37254,6 @@ function drawNetplayRemotes(ox, oy) {
       }
     }
   } catch {}
-  // Membres du clan : pseudo + tag en vert (avant groupe/firme).
-  const myClanTagForColor = (() => { try { return String(getMyClanTag() || "").toUpperCase(); } catch { return ""; } })();
   for (const r of remotes.values()) {
     if (!r || r.dead) continue;
     // Balancement comme notre vaisseau (ampleur reduite en mouvement).
@@ -37675,30 +37702,27 @@ function drawNetplayRemotes(ox, oy) {
       const mind = Array.isArray(r.moduleIndicators) ? r.moduleIndicators : [];
       const remotePlayerProxy = netPlayerProxies.get(String(r.id));
       const showRemoteDetails = !!remotePlayerProxy && Target.get() === remotePlayerProxy;
-      // Seuls les TAGS se colorent (guerre rouge, NAP orange, alliance
-      // vert), les pseudos gardent leur couleur normale — sauf même
-      // clan : tag + pseudo verts. Puis escadrille (jaune) et firme
-      // (bleu/rouge) pour les pseudos.
+      // Couleurs unifiées (jeu + minimap + station) : voir relationKey().
+      // Pseudo : vert clan, jaune groupe, bleu même firme, rouge sinon.
+      // Tag : vert clan/allié, rouge guerre, orange NAP.
       const remoteColors = (() => {
-        const plain = { name: "rgba(255,255,255,0.95)", tag: null };
         const tag = String(r.clan || "").toUpperCase().slice(0, 5);
-        if (myClanTagForColor && tag === myClanTagForColor) return { name: "rgba(105,255,140,0.98)", tag: "rgba(105,255,140,0.98)" };
-        const normalName = () => {
-          if (getNetGroup()?.members?.some(member => String(member.id) === String(r.id))) return "rgba(255,229,138,0.98)";
-          return normalizeFactionId(r.firm) === normalizeFactionId(account.user?.faction)
-            ? "rgba(80,225,255,0.98)"
-            : "rgba(255,65,82,0.98)";
-        };
-        if (tag) {
-          try {
-            const rel = getClanRelation(tag);
-            if (rel === "war") return { name: normalName(), tag: "rgba(255,65,82,0.98)" };
-            if (rel === "nap") return { name: normalName(), tag: "rgba(255,160,60,0.98)" };
-            if (rel === "ally") return { name: normalName(), tag: "rgba(105,255,140,0.98)" };
-          } catch {}
-        }
-        plain.name = normalName();
-        return plain;
+        const key = relationKey(tag, r.firm);
+        const name = key === "own"
+          ? RELATION_COLORS.own.map
+          : isPlayerGrouped(r.id)
+            ? RELATION_COLORS.group.map
+            : isSameFirm(r.firm)
+              ? RELATION_COLORS.blue.map
+              : RELATION_COLORS.red.map;
+        const tagColor = key === "own" || key === "ally"
+          ? RELATION_COLORS.own.map
+          : key === "war"
+            ? RELATION_COLORS.war.map
+            : key === "nap"
+              ? RELATION_COLORS.nap.map
+              : null;
+        return { name, tag: tagColor };
       })();
       drawPlayerStatus(
         ctx,
@@ -40034,45 +40058,31 @@ function refreshMyClanTagNow() {
   return clanTagFetchInflight;
 }
 
-// Couleur d'un clan contributeur : vert (nous/allié), jaune (NAP),
-// rouge (guerre), cyan (sans relation).
-function stationClanColor(tag) {
+// Couleur d'un clan (labels station + barres fenêtre) : même règle unifiée
+// que jeu/minimap (voir relationKey). Vert (nous/allié), jaune (NAP),
+// rouge (guerre/autre firme), bleu (même firme ou sans clan connu).
+function stationClanColor(tag, firm = "") {
   const clean = String(tag || "").toUpperCase();
   if (!clean) return "#9aa3ad";
-  let mine = "";
-  try { mine = String(getMyClanTag() || "").toUpperCase(); } catch {}
-  if (mine && clean === mine) return STATION_RING_COLORS.own;
-  try {
-    const rel = getClanRelation(clean);
-    if (rel === "ally") return STATION_RING_COLORS.own;
-    if (rel === "nap") return STATION_RING_COLORS.nap;
-    if (rel === "war") return STATION_RING_COLORS.enemy;
-  } catch {}
-  return "#7df0ff";
+  const key = relationKey(clean, firm);
+  if (key === "own" || key === "ally") return STATION_RING_COLORS.own;
+  if (key === "nap") return STATION_RING_COLORS.nap;
+  if (key === "blue") return STATION_RING_COLORS.friendly;
+  return STATION_RING_COLORS.enemy;
 }
 
-// Statut de propriété de la Base de Combat : own (vert), nap (jaune),// enemy (rouge), empty (gris). Même firme non hostile = à nous.
+// Statut de propriété de la Base de Combat : own (vert, nous/allié),
+// nap (jaune), enemy (rouge, guerre/autre firme), friendly (bleu, même
+// firme pas en guerre ou proprio sans clan), empty (gris, vide).
 function zoneStationRingStatus() {
   const st = zoneStation;
   if (!st) return null;
   const owner = st.owner || {};
-  const clan = String(owner.clan || "").toUpperCase();
-  const firm = String(owner.firm || "").toLowerCase();
-  if (!clan && !firm) return "empty";
-  let mine = "";
-  try { mine = String(getMyClanTag() || "").toUpperCase(); } catch {}
-  if (clan && mine && clan === mine) return "own";
-  if (clan) {
-    try {
-      const rel = getClanRelation(clan);
-      if (rel === "ally") return "own";
-      if (rel === "nap") return "nap";
-      if (rel === "war") return "enemy";
-    } catch {}
-  }
-  let myFirm = "";
-  try { myFirm = String(getFaction((account.user || getCurrentUserFull())?.faction)?.id || "").toLowerCase(); } catch {}
-  if (firm && myFirm && firm === myFirm) return "own";
+  if (!owner.clan && !owner.firm) return "empty";
+  const key = relationKey(owner.clan, owner.firm);
+  if (key === "own" || key === "ally") return "own";
+  if (key === "nap") return "nap";
+  if (key === "blue") return "friendly";
   return "enemy";
 }
 
@@ -40216,7 +40226,7 @@ function drawZoneStation(ox, oy) {
       ctx.strokeText(short, tx + wTag, cy);
       if (mTag) {
         let tc = "#7df0ff";
-        try { tc = stationClanColor(mTag); } catch {}
+        try { tc = stationClanColor(mTag, zoneStation?.owner?.firm); } catch {}
         ctx.fillStyle = tc;
         ctx.fillText(tagPart, tx, cy);
       }
@@ -40287,7 +40297,7 @@ function drawZoneStation(ox, oy) {
         ctx.fillStyle = "rgba(255,255,255,0.95)";
         ctx.fillText(prefix, tx, labelY);
         let tagColor = "#7df0ff";
-        try { tagColor = stationClanColor(tag); } catch {}
+        try { tagColor = stationClanColor(tag, zoneStation?.owner?.firm); } catch {}
         ctx.fillStyle = tagColor;
         ctx.fillText(tagPart, tx + wPrefix, labelY);
         ctx.restore();
@@ -43030,16 +43040,18 @@ for (let i = bullets.length - 1; i >= 0; i--) {
       if (rocketFxOn && fxDensityMult() > 0 && b.smokeDist >= 12 / fxDensityMult()) {
         b.smokeDist = 0;
         b.smokeHue = ((b.smokeHue || 0) + 8) % 360;
-        const smokeColor = b.isLauncherRocket
+        const smokeColor = b.stationSmoke
+          ? "rgba(255,70,80,0.9)"
+          : b.isLauncherRocket
           ? "rgba(190,200,205,0.82)"
           : `hsla(${b.smokeHue},100%,65%,0.9)`;
         pushBounded(sparks, { x: b.x, y: b.y, t: 0, big: false, smoke: true, color: smokeColor }, fxDensityCap(ENTITY_LIMITS.sparks));
         b.trail ??= [];
-        b.trail.push({ x: b.x, y: b.y, hue: b.smokeHue || 0, color: b.isLauncherRocket ? "rgba(205,215,220,0.9)" : null });
+        b.trail.push({ x: b.x, y: b.y, hue: b.smokeHue || 0, color: b.stationSmoke ? "rgba(255,70,80,0.9)" : b.isLauncherRocket ? "rgba(205,215,220,0.9)" : null });
         if (b.trail.length > 110) b.trail.shift();
       }
       if (!b.trail?.length && rocketFxOn) {
-        b.trail = [{ x: b.x, y: b.y, hue: b.smokeHue || 0, color: b.isRocket ? "rgba(205,215,220,0.9)" : null }];
+        b.trail = [{ x: b.x, y: b.y, hue: b.smokeHue || 0, color: b.stationSmoke ? "rgba(255,70,80,0.9)" : b.isRocket ? "rgba(205,215,220,0.9)" : null }];
       }
     }
     }

@@ -1534,6 +1534,14 @@ export function clanIdOfUser(userId) {
   } catch { return null; }
 }
 
+export function clanIdOfTag(tag) {
+  try {
+    initAccountDb();
+    const row = db.prepare("SELECT id FROM clans WHERE tag_norm = ?").get(String(tag || "").trim().toLowerCase());
+    return row ? String(row.id) : "";
+  } catch { return ""; }
+}
+
 export function clanTagOfUser(userId) {
   try {
     initAccountDb();
@@ -1955,7 +1963,7 @@ function clanTagById(clanId) {
   } catch { return "?"; }
 }
 
-function diploBetween(a, b) {
+export function diploBetween(a, b) {
   try {
     initAccountDb();
     purgeExpiredWars();
