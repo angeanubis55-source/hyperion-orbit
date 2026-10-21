@@ -117,7 +117,7 @@ import { findCatalogItem } from "./CATALOG.js";
 import { activeBoosterMults, boosterTimeLeftMs, formatBoosterCountdown, formatBoosterDuration, BOOSTERS, getBooster, normalizeBoostersState, GROUP_BOOSTER_IDS, GROUP_BOOSTER_BONUS } from "../DATA/BOOSTERS.js";
 import { pilotSkillMults } from "../DATA/PILOT_SKILLS.js";
 import { CRAFTING_RECIPES, CRAFTING_ENABLED } from "../DATA/CRAFTING.js";
-import { STATION_CORE_HP, STATION_EMPTY_BASE, STATION_HUB, STATION_DESTROYED_SPOT, STATION_INSTALL_CD_SEC, STATION_MODULE_HP, STATION_MODULE_SPRITES, STATION_PRELOAD_SRCS, STATION_RING_COLORS, STATION_UNIQUE_MODULES } from "../DATA/BATTLESTATION.js";
+import { STATION_CORE_HP, STATION_EMPTY_BASE, STATION_HUB, STATION_DESTROYED_SPOT, STATION_INSTALL_CD_SEC, STATION_MODULE_HP, STATION_MODULE_SPRITES, STATION_PRELOAD_SRCS, STATION_RING_COLORS, STATION_UNIQUE_MODULES, STATION_DEFLECT_RATE, STATION_DEFLECT_COST } from "../DATA/BATTLESTATION.js";
 import { ensureStationSync, isSharedStation, pumpStationNet, resetSharedStation } from "./STATION_NET.js";
 import { ITEM_RARITIES } from "../DATA/ITEM_RARITIES.js";
 import { SHIP_EFFECTS } from "../../SHIP/SHIP_EFFECTS.js";
@@ -158,7 +158,7 @@ import { renderSpeedGuard } from "./SPEED_GUARD_UI.js";
 import { netServerMessageAge, netSimulationStep, netGameTimeMs, netSpeedGuardActive } from "./NETPLAY.js";
   import { pushNetplayLocal, sendNetplayBackgroundState, netplayLocalUpdateDue, getNetplayRemotes, tickNetplayRemotes, getNetNpcs, getNetDeaths, drainNetGone, getNetBoxes, drainNetBoxInbox, drainNetDmgInbox, drainNetHealInbox, drainNetShotEvents, drainNetSkillInbox, drainNetSkillDenied, clearNetShots, clearNetplayGameplay, sendShotEvent, sendSkillUse, sendHealAlly, sendPvpHit, sendPvpPetHit, getNetSelf, setNetInstanceMode, clearNetBoxes, claimNetBox, requestBoxSync, netBoxSyncAgeMs, netBoxSnapshotReady, netInInstance, sendNetHit, netMyId, netplayStatus, sendPing, netLatencyMs, netPongAge, netHelloAckAge, netServerVersion, netConnected, forceNetReconnect, ensureNetplayConnection, drainNetPvpKillInbox, drainNetPvpPetKillInbox, takeNetNpcReward, sendPvpLoot, sendPvpLootTake, drainNetPvpLootInbox,
   drainNetPvpLootTakeInbox, drainNetAdminKickInbox, drainNetAdminBoomInbox, drainNetBannedInbox, drainNetCheatInbox, netDisconnect, drainNetSunInbox, drainNetSundayInbox, drainNetDecloakInbox, drainNetIemHitInbox, drainNetStationDmgInbox, getNetClanBases,
-  getNetGroup, getNetLowRaid, takeNetLowRaidReward, setNetNpcRewardHandler, getNetServerRestartAt, consumeNetServerRestart, getMyClanTag, getClanRelation, setMyClanTag, setNetDiplo, netIsAuthed, sendStationInstall, sendStationUninstall, sendStationBuild, sendStationReplace, sendStationCancelReplace, sendStationRepair, requestStationSync, sendStationHit, requestStarJumpArrival, requestHangarArrival, finishHangarArrival } from "./NETPLAY.js";
+  getNetGroup, getNetLowRaid, takeNetLowRaidReward, setNetNpcRewardHandler, getNetServerRestartAt, consumeNetServerRestart, getMyClanTag, getClanRelation, setMyClanTag, setNetDiplo, netIsAuthed, sendStationInstall, sendStationUninstall, sendStationBuild, sendStationReplace, sendStationCancelReplace, sendStationRepair, sendStationDeflectToggle, requestStationSync, sendStationHit, requestStarJumpArrival, requestHangarArrival, finishHangarArrival } from "./NETPLAY.js";
 import {
   createGatePortalState,
   getGateReturnMap as resolveGateReturnMap,
@@ -1061,6 +1061,7 @@ const ui = {
   otRows: document.getElementById("otRows"),
   stationWindow: document.getElementById("stationWindow"),
   stationArena: document.getElementById("stationArena"),
+  stationDeflect: document.getElementById("stationDeflect"),
   stationClans: document.getElementById("stationClans"),
   stationBuildBtn: document.getElementById("stationBuildBtn"),
   stationRows: document.getElementById("stationRows"),
@@ -8056,7 +8057,7 @@ function initializeCustomActionBar() {
   const rocketButtons = ROCKET_IDS.map(id => {
     const r = getRocketType(id);
     const button = document.createElement("button");
-    button.className = "ammoBtn rocketActionSlot dockAction"; button.dataset.actionCategory = "rockets";
+    button.className = "ammoBtn rocketActionSlot dockAction"; button.dataset.actionCategory = getRocketType(id)?.manual === false ? "launchers" : "rockets";
     button.dataset.actionId = `rocket:${id}`; button.draggable = true;
     button.title = r?.name || id;    button.innerHTML = `<img src="${escapeHtml(rocketDockIcon(id) || "")}" alt=""><strong>${escapeHtml(r?.short || id)}</strong><small class="rocketCount">0</small>`;
     const img = button.querySelector("img");
@@ -8729,7 +8730,7 @@ function initializeCustomActionBar() {
   function renderPalette(category) {
     paletteItems.replaceChildren();
     paletteItems.classList.toggle("abilitiesView", category === "abilities");
-    palette.querySelectorAll("[data-action-category]").forEach(button => button.classList.toggle("active", button.dataset.actionCategory === category));
+    palette.querySelectorAll("nav [data-action-category]").forEach(button => button.classList.toggle("active", button.dataset.actionCategory === category));
     if (category === "rockets" || category === "launchers") {
       const onlyLaunchers = category === "launchers";
       if (!onlyLaunchers) {
@@ -8967,7 +8968,7 @@ function initializeCustomActionBar() {
     // À l'init les `let` du cache sont en TDZ : pas grave, cache déjà vide/dirty.
     try { invalidateActionDockCache(); } catch {}
   }
-  palette.querySelectorAll("[data-action-category]").forEach(button => button.onclick = () => renderPalette(button.dataset.actionCategory));
+  palette.querySelectorAll("nav [data-action-category]").forEach(button => button.onclick = () => renderPalette(button.dataset.actionCategory));
   const phoneActionTray = document.querySelector(".phoneActionTray");
   const phoneActionLauncher = document.querySelector(".phoneActionLauncher");
   const phoneCategoryButtons = [...document.querySelectorAll("[data-phone-action-category]")];
@@ -9541,7 +9542,7 @@ function initializeCustomActionBar() {
       }
     }
     if (palette.hidden) return;
-    let active = palette.querySelector("[data-action-category].active")?.dataset.actionCategory || "ammo";
+    let active = palette.querySelector("nav [data-action-category].active")?.dataset.actionCategory || "ammo";
     if (active === "abilities" && !match) active = "ammo";
     renderPalette(active);
   };
@@ -10942,18 +10943,18 @@ function renderBoosterWindow() {
       facets.push({ def, key, pct: (Number(Object.values(bonus)[0]) || 0) * Number(n), group: Number(n) });
     }
   } catch {}
-  // Bases du clan avec modules DMG/HON/EXP : une carte BASE <MAP> sans
-  // timer par famille (+2 % dégâts, +10 % honneur, +10 % exp, cumulés).
+  // Bases du clan avec modules DMG/HON/EXP/REP : une carte BASE <MAP> sans
+  // timer par famille (+2 % dégâts, +10 % honneur, +10 % exp, +2 % réparation).
   try {
     for (const b of stationClanBaseBonuses()) {
-      const pushBaseFacet = (key, pct, icon) => {
+      const pushBaseFacet = (key, pct, icon, short) => {
         if (!(Number(pct) > 0)) return;
         facets.push({
           def: {
             id: `station-base-${String(b.map || "").toLowerCase()}-${key}`,
             code: `BASE ${b.map}`,
-            name: `Base ${b.map} — module ${key === "dmgPct" ? "DMG" : key === "honorPct" ? "HON" : "EXP"}`,
-            desc: `Module ${key === "dmgPct" ? "DMG" : key === "honorPct" ? "HON" : "EXP"} de la base de combat : +${pct} %, cumulé aux boosters.`,
+            name: `Base ${b.map} — module ${short}`,
+            desc: `Module ${short} de la base de combat : +${pct} %, cumulé aux boosters.`,
             iconMini: icon,
             effect: { [key]: Number(pct) || 0 },
           },
@@ -10962,9 +10963,10 @@ function renderBoosterWindow() {
           base: String(b.map || "").toUpperCase(),
         });
       };
-      pushBaseFacet("dmgPct", b.dmg, "/ASSETS/BOOSTERS/CAT/dmg.png");
-      pushBaseFacet("honorPct", b.hon, "/ASSETS/BOOSTERS/CAT/rep.png");
-      pushBaseFacet("expPct", b.exp, "/ASSETS/BOOSTERS/CAT/ep.png");
+      pushBaseFacet("dmgPct", b.dmg, "/ASSETS/BOOSTERS/CAT/dmg.png", "DMG");
+      pushBaseFacet("honorPct", b.hon, "/ASSETS/BOOSTERS/CAT/hon.png", "HON");
+      pushBaseFacet("expPct", b.exp, "/ASSETS/BOOSTERS/CAT/ep.png", "EXP");
+      pushBaseFacet("repairPct", b.rep, "/ASSETS/BOOSTERS/CAT/rep.png", "REP");
     }
   } catch {}
   const rowHtml = (facet) => {
@@ -19954,8 +19956,8 @@ function playerBoosterMults() {
         }
       }
     } catch {}
-    // Bases du clan avec modules DMG/HON/EXP : +2 % dégâts, +10 % honneur,
-    // +10 % exp par base (cumulé).
+    // Bases du clan avec modules DMG/HON/EXP/REP : +2 % dégâts, +10 % honneur,
+    // +10 % exp, +2 % réparation par base (cumulé).
     try {
       const st = stationClanDmgMult();
       if (st !== 1) base.dmg = (Number(base.dmg) || 1) * st;
@@ -19963,6 +19965,8 @@ function playerBoosterMults() {
       if (stH !== 1) base.honor = (Number(base.honor) || 1) * stH;
       const stE = stationClanExpMult();
       if (stE !== 1) base.exp = (Number(base.exp) || 1) * stE;
+      const stR = stationClanRepMult();
+      if (stR !== 1) base.repair = (Number(base.repair) || 1) * stR;
     } catch {}
     return base;
   } catch {
@@ -19991,11 +19995,12 @@ function stationClanBaseBonuses() {
       for (const b of live) {
         if (!b || typeof b !== "object") continue;
         if (String(b.clan || "").toUpperCase() !== myClan) continue;
-        const entry = { map: String(b.map || "").toUpperCase(), dmg: 0, hon: 0, exp: 0 };
+        const entry = { map: String(b.map || "").toUpperCase(), dmg: 0, hon: 0, exp: 0, rep: 0 };
         if (b.dmg === true) entry.dmg = 2;
         if (b.hon === true) entry.hon = 10;
         if (b.exp === true) entry.exp = 10;
-        if (!entry.dmg && !entry.hon && !entry.exp) continue;
+        if (b.rep === true) entry.rep = 2;
+        if (!entry.dmg && !entry.hon && !entry.exp && !entry.rep) continue;
         out.push(entry);
       }
       return out;
@@ -20003,11 +20008,12 @@ function stationClanBaseBonuses() {
     const st = zoneStation;
     if (st && st.built && String(st.owner?.clan || "").toUpperCase() === myClan) {
       const equipped = (rid) => (st.slots || []).some((s) => s && s.resourceId === rid && Number(s.hp) > 0 && !(stationCooldownLeft(s.cooldownUntil) > 0));
-      const entry = { map: "", dmg: 0, hon: 0, exp: 0 };
+      const entry = { map: "", dmg: 0, hon: 0, exp: 0, rep: 0 };
       if (equipped("station_module_dmg")) entry.dmg = 2;
       if (equipped("station_module_hon")) entry.hon = 10;
       if (equipped("station_module_exp")) entry.exp = 10;
-      if (entry.dmg || entry.hon || entry.exp) {
+      if (equipped("station_module_rep")) entry.rep = 2;
+      if (entry.dmg || entry.hon || entry.exp || entry.rep) {
         entry.map = String(window.__CURRENT_MAP_ID__ || rules?.mapLabel || "").toUpperCase();
         if (entry.map) out.push(entry);
       }
@@ -20036,6 +20042,11 @@ function stationClanHonMult() {
 
 function stationClanExpMult() {
   const total = stationClanBonusTotal("exp");
+  return total > 0 ? 1 + total / 100 : 1;
+}
+
+function stationClanRepMult() {
+  const total = stationClanBonusTotal("rep");
   return total > 0 ? 1 + total / 100 : 1;
 }
 
@@ -20404,9 +20415,15 @@ function tickStationLogic() {
           tickStationLogic._repairSyncReq = now;
           requestStationSync(map);
         }
+        // Resync périodique du déflecteur (banque + ON/OFF temps réel).
+        if (zoneStation.deflect && now - (tickStationLogic._deflectSyncReq || 0) > 5000) {
+          tickStationLogic._deflectSyncReq = now;
+          requestStationSync(map);
+        }
       } else {
         stationResolveReplaces();
         stationRepairTick();
+        stationDeflectTick();
       }
     } catch {}
     const pump = pumpStationNet(zoneStation, map);
@@ -29358,6 +29375,18 @@ function damageEnemy(e, dmg, shieldPenetration, crit, opts = {}) {
       cancelOwnStationAttack(e, false);
       return { total: 0, sh: 0, hp: 0, bypass: 0, isCrit: false, rawDamage: 0 };
     }
+    // Déflecteur actif : cœur + emplacements invincibles (le serveur
+    // tranche de toute façon ; toast anti-spam côté client).
+    try {
+      const dd = zoneStation?.deflect;
+      if (dd && dd.active === true && serverNow() < Number(dd.until)) {
+        if (Date.now() - (damageEnemy._deflectToastAt || 0) > 5000) {
+          damageEnemy._deflectToastAt = Date.now();
+          try { showToast("Déflecteur actif — station invincible.", 2); } catch {}
+        }
+        return { total: 0, sh: 0, hp: 0, bypass: 0, isCrit: false, rawDamage: 0 };
+      }
+    } catch {}
     // Même variance que NPC/joueurs (±5 % + critique), sinon dégâts constants.
     let amount = Math.max(0, Number(dmg) || 0);
     let stationCrit = false;
@@ -34459,6 +34488,19 @@ jumpBaseFade: 1,
           zoneStation.hubHp = STATION_CORE_HP;
           zoneStation.hubHpMax = STATION_CORE_HP;
         }
+        // Déflecteur sauvegardé : reprise telle quelle (solo ; en partagé
+        // le serveur fait foi et écrase au premier sync).
+        if (saved.deflect && typeof saved.deflect === "object" && (Number(saved.deflect.bank) > 0 || saved.deflect.active === true || Number(saved.deflect.disabledUntil) > 0)) {
+          zoneStation.deflect = {
+            bank: Math.max(0, Number(saved.deflect.bank) || 0),
+            active: saved.deflect.active === true,
+            until: Math.max(0, Number(saved.deflect.until) || 0),
+            disabledUntil: Math.max(0, Number(saved.deflect.disabledUntil) || 0),
+            lastTick: Date.now(),
+          };
+        } else if (zoneStation.built && zoneStation.hub) {
+          zoneStation.deflect = { bank: 0, active: false, until: 0, disabledUntil: 0, lastTick: Date.now() };
+        }
         // Réparation solo en cours : reprise (sans rattrapage du temps écoulé).
         if (saved.repair && typeof saved.repair === "object" && Number(saved.repair.until) > Date.now()) {
           zoneStation.repair = { until: Number(saved.repair.until), rateHub: STATION_REPAIR_HUB, rateSlot: STATION_REPAIR_SLOT, lastTick: Date.now() };
@@ -38559,6 +38601,35 @@ function stationTickCooldowns() {
       }
     }
   } catch {}
+  // Bouton Déflecteur : coupure 30 min (désactivé = en coupure).
+  try {
+    const dbtn = document.getElementById("stationDeflectBtn");
+    if (dbtn) {
+      const dd = (() => { try { return stationDeflectDisplay(); } catch { return null; } })();
+      const off = !!(dd && dd.phase === "charge" && dd.disabled);
+      const label = off ? "Déflecteur : OFF" : "Désactiver 30 min";
+      if (dbtn.textContent !== label) dbtn.textContent = label;
+      if (dbtn.classList.contains("off") !== off) dbtn.classList.toggle("off", off);
+      dbtn.title = off && dd ? `Coupé — reprise dans ${formatDeflectCountdown(dd.offMs)}` : "Couper le bouclier 30 min (cumul gelé, reprise après)";
+    }
+  } catch {}
+  // Déflecteur : décompte en direct dans la fenêtre.
+  try {
+    const ddiv = document.getElementById("stationDeflect");
+    if (ddiv && isStationWindowOpen?.()) {
+      let dl = null;
+      try { dl = stationDeflectLabel(); } catch {}
+      if (dl) {
+        if (ddiv.textContent !== dl.text) ddiv.textContent = dl.text;
+        ddiv.classList.toggle("on", dl.phase === "shield");
+        if (ddiv.style.display === "none") ddiv.style.display = "";
+      } else if (ddiv.textContent !== "") {
+        ddiv.textContent = "";
+        ddiv.style.display = "none";
+        try { renderStationWindow(); } catch {}
+      }
+    }
+  } catch {}
 }
 
 function renderStationWindow(message = "") {
@@ -38595,13 +38666,30 @@ function renderStationWindow(message = "") {
       + (def && slot?.pseudo ? `<span class="stationWho">${escapeHtml(String(slot.pseudo))}</span>` : ``) + `</div>`;
   }
   ui.stationArena.innerHTML = arena;
-  // Pied de fenêtre : base construite -> bouton Réparation (25 000 PV/s,
-  // 10 s, cœur + modules en vie). Sinon lignes par clan (Clan + barre + %).
+  // Déflecteur : même libellé que sous le cœur (complet membres, timer seul autres).
+  if (ui.stationDeflect) {
+    const dl = (() => { try { return stationDeflectLabel(); } catch { return null; } })();
+    if (dl) {
+      let mineWin = false;
+      try { mineWin = stationOwnedByMyClan(); } catch {}
+      const txtWin = mineWin ? dl.text : dl.active;
+      if (ui.stationDeflect.textContent !== txtWin) ui.stationDeflect.textContent = txtWin;
+      ui.stationDeflect.classList.toggle("on", dl.phase === "shield");
+      ui.stationDeflect.style.display = "";
+    } else {
+      ui.stationDeflect.textContent = "";
+      ui.stationDeflect.style.display = "none";
+    }
+  }
+  // Pied de fenêtre : base construite -> boutons Réparation + Déflecteur.
+  // Sinon lignes par clan (Clan + barre + %).
   if (ui.stationClans) {
     if (st?.built) {
       const repLeft = Math.max(0, Math.ceil((Number(st?.repair?.until) - serverNow()) / 1000));
-      ui.stationClans.innerHTML = `<button id="stationRepairBtn" class="stationRepairBtn" type="button"${repLeft > 0 ? " disabled" : ""}>`
-        + `${repLeft > 0 ? `Réparation ${repLeft}s` : "Réparation"}</button>`;
+      const defOff = !!(st?.deflect && Number(st.deflect.disabledUntil || 0) > serverNow());
+      ui.stationClans.innerHTML = `<div class="stationDeflectRow"><button id="stationRepairBtn" class="stationRepairBtn" type="button"${repLeft > 0 ? " disabled" : ""}>`
+        + `${repLeft > 0 ? `Réparation ${repLeft}s` : "Réparation"}</button>`
+        + `<button id="stationDeflectBtn" class="stationDeflectBtn${defOff ? " off" : ""}" type="button" title="Couper le bouclier 30 min (cumul gelé, reprise après)">Déflecteur : ${defOff ? "OFF" : "Désactiver 30 min"}</button></div>`;
     } else {
       const total = 1 + (st?.slots || []).length;
       let rows;
@@ -38708,7 +38796,7 @@ function stationPersist() {
     }
     if (stationCooldownLeft(zoneStation.hubCd) > 0) cds.hub = zoneStation.hubCd;
     const repUntil = Number(zoneStation.repair?.until) || 0;
-    u.stations[mapId] = { hub: zoneStation.hub || null, hubClan: zoneStation.hubClan || null, hubPseudo: zoneStation.hubPseudo || "", slots, slotClans, slotPseudos, slotPending, cds, repair: repUntil > Date.now() ? { until: repUntil } : null, built: zoneStation.built === true, owner: { ...(zoneStation.owner || {}) }, contestedBy: zoneStation.contestedBy || null };
+    u.stations[mapId] = { hub: zoneStation.hub || null, hubClan: zoneStation.hubClan || null, hubPseudo: zoneStation.hubPseudo || "", slots, slotClans, slotPseudos, slotPending, cds, repair: repUntil > Date.now() ? { until: repUntil } : null, deflect: zoneStation.deflect && typeof zoneStation.deflect === "object" ? { bank: Math.max(0, Number(zoneStation.deflect.bank) || 0), active: zoneStation.deflect.active === true, until: Math.max(0, Number(zoneStation.deflect.until) || 0), disabledUntil: Math.max(0, Number(zoneStation.deflect.disabledUntil) || 0) } : null, built: zoneStation.built === true, owner: { ...(zoneStation.owner || {}) }, contestedBy: zoneStation.contestedBy || null };
     account.user = u;
     saveUser(u, { durable: true });
     try { localStorage.setItem("orbit_sync", String(Date.now())); } catch {}
@@ -39096,6 +39184,8 @@ function stationBuild() {
   for (const slot of st.slots || []) {
     if (slot?.resourceId && !(Number(slot.hp) > 0)) { slot.hp = STATION_MODULE_HP; slot.hpMax = STATION_MODULE_HP; }
   }
+  // Déflecteur : banque à zéro, charge démarrée à la construction.
+  st.deflect = { bank: 0, active: false, until: 0, disabledUntil: 0, lastTick: Date.now() };
   account.user = u;
   stationPersist();
   stationRefresh("Station construite !");
@@ -39143,6 +39233,42 @@ function stationRepair() {
   account.user = u;
   stationPersist();
   stationRefresh("Réparation engagée !");
+}
+
+// Interrupteur du déflecteur : ON = cycle normal (bouclier auto au cumul
+// complet), OFF = jamais de bouclier, la banque continue de cumuler.
+// Couper en plein bouclier rend le temps restant à la banque.
+function stationDeflectToggle() {
+  const st = zoneStation;
+  if (!st?.built) return;
+  if (stationSharedActive()) {
+    const mapId = String(window.__CURRENT_MAP_ID__ || rules?.mapLabel || "").toLowerCase();
+    if (!sendStationDeflectToggle(mapId)) {
+      renderStationWindow("Hors ligne — déflecteur inaccessible.");
+    }
+    return;
+  }
+  const u = getCurrentUserForMutation();
+  if (!u) return;
+  let clan = "";
+  try { clan = String(getMyClanTag() || "").toUpperCase(); } catch {}
+  if (String(st.owner?.clan || "").toUpperCase() !== clan || !clan) {
+    renderStationWindow("Déflecteur réservé à ton clan.");
+    return;
+  }
+  if (!st.deflect || typeof st.deflect !== "object") st.deflect = { bank: 0, active: false, until: 0, disabledUntil: 0, lastTick: Date.now() };
+  const d = st.deflect;
+  const now = Date.now();
+  if (d.active === true && Number(d.until) > now) {
+    d.bank = Math.max(0, Number(d.bank) || 0) + Math.max(0, (Number(d.until) - now) / 1000);
+    d.active = false;
+    d.until = 0;
+  }
+  d.disabledUntil = now + STATION_DEFLECT_OFF_MS;
+  d.lastTick = now;
+  account.user = u;
+  stationPersist();
+  stationRefresh("Déflecteur coupé 30 min — cumul gelé.");
 }
 
 // Flottant +x de réparation (vert coque, comme les soins distants).
@@ -39207,6 +39333,43 @@ function stationRepairTick() {
     acc.slots = {};
     try { stationPersist(); } catch {}
   }
+}
+
+// Déflecteur solo : même automate que le serveur (banque temps réel,
+// +3 s/s même éteint, bouclier d'un bloc dès le seuil si allumé).
+function stationDeflectTick() {
+  const st = zoneStation;
+  const d = st?.deflect;
+  if (!st?.built || !d || typeof d !== "object") return;
+  try {
+    const now = Date.now();
+    const dt = Math.max(0, now - Number(d.lastTick || now)) / 1000;
+    d.lastTick = now;
+    const off = Number(d.disabledUntil || 0) > now;
+    if (d.active === true) {
+      if (now >= Number(d.until) || 0) {
+        d.active = false;
+        d.until = 0;
+        try { stationPersist(); } catch {}
+        try { stationRefresh(); } catch {}
+      }
+      return;
+    }
+    if (dt > 0) {
+      d.bank = Math.max(0, Number(d.bank) || 0) + STATION_DEFLECT_RATE * dt;
+      if (now - (stationDeflectTick._persistAt || 0) > 60000) {
+        stationDeflectTick._persistAt = now;
+        try { stationPersist(); } catch {}
+      }
+    }
+    if (!off && Number(d.bank) >= STATION_DEFLECT_COST) {
+      d.active = true;
+      d.until = now + Math.round(Number(d.bank)) * 1000;
+      d.bank = 0;
+      try { stationPersist(); } catch {}
+      try { stationRefresh(); } catch {}
+    }
+  } catch {}
 }
 
 // Affiche le montant fixe (+85 000 cœur / +42 500 modules en réparation
@@ -39294,10 +39457,11 @@ ui.stationBuildBtn?.addEventListener("click", () => {
   stationBuild();
 });
 
-// Bouton Réparation injecté dans le pied de fenêtre (délégation : le footer
-// est re-rendu à chaque ouverture/refresh).
+// Boutons Réparation / Déflecteur injectés dans le pied de fenêtre
+// (délégation : le footer est re-rendu à chaque ouverture/refresh).
 ui.stationClans?.addEventListener("click", (event) => {
   if (event.target.closest("#stationRepairBtn")) stationRepair();
+  else if (event.target.closest("#stationDeflectBtn")) stationDeflectToggle();
 });
 
 ui.otExchangeBtn?.addEventListener("click", async () => {
@@ -40266,6 +40430,58 @@ function zoneStationRingColor() {
   return STATION_RING_COLORS[zoneStationRingStatus()] || STATION_RING_COLORS.empty;
 }
 
+// État du déflecteur pour l'affichage (jeu + fenêtre) et l'invincibilité.
+// charge : { phase:"charge", chargeMs|null, bankSec, offMs } ;
+// bouclier : { phase:"shield", shieldMs }.
+function stationDeflectDisplay() {
+  try {
+    const st = zoneStation;
+    if (!st?.built || !st.hub || !st.deflect) return null;
+    const d = st.deflect;
+    const now = serverNow();
+    if (d.active === true && Number(d.until) > now) {
+      return { phase: "shield", active: true, disabled: false, chargeMs: null, bankSec: 0, shieldMs: Math.max(0, Number(d.until) - now), offMs: 0 };
+    }
+    const bank = Math.max(0, Number(d.bank) || 0);
+    const offMs = Math.max(0, Number(d.disabledUntil || 0) - now);
+    if (offMs > 0) {
+      return { phase: "charge", active: false, disabled: true, chargeMs: null, bankSec: bank, shieldMs: 0, offMs };
+    }
+    const chargeMs = Math.max(0, (STATION_DEFLECT_COST - bank) / STATION_DEFLECT_RATE * 1000);
+    return { phase: "charge", active: false, disabled: false, chargeMs, bankSec: bank, shieldMs: 0, offMs: 0 };
+  } catch { return null; }
+}
+
+function formatDeflectCountdown(ms) {
+  const s = Math.max(0, Math.ceil(Number(ms) / 1000));
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+}
+
+// Libellé complet (membres) :
+// - charge : "Ouvert : X - Déflecteur : Y"
+// - coupure : "Déflecteur [ OFF ] : X - Temps de Déflecteur : Y"
+// - bouclier : "Déflecteur [ ON ] : X"
+// `active` = timer seul pour les non-membres : banque cumulée en charge,
+// compte à rebours OFF en coupure, temps de bouclier en shield.
+function stationDeflectLabel() {
+  try {
+    const dd = stationDeflectDisplay();
+    if (!dd) return null;
+    if (dd.phase === "shield") {
+      const left = formatDeflectCountdown(dd.shieldMs);
+      return { phase: dd.phase, text: `Déflecteur [ ON ] : ${left}`, active: left };
+    }
+    if (dd.disabled) {
+      const left = formatDeflectCountdown(dd.offMs);
+      const bankTxt = formatDeflectCountdown(dd.bankSec * 1000);
+      return { phase: dd.phase, text: `Déflecteur [ OFF ] : ${left} - Temps de Déflecteur : ${bankTxt}`, active: left };
+    }
+    const bankTxt = formatDeflectCountdown(dd.bankSec * 1000);
+    const left = formatDeflectCountdown(dd.chargeMs);
+    return { phase: dd.phase, text: `Ouvert : ${left} - Déflecteur : ${bankTxt}`, active: bankTxt };
+  } catch { return null; }
+}
+
 // Animations "emplacement détruit" : slotId -> timestamp de destruction
 // (performance.now()). Remplie sur l'événement stationDestroyed.
 const stationDestroyedAnims = new Map();
@@ -40545,6 +40761,54 @@ function drawZoneStation(ox, oy) {
       ctx.fillStyle = ratio > 0.5 ? "#38d66b" : ratio > 0.2 ? "#ffbd2e" : "#ff4057";
       ctx.fillRect(bx, by, width * ratio, 8);
       ctx.restore();
+    }
+  }
+  // Déflecteur : libellé complet pour le clan ("Ouvert : X - Déflecteur :
+  // Y"), timer actif seul pour les autres. Visible par tous sous les PV.
+  // Boucle ISH par-dessus pendant le bouclier.
+  if (built && zoneStation.hub) {
+    const dl = stationDeflectLabel();
+    let mine = false;
+    try { mine = stationOwnedByMyClan(); } catch {}
+    const txt = dl ? (mine ? dl.text : dl.active) : null;
+    if (txt) {
+      try {
+        ctx.save();
+        ctx.font = "900 13px ui-sans-serif, system-ui";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "top";
+        ctx.lineWidth = 4;
+        ctx.strokeStyle = "rgba(5,8,20,0.90)";
+        const labelY = sy + oy - base.h / 2 + 2;
+        ctx.strokeText(txt, sx + ox, labelY);
+        ctx.fillStyle = dl.phase === "shield" ? "rgba(125,240,255,0.98)" : "rgba(255,255,255,0.92)";
+        ctx.fillText(txt, sx + ox, labelY);
+        ctx.restore();
+      } catch {}
+      if (dl.phase === "shield") {
+        try { ensureInstaShieldLoaded(); } catch {}
+        try {
+          if (instaShieldReady && instaShieldImgs?.length) {
+            const frames = INSTA_SHIELD_PACK.frames || instaShieldImgs.length;
+            const idx = Math.min(frames - 1, Math.floor(((performance.now() / 1000) % INSTA_SHIELD_PACK.dur) / INSTA_SHIELD_PACK.dur * frames));
+            const img = instaShieldImgs[idx];
+            if (isImgReady(img)) {
+              ctx.save();
+              ctx.imageSmoothingEnabled = false;
+              ctx.imageSmoothingQuality = "low";
+              const spots = [{ x: sx, y: sy, s: 460 }];
+              for (const slot of zoneStation.slots || []) {
+                if (!slot?.resourceId) continue;
+                spots.push({ x: sx + (Number(slot.dx) || 0), y: sy + (Number(slot.dy) || 0), s: 260 });
+              }
+              for (const spot of spots) {
+                ctx.drawImage(img, spot.x + ox - spot.s / 2, spot.y + oy - spot.s / 2, spot.s, spot.s);
+              }
+              ctx.restore();
+            }
+          }
+        } catch {}
+      }
     }
   }
   // (Pas de barre de lock pour les membres : PV affichés en permanence.)

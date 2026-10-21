@@ -513,7 +513,7 @@ import { loadServerMaps, mapTransition, validArrival, reviveArrival, baseArrival
 import { getFactionHomeMap } from "../SRC/CORE/FACTIONS.js";
 import { handleSocialMessage, socialPeerGone, socialPeerChanged, socialDescribeGroup, socialGroupOf } from "./SOCIAL_ROOM.js";
 import { getAuctionSync, handleAuctionBid, pollAuctionCycle, auctionRoomStatus } from "./AUCTION_ROOM.js";
-import { getStationSync, handleStationInstall, handleStationUninstall, handleStationBuild, handleStationReplace, handleStationCancelReplace, handleStationRepair, handleStationHit, hasStationMap, getStationDefense, stationShotReady, stationShotFired, isStationFoe, applyStationPassiveHeal, getClanBaseBonuses } from "./STATION_ROOM.js";
+import { getStationSync, handleStationInstall, handleStationUninstall, handleStationBuild, handleStationReplace, handleStationCancelReplace, handleStationRepair, handleStationDeflectToggle, handleStationHit, hasStationMap, getStationDefense, stationShotReady, stationShotFired, isStationFoe, applyStationPassiveHeal, getClanBaseBonuses } from "./STATION_ROOM.js";
 import { GAME_VERSION } from "../SRC/DATA/VERSION.js";
 import { COLLECTABLE_TYPES } from "../SRC/DATA/COLLECTABLES.js";
 import { HALLOWEEN_END, HALLOWEEN_START, HALLOWEEN_TIME_ZONE, isHalloweenBossVariant, isHalloweenEventActive } from "../NPC/NPC_HALLOWEEN.js";
@@ -3784,6 +3784,19 @@ wss.on("connection", (ws) => {
           broadcastStation(map);
         } else {
           try { ws.send(JSON.stringify({ t: "stationReject", reason: String(res.reason || "Réparation refusée.") })); } catch {}
+        }
+      } catch {}
+      return;
+    }
+    if (msg.t === "stationDeflectToggle") {
+      try {
+        const map = String(mapId || "").toLowerCase();
+        if (!hasStationMap(map)) return;
+        const res = handleStationDeflectToggle({ map }, stationWho());
+        if (res.status === "ok") {
+          broadcastStation(map);
+        } else {
+          try { ws.send(JSON.stringify({ t: "stationReject", reason: String(res.reason || "Déflecteur inchangé.") })); } catch {}
         }
       } catch {}
       return;

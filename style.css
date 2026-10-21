@@ -1638,6 +1638,39 @@ body.phoneDockEditorOpen #ammoBar .phoneEditorSelected {
 .stationBuildBtn[hidden] {
   display:none;
 }
+.stationDeflectRow {
+  display:flex;
+  gap:8px;
+  align-items:center;
+  justify-content:center;
+  flex-wrap:wrap;
+}
+.stationDeflectBtn {
+  min-width:140px;
+  padding:8px 14px;
+  border:1px solid rgba(125,240,255,.5);
+  border-radius:8px;
+  color:#eaffff;
+  background:linear-gradient(135deg,rgba(0,120,160,.45),rgba(0,60,100,.4));
+  font:750 13px/1.2 ui-sans-serif,system-ui;
+  cursor:pointer;
+}
+.stationDeflectBtn.off {
+  border-color:rgba(255,107,122,.55);
+  color:#ffd9de;
+  background:linear-gradient(135deg,rgba(140,20,40,.45),rgba(80,10,25,.4));
+}
+.stationDeflect {
+  color:#eaffff;
+  font-size:13px;
+  font-weight:900;
+  text-align:center;
+  text-shadow:0 1px 2px #000;
+  letter-spacing:.5px;
+}
+.stationDeflect.on {
+  color:#7df0ff;
+}
 .stationRepairBtn {
   min-width:160px;
   padding:8px 14px;

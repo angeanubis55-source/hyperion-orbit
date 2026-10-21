@@ -69,6 +69,16 @@ export const STATION_SLOT_OFFSETS = Object.freeze(
   })
 );
 
+// Déflecteur : +3 s de bouclier par seconde de charge, bouclier déclenché
+// à 90 min cumulées. Bouton = COUPURE 30 min uniquement (pas d'activation
+// manuelle) : pendant la coupure le cumul est gelé et aucun bouclier ne se
+// déclenche ; à la fin, le cycle reprend où il en était. Couper en plein
+// bouclier rend le temps restant à la banque.
+// Cœur + modules invincibles sous bouclier, destructibles sinon.
+export const STATION_DEFLECT_RATE = 3;
+export const STATION_DEFLECT_COST = 90 * 60;
+export const STATION_DEFLECT_OFF_MS = 30 * 60 * 1000;
+
 // Modules uniques : un seul exemplaire de chaque par station
 // (comme les boosters officiels). Lasers et roquettes : cumulables.
 export const STATION_UNIQUE_MODULES = Object.freeze([

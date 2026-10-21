@@ -6,10 +6,23 @@
 import {
   drainNetStationInbox,
   netConnected,
+  netGameTimeMs,
   netIsAuthed,
   netMyId,
   requestStationSync,
 } from "./NETPLAY.js";
+
+// Horloge serveur estimée (snapshots 20 Hz) : les timestamps serveur
+// (déflecteur, cooldowns) s'y comparent. Sinon : heure locale.
+function serverNowMs() {
+  try {
+    if (netConnected()) {
+      const t = Number(netGameTimeMs());
+      if (Number.isFinite(t) && t > 0) return t;
+    }
+  } catch {}
+  return Date.now();
+}
 
 let sharedMap = ""; // mapId dont le premier état serveur a été reçu
 let sharedZone = null; // objet zoneStation ayant réellement reçu ce sync
@@ -209,6 +222,9 @@ function applyStationView(zoneStation, msg) {
   }
   zoneStation.built = msg.built === true;
   zoneStation.owner = msg.owner && typeof msg.owner === "object" ? { ...msg.owner } : {};
+  zoneStation.deflect = (msg.deflect && typeof msg.deflect === "object")
+    ? { bank: Math.max(0, Number(msg.deflect.bank) || 0), active: msg.deflect.active === true && Number(msg.deflect.until) > serverNowMs(), until: Math.max(0, Number(msg.deflect.until) || 0), disabledUntil: Math.max(0, Number(msg.deflect.disabledUntil) || 0) }
+    : null;
   zoneStation.repair = (msg.repair && typeof msg.repair === "object" && Number(msg.repair.until) > 0)
     ? { until: Number(msg.repair.until), rateHub: Math.max(1, Number(msg.repair.rateHub) || 85000), rateSlot: Math.max(1, Number(msg.repair.rateSlot) || 42500) }
     : null;

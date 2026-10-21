@@ -21,6 +21,9 @@ import {
   STATION_SLOT_IDS,
   STATION_UNIQUE_MODULES,
   STATION_WEAPON_STATS,
+  STATION_DEFLECT_RATE,
+  STATION_DEFLECT_COST,
+  STATION_DEFLECT_OFF_MS,
 } from "../SRC/DATA/BATTLESTATION.js";
 
 const STATE_FILE = process.env.ORBIT_STATION_FILE || "SERVER_DATA/station_state.json";
@@ -88,8 +91,9 @@ export function stationShotReady(mapId, slot, now) {
 }
 
 // Vue temps réel pour tous les joueurs (toutes maps) : bases construites
-// avec modules DMG/HON/EXP opérationnels (posés, installation terminée,
-// en vie). Sert les bonus de clan (+2 % dégâts, +10 % honneur, +10 % exp).
+// avec modules DMG/HON/EXP/REP opérationnels (posés, installation terminée,
+// en vie). Sert les bonus de clan (+2 % dégâts, +10 % honneur, +10 % exp,
+// +2 % réparation).
 export function getClanBaseBonuses() {
   const out = [];
   try {
@@ -108,12 +112,48 @@ export function getClanBaseBonuses() {
         dmg: equipped("station_module_dmg"),
         hon: equipped("station_module_hon"),
         exp: equipped("station_module_exp"),
+        rep: equipped("station_module_rep"),
       };
-      if (!mods.dmg && !mods.hon && !mods.exp) continue;
+      if (!mods.dmg && !mods.hon && !mods.exp && !mods.rep) continue;
       out.push({ map: key, clan: String(st.built.clan || "").toUpperCase(), ...mods });
     }
   } catch {}
   return out;
+}
+
+// Déflecteur (banque de temps explicite) :
+// st.deflect = { bank (s), active, until (ms), disabledUntil (ms), lastTick }.
+// +3 s par seconde hors bouclier (même pendant une coupure) ; bouclier à
+// 90 min cumulées (consomme tout le stock). Coupure = pas de déclenchement
+// (ni de bouclier forcé) ; à la fin, reprise normale. Couper en plein
+// bouclier rend le temps restant à la banque.
+function stationDeflectTick(st, nowMs) {
+  const d = st.deflect;
+  if (!st.built || !d || typeof d !== "object") return false;
+  let changed = false;
+  const last = Math.max(Number(d.lastTick) || nowMs, 0);
+  const dt = Math.max(0, nowMs - last);
+  d.lastTick = nowMs;
+  const off = Number(d.disabledUntil || 0) > nowMs;
+  if (d.active) {
+    if (nowMs >= Number(d.until) || 0) {
+      d.active = false;
+      d.until = 0;
+      changed = true;
+    }
+    return changed;
+  }
+  if (dt > 0) {
+    d.bank = Math.max(0, Number(d.bank) || 0) + STATION_DEFLECT_RATE * (dt / 1000);
+    changed = true;
+  }
+  if (!off && Number(d.bank) >= STATION_DEFLECT_COST) {
+    d.active = true;
+    d.until = nowMs + Math.round(Number(d.bank)) * 1000;
+    d.bank = 0;
+    changed = true;
+  }
+  return changed;
 }
 
 export function stationShotFired(mapId, slot, periodMs, now) {
@@ -349,6 +389,17 @@ function restore() {
           lastTick: Date.now(),
         };
       }
+      // Déflecteur : reprend l'état (banque conservée, pas de rattrapage).
+      // Ancien format {disabled} : traité comme non coupé.
+      if (fresh.built && st.deflect && typeof st.deflect === "object") {
+        fresh.deflect = {
+          bank: Math.max(0, Number(st.deflect.bank) || 0),
+          active: st.deflect.active === true,
+          until: Math.max(0, Number(st.deflect.until) || 0),
+          disabledUntil: Math.max(0, Number(st.deflect.disabledUntil) || 0),
+          lastTick: Date.now(),
+        };
+      }
       stations[String(mapId).toLowerCase()] = fresh;
     }
   } catch {}
@@ -488,6 +539,26 @@ export function getStationSync(mapId, viewerClan) {
   const perClan = Object.entries(counts)
     .map(([clan, count]) => ({ clan, count, installingUntil: installingUntil[clan] || [] }))
     .sort((a, b) => b.count - a.count);
+  // Déflecteur : état évalué paresseusement (banque temps réel).
+  // Anciennes bases sans état : cumul démarré maintenant.
+  try {
+    const nowMs = Date.now();
+    if (st.built && !(st.deflect && typeof st.deflect === "object")) {
+      st.deflect = { bank: 0, active: false, until: 0, disabledUntil: 0, lastTick: nowMs };
+      try { persist(); } catch {}
+    }
+    if (st.built && st.deflect && typeof st.deflect === "object") {
+      const before = String(st.deflect.active) + "|" + String(st.deflect.until) + "|" + Math.round(Number(st.deflect.bank) || 0);
+      if (stationDeflectTick(st, nowMs)) {
+        const after = String(st.deflect.active) + "|" + String(st.deflect.until) + "|" + Math.round(Number(st.deflect.bank) || 0);
+        if (after !== before) persist();
+      }
+      if (nowMs - Number(st.deflectPersistAt || 0) > 60000) {
+        st.deflectPersistAt = nowMs;
+        persist();
+      }
+    }
+  } catch {}
   return {
     t: "stationSync",
     map: key,
@@ -496,6 +567,14 @@ export function getStationSync(mapId, viewerClan) {
     built: !!st.built,
     owner: { ...(st.owner || {}) },
     perClan,
+    deflect: (() => {
+      try {
+        const d = st.deflect;
+        if (!st.built || !d || typeof d !== "object") return null;
+        const active = d.active === true && Number(d.until) > Date.now();
+        return { active, until: Math.max(0, Number(d.until) || 0), bank: Math.max(0, Math.round(Number(d.bank) || 0)), disabledUntil: Math.max(0, Number(d.disabledUntil) || 0) };
+      } catch { return null; }
+    })(),
     // Réparation en cours : le client décompte et resync pendant 10 s.
     repair: st.repair && Number(st.repair.until) > 0
       ? { until: Number(st.repair.until), rateHub: Math.max(1, Number(st.repair.rateHub) || REPAIR_HUB_RATE), rateSlot: Math.max(1, Number(st.repair.rateSlot) || REPAIR_SLOT_RATE) }
@@ -816,6 +895,8 @@ export function handleStationBuild({ map }, who) {
   }
   st.built = { clan, firm: String(who?.faction || "").toLowerCase() };
   st.owner = { firm: String(who?.faction || "").toLowerCase(), clan };
+  // Déflecteur : banque à zéro, charge démarrée à la construction.
+  st.deflect = { bank: 0, active: false, until: 0, disabledUntil: 0, lastTick: Date.now() };
   // Les autres clans sont déposés et remboursés à leurs poseurs.
   const refunds = [];
   for (const [tag, other] of Object.entries(st.instances)) {
@@ -841,6 +922,44 @@ export function handleStationBuild({ map }, who) {
   };
 }
 
+// Interrupteur du déflecteur (membre du clan proprio) : COUPURE 30 min
+// uniquement (pas d'activation manuelle). Pendant la coupure le cumul est
+// gelé et aucun bouclier ne se déclenche ; à la fin, le cycle reprend où
+// il en était. Couper en plein bouclier rend le temps restant à la banque.
+// Re-cliquer relance 30 min.
+export function handleStationDeflectToggle({ map }, who) {
+  const key = String(map || "").toLowerCase();
+  if (!STATION_MAPS.has(key)) return { status: "reject", reason: "Pas de station sur cette carte." };
+  const userId = String(who?.id || "").slice(0, MAX_STR);
+  if (who?.authed !== true || !userId.startsWith("u_")) {
+    return { status: "reject", reason: "Connecte-toi pour construire en ligne." };
+  }
+  const clan = String(who?.clan || "").toUpperCase().slice(0, 5);
+  if (!clan) return { status: "reject", reason: "Construction réservée aux clans." };
+  const st = getStation(key);
+  if (!st.built) return { status: "reject", reason: "Station pas construite." };
+  if (String(clan || "") !== String(st.built.clan || "")) {
+    return { status: "reject", reason: "Station ennemie." };
+  }
+  const now = Date.now();
+  if (!st.deflect || typeof st.deflect !== "object") {
+    st.deflect = { bank: 0, active: false, until: 0, disabledUntil: 0, lastTick: now };
+  }
+  const d = st.deflect;
+  d.lastTick = Number(d.lastTick) || now;
+  if (d.active && now < Number(d.until)) {
+    // Extinction en plein bouclier : le reliquat retourne à la banque.
+    d.bank = Math.max(0, Number(d.bank) || 0) + Math.max(0, (Number(d.until) - now) / 1000);
+    d.active = false;
+    d.until = 0;
+  }
+  d.disabledUntil = now + STATION_DEFLECT_OFF_MS;
+  delete d.disabled;
+  persist();
+  try { console.log(`[station:${key}] deflecteur COUPE 30 min par ${String(who?.pseudo || "").slice(0, 20)} [${clan}] (banque ${Math.round(Number(d.bank) || 0)}s)`); } catch {}
+  return { status: "ok", disabledUntil: d.disabledUntil };
+}
+
 export function handleStationHit({ map, target, dmg }, who) {
   const key = String(map || "").toLowerCase();
   if (!STATION_MAPS.has(key)) return { status: "reject" };
@@ -849,6 +968,15 @@ export function handleStationHit({ map, target, dmg }, who) {
   if (who?.authed !== true || !String(who?.id || "").startsWith("u_")) return { status: "reject" };
   const attackerClan = String(who?.clan || "").toUpperCase().slice(0, 5);
   if (attackerClan && attackerClan === String(st.built.clan).toUpperCase()) return { status: "reject" };
+  // Déflecteur actif : cœur + emplacements invincibles (le client bloque
+  // déjà en amont, le serveur tranche). État évalué ici même : sans sync
+  // récente, un bouclier expiré ne doit pas bloquer.
+  try { stationDeflectTick(st, Date.now()); } catch {}
+  try {
+    const ds = st.deflect;
+    const shieldOn = ds && ds.active === true && Date.now() < Number(ds.until);
+    if (shieldOn) return { status: "reject", reason: "Déflecteur actif — station invincible." };
+  } catch {}
   const amount = Math.max(0, Math.min(10_000_000, Math.round(Number(dmg) || 0)));
   if (!(amount > 0)) return { status: "reject" };
   const inst = st.instances[st.built.clan];
