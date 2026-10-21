@@ -2,6 +2,7 @@ import { startOrbitGame } from "../../SRC/CORE/ORBIT_ENGINE.js";
 import { createImageLoader } from "../../SRC/CORE/IMAGE_LOADER.js";
 import { createSFX } from "../../SRC/CORE/SFX.js";
 import { getZoneSpawns, getZonePortals, getZoneSafeModules, getZoneWalls } from "./SPAWNS.js";
+import { getZoneStation } from "./STATION.js";
 
 import { WORLD } from "./WORLD.js";
 
@@ -37,6 +38,7 @@ export function init() {
   getZonePortals,
   getZoneSafeModules,
   getZoneWalls,
+  getZoneStation, // Base de Combat
 },
 
   });

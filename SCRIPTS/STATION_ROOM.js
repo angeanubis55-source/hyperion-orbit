@@ -25,6 +25,7 @@ import {
   STATION_DEFLECT_COST,
   STATION_DEFLECT_OFF_MS,
 } from "../SRC/DATA/BATTLESTATION.js";
+import { STATION_CENTERS } from "../SRC/DATA/STATION_CENTERS.js";
 
 const STATE_FILE = process.env.ORBIT_STATION_FILE || "SERVER_DATA/station_state.json";
 const INSTALL_CD_MS = 60000;
@@ -32,13 +33,17 @@ const INSTALL_CD_MS = 60000;
 const REPAIR_HUB_RATE = 85000;
 const REPAIR_SLOT_RATE = 42500;
 const REPAIR_MS = 10000;
-// Maps avec station (étendre à la réplication demandée).
-export const STATION_MAPS = new Set(["1-3"]);
+// Maps avec station (une base par map). Centres : voir
+// SRC/DATA/STATION_CENTERS.js (source unique serveur + client).
+export const STATION_MAPS = new Set(STATION_CENTERS.map((s) => String(s.map || "").toLowerCase()));
 
 // --- Défense de la base -------------------------------------------------
-// Centre de la station par map (voir MAPS/1-3/STATION.js : milieu entre le
-// portail LOW (1000,1000) et le portail 2-3 (10232,1000)).
-const STATION_POS = Object.freeze({ "1-3": Object.freeze({ x: 5616, y: 1000 }) });
+// Centre de la station par map (source unique : STATION_CENTERS.js).
+const STATION_POS = Object.freeze(
+  Object.fromEntries(
+    STATION_CENTERS.map((s) => [String(s.map || "").toLowerCase(), Object.freeze({ x: Number(s.x) || 0, y: Number(s.y) || 0 })])
+  )
+);
 
 // État de tir : mapId -> { slotId: prochain tir autorisé (ms) }. Transitoire.
 const combatNext = {};
@@ -88,6 +93,27 @@ export function getStationDefense(mapId) {
 export function stationShotReady(mapId, slot, now) {
   const key = String(mapId || "").toLowerCase();
   return Number(combatNext[key]?.[slot] || 0) <= now;
+}
+
+// Proprios des bases construites (toutes maps) : [{map, clan, firm, builtAt}].
+// Sert la carte stellaire (couleur relation + panneau d'info). Positions :
+// STATION_CENTERS.js (source unique, pas de doublon snapshot). Léger.
+export function getStationOwners() {
+  const out = [];
+  try {
+    for (const mapId of STATION_MAPS) {
+      const key = String(mapId || "").toLowerCase();
+      const st = getStation(key);
+      if (!st?.built?.clan) continue;
+      out.push({
+        map: key,
+        clan: String(st.built.clan || "").toUpperCase().slice(0, 5),
+        firm: String(st.owner?.firm || st.built?.firm || "").toLowerCase().slice(0, 16),
+        builtAt: Math.max(0, Number(st.builtAt) || 0),
+      });
+    }
+  } catch {}
+  return out;
 }
 
 // Vue temps réel pour tous les joueurs (toutes maps) : bases construites
@@ -418,6 +444,11 @@ function restore() {
           firm: String(st.owner.firm || "").toLowerCase(),
           ...(String(st.owner.clan || "") ? { clan: String(st.owner.clan).toUpperCase().slice(0, 5) } : {}),
         };
+      }
+      // Occupation : reprise telle quelle ; anciennes bases sans date :
+      // datées maintenant (la durée repart de zéro une fois).
+      if (fresh.built) {
+        fresh.builtAt = Number(st.builtAt) > 0 ? Number(st.builtAt) : Date.now();
       }
       // Réparation en cours au redémarrage : reprise (sans rattrapage).
       if (st.repair && typeof st.repair === "object" && Number(st.repair.until) > Date.now()) {
@@ -935,6 +966,8 @@ export function handleStationBuild({ map }, who) {
   }
   st.built = { clan, firm: String(who?.faction || "").toLowerCase() };
   st.owner = { firm: String(who?.faction || "").toLowerCase(), clan };
+  // Occupation : horodatée à la construction (panneau carte stellaire).
+  st.builtAt = Date.now();
   // Déflecteur : banque à zéro, charge démarrée à la construction.
   st.deflect = { bank: 0, active: false, until: 0, disabledUntil: 0, lastTick: Date.now() };
   // Les autres clans sont déposés et remboursés à leurs poseurs.
@@ -1026,9 +1059,10 @@ export function handleStationHit({ map, target, dmg }, who) {
   if (!part?.resourceId) return { status: "reject" };
   const slotIndex = STATION_SLOT_IDS.indexOf(id);
   const offset = slotIndex >= 0 ? STATION_SLOT_OFFSETS[slotIndex] : { x: 0, y: 0 };
-  // Centre actuel de la station 1-3 (voir MAPS/1-3/STATION.js), avec une
-  // marge projectile identique aux autres validations multijoueur.
-  const tx = 5616 + Number(offset.x || 0), ty = 1000 + Number(offset.y || 0);
+  // Centre de la station par map, avec une marge projectile identique aux
+  // autres validations multijoueur.
+  const center = STATION_POS[key] || { x: 5616, y: 1000 };
+  const tx = Number(center.x) + Number(offset.x || 0), ty = Number(center.y) + Number(offset.y || 0);
   const reach = Math.max(800, Number(who?.range) || 800) + 800;
   const dx = tx - Number(who?.x || 0), dy = ty - Number(who?.y || 0);
   if (dx * dx + dy * dy > reach * reach) return { status: "reject" };

@@ -118,6 +118,7 @@ import { activeBoosterMults, boosterTimeLeftMs, formatBoosterCountdown, formatBo
 import { pilotSkillMults } from "../DATA/PILOT_SKILLS.js";
 import { CRAFTING_RECIPES, CRAFTING_ENABLED } from "../DATA/CRAFTING.js";
 import { STATION_CORE_HP, STATION_EMPTY_BASE, STATION_HUB, STATION_DESTROYED_SPOT, STATION_INSTALL_CD_SEC, STATION_MODULE_HP, STATION_MODULE_SPRITES, STATION_PRELOAD_SRCS, STATION_RING_COLORS, STATION_UNIQUE_MODULES, STATION_DEFLECT_RATE, STATION_DEFLECT_COST } from "../DATA/BATTLESTATION.js";
+import { STATION_CENTERS } from "../DATA/STATION_CENTERS.js";
 import { ensureStationSync, isSharedStation, pumpStationNet, resetSharedStation } from "./STATION_NET.js";
 import { ITEM_RARITIES } from "../DATA/ITEM_RARITIES.js";
 import { SHIP_EFFECTS } from "../../SHIP/SHIP_EFFECTS.js";
@@ -157,7 +158,7 @@ import { createRadiationSystem } from "./RADIATION_SYSTEM.js";
 import { renderSpeedGuard } from "./SPEED_GUARD_UI.js";
 import { netServerMessageAge, netSimulationStep, netGameTimeMs, netSpeedGuardActive } from "./NETPLAY.js";
   import { pushNetplayLocal, sendNetplayBackgroundState, netplayLocalUpdateDue, getNetplayRemotes, tickNetplayRemotes, getNetNpcs, getNetDeaths, drainNetGone, getNetBoxes, drainNetBoxInbox, drainNetDmgInbox, drainNetHealInbox, drainNetShotEvents, drainNetSkillInbox, drainNetSkillDenied, clearNetShots, clearNetplayGameplay, sendShotEvent, sendSkillUse, sendHealAlly, sendPvpHit, sendPvpPetHit, getNetSelf, setNetInstanceMode, clearNetBoxes, claimNetBox, requestBoxSync, netBoxSyncAgeMs, netBoxSnapshotReady, netInInstance, sendNetHit, netMyId, netplayStatus, sendPing, netLatencyMs, netPongAge, netHelloAckAge, netServerVersion, netConnected, forceNetReconnect, ensureNetplayConnection, drainNetPvpKillInbox, drainNetPvpPetKillInbox, takeNetNpcReward, sendPvpLoot, sendPvpLootTake, drainNetPvpLootInbox,
-  drainNetPvpLootTakeInbox, drainNetAdminKickInbox, drainNetAdminBoomInbox, drainNetBannedInbox, drainNetCheatInbox, netDisconnect, drainNetSunInbox, drainNetSundayInbox, drainNetDecloakInbox, drainNetIemHitInbox, drainNetStationDmgInbox, getNetClanBases,
+  drainNetPvpLootTakeInbox, drainNetAdminKickInbox, drainNetAdminBoomInbox, drainNetBannedInbox, drainNetCheatInbox, netDisconnect, drainNetSunInbox, drainNetSundayInbox, drainNetDecloakInbox, drainNetIemHitInbox, drainNetStationDmgInbox, getNetClanBases, getNetStationOwners,
   getNetGroup, getNetLowRaid, takeNetLowRaidReward, setNetNpcRewardHandler, getNetServerRestartAt, consumeNetServerRestart, getMyClanTag, getClanRelation, setMyClanTag, setNetDiplo, netIsAuthed, sendStationInstall, sendStationUninstall, sendStationBuild, sendStationReplace, sendStationCancelReplace, sendStationRepair, sendStationDeflectToggle, requestStationSync, sendStationHit, requestStarJumpArrival, requestHangarArrival, finishHangarArrival } from "./NETPLAY.js";
 import {
   createGatePortalState,
@@ -34448,6 +34449,8 @@ jumpBaseFade: 1,
         if (typeof saved.hubClan === "string" && saved.hubClan) zoneStation.hubClan = saved.hubClan;
         if (typeof saved.hubPseudo === "string" && saved.hubPseudo) zoneStation.hubPseudo = saved.hubPseudo;
         if (saved.built === true) zoneStation.built = true;
+        if (Number(saved.builtAt) > 0) zoneStation.builtAt = Number(saved.builtAt);
+        else if (zoneStation.built) zoneStation.builtAt = Date.now();
         if (saved.owner && typeof saved.owner === "object") zoneStation.owner = { ...saved.owner };
         if (typeof saved.contestedBy === "string" && saved.contestedBy) zoneStation.contestedBy = saved.contestedBy;
         if (saved.slots && typeof saved.slots === "object") {
@@ -38796,7 +38799,7 @@ function stationPersist() {
     }
     if (stationCooldownLeft(zoneStation.hubCd) > 0) cds.hub = zoneStation.hubCd;
     const repUntil = Number(zoneStation.repair?.until) || 0;
-    u.stations[mapId] = { hub: zoneStation.hub || null, hubClan: zoneStation.hubClan || null, hubPseudo: zoneStation.hubPseudo || "", slots, slotClans, slotPseudos, slotPending, cds, repair: repUntil > Date.now() ? { until: repUntil } : null, deflect: zoneStation.deflect && typeof zoneStation.deflect === "object" ? { bank: Math.max(0, Number(zoneStation.deflect.bank) || 0), active: zoneStation.deflect.active === true, until: Math.max(0, Number(zoneStation.deflect.until) || 0), disabledUntil: Math.max(0, Number(zoneStation.deflect.disabledUntil) || 0) } : null, built: zoneStation.built === true, owner: { ...(zoneStation.owner || {}) }, contestedBy: zoneStation.contestedBy || null };
+    u.stations[mapId] = { hub: zoneStation.hub || null, hubClan: zoneStation.hubClan || null, hubPseudo: zoneStation.hubPseudo || "", slots, slotClans, slotPseudos, slotPending, cds, repair: repUntil > Date.now() ? { until: repUntil } : null, deflect: zoneStation.deflect && typeof zoneStation.deflect === "object" ? { bank: Math.max(0, Number(zoneStation.deflect.bank) || 0), active: zoneStation.deflect.active === true, until: Math.max(0, Number(zoneStation.deflect.until) || 0), disabledUntil: Math.max(0, Number(zoneStation.deflect.disabledUntil) || 0) } : null, built: zoneStation.built === true, builtAt: Math.max(0, Number(zoneStation.builtAt) || 0), owner: { ...(zoneStation.owner || {}) }, contestedBy: zoneStation.contestedBy || null };
     account.user = u;
     saveUser(u, { durable: true });
     try { localStorage.setItem("orbit_sync", String(Date.now())); } catch {}
@@ -39178,6 +39181,7 @@ function stationBuild() {
     return;
   }
   st.built = true;
+  st.builtAt = Date.now();
   st.owner = { firm: normalizeFactionId(u.faction), ...(clan ? { clan } : {}) };
   // PV pleins à la construction (sauvegardes / poses antérieures au suivi HP).
   if (st.hub && !(Number(st.hubHp) > 0)) { st.hubHp = STATION_CORE_HP; st.hubHpMax = STATION_CORE_HP; }
@@ -47069,6 +47073,12 @@ function getHangarAccess() {
   const equipmentMaps = new Set([`${factionSector}-1`, `${factionSector}-8`, "5-2"]);
   const onEquipmentMap = equipmentMaps.has(currentMap);
   const inEquipmentBase = onEquipmentMap && playerIsInBaseZone();
+  // Base de Combat de notre clan : modification + sauvegarde du hangar
+  // autorisées à proximité (construite + même clan, comme en jeu).
+  let nearOwnClanStation = false;
+  try {
+    nearOwnClanStation = !!(zoneStation?.built && stationOwnedByMyClan() && isPlayerNearStation());
+  } catch { nearOwnClanStation = false; }
 
   let swapError = "";
   if (attackedCooldownMs > 0) swapError = `Attends ${Math.ceil(attackedCooldownMs / 1000)} s après la dernière attaque reçue.`;
@@ -47078,7 +47088,8 @@ function getHangarAccess() {
     : swapError;
 
   let equipmentError = "";
-  if (!onEquipmentMap) equipmentError = `L'équipement est disponible uniquement sur les bases ${factionSector}-1, ${factionSector}-8 ou 5-2.`;
+  if (nearOwnClanStation) equipmentError = "";
+  else if (!onEquipmentMap) equipmentError = `L'équipement est disponible uniquement sur les bases ${factionSector}-1, ${factionSector}-8, 5-2 ou ta base de clan.`;
   else if (!inEquipmentBase) equipmentError = "Rapproche-toi de la base centrale pour modifier l'équipement.";
 
   return {
@@ -47733,6 +47744,17 @@ function starMapJumpReuseLeftSec() {
   return left > 0 ? Math.ceil(left) : 0;
 }
 
+// Durée d'occupation d'une base : minutes puis heures totales (72h = 3 j).
+function formatStationSince(builtAt) {
+  try {
+    const at = Math.max(0, Number(builtAt) || 0);
+    if (!(at > 0)) return "";
+    const mins = Math.max(0, Math.floor((serverNow() - at) / 60000));
+    if (mins < 60) return `${mins} min`;
+    return `${Math.floor(mins / 60)}h`;
+  } catch { return ""; }
+}
+
 function refreshStarMap() {
   if (!shouldRefreshWindow("starMapWindow")) return;
   const cur = starJumpCurrentMap();
@@ -47775,6 +47797,50 @@ function refreshStarMap() {
       } else if (key !== cur && marker) {
         marker.remove();
       }
+      // Base de Combat : CERCLE taille portail à la position réelle de la
+      // base, sur TOUTES les maps à station : gris si vide, couleur relation
+      // sinon (vert nous/allié, bleu même firme, jaune NAP, rouge ennemi).
+      // Source : snapshot toutes maps ; en solo : station locale courante.
+      try {
+        let center = null;
+        try {
+          const c = STATION_CENTERS.find((s) => String(s?.map || "") === key);
+          if (c) center = c;
+        } catch {}
+        let owner = null;
+        try {
+          const list = getNetStationOwners();
+          if (Array.isArray(list)) owner = list.find((b) => String(b?.map || "") === key) || null;
+        } catch {}
+        if (!owner) {
+          try {
+            if (zoneStation?.built && String(window.__CURRENT_MAP_ID__ || rules?.mapLabel || "").toLowerCase() === key && (zoneStation.owner?.clan || zoneStation.owner?.firm)) {
+              owner = { clan: zoneStation.owner.clan, firm: zoneStation.owner.firm };
+            }
+          } catch {}
+        }
+        let dot = el.querySelector(":scope > .starMapStation");
+        const art = (() => { try { return starMapArt.get(key); } catch { return null; } })();
+        if (!center || !art || art.failed) {
+          if (dot) dot.remove();
+        } else {
+          const tag = owner ? String(owner.clan || "").toUpperCase().slice(0, 5) : "";
+          const color = owner
+            ? (() => { try { return stationClanColor(tag, owner.firm || ""); } catch { return "#9aa3ad"; } })()
+            : "#9aa3ad";
+          if (!dot) {
+            dot = document.createElement("span");
+            dot.className = "starMapStation";
+            el.appendChild(dot);
+          }
+          dot.style.left = `${STARMAP_ART.x + Number(center.x || 0) / Math.max(1, Number(art.w) || 1) * STARMAP_ART.w}px`;
+          dot.style.top = `${STARMAP_ART.y + Number(center.y || 0) / Math.max(1, Number(art.h) || 1) * STARMAP_ART.h}px`;
+          dot.style.background = color;
+          dot.style.borderColor = color;
+          dot.style.boxShadow = `0 0 8px ${color}`;
+          dot.title = tag ? `Base de [${tag}]` : "Base vide — à construire";
+        }
+      } catch {}
     } catch {}
   }
   try {
@@ -47783,10 +47849,38 @@ function refreshStarMap() {
       const user = account.user || getCurrentUserFull();
       let req = 1;
       try { req = getMapRequiredLevel(sel.id, getFaction(user?.faction).sector); } catch {}
+      // Base de Combat : occupée (clan + durée) ou vide, sur les maps à station.
+      let baseHtml = "";
+      try {
+        const skey = String(sel.id || "").toLowerCase();
+        if (STATION_CENTERS.some((s) => String(s?.map || "") === skey)) {
+          let bOwner = null;
+          try {
+            const list = getNetStationOwners();
+            if (Array.isArray(list)) bOwner = list.find((b) => String(b?.map || "") === skey) || null;
+          } catch {}
+          if (!bOwner) {
+            try {
+              if (zoneStation?.built && String(window.__CURRENT_MAP_ID__ || rules?.mapLabel || "").toLowerCase() === skey && (zoneStation.owner?.clan || zoneStation.owner?.firm)) {
+                bOwner = { clan: zoneStation.owner.clan, firm: zoneStation.owner.firm, builtAt: Number(zoneStation.builtAt) || 0 };
+              }
+            } catch {}
+          }
+          if (bOwner) {
+            const bTag = String(bOwner.clan || "").toUpperCase().slice(0, 5);
+            const since = formatStationSince(bOwner.builtAt);
+            baseHtml = `<div>Base : <b>Occupée</b></div>`
+              + `<div>par : Clan de [${escapeHtml(bTag)}]${since ? ` depuis ${escapeHtml(since)}` : ""}</div>`;
+          } else {
+            baseHtml = `<div>Base : <b>Vide</b></div>`;
+          }
+        }
+      } catch {}
       ui.starMapSelInfo.innerHTML =
         `<div>Groupe : <b>${STARMAP_GROUP_LABELS[sel.group] || sel.group}</b></div>` +
         `<div>Liaisons : <b>${starMapEdgeCount(sel.id)}</b></div>` +
         `<div>Niveau requis : <b>${req}</b></div>` +
+        baseHtml +
         (sel.jumpable !== true && sel.reason ? `<div>${sel.reason}</div>` : "") +
         (normalizeMapId(sel.id) === normalizeMapId(cur) ? `<div><b>Position actuelle</b></div>` : "");
     } else if (ui.starMapSelInfo) {

@@ -150,6 +150,7 @@ export function suspendNetplay(v) {
     netDmgInbox.length = 0; netHealInbox.length = 0;
     netStationDmgInbox.length = 0;
     netClanBases = [];
+    netStationOwners = [];
     try { netStationDmgSeen.clear(); } catch {}
     netShotInbox.length = 0;
     netPvpKillInbox.length = 0;
@@ -284,6 +285,7 @@ function clearInstanceGameplay() {
     netDmgInbox.length = 0; netHealInbox.length = 0;
     netStationDmgInbox.length = 0;
     netClanBases = [];
+    netStationOwners = [];
     try { netStationDmgSeen.clear(); } catch {}
     netShotInbox.length = 0;
     netSkillInbox.length = 0;
@@ -814,6 +816,13 @@ function pushAuctionEvent(m) {
 let netClanBases = [];
 export function getNetClanBases() {
   return Array.isArray(netClanBases) ? netClanBases : [];
+}
+// Proprios des bases construites (temps réel, toutes maps) :
+// [{map, clan, firm}]. Sert la carte stellaire (pastille couleur relation).
+// Mis à jour à chaque snapshot, vidé à la déconnexion.
+let netStationOwners = [];
+export function getNetStationOwners() {
+  return Array.isArray(netStationOwners) ? netStationOwners : [];
 }
 // Base de Combat partagée : sync filtrée par clan + accusés + remboursements.
 const netStationInbox = [];
@@ -1593,6 +1602,18 @@ export function ensureNetplayConnection() {
           });
         }
         netClanBases = clean;
+      }
+      // Proprios des bases construites (temps réel, toutes maps).
+      if (Array.isArray(msg.cbsOwn)) {
+        const clean = [];
+        for (const b of msg.cbsOwn.slice(0, 32)) {
+          if (!b || typeof b !== "object") continue;
+          const mp = String(b.map || "").toLowerCase().slice(0, 16);
+          const cl = String(b.clan || "").toUpperCase().slice(0, 5);
+          if (!mp || !cl) continue;
+          clean.push({ map: mp, clan: cl, firm: String(b.firm || "").toLowerCase().slice(0, 16), builtAt: Math.max(0, Number(b.builtAt) || 0) });
+        }
+        netStationOwners = clean;
       }
       // Snapshot d'une autre map (changement en cours) : ignore.
       try {
@@ -2763,7 +2784,7 @@ function dbgRecordSkillFx(ev) {
 // Ce module ne fait que le reseau : envoi 20 Hz + snapshots + extrapolation.
 
 try {
-  window.__NETPLAY__ = { pushNetplayLocal, netplayLocalUpdateDue, getNetplayRemotes, getNetNpcs, getNetDeaths, getNetBoxes, drainNetBoxInbox, drainNetDmgInbox, drainNetStationDmgInbox, getNetClanBases, drainNetHealInbox, drainNetShotEvents, clearNetShots, sendShotEvent, sendPvpHit, getNetSelf, suspendNetplay, netSuspended, setNetInstanceMode, netInInstance, netConnected, sendPing, netPongAge, netHelloAckAge, netServerVersion, forceNetReconnect, clearNetBoxes, claimNetBox, requestBoxSync, requestStarJumpArrival, netBoxSyncAgeMs, netBoxSnapshotReady, sendNetHit, netMyId, netMyPseudo, netIsAuthed, netNpcFresh, netplayStatus, drainNetChatInbox, sendChat, drainNetAuctionInbox, sendAuctionBid, drainNetStationInbox, requestStationSync, sendStationInstall, sendStationUninstall, sendStationBuild, sendStationReplace, sendStationCancelReplace, sendStationRepair, sendStationDeflectToggle, drainNetPvpKillInbox, drainNetPvpPetKillInbox, sendPvpPetHit, sendPvpLoot, sendPvpLootTake, drainNetPvpLootInbox, drainNetPvpLootTakeInbox, drainNetAdminKickInbox, drainNetAdminBoomInbox, drainNetBannedInbox, netDisconnect, getNetGroup, getNetFriendsOnline, drainNetGroupInviteInbox, drainNetGroupNoticeInbox, drainNetWhisperInbox, sendGroupCreate, sendGroupInvite, sendGroupAccept, sendGroupDecline, sendGroupLeave, sendGroupKick, sendGroupChat, sendGroupSync, sendWhisper, drainNetFriendRequestInbox, consumeFriendsDirty, sendFriendPing, sendFriendResponded };
+  window.__NETPLAY__ = { pushNetplayLocal, netplayLocalUpdateDue, getNetplayRemotes, getNetNpcs, getNetDeaths, getNetBoxes, drainNetBoxInbox, drainNetDmgInbox, drainNetStationDmgInbox, getNetClanBases, drainNetHealInbox, drainNetShotEvents, clearNetShots, sendShotEvent, sendPvpHit, getNetSelf, suspendNetplay, netSuspended, setNetInstanceMode, netInInstance, netConnected, sendPing, netPongAge, netHelloAckAge, netServerVersion, forceNetReconnect, clearNetBoxes, claimNetBox, requestBoxSync, requestStarJumpArrival, netBoxSyncAgeMs, netBoxSnapshotReady, sendNetHit, netMyId, netMyPseudo, netIsAuthed, netNpcFresh, netplayStatus, drainNetChatInbox, sendChat, drainNetAuctionInbox, sendAuctionBid, drainNetStationInbox, requestStationSync, sendStationInstall, sendStationUninstall, sendStationBuild, sendStationReplace, sendStationCancelReplace, sendStationRepair, sendStationDeflectToggle, getNetStationOwners, drainNetPvpKillInbox, drainNetPvpPetKillInbox, sendPvpPetHit, sendPvpLoot, sendPvpLootTake, drainNetPvpLootInbox, drainNetPvpLootTakeInbox, drainNetAdminKickInbox, drainNetAdminBoomInbox, drainNetBannedInbox, netDisconnect, getNetGroup, getNetFriendsOnline, drainNetGroupInviteInbox, drainNetGroupNoticeInbox, drainNetWhisperInbox, sendGroupCreate, sendGroupInvite, sendGroupAccept, sendGroupDecline, sendGroupLeave, sendGroupKick, sendGroupChat, sendGroupSync, sendWhisper, drainNetFriendRequestInbox, consumeFriendsDirty, sendFriendPing, sendFriendResponded };
   window.__NETPLAY_REMOTES__ = remotes;
   window.__NETPLAY_NPCS__ = netNpcs;
   window.__NETPLAY_BOXES__ = netBoxes;
