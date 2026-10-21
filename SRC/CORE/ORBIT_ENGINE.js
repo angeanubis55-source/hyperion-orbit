@@ -18859,6 +18859,9 @@ function showNotification(text, dur = 2, type = "info", { log = true, goldTerms 
 
 function showToast(text, dur = 2) {
   const value = String(text ?? "");
+  const quiet = value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  if (quiet.includes("une modification du compte est deja en cours")
+    || quiet.includes("la sauvegarde precedente attend encore la connexion")) return;
   const type = /insuffisant|impossible|verrouill|erreur|annul/i.test(value) ? "error" : /\+|récompense|reçu|niveau|grade|accomplie/i.test(value) ? "reward" : "info";
   showNotification(value, dur, type);
 }

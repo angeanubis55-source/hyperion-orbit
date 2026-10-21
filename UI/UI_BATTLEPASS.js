@@ -85,7 +85,7 @@ export function initBattlepassUI() {
         btn.addEventListener("click", () => {
           try {
             const res = claimBattlepassObjective(def.id);
-            if (!res?.ok && status) status.textContent = res?.error || "Récupération impossible.";
+            if (!res?.ok && status && !res?.silent) status.textContent = res?.error || "Récupération impossible.";
           } catch {}
           render();
         });
@@ -138,7 +138,7 @@ export function initBattlepassUI() {
       btn.addEventListener("click", async () => {
         try {
           const res = await buyPassShopOfferOnline(offer.id);
-          if (!res?.ok && status) status.textContent = res?.error || "Achat impossible.";
+          if (!res?.ok && status && !res?.silent) status.textContent = res?.error || "Achat impossible.";
         } catch {}
         // Inventaire jeu + historique boutique : refresh immédiat,
         // sans fermer/rouvrir.

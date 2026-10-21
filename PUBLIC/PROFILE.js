@@ -242,6 +242,9 @@ function setMsg(text, ok = false) {
 
 function showToast(message, type = "info") {
   message = String(message ?? "").trim();
+  const quiet = message.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  if (quiet.includes("une modification du compte est deja en cours")
+    || quiet.includes("la sauvegarde precedente attend encore la connexion")) return;
 
   // ✅ sécurité supplémentaire
   if (!message) return;

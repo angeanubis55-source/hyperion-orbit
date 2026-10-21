@@ -23,6 +23,10 @@ let retrySave = null;
 let knownRewardRevision = 0;
 const serverRewards = new Map();
 let nextSaveId = 0;
+const accountWriteNotice = () => ({
+  ok: false,
+  error: "Action trop rapide : cette tentative a été annulée. Réessaie dans un instant.",
+});
 let pendingGalaxyGates = null;
 function cachePendingGalaxyGates() {
   if (memUser?.id) lsSet(`orbit_pending_gg:${memUser.id}`, pendingGalaxyGates ? JSON.stringify(pendingGalaxyGates) : null);
@@ -592,13 +596,14 @@ export async function apiAccountIdentity(kind, value, currentPassword) {
   const allowed = new Set(["pseudo", "email", "password"]);
   const key = String(kind || "").toLowerCase();
   if (!allowed.has(key)) return { ok: false, error: "Modification inconnue." };
-  if (authoritativeWriter) return { ok: false, error: "Une modification du compte est déjà en cours." };
+  const busy = accountWriteNotice();
+  if (authoritativeWriter) return busy;
   let writer = null;
   try {
     if (saveInFlight) await saveInFlight;
     if (retrySave) {
       await flushNetUser();
-      if (retrySave) return { ok: false, error: "La sauvegarde précédente attend encore la connexion." };
+      if (retrySave) return busy;
     }
     if (!netActive() || memToken !== token || memUser.id !== userId) return { ok: false, ignored: true };
     writer = {}; authoritativeWriter = writer;
@@ -626,7 +631,8 @@ export async function apiAccountIdentity(kind, value, currentPassword) {
 
 export async function apiShopBuyItem(itemId, quantity = 1, options = {}) {
   if (!netActive()) return { ok: false, error: "Session serveur inactive." };
-  if (authoritativeWriter) return { ok: false, error: "Une modification du compte est déjà en cours." };
+  const busy = accountWriteNotice();
+  if (authoritativeWriter) return busy;
   const token = memToken;
   const userId = memUser.id;
   let writer = null;
@@ -634,7 +640,7 @@ export async function apiShopBuyItem(itemId, quantity = 1, options = {}) {
     if (saveInFlight) await saveInFlight;
     if (netHasPendingSave()) {
       await flushNetUser();
-      if (retrySave) return { ok: false, error: "La sauvegarde précédente attend encore la connexion." };
+      if (retrySave) return busy;
     }
     if (!netActive() || memToken !== token || memUser.id !== userId) return { ok: false, ignored: true };
     writer = {}; authoritativeWriter = writer;
@@ -660,7 +666,8 @@ export async function apiShopBuyItem(itemId, quantity = 1, options = {}) {
 
 export async function apiShopSell(kind, id, quantity = 1, options = {}) {
   if (!netActive()) return { ok: false, error: "Session serveur inactive." };
-  if (authoritativeWriter) return { ok: false, error: "Une modification du compte est déjà en cours." };
+  const busy = accountWriteNotice();
+  if (authoritativeWriter) return busy;
   const token = memToken;
   const userId = memUser.id;
   let writer = null;
@@ -668,7 +675,7 @@ export async function apiShopSell(kind, id, quantity = 1, options = {}) {
     if (saveInFlight) await saveInFlight;
     if (netHasPendingSave()) {
       await flushNetUser();
-      if (retrySave) return { ok: false, error: "La sauvegarde précédente attend encore la connexion." };
+      if (retrySave) return busy;
     }
     if (!netActive() || memToken !== token || memUser.id !== userId) return { ok: false, ignored: true };
     writer = {}; authoritativeWriter = writer;
@@ -694,7 +701,8 @@ export async function apiShopSell(kind, id, quantity = 1, options = {}) {
 
 export async function apiProduction(action, recipeId, quantity = 1) {
   if (!netActive()) return { ok: false, error: "Session serveur inactive." };
-  if (authoritativeWriter) return { ok: false, error: "Une modification du compte est déjà en cours." };
+  const busy = accountWriteNotice();
+  if (authoritativeWriter) return busy;
   const token = memToken;
   const userId = memUser.id;
   let writer = null;
@@ -702,7 +710,7 @@ export async function apiProduction(action, recipeId, quantity = 1) {
     if (saveInFlight) await saveInFlight;
     if (netHasPendingSave()) {
       await flushNetUser();
-      if (retrySave) return { ok: false, error: "La sauvegarde précédente attend encore la connexion." };
+      if (retrySave) return busy;
     }
     if (!netActive() || memToken !== token || memUser.id !== userId) return { ok: false, ignored: true };
     writer = {}; authoritativeWriter = writer;
@@ -726,7 +734,8 @@ export async function apiProduction(action, recipeId, quantity = 1) {
 
 export async function apiModuleOperation(action, options = {}) {
   if (!netActive()) return { ok: false, error: "Session serveur inactive." };
-  if (authoritativeWriter) return { ok: false, error: "Une modification du compte est deja en cours." };
+  const busy = accountWriteNotice();
+  if (authoritativeWriter) return busy;
   const token = memToken;
   const userId = memUser.id;
   let writer = null;
@@ -734,7 +743,7 @@ export async function apiModuleOperation(action, options = {}) {
     if (saveInFlight) await saveInFlight;
     if (netHasPendingSave()) {
       await flushNetUser();
-      if (retrySave) return { ok: false, error: "La sauvegarde precedente attend encore la connexion." };
+      if (retrySave) return busy;
     }
     if (!netActive() || memToken !== token || memUser.id !== userId) return { ok: false, ignored: true };
     writer = {}; authoritativeWriter = writer;
@@ -760,7 +769,8 @@ export async function apiModuleOperation(action, options = {}) {
 
 export async function apiSkylabOperation(action, options = {}) {
   if (!netActive()) return { ok: false, error: "Session serveur inactive." };
-  if (authoritativeWriter) return { ok: false, error: "Une modification du compte est deja en cours." };
+  const busy = accountWriteNotice();
+  if (authoritativeWriter) return busy;
   const token = memToken;
   const userId = memUser.id;
   let writer = null;
@@ -768,7 +778,7 @@ export async function apiSkylabOperation(action, options = {}) {
     if (saveInFlight) await saveInFlight;
     if (netHasPendingSave()) {
       await flushNetUser();
-      if (retrySave) return { ok: false, error: "La sauvegarde precedente attend encore la connexion." };
+      if (retrySave) return busy;
     }
     if (!netActive() || memToken !== token || memUser.id !== userId) return { ok: false, ignored: true };
     writer = {}; authoritativeWriter = writer;
@@ -795,7 +805,8 @@ export async function apiSkylabOperation(action, options = {}) {
 
 export async function apiGalaxyGateOperation(action, options = {}) {
   if (!netActive()) return { ok: false, error: "Session serveur inactive." };
-  if (authoritativeWriter) return { ok: false, error: "Une modification du compte est deja en cours." };
+  const busy = accountWriteNotice();
+  if (authoritativeWriter) return busy;
   const token = memToken;
   const userId = memUser.id;
   let writer = null;
@@ -803,7 +814,7 @@ export async function apiGalaxyGateOperation(action, options = {}) {
     if (saveInFlight) await saveInFlight;
     if (netHasPendingSave()) {
       await flushNetUser();
-      if (retrySave) return { ok: false, error: "La sauvegarde precedente attend encore la connexion." };
+      if (retrySave) return busy;
     }
     if (!netActive() || memToken !== token || memUser.id !== userId) return { ok: false, ignored: true };
     writer = {}; authoritativeWriter = writer;
