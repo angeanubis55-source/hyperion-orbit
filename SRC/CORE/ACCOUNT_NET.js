@@ -1,8 +1,8 @@
 // SRC/CORE/ACCOUNT_NET.js — Comptes serveur (mode multi).
 // Fusion pure : aucun import de ACCOUNT.js (pas de cycle).
-// - legacy (aucun token) : ACCOUNT.js utilise localStorage comme avant ;
-// - net (token + cache) : readUsers/writeUsers/readCurrent/writeCurrent
-//   branchent ici ; les saves partent en POST /api/save (debounce 2 s) ;
+// - navigateur : session serveur obligatoire, avec cache de reprise local ;
+// - readUsers/writeUsers/readCurrent/writeCurrent branchent ici et les
+//   sauvegardes partent en POST /api/save (debounce 2 s) ;
 // - revision serveur strictement croissante : anti-ecrasement (409 stale).
 
 import { mergeBattlepassProgress } from "../../QUEST/BATTLEPASS.js";
@@ -29,6 +29,33 @@ const accountWriteNotice = () => ({
   ignored: true,
   silent: true,
 });
+const pendingAuthoritativeOperations = new Set();
+function beginAuthoritativeOperation(key) {
+  if (pendingAuthoritativeOperations.has(key)) return false;
+  pendingAuthoritativeOperations.add(key);
+  return true;
+}
+function createAuthoritativeWriter() {
+  let release;
+  const writer = { done: new Promise(resolve => { release = resolve; }), release };
+  authoritativeWriter = writer;
+  return writer;
+}
+async function waitForAuthoritativeWriter() {
+  while (authoritativeWriter) {
+    const active = authoritativeWriter;
+    await active.done;
+  }
+  return createAuthoritativeWriter();
+}
+function finishAuthoritativeOperation(writer, key) {
+  pendingAuthoritativeOperations.delete(key);
+  if (writer && authoritativeWriter === writer) {
+    authoritativeWriter = null;
+    writer.release();
+    if (netActive() && !same(memUser, serverBase)) schedulePush();
+  }
+}
 let pendingGalaxyGates = null;
 function cachePendingGalaxyGates() {
   if (memUser?.id) lsSet(`orbit_pending_gg:${memUser.id}`, pendingGalaxyGates ? JSON.stringify(pendingGalaxyGates) : null);
@@ -195,7 +222,9 @@ function resetPendingAccountState() {
   retrySave = null;
   knownRewardRevision = 0;
   serverRewards.clear();
+  if (authoritativeWriter) authoritativeWriter.release?.();
   authoritativeWriter = null;
+  pendingAuthoritativeOperations.clear();
 }
 
 export function netSetCurrent(cur) {
@@ -599,7 +628,8 @@ export async function apiAccountIdentity(kind, value, currentPassword) {
   const key = String(kind || "").toLowerCase();
   if (!allowed.has(key)) return { ok: false, error: "Modification inconnue." };
   const busy = accountWriteNotice();
-  if (authoritativeWriter) return busy;
+  const operationKey = `identity:${key}`;
+  if (!beginAuthoritativeOperation(operationKey)) return busy;
   let writer = null;
   try {
     if (saveInFlight) await saveInFlight;
@@ -608,7 +638,8 @@ export async function apiAccountIdentity(kind, value, currentPassword) {
       if (retrySave) return busy;
     }
     if (!netActive() || memToken !== token || memUser.id !== userId) return { ok: false, ignored: true };
-    writer = {}; authoritativeWriter = writer;
+    writer = authoritativeWriter ? await waitForAuthoritativeWriter() : createAuthoritativeWriter();
+    if (!netActive() || memToken !== token || memUser.id !== userId) return { ok: false, ignored: true };
     clearTimeout(saveTimer); saveTimer = null;
     const out = await api(`/api/account/${key}`, {
       method: "POST",
@@ -624,17 +655,15 @@ export async function apiAccountIdentity(kind, value, currentPassword) {
   } catch {
     return { ok: false, error: "Réseau." };
   } finally {
-    if (writer && authoritativeWriter === writer) {
-      authoritativeWriter = null;
-      if (netActive() && !same(memUser, serverBase)) schedulePush();
-    }
+    finishAuthoritativeOperation(writer, operationKey);
   }
 }
 
 export async function apiShopBuyItem(itemId, quantity = 1, options = {}) {
   if (!netActive()) return { ok: false, error: "Session serveur inactive." };
   const busy = accountWriteNotice();
-  if (authoritativeWriter) return busy;
+  const operationKey = `buy:${String(itemId)}:${Math.max(1, Math.floor(Number(quantity) || 1))}`;
+  if (!beginAuthoritativeOperation(operationKey)) return busy;
   const token = memToken;
   const userId = memUser.id;
   let writer = null;
@@ -645,7 +674,8 @@ export async function apiShopBuyItem(itemId, quantity = 1, options = {}) {
       if (retrySave) return busy;
     }
     if (!netActive() || memToken !== token || memUser.id !== userId) return { ok: false, ignored: true };
-    writer = {}; authoritativeWriter = writer;
+    writer = authoritativeWriter ? await waitForAuthoritativeWriter() : createAuthoritativeWriter();
+    if (!netActive() || memToken !== token || memUser.id !== userId) return { ok: false, ignored: true };
     clearTimeout(saveTimer); saveTimer = null;
     const out = await api("/api/shop/buy", {
       method: "POST", body: { itemId, quantity, petPseudo: options?.petPseudo }, token,
@@ -659,17 +689,15 @@ export async function apiShopBuyItem(itemId, quantity = 1, options = {}) {
   } catch {
     return { ok: false, error: "Réseau." };
   } finally {
-    if (writer && authoritativeWriter === writer) {
-      authoritativeWriter = null;
-      if (netActive() && !same(memUser, serverBase)) schedulePush();
-    }
+    finishAuthoritativeOperation(writer, operationKey);
   }
 }
 
 export async function apiShopSell(kind, id, quantity = 1, options = {}) {
   if (!netActive()) return { ok: false, error: "Session serveur inactive." };
   const busy = accountWriteNotice();
-  if (authoritativeWriter) return busy;
+  const operationKey = `sell:${String(kind)}:${String(id)}:${Math.max(1, Math.floor(Number(quantity) || 1))}`;
+  if (!beginAuthoritativeOperation(operationKey)) return busy;
   const token = memToken;
   const userId = memUser.id;
   let writer = null;
@@ -680,7 +708,8 @@ export async function apiShopSell(kind, id, quantity = 1, options = {}) {
       if (retrySave) return busy;
     }
     if (!netActive() || memToken !== token || memUser.id !== userId) return { ok: false, ignored: true };
-    writer = {}; authoritativeWriter = writer;
+    writer = authoritativeWriter ? await waitForAuthoritativeWriter() : createAuthoritativeWriter();
+    if (!netActive() || memToken !== token || memUser.id !== userId) return { ok: false, ignored: true };
     clearTimeout(saveTimer); saveTimer = null;
     const out = await api("/api/shop/sell", {
       method: "POST", body: { kind, id, quantity, force: options?.force === true, trader: options?.trader === true }, token,
@@ -694,17 +723,15 @@ export async function apiShopSell(kind, id, quantity = 1, options = {}) {
   } catch {
     return { ok: false, error: "Réseau." };
   } finally {
-    if (writer && authoritativeWriter === writer) {
-      authoritativeWriter = null;
-      if (netActive() && !same(memUser, serverBase)) schedulePush();
-    }
+    finishAuthoritativeOperation(writer, operationKey);
   }
 }
 
 export async function apiProduction(action, recipeId, quantity = 1) {
   if (!netActive()) return { ok: false, error: "Session serveur inactive." };
   const busy = accountWriteNotice();
-  if (authoritativeWriter) return busy;
+  const operationKey = `production:${String(action)}:${String(recipeId)}:${String(quantity)}`;
+  if (!beginAuthoritativeOperation(operationKey)) return busy;
   const token = memToken;
   const userId = memUser.id;
   let writer = null;
@@ -715,7 +742,8 @@ export async function apiProduction(action, recipeId, quantity = 1) {
       if (retrySave) return busy;
     }
     if (!netActive() || memToken !== token || memUser.id !== userId) return { ok: false, ignored: true };
-    writer = {}; authoritativeWriter = writer;
+    writer = authoritativeWriter ? await waitForAuthoritativeWriter() : createAuthoritativeWriter();
+    if (!netActive() || memToken !== token || memUser.id !== userId) return { ok: false, ignored: true };
     clearTimeout(saveTimer); saveTimer = null;
     const out = await api("/api/production", { method: "POST", body: { action, recipeId, quantity }, token });
     if (!netActive() || memToken !== token || memUser.id !== userId) return { ok: false, ignored: true };
@@ -727,17 +755,15 @@ export async function apiProduction(action, recipeId, quantity = 1) {
   } catch {
     return { ok: false, error: "Réseau." };
   } finally {
-    if (writer && authoritativeWriter === writer) {
-      authoritativeWriter = null;
-      if (netActive() && !same(memUser, serverBase)) schedulePush();
-    }
+    finishAuthoritativeOperation(writer, operationKey);
   }
 }
 
 export async function apiModuleOperation(action, options = {}) {
   if (!netActive()) return { ok: false, error: "Session serveur inactive." };
   const busy = accountWriteNotice();
-  if (authoritativeWriter) return busy;
+  const operationKey = `module:${String(action)}:${String(options?.moduleId || options?.offerId || "")}`;
+  if (!beginAuthoritativeOperation(operationKey)) return busy;
   const token = memToken;
   const userId = memUser.id;
   let writer = null;
@@ -748,7 +774,8 @@ export async function apiModuleOperation(action, options = {}) {
       if (retrySave) return busy;
     }
     if (!netActive() || memToken !== token || memUser.id !== userId) return { ok: false, ignored: true };
-    writer = {}; authoritativeWriter = writer;
+    writer = authoritativeWriter ? await waitForAuthoritativeWriter() : createAuthoritativeWriter();
+    if (!netActive() || memToken !== token || memUser.id !== userId) return { ok: false, ignored: true };
     clearTimeout(saveTimer); saveTimer = null;
     const out = await api("/api/modules", {
       method: "POST", body: { action, moduleId: options?.moduleId, offerId: options?.offerId }, token,
@@ -762,17 +789,15 @@ export async function apiModuleOperation(action, options = {}) {
   } catch {
     return { ok: false, error: "Reseau." };
   } finally {
-    if (writer && authoritativeWriter === writer) {
-      authoritativeWriter = null;
-      if (netActive() && !same(memUser, serverBase)) schedulePush();
-    }
+    finishAuthoritativeOperation(writer, operationKey);
   }
 }
 
 export async function apiSkylabOperation(action, options = {}) {
   if (!netActive()) return { ok: false, error: "Session serveur inactive." };
   const busy = accountWriteNotice();
-  if (authoritativeWriter) return busy;
+  const operationKey = `skylab:${String(action)}:${String(options?.moduleId || "")}:${options?.toSky === true ? "to-sky" : "to-ship"}`;
+  if (!beginAuthoritativeOperation(operationKey)) return busy;
   const token = memToken;
   const userId = memUser.id;
   let writer = null;
@@ -783,7 +808,8 @@ export async function apiSkylabOperation(action, options = {}) {
       if (retrySave) return busy;
     }
     if (!netActive() || memToken !== token || memUser.id !== userId) return { ok: false, ignored: true };
-    writer = {}; authoritativeWriter = writer;
+    writer = authoritativeWriter ? await waitForAuthoritativeWriter() : createAuthoritativeWriter();
+    if (!netActive() || memToken !== token || memUser.id !== userId) return { ok: false, ignored: true };
     clearTimeout(saveTimer); saveTimer = null;
     const out = await api("/api/skylab", { method: "POST", body: {
       action, moduleId: options?.moduleId, enabled: options?.enabled,
@@ -798,17 +824,15 @@ export async function apiSkylabOperation(action, options = {}) {
   } catch {
     return { ok: false, error: "Reseau." };
   } finally {
-    if (writer && authoritativeWriter === writer) {
-      authoritativeWriter = null;
-      if (netActive() && !same(memUser, serverBase)) schedulePush();
-    }
+    finishAuthoritativeOperation(writer, operationKey);
   }
 }
 
 export async function apiGalaxyGateOperation(action, options = {}) {
   if (!netActive()) return { ok: false, error: "Session serveur inactive." };
   const busy = accountWriteNotice();
-  if (authoritativeWriter) return busy;
+  const operationKey = `galaxy-gate:${String(action)}:${String(options?.gateId || "")}`;
+  if (!beginAuthoritativeOperation(operationKey)) return busy;
   const token = memToken;
   const userId = memUser.id;
   let writer = null;
@@ -819,7 +843,8 @@ export async function apiGalaxyGateOperation(action, options = {}) {
       if (retrySave) return busy;
     }
     if (!netActive() || memToken !== token || memUser.id !== userId) return { ok: false, ignored: true };
-    writer = {}; authoritativeWriter = writer;
+    writer = authoritativeWriter ? await waitForAuthoritativeWriter() : createAuthoritativeWriter();
+    if (!netActive() || memToken !== token || memUser.id !== userId) return { ok: false, ignored: true };
     clearTimeout(saveTimer); saveTimer = null;
     const out = await api("/api/galaxy-gates", { method: "POST", body: {
       action, gateId: options?.gateId, count: options?.count, armed: options?.armed === true,
@@ -833,10 +858,7 @@ export async function apiGalaxyGateOperation(action, options = {}) {
   } catch {
     return { ok: false, error: "Reseau." };
   } finally {
-    if (writer && authoritativeWriter === writer) {
-      authoritativeWriter = null;
-      if (netActive() && !same(memUser, serverBase)) schedulePush();
-    }
+    finishAuthoritativeOperation(writer, operationKey);
   }
 }
 

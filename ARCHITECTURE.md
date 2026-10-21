@@ -80,9 +80,9 @@ Les insignes sont stockés dans `ASSETS/RANKS/` : `0.png` pour Paria, `1.png` à
 4. Chaque extraction conserve le comportement existant et ajoute un test unitaire ciblé.
 5. Les cartes normales et les Galaxy Gates sont validées avec les tests navigateur avant un push.
 
-## Sauvegarde et futur multijoueur
+## Sauvegarde et multijoueur obligatoire
 
-`localStorage` reste une sauvegarde locale pratique, mais ne protège pas contre la triche. Pour une version multijoueur compétitive, le serveur devra être autoritaire sur l’authentification, les crédits, l’inventaire, les dégâts et les récompenses. Le client devra envoyer des intentions plutôt que modifier directement les soldes.
+Le navigateur ne peut ni créer ni ouvrir de compte autonome. L'authentification, les crédits, l'inventaire, les achats, les enchères, les bases de combat, les dégâts et les récompenses dépendent du serveur. `localStorage` ne contient qu'un cache de reprise du compte serveur, les préférences et les reçus de sauvegardes encore non confirmés ; il ne constitue jamais une source de vérité jouable. Les anciennes données `orbit_users` ne sont lues que lors d'une migration explicite ou par les tests Node. Les Galaxy Gates restent des instances privées, mais la connexion, le compte et leur sauvegarde demeurent serveur.
 
 ## Chargement des ressources
 

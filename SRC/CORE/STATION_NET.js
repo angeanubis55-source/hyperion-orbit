@@ -1,7 +1,7 @@
 // SRC/CORE/STATION_NET.js — Base de Combat PARTAGÉE (comme les enchères).
 // Le serveur tranche (placement, retrait, construction, remboursements) ;
 // ce module fusionne la vue filtrée par clan dans zoneStation.
-// Solo-safe : sans serveur, le local (user.stations) continue comme avant.
+// Sans snapshot serveur, les actions de station restent verrouillées.
 
 import {
   drainNetStationInbox,
@@ -11,7 +11,7 @@ import {
   requestStationSync,
 } from "./NETPLAY.js";
 
-let sharedMap = ""; // mapId avec état serveur actif ("" = solo)
+let sharedMap = ""; // mapId dont le premier état serveur a été reçu
 let sharedZone = null; // objet zoneStation ayant réellement reçu ce sync
 
 // Partagée si le serveur a envoyé un état pour la carte courante et qu'on

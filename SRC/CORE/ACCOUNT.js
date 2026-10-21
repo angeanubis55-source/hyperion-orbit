@@ -72,7 +72,7 @@ import { computeHangarStats } from "../../SHIP/SHIP_HANGARS.js";
 import { getDroneDesign, getDroneFitForHangar } from "../../DRONE/DRONE_DESIGNS.js";
 import { GALAXY_GATE_DRONE_DESIGN_DROPS, rollGalaxyGateDroneDesignReward } from "./GALAXY_GATES.js";
 
-// localStorage keys
+// Clés historiques réservées aux tests Node et à la migration d'anciens comptes.
 const USERS_KEY = "orbit_users";
 const CUR_KEY = "orbit_current_user";
 const STORAGE_SCHEMA_VERSION = 4;
@@ -108,7 +108,7 @@ function safeParse(raw, fallback) {
 }
 
 function readUsers() {
-  // Multi : comptes serveur en memoire (push debounce vers /api/save).
+  // Comptes serveur en mémoire (push debounce vers /api/save).
   try { if (netActive()) return netList(); } catch {}
   if (!LOCAL_ACCOUNT_TEST_ONLY) return [];
   const raw = localStorage.getItem(USERS_KEY);
@@ -123,7 +123,7 @@ function readUsers() {
 }
 
 function writeUsers(users, options = {}) {
-  // Multi : memoire + push serveur (memes garde-fous que le legacy).
+  // Mémoire + push serveur ; le stockage autonome est réservé aux tests Node.
   try { if (netActive()) { netStore(Array.isArray(users) ? users : [], options); return; } } catch {}
   if (!LOCAL_ACCOUNT_TEST_ONLY) return;
   const list = Array.isArray(users) ? users : [];
@@ -4873,9 +4873,10 @@ export function resetPilotSkills() {
 // suspendu (ni lots locaux ni règlement local) et les mises passent
 // par le réseau (SRC/CORE/AUCTION_NET.js).
 // ---------------------------
-let sharedAuctionMode = false;
-export function setSharedAuctionMode(active) {
-  sharedAuctionMode = active === true;
+let sharedAuctionMode = true;
+export function setSharedAuctionMode() {
+  // Mode serveur obligatoire : aucun appel réseau ne peut réactiver le tick local.
+  sharedAuctionMode = true;
 }
 export function isSharedAuctionMode() {
   return sharedAuctionMode === true;

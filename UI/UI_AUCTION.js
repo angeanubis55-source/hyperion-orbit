@@ -13,7 +13,6 @@ import {
 import { getResourceIcon, getResourceName } from "../SRC/DATA/RESOURCES.js";
 import { findCatalogItem } from "../SRC/CORE/CATALOG.js";
 import { formatInteger } from "../SRC/CORE/NUMBER_FORMAT.js";
-import { placeAuctionBid } from "../SRC/CORE/ACCOUNT.js";
 import {
   auctionNetDirty,
   clearAuctionNetDirty,
@@ -232,8 +231,7 @@ export function renderAuctionWindow() {
   }
   const lots = [...(auction.lots || [])]
     .filter((lot) => {
-      // Enchères partagées : masque localement les déjà-possédés
-      // (comme les filtres solo).
+      // Les lots déjà possédés sont masqués uniquement dans l'affichage.
       try {
         if (shared && isLotMaskedForUser(lot, user)) return false;
       } catch {}
@@ -321,15 +319,7 @@ function onAuctionClick(event) {
   if (!btn) return;
   const { list } = els();
   const input = list?.querySelector(`input[data-auction-bid="${btn.dataset.auctionPlace || ""}"]`);
-  let shared = false;
-  try {
-    shared = isSharedAuction();
-  } catch {
-    shared = false;
-  }
-  const res = shared
-    ? placeSharedBid(btn.dataset.auctionPlace, Number(input?.value) || 0)
-    : placeAuctionBid(btn.dataset.auctionPlace, Number(input?.value) || 0);
+  const res = placeSharedBid(btn.dataset.auctionPlace, Number(input?.value) || 0);
   if (!res?.ok) {
     ctx?.toast?.(res?.error || "Impossible.", 2.2);
     return;
@@ -413,9 +403,8 @@ function rowCountMismatch(list, lots) {
 }
 
 // Boucle (appelée par le moteur) : juste le rafraîchissement d'affichage.
-// Les mises rivales et règlements passent par tickCurrentUserAuction côté moteur
-// (solo) ou pumpSharedAuction (partagé : re-rendu sur dirty serveur +
-// patch live chaque seconde panneau ouvert).
+// Les mises rivales et règlements viennent uniquement du serveur ; la boucle
+// d'affichage applique les mises à jour sans exécuter de règlement local.
 export function tickAuctionDisplay() {
   if (!shouldRefreshWindow("auctionWindow")) return;
   if (!ctx) return;

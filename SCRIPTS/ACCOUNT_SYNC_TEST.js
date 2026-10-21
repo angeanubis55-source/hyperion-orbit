@@ -535,6 +535,28 @@ test("un changement d'identité attend la sauvegarde en cours et ne rejoue pas u
   assert.equal(c.current().credits, 97_000_000); assert.equal(c.current().pilotSkills.disks, 10); assert.equal(c.current().pseudo, "Nouveau");
 });
 
+test("deux actions différentes patientent, mais un double clic identique est ignoré", async () => {
+  const c = client(); c.api.enterNetMode("token", user());
+  const identity = c.api.apiAccountIdentity("pseudo", "Nouveau", "password");
+  assert.equal(c.requests.length, 1); assert.equal(c.requests[0].path, "/api/account/pseudo");
+
+  const duplicate = await c.api.apiAccountIdentity("pseudo", "Encore", "password");
+  assert.equal(duplicate.silent, true); assert.equal(duplicate.busy, true);
+  assert.equal(c.requests.length, 1, "le double clic identique ne part pas au serveur");
+
+  const purchase = c.api.apiShopBuyItem("laser_lf1", 1);
+  for (let i = 0; i < 8; i++) await Promise.resolve();
+  assert.equal(c.requests.length, 1, "l'achat différent attend la modification du compte");
+
+  c.requests[0].reply(200, { ok: true, user: { ...user(), pseudo: "Nouveau", revision: 2 } });
+  await identity;
+  for (let i = 0; i < 8; i++) await Promise.resolve();
+  assert.equal(c.requests.length, 2); assert.equal(c.requests[1].path, "/api/shop/buy");
+  c.requests[1].reply(200, { ok: true, user: { ...user(), pseudo: "Nouveau", revision: 3, credits: 99_999_000 } });
+  const bought = await purchase;
+  assert.equal(bought.ok, true); assert.equal(c.current().credits, 99_999_000);
+});
+
 test("une récompense déjà reçue par HTTP n'est pas créditée encore une fois par WebSocket", async () => {
   const c = client(); c.api.enterNetMode("token", user());
   await c.refresh({ ...user(), revision: 10, credits: 100_000_500 });

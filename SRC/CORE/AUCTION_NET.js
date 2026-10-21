@@ -1,13 +1,11 @@
 // SRC/CORE/AUCTION_NET.js — Enchères PARTAGÉES (comme le tchat).
 // Le serveur (SCRIPTS/AUCTION_ROOM.js) tranche les mises et désigne le
-// gagnant ; ce module fusionne l'état serveur dans user.auction.lots
-// (mêmes objets que le solo : l'UI ne change presque pas).
-// Solo-safe : sans serveur, le local (ACCOUNT.js) continue comme avant.
+// gagnant ; ce module fusionne l'état serveur dans user.auction.lots.
+// Sans synchronisation serveur, les enchères restent indisponibles.
 
 import {
   drainNetAuctionInbox,
   sendAuctionBid,
-  netConnected,
   netIsAuthed,
   netMyId,
 } from "./NETPLAY.js";
@@ -25,7 +23,6 @@ import {
   normalizeAuctionState,
 } from "../DATA/AUCTION.js";
 
-const STALE_MS = 120000; // sans nouvelles serveur 2 min : retour en solo
 const META_CACHE_MAX = 64; // méta statique des lots (règlement des gains)
 const PENDING_HOLD_MS = 30000; // mise envoyée, écho serveur pas encore reçu : ne pas crier à la surenchère
 
@@ -37,7 +34,8 @@ const pending = new Map(); // key -> { prev, amount } (mise optimiste)
 const metaCache = new Map(); // key -> { catalogId, name, qty, kind, ... }
 
 export function isSharedAuction() {
-  return sharedActive === true;
+  // Les enchères sont exclusivement serveur, même avant le premier sync.
+  return true;
 }
 
 export function auctionNetDirty() {
@@ -85,7 +83,7 @@ function cacheMeta(srv) {
   }
 }
 
-// Masquage local (comme les filtres solo) : déjà possédés invisibles.
+// Filtrage d'affichage : les lots déjà possédés restent invisibles.
 export function isLotMaskedForUser(lotLike, u) {
   try {
     const catalogId = String(lotLike?.catalogId || "");
@@ -434,30 +432,13 @@ function applyReject(msg) {
 // serveur aux lots locaux. Retourne { shared, dirty, profileDirty, events }.
 export function pumpSharedAuction(nowMs = Date.now()) {
   const now = Number(nowMs) || Date.now();
-  // Repli solo UNIQUEMENT si le socket est coupé (pas en gate calme :
-  // le heartbeat serveur 60 s garde lastSeen frais tant qu'on est branché).
-  let online = true;
-  try {
-    online = netConnected();
-  } catch {
-    online = true;
-  }
-  if (sharedActive === true && online !== true && now - lastSeen > STALE_MS) {
-    sharedActive = false;
-    sharedCycle = 0;
-    pending.clear();
-    try {
-      setSharedAuctionMode(false);
-    } catch {}
-    return { shared: false, dirty: true, profileDirty: false, events: [{ type: "toast", text: "Enchères hors ligne : retour en solo." }] };
-  }
   let inbox = [];
   try {
     inbox = drainNetAuctionInbox();
   } catch {
     inbox = [];
   }
-  if (!inbox.length) return { shared: sharedActive, dirty: false, profileDirty: false, events: [] };
+  if (!inbox.length) return { shared: true, dirty: false, profileDirty: false, events: [] };
   const events = [];
   let profileDirty = false;
   let hadSync = false;
@@ -484,7 +465,7 @@ export function pumpSharedAuction(nowMs = Date.now()) {
   // touche crédits et/ou historique : le moteur doit resync le profil
   // (sinon la sauvegarde périodique réécrase le remboursement).
   if (wasDirty) profileDirty = true;
-  return { shared: sharedActive, dirty: wasDirty, profileDirty, events };
+  return { shared: true, dirty: wasDirty, profileDirty, events };
 }
 
 // Mise en ligne (montant total). Réserve optimiste + envoi serveur.

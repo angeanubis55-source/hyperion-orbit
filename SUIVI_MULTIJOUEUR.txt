@@ -27,7 +27,7 @@ comptes sur serveur. Testé à 2 (navigateur normal + navigation privée).
   dessous ; barres HP/shield + carrés drones + carrés modules + formation
   au-dessus), minimap (point bleu même firme, rouge sinon, taille NPC +
   portée radar comme les NPC).
-- Solo-safe : sans WS joignable, le jeu reste 100 % solo.
+- Sans WebSocket joignable, l'entrée et la simulation sont bloquées jusqu'à la reconnexion.
 
 ----------------------------------------------------------------
 2) TIRS VISUELS (événements exacts, zéro dégât)
@@ -68,7 +68,8 @@ comptes sur serveur. Testé à 2 (navigateur normal + navigation privée).
   récompense victime), camouflage (ignorés).
 - Boucle mouvement locale sautée pour les NPC réseau (positions serveur),
   tirs NPC locaux conservés. Purge des doublons locaux (universeUid).
-- Repli solo : si snapshots >3 s ou map non-zone, spawner local reprend.
+- Sur les cartes partagées, aucun spawner NPC local ne remplace les snapshots serveur.
+  Les cartes hors zone sont exclusivement des instances privées autorisées (Galaxy Gates).
 
 ----------------------------------------------------------------
 4) DEGATS PARTAGES VISIBLES
@@ -111,11 +112,11 @@ comptes sur serveur. Testé à 2 (navigateur normal + navigation privée).
   + debounce save 2 s + flush pagehide + refresh /api/me au boot).
   ACCOUNT.js : readUsers/writeUsers/readCurrent/writeCurrent branchent
   serveur si token (saveUser et tout le jeu inchangés). Logout coupe le token.
-  PUBLIC/AUTH.js : mode en ligne si serveur joignable (sinon local 100 %
-  comme avant) + import local à l'inscription.
+  PUBLIC/AUTH.js : serveur obligatoire + import unique d'un ancien compte
+  local lors de l'inscription.
 - Validé : 14 checks API (doublons, 401/403/404/409, isolation A/B,
   migration, casse) + tests navigateur (2 comptes, persistance après
-  fermeture navigateur, indépendance). Solo sans serveur : intact.
+  fermeture navigateur, indépendance). Sans serveur : connexion et jeu bloqués.
 
 ----------------------------------------------------------------
 PROCEDURE DE TEST LOCALE (à 2)
@@ -153,12 +154,12 @@ RESTE A FAIRE (prochaines étapes proposées)
   auctionUpdate / reject, clôture toutes les 5 s (settle + nouveau sync).
 - Client : SRC/CORE/AUCTION_NET.js (fusion état serveur dans
   user.auction.lots, remboursement si surenchère, règlement gains via
-  ACCOUNT.js, repli solo si serveur muet >2 min). NETPLAY.js : inbox +
-  sendAuctionBid. ORBIT_ENGINE.js : pompe partagée avant le tick local
-  (tick local suspendu en partagé). UI : pseudos en direct + "Aussi
+  ACCOUNT.js, sans aucun règlement local). NETPLAY.js : inbox +
+  sendAuctionBid. ORBIT_ENGINE.js : pompe exclusivement l'état serveur.
+  UI : pseudos en direct + "Aussi
   misé : ..." + nb mises, déjà-possédés masqués, ligne dorée recent.
-- Crédits réservés côté client (même confiance qu'avant, pas de
-  débit serveur). Solo sans serveur : intact.
+- Crédits réservés côté client puis réconciliés avec les décisions serveur.
+  Sans synchronisation serveur, aucune mise n'est possible.
 - Validé : 10 checks live (2 comptes + invité : sync, mini, surenchère
   visible, recents, anti-spam) + boot navigateur sans erreur JS.
   SMOKE_BROWSER minimaliste échoue déjà sans ces changements
@@ -176,7 +177,7 @@ RESTE A FAIRE (prochaines étapes proposées)
 - Client : setNetInstanceMode(!isZoneMap) : purge gameplay (distants,
   NPC, box, tirs, PvP) à l'entrée, aucun envoi gameplay en gate
   (pos/tirs/hits/loot/box/abilités), tchat + mises toujours envoyés.
-  Repli solo enchères seulement si socket coupé (plus en gate calme).
+  Aucun repli d'enchères : une coupure les gèle jusqu'à la reconnexion.
 - Classement + sauvegarde déjà HTTP : inchangés, OK en gate.
 - Limite : panneau admin /peers ne liste pas les joueurs en gate
   (roomless) ; mute/tchat les couvrent quand même.
@@ -196,8 +197,8 @@ RESTE A FAIRE (prochaines étapes proposées)
   silence >9 s (pas quand l'onglet est masqué). Liaison morte =
   overlay #linkOverlay bloquant + simulation gelée (ni mouvement
   ni mort), reconnexion forcée toutes les 3 s jusqu'au succès, puis
-  reprise (room rejointe via le hello). Enchères gelées aussi (pas
-  de repli solo : les mises orphelines sont remboursées au re-sync).
+  reprise (room rejointe via le hello). Enchères gelées aussi : aucune
+  exécution locale, les mises orphelines sont remboursées au re-sync.
 - Valide aussi en gates (socket gardé) : tchat/enchères continuent,
   gameplay gate gelé si la liaison tombe.
 - Conséquence : server:multi OBLIGATOIRE pour jouer, même seul.
@@ -212,7 +213,7 @@ RESTE A FAIRE (prochaines étapes proposées)
 - Groupes éphémères cross-map (max 10, chef = créateur) :
   SCRIPTS/SOCIAL_ROOM.js (pur, injecté). Solo = pas de groupe (pas de
   bouton Créer) : l'invitation crée l'escadrille auto, et retomber à 1
-  membre (départ/kick/refus/quit) la clôture (tout le monde en solo).
+  membre (départ/kick/refus/quit) la clôture (tout le monde hors groupe).
   Invites 60 s par pseudo, accepter/refuser, quitter, kick (chef seul),
   succession auto au départ du chef, chat de groupe (500 ms anti-spam).
   Avis rejoints/quittés/invitation supprimés (seuls restent les erreurs
@@ -251,7 +252,7 @@ RESTE A FAIRE (prochaines étapes proposées)
 - Murmures façon DO : commande /w pseudo message dans le tchat
   (UI_CHAT.js -> sendWhisper), visibles comme MP entrants/sortants.
 - index.html (groupWindow + friendsWindow) + style.css (.group* +
-  .friends*) + ORBIT_ENGINE (2x reg + init). Solo sans serveur : intact.
+  .friends*) + ORBIT_ENGINE (2x reg + init). Sans serveur : fonctions sociales indisponibles.
 - Validé : 11 checks WS live groupes (create/invite/accept/chat/whisper/
   leave/inconnue/kick, 2 invités) + 14 checks intégration amis en serveur
   isolé (demande/doublon/soi/inconnu/demande visible/live notify/accept
@@ -313,7 +314,7 @@ RESTE A FAIRE (prochaines étapes proposées)
   ORANGE (NAP), VERT (alliance) ; pseudos en couleur normale
   (escadrille jaune, firme bleu/rouge) — sauf même clan : tag +
   pseudo VERTS. Points minimap assortis (minimapAllies).
-- Solo sans serveur : intact (fenêtre "connecte-toi").
+- Sans serveur : fenêtre de connexion bloquante, aucune progression locale.
 - Validé : 52 checks unitaires (frais, ouvert/fermé, rangs + droits,
   transfert, dissolution, NAP/alliance/guerre, score, expiration
   100 j, purge admin, journal) + 12 checks E2E live (2 WS : NAP,

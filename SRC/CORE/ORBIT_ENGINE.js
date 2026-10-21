@@ -92,7 +92,6 @@ import {
   repairPet,
   saveUser,
   activateCurrentUserBooster,
-  tickCurrentUserAuction,
   unlockCurrentUserTitle,
   refreshCurrentUserTitles,
 } from "./ACCOUNT.js";
@@ -20226,8 +20225,8 @@ try {
   });
 } catch {}
 
-// Base de Combat partagée : sync serveur (filtrée par clan) + accusés +
-// remboursements. Sans serveur : le local continue (user.stations).
+// Base de Combat partagée : sync serveur (filtrée par clan), accusés et
+// remboursements. Toute action attend obligatoirement le premier snapshot.
 function stationSharedActive() {
   try {
     const map = String(window.__CURRENT_MAP_ID__ || rules?.mapLabel || "").toLowerCase();
@@ -20266,8 +20265,7 @@ function tickStationLogic() {
     ensureStationSync(map, zoneStation);
     // Compte à rebours affiché à chaque frame (fenêtre ouverte uniquement).
     try { stationTickCooldowns(); } catch {}
-    // Remplacements : bascule solo à échéance, resync partagée à échéance
-    // (le serveur applique paresseusement au sync suivant).
+    // Remplacements et réparations sont résolus par le serveur, puis resynchronisés.
     // Réparation partagée : resync ~1/s pendant le cycle + 3 s de grâce
     // (le serveur applique au fil des syncs, visible par tous).
     try {
@@ -20282,9 +20280,6 @@ function tickStationLogic() {
           tickStationLogic._repairSyncReq = now;
           requestStationSync(map);
         }
-      } else {
-        stationResolveReplaces();
-        stationRepairTick();
       }
     } catch {}
     const pump = pumpStationNet(zoneStation, map);
@@ -20376,9 +20371,9 @@ function tickStationLogic() {
 }
 
 function tickAuctionLogic() {  if (!account.user) return;
-  // Liaison morte : enchères gelées (pas de repli solo, reprise au retour).
+  // Liaison morte : enchères gelées jusqu'à la reprise.
   if (linkDead) return;
-  // Enchères partagées d'abord (comme le tchat) : le serveur tranche.
+  // Le serveur tranche toujours ; aucun tick ni règlement client de secours.
   try {
     const pump = pumpSharedAuction();
     if (pump && pump.shared) {
@@ -20420,22 +20415,6 @@ function tickAuctionLogic() {  if (!account.user) return;
       return;
     }
   } catch {}
-  let res;
-  try {
-    res = tickCurrentUserAuction();
-  } catch {
-    return;
-  }
-  if (!res?.ok) return;
-  if (res.changed) {
-    syncPlayerFromAccount();
-    markProgressDirty();
-    window.dispatchEvent(new CustomEvent("orbit:profile-progress"));
-    try { renderAuctionWindow(); } catch {}
-  }
-  for (const ev of res.events || []) {
-    if (ev?.type === "won") showNotification(`Enchère remportée : ${ev.name} !`, 3.5, "reward");
-  }
 }
 let refineryLiveT = 0;
 
@@ -38577,6 +38556,10 @@ function stationModuleTaken(id, exceptSlot = null) {
 function stationInstallModule(resourceId, slotId = null) {
   const st = zoneStation;
   if (!st) return;
+  if (!stationSharedActive()) {
+    renderStationWindow("Synchronisation serveur en cours — réessaie dans un instant.");
+    return;
+  }
   const id = String(resourceId || "");
   const isCore = id === STATION_HUB.resourceId;
   const u = getCurrentUserForMutation();
@@ -38799,6 +38782,10 @@ function stationResolveReplaces() {
 function stationUninstallSlot(slotId) {
   const st = zoneStation;
   if (!st) return;
+  if (!stationSharedActive()) {
+    renderStationWindow("Synchronisation serveur en cours — réessaie dans un instant.");
+    return;
+  }
   const u = getCurrentUserForMutation();
   if (!u) return;
   let myClan = "";
@@ -38887,6 +38874,7 @@ function stationUninstallSlot(slotId) {
 function stationBuildable() {
   const st = zoneStation;
   if (!st || st.built) return false;
+  if (!stationSharedActive()) return false;
   // En multijoueur : le serveur tranche (slots ennemis masqués localement).
   if (stationSharedActive()) {
     let myClan = "";
@@ -38900,6 +38888,10 @@ function stationBuildable() {
 
 function stationBuild() {
   const st = zoneStation;
+  if (!stationSharedActive()) {
+    renderStationWindow("Synchronisation serveur en cours — réessaie dans un instant.");
+    return;
+  }
   if (!stationBuildable()) return;
   const u = getCurrentUserForMutation();
   if (!u) return;
@@ -38935,6 +38927,10 @@ const STATION_REPAIR_MS = 10000;
 function stationRepair() {
   const st = zoneStation;
   if (!st?.built) return;
+  if (!stationSharedActive()) {
+    renderStationWindow("Synchronisation serveur en cours — réessaie dans un instant.");
+    return;
+  }
   if (st.repair && Number(st.repair.until) > Date.now()) {
     renderStationWindow("Réparation déjà en cours.");
     return;
