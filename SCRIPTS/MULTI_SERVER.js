@@ -4243,6 +4243,9 @@ function tickStationDefense(map, room, now) {
     const def = getStationDefense(map);
     if (!def || !def.modules.length) return;
     const sim = npcSims.get(map);
+    // Compteurs remis à zéro par victime et par tick (comme les NPC) :
+    // sinon la victime verrait un total cumulé qui grossit sans fin.
+    const hitVictims = new Set();
     for (const mod of def.modules) {
       if (!stationShotReady(map, mod.slot, now)) continue;
       // Ennemi le plus proche à portée : hostile, en vie, visible, non protégé.
@@ -4278,6 +4281,12 @@ function tickStationDefense(map, room, now) {
       const scramble = activeAbility(best, "ability_mimesis_scramble", hitNow);
       if (Math.random() < Math.max(0, Math.min(0.9, (Number(best.evade) || 0) + (scramble ? 0.65 : 0)))) continue;
       const wasAlive = Number(best.hp) > 0;
+      if (!hitVictims.has(best)) {
+        hitVictims.add(best);
+        best.npcDamage = 0;
+        best.npcHpDamage = 0;
+        best.npcShDamage = 0;
+      }
       let applied = 0, appliedHp = 0, appliedSh = 0;
       try {
         const res = applyServerAbilityDamage(room, sim, best, dmg, 0, hitNow, by);
@@ -4290,10 +4299,9 @@ function tickStationDefense(map, room, now) {
       best.dmgBlockUntil = hitNow + 500;
       best.npcAt = hitNow;
       best.npcFrom = by;
-      best.npcDamage = Math.max(0, Math.round((Number(best.npcDamage) || 0) + applied));
-      best.npcHpDamage = Math.max(0, Math.round((Number(best.npcHpDamage) || 0) + appliedHp));
-      best.npcShDamage = Math.max(0, Math.round((Number(best.npcShDamage) || 0) + appliedSh));
-      best.npcSeq = Math.max(0, Math.floor(Number(best.npcSeq) || 0)) + 1;
+      best.npcDamage = Math.max(0, (Number(best.npcDamage) || 0) + applied);
+      best.npcHpDamage = Math.max(0, (Number(best.npcHpDamage) || 0) + appliedHp);
+      best.npcShDamage = Math.max(0, (Number(best.npcShDamage) || 0) + appliedSh);
       best.pvpFrom = by;
       if (applied > 0) {
         try {
@@ -4329,6 +4337,12 @@ function tickStationDefense(map, room, now) {
             key: "x1", n: 1, station: true }));
         }
       } catch {}
+    }
+    for (const s of hitVictims) {
+      s.npcSeq = Math.max(0, Math.floor(Number(s.npcSeq) || 0)) + 1;
+      s.npcDamage = Math.max(0, Math.round(Number(s.npcDamage) || 0));
+      s.npcHpDamage = Math.max(0, Math.round(Number(s.npcHpDamage) || 0));
+      s.npcShDamage = Math.max(0, Math.round(Number(s.npcShDamage) || 0));
     }
   } catch {}
 }
