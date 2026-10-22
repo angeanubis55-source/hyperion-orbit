@@ -837,10 +837,16 @@ export async function apiGalaxyGateOperation(action, options = {}) {
   const userId = memUser.id;
   let writer = null;
   try {
-    if (saveInFlight) await saveInFlight;
-    if (netHasPendingSave()) {
-      await flushNetUser();
-      if (retrySave) return busy;
+    // Spin : pas de pré-flush bloquant. La réponse serveur est fusionnée
+    // par rebase (adoptServerUser) donc les gains locaux < 2 s ne sont pas
+    // perdus, et schedulePush renvoie le delta juste après. Le serveur reste
+    // le seul arbitre des coûts/récompenses.
+    if (!options?.skipPreflush) {
+      if (saveInFlight) await saveInFlight;
+      if (netHasPendingSave()) {
+        await flushNetUser();
+        if (retrySave) return busy;
+      }
     }
     if (!netActive() || memToken !== token || memUser.id !== userId) return { ok: false, ignored: true };
     writer = authoritativeWriter ? await waitForAuthoritativeWriter() : createAuthoritativeWriter();

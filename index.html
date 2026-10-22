@@ -129,51 +129,26 @@
 
 <div id="gameWindowDock">
   <div class="sessionDockMenu">
-    <button id="btnSessionMenu" class="gameDockIcon logoutDockIcon" type="button" title="Session" aria-label="Menu de session" aria-expanded="false">
-      <span><img src="ASSETS/UI/MENU/logout.png" data-menu-icon="logout" alt="" draggable="false"></span>
-    </button>
+    <button id="btnSessionMenu" class="gameDockIcon logoutDockIcon" type="button" title="Session" aria-label="Menu de session" aria-expanded="false" data-docklabel="Session">Session</button>
     <div id="sessionMenu" class="sessionMenu" role="menu">
       <button id="btnLogout" type="button" role="menuitem">Déconnexion</button>
       <button id="btnRestartGame" type="button" role="menuitem">Redémarrer</button>
       <button id="btnFullscreen" type="button" role="menuitem">Plein écran</button>
     </div>
   </div>
-  <button id="btnSettingsHub" class="gameDockIcon" data-window-id="settingsWindow" type="button" title="Paramètres" aria-label="Paramètres">
-    <span><img src="ASSETS/UI/MENU/settings.png" data-menu-icon="settings" alt="" draggable="false"></span>
-  </button>
-  <button id="btnHangarHub" class="gameDockIcon hangarDockIcon" data-window-id="hangarWindow" type="button" title="Hangars" aria-label="Hangars">
-    <span><img src="ASSETS/UI/MENU/hangar.png" data-menu-icon="hangar" alt="" draggable="false"></span>
-  </button>
-  <button id="btnShopHub" class="gameDockIcon shopDockIcon" data-window-id="shopWindow" type="button" title="Boutique" aria-label="Boutique">
-    <span><img src="ASSETS/UI/MENU/shop.png" data-menu-icon="shop" alt="" draggable="false"></span>
-  </button>
-  <button id="btnRefineryHub" class="gameDockIcon" data-window-id="refineryWindow" type="button" title="Raffinage" aria-label="Raffinage">
-    <span><img src="ASSETS/UI/MENU/refinement.png" data-menu-icon="refinement" alt="" draggable="false"></span>
-  </button>
-  <button id="btnSkylabHub" class="gameDockIcon" data-window-id="skylabWindow" type="button" title="Skylab" aria-label="Skylab">
-    <span><img src="ASSETS/UI/MENU/skylab.png" data-menu-icon="skylab" alt="" draggable="false"></span>
-  </button>
-  <button id="btnAuctionHub" class="gameDockIcon" data-window-id="auctionWindow" type="button" title="Enchères" aria-label="Enchères">
-    <span><img src="ASSETS/UI/MENU/auction.png" data-menu-icon="auction" alt="" draggable="false"></span>
-  </button>
-  <button id="btnPilotHub" class="gameDockIcon" data-window-id="pilotWindow" type="button" title="Arbre des compétences" aria-label="Arbre des compétences">
-    <span><img src="ASSETS/UI/MENU/ship_boost_event.png" data-menu-icon="ship_boost_event" alt="" draggable="false"></span>
-  </button>
-  <button id="btnBotHub" class="gameDockIcon" data-window-id="botWindow" type="button" title="Bot" aria-label="Bot">
-    <span><img src="ASSETS/UI/MENU/payload_escort.png" data-menu-icon="payload_escort" alt="" draggable="false"></span>
-  </button>
-  <button id="btnWikiHub" class="gameDockIcon" data-window-id="wikiWindow" type="button" title="Wiki / Aide" aria-label="Wiki / Aide">
-    <span><img src="ASSETS/UI/MENU/help.png" data-menu-icon="help" alt="" draggable="false"></span>
-  </button>
-  <button id="btnTdmHub" class="gameDockIcon" data-window-id="tdmWindow" type="button" title="Inventaire" aria-label="Inventaire">
-    <span><img src="ASSETS/UI/MENU/monthly_deluxe.png" data-menu-icon="monthly_deluxe" alt="" draggable="false"></span>
-  </button>
-  <button id="btnTitleHub" class="gameDockIcon" data-window-id="titleWindow" type="button" title="Titres" aria-label="Titres">
-    <span><img src="ASSETS/UI/MENU/wargame_event.png" data-menu-icon="wargame_event" alt="" draggable="false"></span>
-  </button>
-  <button id="btnPassHub" class="gameDockIcon" data-window-id="passWindow" type="button" title="Passe de combat" aria-label="Passe de combat">
-    <span><img src="ASSETS/UI/MENU/battle_pass.png" data-menu-icon="battle_pass" alt="" draggable="false"></span>
-  </button>
+  <button id="btnCollapseHub" class="gameDockIcon" type="button" title="Réduire / Restaurer" aria-label="Réduire / Restaurer les fenêtres" data-docklabel="Réduire / Restaurer">Réduire / Restaurer</button>
+  <button id="btnSettingsHub" class="gameDockIcon" data-window-id="settingsWindow" type="button" title="Paramètres" aria-label="Paramètres" data-docklabel="Paramètres">Paramètres</button>
+  <button id="btnHangarHub" class="gameDockIcon hangarDockIcon" data-window-id="hangarWindow" type="button" title="Hangars" aria-label="Hangars" data-docklabel="Hangars">Hangars</button>
+  <button id="btnShopHub" class="gameDockIcon shopDockIcon" data-window-id="shopWindow" type="button" title="Boutique" aria-label="Boutique" data-docklabel="Boutique">Boutique</button>
+  <button id="btnRefineryHub" class="gameDockIcon" data-window-id="refineryWindow" type="button" title="Raffinage" aria-label="Raffinage" data-docklabel="Raffinage">Raffinage</button>
+  <button id="btnSkylabHub" class="gameDockIcon" data-window-id="skylabWindow" type="button" title="Skylab" aria-label="Skylab" data-docklabel="Skylab">Skylab</button>
+  <button id="btnAuctionHub" class="gameDockIcon" data-window-id="auctionWindow" type="button" title="Enchères" aria-label="Enchères" data-docklabel="Enchères">Enchères</button>
+  <button id="btnPilotHub" class="gameDockIcon" data-window-id="pilotWindow" type="button" title="Arbre des compétences" aria-label="Arbre des compétences" data-docklabel="Arbre des compétences">Arbre des compétences</button>
+  <button id="btnBotHub" class="gameDockIcon" data-window-id="botWindow" type="button" title="Bot" aria-label="Bot" data-docklabel="Bot">Bot</button>
+  <button id="btnWikiHub" class="gameDockIcon" data-window-id="wikiWindow" type="button" title="Wiki / Aide" aria-label="Wiki / Aide" data-docklabel="Wiki / Aide">Wiki / Aide</button>
+  <button id="btnTdmHub" class="gameDockIcon" data-window-id="tdmWindow" type="button" title="Inventaire" aria-label="Inventaire" data-docklabel="Inventaire">Inventaire</button>
+  <button id="btnTitleHub" class="gameDockIcon" data-window-id="titleWindow" type="button" title="Titres" aria-label="Titres" data-docklabel="Titres">Titres</button>
+  <button id="btnPassHub" class="gameDockIcon" data-window-id="passWindow" type="button" title="Passe de combat" aria-label="Passe de combat" data-docklabel="Passe de combat">Passe de combat</button>
 </div>
   
 

@@ -256,6 +256,23 @@ function ensureWindowBar(card, title, icon, minimizable = true) {
 
     dock.appendChild(btn);
     wireDockIconButton(btn);
+    // Bouton créé pendant un collapse : caché d'office (état inline,
+    // identique à la fin du fondu).
+    try {
+      if (dock.classList.contains("dock-collapsed")
+        && btn.id !== "btnSettingsHub"
+        && btn.id !== "btnCollapseHub") {
+        try { btn._collapseNatW = btn.offsetWidth || 60; } catch {}
+        const gap = parseFloat(getComputedStyle(dock).columnGap) || 0;
+        btn.style.overflow = "hidden";
+        btn.style.opacity = "0";
+        btn.style.maxWidth = "0px";
+        btn.style.minWidth = "0px";
+        btn.style.marginRight = `${-gap}px`;
+        btn.style.visibility = "hidden";
+        btn.style.pointerEvents = "none";
+      }
+    } catch {}
 
     return btn;
   }
@@ -356,8 +373,55 @@ function ensureWindowBar(card, title, icon, minimizable = true) {
     }
   }
 
+  // État réduit/agrandi persistant : restauré instantanément au chargement.
+  function restoreCollapseState() {
+    let collapsed = false;
+    try { collapsed = localStorage.getItem("orbit_dock_collapsed") === "1"; } catch {}
+    if (!collapsed) return;
+    const dock = getDock();
+    const btn = document.getElementById("btnCollapseHub");
+    const gap = (() => { try { return parseFloat(getComputedStyle(dock).columnGap) || 0; } catch { return 0; } })();
+    dock.classList.add("dock-collapsed");
+    try { btn?.classList.add("collapsed"); } catch {}
+    [...dock.children]
+      .filter(el => el !== btn && el.id !== "btnSettingsHub" && !el.classList?.contains("sessionDockMenu"))
+      .forEach(el => {
+        try {
+          el._collapseNatW = el.offsetWidth || 60;
+          el.style.transition = "none";
+          el.style.overflow = "hidden";
+          el.style.opacity = "0";
+          el.style.maxWidth = "0px";
+          el.style.minWidth = "0px";
+          el.style.marginRight = `${-gap}px`;
+          el.style.visibility = "hidden";
+          el.style.pointerEvents = "none";
+        } catch {}
+      });
+  }
+
   function wireExistingDockIcons() {
     getDock().querySelectorAll(".gameDockIcon").forEach(wireDockIconButton);
+    document.getElementById("btnCollapseHub")?.addEventListener("click", () => {
+      try { window.GameWindowManager?.toggleCollapse?.(); } catch {}
+    });
+    preloadDockBackgrounds();
+    restoreCollapseState();
+  }
+
+  // Les boutons convertis en background-image CSS (modèle CPU) n'ont plus
+  // d'<img> : on précharge quand même les 3 états pour éviter tout pop
+  // à la fin des animations / au premier survol.
+  function preloadDockBackgrounds() {
+    const menu = ["hangar", "logout", "settings", "shop", "refinement", "skylab", "auction", "skilltree", "bot", "help", "inventory", "titles", "rank", "profile", "ship", "cross", "missions", "portal", "starmap", "text", "chat", "crew", "addfriend", "clan", "ranking", "tech", "gauge", "dps", "dock", "collapse", "expand"];
+    for (const name of menu) {
+      for (const suffix of ["", "_hover", "_select"]) {
+        try { const pre = new Image(); pre.src = `ASSETS/UI/MENU/${name}${suffix}.png`; } catch {}
+      }
+    }
+    for (const name of ["pet_normal", "pet_hover", "pet_select", "tech_items_normal", "tech_items_hover", "tech_items_select"]) {
+      try { const pre = new Image(); pre.src = `ASSETS/CONTROL_MENU/${name}.png`; } catch {}
+    }
   }
 
   if (typeof document !== "undefined") {
@@ -935,6 +999,96 @@ restore(id) {
       this._hiddenWindowOrder.forEach(id => this.minimize(id));
     },
 
+    isCollapsed() {
+      try { return getDock().classList.contains("dock-collapsed"); } catch { return false; }
+    },
+
+    // Collapse : les boutons (sauf Session, Paramètres et celui-ci) s'effacent
+    // ET se replient en largeur en même temps : le flex fait glisser les
+    // icônes restantes en continu pendant le fondu. L'état final reste en
+    // inline (largeur 0 + invisible), pixel-identique à la fin du fondu :
+    // aucun display:none, donc aucun tick. Expand : l'inverse.
+    // Les fenêtres restent ouvertes dans les deux cas.
+    toggleCollapse() {
+      const dock = getDock();
+      const btn = document.getElementById("btnCollapseHub");
+      const survivors = () => [...dock.children].filter(el =>
+        el === btn || el.id === "btnSettingsHub" || el.classList?.contains("sessionDockMenu"));
+      const targets = () => [...dock.children].filter(el =>
+        el !== btn && el.id !== "btnSettingsHub" && !el.classList?.contains("sessionDockMenu"));
+      const tk = (this._collapseAnim = (this._collapseAnim || 0) + 1);
+      const gap = (() => { try { return parseFloat(getComputedStyle(dock).columnGap) || 0; } catch { return 0; } })();
+      const cleanupTrans = (el) => {
+        try { el.style.transition = ""; el.style.transitionDelay = ""; } catch {}
+      };
+      const fullCleanup = (el) => {
+        try { el.style.transition = ""; el.style.transitionDelay = ""; el.style.opacity = ""; el.style.transform = ""; el.style.maxWidth = ""; el.style.minWidth = ""; el.style.marginRight = ""; el.style.overflow = ""; el.style.visibility = ""; el.style.pointerEvents = ""; } catch {}
+      };
+      if (dock.classList.contains("dock-collapsed")) {
+        // Expand : les survivants s'écartent pendant que les boutons
+        // réapparaissent (largeur + fondu), tout en même temps.
+        dock.classList.remove("dock-collapsed");
+        try { localStorage.setItem("orbit_dock_collapsed", "0"); } catch {}
+        try { btn?.classList.remove("collapsed"); } catch {}
+        targets().forEach((el, i) => {
+          try {
+            const natW = el._collapseNatW || 60;
+            el.style.transition = "none";
+            el.style.transitionDelay = "0ms";
+            el.style.overflow = "hidden";
+            el.style.visibility = "";
+            el.style.pointerEvents = "";
+            el.style.opacity = "0";
+            el.style.maxWidth = "0px";
+            el.style.minWidth = "0px";
+            el.style.marginRight = `${-gap}px`;
+            void el.offsetWidth;
+            el.style.transition = "opacity .12s ease-out, max-width .16s ease-out, min-width .16s ease-out, margin-right .16s ease-out";
+            el.style.transitionDelay = `${i * 8}ms`;
+            el.style.opacity = "";
+            el.style.maxWidth = `${natW}px`;
+            el.style.minWidth = "";
+            el.style.marginRight = "";
+          } catch {}
+          setTimeout(() => { if (this._collapseAnim === tk) fullCleanup(el); }, i * 8 + 260);
+        });
+        return;
+      }
+      // Collapse : fondu + repli simultanés, les survivants suivent le reflow.
+      try { btn?.classList.add("collapsed"); } catch {}
+      const list = targets();
+      list.forEach((el, i) => {
+        try {
+          el._collapseNatW = el.offsetWidth || 60;
+          el.style.transition = "none";
+          el.style.transitionDelay = "0ms";
+          el.style.overflow = "hidden";
+          el.style.maxWidth = `${el._collapseNatW}px`;
+          void el.offsetWidth;
+          el.style.transition = "opacity .12s ease-out, max-width .16s ease-out, min-width .16s ease-out, margin-right .16s ease-out";
+          el.style.transitionDelay = `${i * 8}ms`;
+          el.style.opacity = "0";
+          el.style.maxWidth = "0px";
+          el.style.minWidth = "0px";
+          el.style.marginRight = `${-gap}px`;
+        } catch {}
+      });
+      setTimeout(() => {
+        if (this._collapseAnim !== tk) return;
+        // État final = état animé + invisible : aucun changement layout.
+        list.forEach(el => {
+          try {
+            el.style.transition = "";
+            el.style.transitionDelay = "";
+            el.style.visibility = "hidden";
+            el.style.pointerEvents = "none";
+          } catch {}
+        });
+        dock.classList.add("dock-collapsed");
+        try { localStorage.setItem("orbit_dock_collapsed", "1"); } catch {}
+      }, list.length * 8 + 260);
+    },
+
     resetPositions() {
   // Séquence : purge positions + états -> TOUT ouvrir recentré ->
   // tout refermer -> refresh. Le reload recharge la disposition par
@@ -1093,21 +1247,30 @@ restore(id) {
       btn.title = `Disposition du dock : ${LABELS[mode] || mode}`;
       if (!animate) return;
       void dock.offsetWidth;
-      for (const el of all) {
+      // Placement en cascade : chaque icône se replace l'une après l'autre
+      // en fondu rapide (délai progressif), au lieu d'un décalage groupé.
+      for (const [i, el] of all.entries()) {
         const f = first.get(el);
         if (!f) continue;
         let l;
         try { l = el.getBoundingClientRect(); } catch { continue; }
         const dx = f.left - l.left;
         const dy = f.top - l.top;
-        if (!dx && !dy) continue;
         const tk = (el._dockFlip = (el._dockFlip || 0) + 1);
-        el.style.transition = "none";
-        el.style.transform = `translate(${dx}px,${dy}px)`;
-        void el.offsetWidth;
-        el.style.transition = "transform .28s cubic-bezier(.2,.7,.3,1)";
-        el.style.transform = "";
-        setTimeout(() => { if (el._dockFlip === tk) { el.style.transition = ""; el.style.transform = ""; } }, 320);
+        // Le bouton disposition est visuellement dernier : il ferme l'animation.
+        const delay = (el === btn) ? (all.length * 14) : (i * 14);
+        try {
+          el.style.transition = "none";
+          el.style.transitionDelay = "0ms";
+          if (dx || dy) el.style.transform = `translate(${dx}px,${dy}px)`;
+          el.style.opacity = "0";
+          void el.offsetWidth;
+          el.style.transition = "transform .14s ease-out, opacity .12s ease-out";
+          el.style.transitionDelay = `${delay}ms`;
+          el.style.transform = "";
+          el.style.opacity = "";
+        } catch {}
+        setTimeout(() => { if (el._dockFlip === tk) { el.style.transition = ""; el.style.transitionDelay = ""; el.style.transform = ""; el.style.opacity = ""; } }, delay + 200);
       }
     };
     let cur = "center";

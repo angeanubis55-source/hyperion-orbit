@@ -2372,7 +2372,7 @@ export function consumeCurrentUserGalaxyGate(gateId) {
   return { ok: true, user: u };
 }
 
-export const spinCurrentUserGalaxyGateOnline = (gateId, count = 1) => apiGalaxyGateOperation("spin", { gateId, count });
+export const spinCurrentUserGalaxyGateOnline = (gateId, count = 1) => apiGalaxyGateOperation("spin", { gateId, count, skipPreflush: true });
 export const armCurrentUserGalaxyGateMultiplierOnline = (gateId, armed = true) => apiGalaxyGateOperation("multiplier", { gateId, armed });
 export const deployCurrentUserGalaxyGateOnline = gateId => apiGalaxyGateOperation("deploy", { gateId });
 export const exchangeCurrentUserPalladiumForEnergyOnline = () => apiGalaxyGateOperation("palladium");

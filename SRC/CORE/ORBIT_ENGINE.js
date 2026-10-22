@@ -16463,42 +16463,84 @@ ui.ggMultiplierBtn?.addEventListener("click", async () => {
   renderGalaxyGateWindow(armed ? "Multiplicateur désactivé." : "Multiplicateur activé pour le prochain spin.");
 });
 
-ui.galaxyGateWindow?.addEventListener("click", async event => {
+ui.galaxyGateWindow?.addEventListener("click", event => {
   const button = event.target.closest("[data-gg-spin]");
-  if (!button) return;
-  saveProgressNow();
-  const result = await spinCurrentUserGalaxyGateOnline(selectedGalaxyGateId, Number(ui.ggSpinCount?.value || 1));
-  if (!result.ok) {
-    if (result.silent) return;
-    renderGalaxyGateWindow(result.error);
+  if (!button || button.disabled) return;
+  queueGalaxyGateSpins();
+});
+
+// Chaque clic spin est indépendant : file FIFO, envoi immédiat du premier,
+// les suivants partent dès que le précédent répond (pas de regroupement).
+// Chaque entrée mémorise sa gate : changer d'onglet n'envoie jamais les
+// spins restants sur la mauvaise gate.
+let ggSpinQueue = [];
+let ggSpinSending = false;
+
+function queueGalaxyGateSpins() {
+  const spins = Math.max(1, Number(ui.ggSpinCount?.value || 1));
+  ggSpinQueue.push({ gateId: selectedGalaxyGateId, spins });
+  try {
+    ui.ggSpinBtn?.classList.add("is-spinning");
+    ui.ggSpinBtn?.setAttribute("aria-busy", "true");
+  } catch {}
+  void pumpGalaxyGateSpins();
+}
+
+async function pumpGalaxyGateSpins() {
+  if (ggSpinSending) return;
+  const next = ggSpinQueue.shift();
+  if (!next) {
+    try {
+      ui.ggSpinBtn?.classList.remove("is-spinning");
+      ui.ggSpinBtn?.removeAttribute("aria-busy");
+    } catch {}
     return;
   }
-  account.user = result.user;
-  player.credits = result.user.credits;
-  player.ammo.x2 = result.user.ammo.x2;
-  player.ammo.x3 = result.user.ammo.x3;
-  player.ammo.x4 = result.user.ammo.x4;
-  player.ammo.sab = result.user.ammo.sab;
-  player.ammo.x6 = result.user.ammo.x6;
-  player.rockets = player.rockets || {};
-  for (const [rocketId, amount] of Object.entries(result.user.rockets || {})) {
-    player.rockets[rocketId] = amount;
+  ggSpinSending = true;
+  try {
+    saveProgressNow();
+    const result = await spinCurrentUserGalaxyGateOnline(next.gateId, next.spins);
+    if (!result.ok) {
+      if (!result.silent) renderGalaxyGateWindow(result.error);
+      return;
+    }
+    account.user = result.user;
+    player.credits = result.user.credits;
+    player.ammo.x2 = result.user.ammo.x2;
+    player.ammo.x3 = result.user.ammo.x3;
+    player.ammo.x4 = result.user.ammo.x4;
+    player.ammo.sab = result.user.ammo.sab;
+    player.ammo.x6 = result.user.ammo.x6;
+    player.rockets = player.rockets || {};
+    for (const [rocketId, amount] of Object.entries(result.user.rockets || {})) {
+      player.rockets[rocketId] = amount;
+    }
+    updateAmmoUI();
+    const reward = result.rewards;
+    const pieces = formatGalaxyGatePartRewards(reward).join(", ");
+    const ammo = Object.entries(reward.ammo || {}).filter(([, amount]) => amount > 0).map(([id, amount]) => `${formatInteger(amount)} munitions ${id.toUpperCase()}`).join(", ");
+    const rocketGains = Object.entries(reward.rockets || {}).filter(([, amount]) => amount > 0).map(([id, amount]) => {
+      const key = String(id).toLowerCase();
+      const label = key === "plt2021" ? "PLT-2021" : key === "plt3030" ? "PLT-3030" : key === "ubr100" ? "UBR-100" : key === "hstrm01" ? "HSTRM-01" : id.toUpperCase();
+      return `${formatInteger(amount)} roquettes ${label}`;
+    }).join(", ");
+    const autoPlaced = Array.isArray(reward.autoDeployed) ? reward.autoDeployed.map((id) => `${GALAXY_GATE_DEFINITIONS[id]?.name || id} placée sur la map`) : [];
+    const stockInfo = (reward.built ? [`${reward.built} Gate(s) terminée(s)`] : []).concat(autoPlaced);
+    const extras = [reward.credits ? `${formatInteger(reward.credits)} crédits` : "", reward.energy ? `${reward.energy} énergie` : "", stockInfo.join(", ")].filter(Boolean).join(", ");
+    renderGalaxyGateWindow([`${result.performed} spin(s)`, pieces, ammo, rocketGains, extras].filter(Boolean).join(" · "));
+    window.dispatchEvent(new CustomEvent("orbit:galaxy-gates"));
+  } finally {
+    ggSpinSending = false;
+    if (ggSpinQueue.length > 0) {
+      void pumpGalaxyGateSpins();
+    } else {
+      try {
+        ui.ggSpinBtn?.classList.remove("is-spinning");
+        ui.ggSpinBtn?.removeAttribute("aria-busy");
+      } catch {}
+    }
   }
-  updateAmmoUI();
-  const reward = result.rewards;
-  const pieces = formatGalaxyGatePartRewards(reward).join(", ");
-  const ammo = Object.entries(reward.ammo || {}).filter(([, amount]) => amount > 0).map(([id, amount]) => `${formatInteger(amount)} munitions ${id.toUpperCase()}`).join(", ");
-  const rocketGains = Object.entries(reward.rockets || {}).filter(([, amount]) => amount > 0).map(([id, amount]) => {
-    const key = String(id).toLowerCase();
-    const label = key === "plt2021" ? "PLT-2021" : key === "plt3030" ? "PLT-3030" : key === "ubr100" ? "UBR-100" : key === "hstrm01" ? "HSTRM-01" : id.toUpperCase();
-    return `${formatInteger(amount)} roquettes ${label}`;
-  }).join(", ");
-  const autoPlaced = Array.isArray(reward.autoDeployed) ? reward.autoDeployed.map((id) => `${GALAXY_GATE_DEFINITIONS[id]?.name || id} placée sur la map`) : [];
-  const stockInfo = (reward.built ? [`${reward.built} Gate(s) terminée(s)`] : []).concat(autoPlaced);
-  const extras = [reward.credits ? `${formatInteger(reward.credits)} crédits` : "", reward.energy ? `${reward.energy} énergie` : "", stockInfo.join(", ")].filter(Boolean).join(", ");
-  renderGalaxyGateWindow([`${result.performed} spin(s)`, pieces, ammo, rocketGains, extras].filter(Boolean).join(" · "));
-  window.dispatchEvent(new CustomEvent("orbit:galaxy-gates"));
-});
+}
 
 renderGalaxyGateWindow();
 

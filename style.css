@@ -5449,6 +5449,13 @@ html body #profileOverlay .profileHeaderTop .profileTitle, html body #profileOve
 #ggSpinBtn {
   grid-template-columns:0.35fr auto 1fr;
 }
+#ggSpinBtn.is-spinning {
+  animation:ggSpinPending .45s ease-in-out infinite;
+}
+@keyframes ggSpinPending {
+  0%, 100% { filter:brightness(1); }
+  50% { filter:brightness(1.4); }
+}
 .ggResult {
   min-height:34px;
   padding:9px 11px;
@@ -8433,6 +8440,881 @@ html body #profileOverlay .profileHeaderTop .profileTitle, html body #profileOve
 #gameWindowDock .gameDockIcon:focus img,
 #gameWindowDock .gameDockIcon.dockIconActive img {
   transform:none !important;
+}
+/* Hangar : même modèle que le bouton CPU du dock rapide (fond bleu +
+   image normal / hover / select, contour jaune en actif).
+   HTML assorti : texte seul, image en background (comme
+   button[data-action-category="skills"]). */
+#gameWindowDock #btnHangarHub.gameDockIcon {
+  width:46px !important;
+  height:44px !important;
+  min-height:44px !important;
+  padding:0 !important;
+  border-radius:8px !important;
+  font-size:0 !important;
+  color:transparent !important;
+  border:1px solid rgba(124,240,255,.38) !important;
+  background:url("ASSETS/UI/MENU/hangar.png") center / 34px no-repeat, linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34)) !important;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.03) !important;
+}
+#gameWindowDock #btnHangarHub.gameDockIcon:hover:not(.dockIconActive):not(.active):not(:disabled) {
+  border-color:rgba(124,240,255,.62) !important;
+  background:url("ASSETS/UI/MENU/hangar_hover.png") center / 34px no-repeat, rgba(0,140,185,.3) !important;
+  box-shadow:0 0 16px rgba(0,217,255,.12) !important;
+}
+#gameWindowDock #btnHangarHub.gameDockIcon.dockIconActive,
+#gameWindowDock #btnHangarHub.gameDockIcon.active {
+  border-color:rgba(255,209,102,.9) !important;
+  background:url("ASSETS/UI/MENU/hangar_select.png") center / 34px no-repeat, rgba(0,140,185,.3) !important;
+  box-shadow:0 0 16px rgba(255,209,102,.35) !important;
+}
+#gameWindowDock #btnHangarHub.gameDockIcon span,
+#gameWindowDock #btnHangarHub.gameDockIcon img {
+  display:none !important;
+}
+/* Session + Paramètres : même modèle que CPU / Hangar (fond bleu +
+   image normal / hover / select, contour jaune en actif).
+   Session : l'état actif = menu ouvert (aria-expanded="true"). */
+#gameWindowDock #btnSessionMenu.gameDockIcon,
+#gameWindowDock #btnSettingsHub.gameDockIcon {
+  width:46px !important;
+  height:44px !important;
+  min-height:44px !important;
+  padding:0 !important;
+  border-radius:8px !important;
+  font-size:0 !important;
+  color:transparent !important;
+  border:1px solid rgba(124,240,255,.38) !important;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.03) !important;
+}
+#gameWindowDock #btnSessionMenu.gameDockIcon {
+  background:url("ASSETS/UI/MENU/logout.png") center / 34px no-repeat, linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34)) !important;
+}
+#gameWindowDock #btnSettingsHub.gameDockIcon {
+  background:url("ASSETS/UI/MENU/settings.png") center / 34px no-repeat, linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34)) !important;
+}
+#gameWindowDock #btnSessionMenu.gameDockIcon:hover:not(.dockIconActive):not(.active):not([aria-expanded="true"]):not(:disabled),
+#gameWindowDock #btnSettingsHub.gameDockIcon:hover:not(.dockIconActive):not(.active):not(:disabled) {
+  border-color:rgba(124,240,255,.62) !important;
+  box-shadow:0 0 16px rgba(0,217,255,.12) !important;
+}
+#gameWindowDock #btnSessionMenu.gameDockIcon:hover:not(.dockIconActive):not(.active):not([aria-expanded="true"]):not(:disabled) {
+  background:url("ASSETS/UI/MENU/logout_hover.png") center / 34px no-repeat, rgba(0,140,185,.3) !important;
+}
+#gameWindowDock #btnSettingsHub.gameDockIcon:hover:not(.dockIconActive):not(.active):not(:disabled) {
+  background:url("ASSETS/UI/MENU/settings_hover.png") center / 34px no-repeat, rgba(0,140,185,.3) !important;
+}
+#gameWindowDock #btnSessionMenu.gameDockIcon[aria-expanded="true"],
+#gameWindowDock #btnSessionMenu.gameDockIcon.dockIconActive,
+#gameWindowDock #btnSessionMenu.gameDockIcon.active {
+  border-color:rgba(255,209,102,.9) !important;
+  background:url("ASSETS/UI/MENU/logout_select.png") center / 34px no-repeat, rgba(0,140,185,.3) !important;
+  box-shadow:0 0 16px rgba(255,209,102,.35) !important;
+}
+#gameWindowDock #btnSettingsHub.gameDockIcon.dockIconActive,
+#gameWindowDock #btnSettingsHub.gameDockIcon.active {
+  border-color:rgba(255,209,102,.9) !important;
+  background:url("ASSETS/UI/MENU/settings_select.png") center / 34px no-repeat, rgba(0,140,185,.3) !important;
+  box-shadow:0 0 16px rgba(255,209,102,.35) !important;
+}
+#gameWindowDock #btnSessionMenu.gameDockIcon span,
+#gameWindowDock #btnSessionMenu.gameDockIcon img,
+#gameWindowDock #btnSettingsHub.gameDockIcon span,
+#gameWindowDock #btnSettingsHub.gameDockIcon img {
+  display:none !important;
+}
+/* Boutique : même modèle que CPU / Hangar / Session / Paramètres. */
+#gameWindowDock #btnShopHub.gameDockIcon {
+  width:46px !important;
+  height:44px !important;
+  min-height:44px !important;
+  padding:0 !important;
+  border-radius:8px !important;
+  font-size:0 !important;
+  color:transparent !important;
+  border:1px solid rgba(124,240,255,.38) !important;
+  background:url("ASSETS/UI/MENU/shop.png") center / 36px no-repeat, linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34)) !important;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.03) !important;
+}
+#gameWindowDock #btnShopHub.gameDockIcon:hover:not(.dockIconActive):not(.active):not(:disabled) {
+  border-color:rgba(124,240,255,.62) !important;
+  background:url("ASSETS/UI/MENU/shop_hover.png") center / 36px no-repeat, rgba(0,140,185,.3) !important;
+  box-shadow:0 0 16px rgba(0,217,255,.12) !important;
+}
+#gameWindowDock #btnShopHub.gameDockIcon.dockIconActive,
+#gameWindowDock #btnShopHub.gameDockIcon.active {
+  border-color:rgba(255,209,102,.9) !important;
+  background:url("ASSETS/UI/MENU/shop_select.png") center / 36px no-repeat, rgba(0,140,185,.3) !important;
+  box-shadow:0 0 16px rgba(255,209,102,.35) !important;
+}
+#gameWindowDock #btnShopHub.gameDockIcon span,
+#gameWindowDock #btnShopHub.gameDockIcon img {
+  display:none !important;
+}
+/* Raffinage : même modèle que CPU / Hangar / Session / Paramètres / Boutique. */
+#gameWindowDock #btnRefineryHub.gameDockIcon {
+  width:46px !important;
+  height:44px !important;
+  min-height:44px !important;
+  padding:0 !important;
+  border-radius:8px !important;
+  font-size:0 !important;
+  color:transparent !important;
+  border:1px solid rgba(124,240,255,.38) !important;
+  background:url("ASSETS/UI/MENU/refinement.png") center / 34px no-repeat, linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34)) !important;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.03) !important;
+}
+#gameWindowDock #btnRefineryHub.gameDockIcon:hover:not(.dockIconActive):not(.active):not(:disabled) {
+  border-color:rgba(124,240,255,.62) !important;
+  background:url("ASSETS/UI/MENU/refinement_hover.png") center / 34px no-repeat, rgba(0,140,185,.3) !important;
+  box-shadow:0 0 16px rgba(0,217,255,.12) !important;
+}
+#gameWindowDock #btnRefineryHub.gameDockIcon.dockIconActive,
+#gameWindowDock #btnRefineryHub.gameDockIcon.active {
+  border-color:rgba(255,209,102,.9) !important;
+  background:url("ASSETS/UI/MENU/refinement_select.png") center / 34px no-repeat, rgba(0,140,185,.3) !important;
+  box-shadow:0 0 16px rgba(255,209,102,.35) !important;
+}
+#gameWindowDock #btnRefineryHub.gameDockIcon span,
+#gameWindowDock #btnRefineryHub.gameDockIcon img {
+  display:none !important;
+}
+/* Skylab : même modèle que CPU / Hangar / Session / Paramètres / Boutique / Raffinage. */
+#gameWindowDock #btnSkylabHub.gameDockIcon {
+  width:46px !important;
+  height:44px !important;
+  min-height:44px !important;
+  padding:0 !important;
+  border-radius:8px !important;
+  font-size:0 !important;
+  color:transparent !important;
+  border:1px solid rgba(124,240,255,.38) !important;
+  background:url("ASSETS/UI/MENU/skylab.png") center / 32px no-repeat, linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34)) !important;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.03) !important;
+}
+#gameWindowDock #btnSkylabHub.gameDockIcon:hover:not(.dockIconActive):not(.active):not(:disabled) {
+  border-color:rgba(124,240,255,.62) !important;
+  background:url("ASSETS/UI/MENU/skylab_hover.png") center / 32px no-repeat, rgba(0,140,185,.3) !important;
+  box-shadow:0 0 16px rgba(0,217,255,.12) !important;
+}
+#gameWindowDock #btnSkylabHub.gameDockIcon.dockIconActive,
+#gameWindowDock #btnSkylabHub.gameDockIcon.active {
+  border-color:rgba(255,209,102,.9) !important;
+  background:url("ASSETS/UI/MENU/skylab_select.png") center / 32px no-repeat, rgba(0,140,185,.3) !important;
+  box-shadow:0 0 16px rgba(255,209,102,.35) !important;
+}
+#gameWindowDock #btnSkylabHub.gameDockIcon span,
+#gameWindowDock #btnSkylabHub.gameDockIcon img {
+  display:none !important;
+}
+/* Enchères : même modèle que CPU et les autres boutons du dock. */
+#gameWindowDock #btnAuctionHub.gameDockIcon {
+  width:46px !important;
+  height:44px !important;
+  min-height:44px !important;
+  padding:0 !important;
+  border-radius:8px !important;
+  font-size:0 !important;
+  color:transparent !important;
+  border:1px solid rgba(124,240,255,.38) !important;
+  background:url("ASSETS/UI/MENU/auction.png") center / 34px no-repeat, linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34)) !important;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.03) !important;
+}
+#gameWindowDock #btnAuctionHub.gameDockIcon:hover:not(.dockIconActive):not(.active):not(:disabled) {
+  border-color:rgba(124,240,255,.62) !important;
+  background:url("ASSETS/UI/MENU/auction_hover.png") center / 34px no-repeat, rgba(0,140,185,.3) !important;
+  box-shadow:0 0 16px rgba(0,217,255,.12) !important;
+}
+#gameWindowDock #btnAuctionHub.gameDockIcon.dockIconActive,
+#gameWindowDock #btnAuctionHub.gameDockIcon.active {
+  border-color:rgba(255,209,102,.9) !important;
+  background:url("ASSETS/UI/MENU/auction_select.png") center / 34px no-repeat, rgba(0,140,185,.3) !important;
+  box-shadow:0 0 16px rgba(255,209,102,.35) !important;
+}
+#gameWindowDock #btnAuctionHub.gameDockIcon span,
+#gameWindowDock #btnAuctionHub.gameDockIcon img {
+  display:none !important;
+}
+/* Arbre des compétences : même modèle, avec les icônes skilltree. */
+#gameWindowDock #btnPilotHub.gameDockIcon {
+  width:46px !important;
+  height:44px !important;
+  min-height:44px !important;
+  padding:0 !important;
+  border-radius:8px !important;
+  font-size:0 !important;
+  color:transparent !important;
+  border:1px solid rgba(124,240,255,.38) !important;
+  background:url("ASSETS/UI/MENU/skilltree.png") center / 32px no-repeat, linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34)) !important;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.03) !important;
+}
+#gameWindowDock #btnPilotHub.gameDockIcon:hover:not(.dockIconActive):not(.active):not(:disabled) {
+  border-color:rgba(124,240,255,.62) !important;
+  background:url("ASSETS/UI/MENU/skilltree_hover.png") center / 32px no-repeat, rgba(0,140,185,.3) !important;
+  box-shadow:0 0 16px rgba(0,217,255,.12) !important;
+}
+#gameWindowDock #btnPilotHub.gameDockIcon.dockIconActive,
+#gameWindowDock #btnPilotHub.gameDockIcon.active {
+  border-color:rgba(255,209,102,.9) !important;
+  background:url("ASSETS/UI/MENU/skilltree_select.png") center / 32px no-repeat, rgba(0,140,185,.3) !important;
+  box-shadow:0 0 16px rgba(255,209,102,.35) !important;
+}
+#gameWindowDock #btnPilotHub.gameDockIcon span,
+#gameWindowDock #btnPilotHub.gameDockIcon img {
+  display:none !important;
+}
+/* Bot : même modèle, avec les icônes bot. */
+#gameWindowDock #btnBotHub.gameDockIcon {
+  width:46px !important;
+  height:44px !important;
+  min-height:44px !important;
+  padding:0 !important;
+  border-radius:8px !important;
+  font-size:0 !important;
+  color:transparent !important;
+  border:1px solid rgba(124,240,255,.38) !important;
+  background:url("ASSETS/UI/MENU/bot.png") center / 34px no-repeat, linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34)) !important;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.03) !important;
+}
+#gameWindowDock #btnBotHub.gameDockIcon:hover:not(.dockIconActive):not(.active):not(:disabled) {
+  border-color:rgba(124,240,255,.62) !important;
+  background:url("ASSETS/UI/MENU/bot_hover.png") center / 34px no-repeat, rgba(0,140,185,.3) !important;
+  box-shadow:0 0 16px rgba(0,217,255,.12) !important;
+}
+#gameWindowDock #btnBotHub.gameDockIcon.dockIconActive,
+#gameWindowDock #btnBotHub.gameDockIcon.active {
+  border-color:rgba(255,209,102,.9) !important;
+  background:url("ASSETS/UI/MENU/bot_select.png") center / 34px no-repeat, rgba(0,140,185,.3) !important;
+  box-shadow:0 0 16px rgba(255,209,102,.35) !important;
+}
+#gameWindowDock #btnBotHub.gameDockIcon span,
+#gameWindowDock #btnBotHub.gameDockIcon img {
+  display:none !important;
+}
+/* Wiki / Aide : même modèle que CPU et les autres boutons du dock. */
+#gameWindowDock #btnWikiHub.gameDockIcon {
+  width:46px !important;
+  height:44px !important;
+  min-height:44px !important;
+  padding:0 !important;
+  border-radius:8px !important;
+  font-size:0 !important;
+  color:transparent !important;
+  border:1px solid rgba(124,240,255,.38) !important;
+  background:url("ASSETS/UI/MENU/help.png") center / 34px no-repeat, linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34)) !important;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.03) !important;
+}
+#gameWindowDock #btnWikiHub.gameDockIcon:hover:not(.dockIconActive):not(.active):not(:disabled) {
+  border-color:rgba(124,240,255,.62) !important;
+  background:url("ASSETS/UI/MENU/help_hover.png") center / 34px no-repeat, rgba(0,140,185,.3) !important;
+  box-shadow:0 0 16px rgba(0,217,255,.12) !important;
+}
+#gameWindowDock #btnWikiHub.gameDockIcon.dockIconActive,
+#gameWindowDock #btnWikiHub.gameDockIcon.active {
+  border-color:rgba(255,209,102,.9) !important;
+  background:url("ASSETS/UI/MENU/help_select.png") center / 34px no-repeat, rgba(0,140,185,.3) !important;
+  box-shadow:0 0 16px rgba(255,209,102,.35) !important;
+}
+#gameWindowDock #btnWikiHub.gameDockIcon span,
+#gameWindowDock #btnWikiHub.gameDockIcon img {
+  display:none !important;
+}
+/* Inventaire : même modèle, avec les icônes inventory. */
+#gameWindowDock #btnTdmHub.gameDockIcon {
+  width:46px !important;
+  height:44px !important;
+  min-height:44px !important;
+  padding:0 !important;
+  border-radius:8px !important;
+  font-size:0 !important;
+  color:transparent !important;
+  border:1px solid rgba(124,240,255,.38) !important;
+  background:url("ASSETS/UI/MENU/inventory.png") center / 34px no-repeat, linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34)) !important;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.03) !important;
+}
+#gameWindowDock #btnTdmHub.gameDockIcon:hover:not(.dockIconActive):not(.active):not(:disabled) {
+  border-color:rgba(124,240,255,.62) !important;
+  background:url("ASSETS/UI/MENU/inventory_hover.png") center / 34px no-repeat, rgba(0,140,185,.3) !important;
+  box-shadow:0 0 16px rgba(0,217,255,.12) !important;
+}
+#gameWindowDock #btnTdmHub.gameDockIcon.dockIconActive,
+#gameWindowDock #btnTdmHub.gameDockIcon.active {
+  border-color:rgba(255,209,102,.9) !important;
+  background:url("ASSETS/UI/MENU/inventory_select.png") center / 34px no-repeat, rgba(0,140,185,.3) !important;
+  box-shadow:0 0 16px rgba(255,209,102,.35) !important;
+}
+#gameWindowDock #btnTdmHub.gameDockIcon span,
+#gameWindowDock #btnTdmHub.gameDockIcon img {
+  display:none !important;
+}
+/* Titres : même modèle, avec les icônes titles. */
+#gameWindowDock #btnTitleHub.gameDockIcon {
+  width:46px !important;
+  height:44px !important;
+  min-height:44px !important;
+  padding:0 !important;
+  border-radius:8px !important;
+  font-size:0 !important;
+  color:transparent !important;
+  border:1px solid rgba(124,240,255,.38) !important;
+  background:url("ASSETS/UI/MENU/titles.png") center / 34px no-repeat, linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34)) !important;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.03) !important;
+}
+#gameWindowDock #btnTitleHub.gameDockIcon:hover:not(.dockIconActive):not(.active):not(:disabled) {
+  border-color:rgba(124,240,255,.62) !important;
+  background:url("ASSETS/UI/MENU/titles_hover.png") center / 34px no-repeat, rgba(0,140,185,.3) !important;
+  box-shadow:0 0 16px rgba(0,217,255,.12) !important;
+}
+#gameWindowDock #btnTitleHub.gameDockIcon.dockIconActive,
+#gameWindowDock #btnTitleHub.gameDockIcon.active {
+  border-color:rgba(255,209,102,.9) !important;
+  background:url("ASSETS/UI/MENU/titles_select.png") center / 34px no-repeat, rgba(0,140,185,.3) !important;
+  box-shadow:0 0 16px rgba(255,209,102,.35) !important;
+}
+#gameWindowDock #btnTitleHub.gameDockIcon span,
+#gameWindowDock #btnTitleHub.gameDockIcon img {
+  display:none !important;
+}
+/* Passe de combat : même modèle, avec les icônes rank. */
+#gameWindowDock #btnPassHub.gameDockIcon {
+  width:46px !important;
+  height:44px !important;
+  min-height:44px !important;
+  padding:0 !important;
+  border-radius:8px !important;
+  font-size:0 !important;
+  color:transparent !important;
+  border:1px solid rgba(124,240,255,.38) !important;
+  background:url("ASSETS/UI/MENU/rank.png") center / 38px no-repeat, linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34)) !important;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.03) !important;
+}
+#gameWindowDock #btnPassHub.gameDockIcon:hover:not(.dockIconActive):not(.active):not(:disabled) {
+  border-color:rgba(124,240,255,.62) !important;
+  background:url("ASSETS/UI/MENU/rank_hover.png") center / 38px no-repeat, rgba(0,140,185,.3) !important;
+  box-shadow:0 0 16px rgba(0,217,255,.12) !important;
+}
+#gameWindowDock #btnPassHub.gameDockIcon.dockIconActive,
+#gameWindowDock #btnPassHub.gameDockIcon.active {
+  border-color:rgba(255,209,102,.9) !important;
+  background:url("ASSETS/UI/MENU/rank_select.png") center / 38px no-repeat, rgba(0,140,185,.3) !important;
+  box-shadow:0 0 16px rgba(255,209,102,.35) !important;
+}
+#gameWindowDock #btnPassHub.gameDockIcon span,
+#gameWindowDock #btnPassHub.gameDockIcon img {
+  display:none !important;
+}
+/* Stats joueur (bouton dynamique data-window-id="boxMeta") : même modèle,
+   avec les icônes profile. Le <img> généré par le JS est masqué. */
+#gameWindowDock [data-window-id="boxMeta"].gameDockIcon {
+  width:46px !important;
+  height:44px !important;
+  min-height:44px !important;
+  padding:0 !important;
+  border-radius:8px !important;
+  font-size:0 !important;
+  color:transparent !important;
+  border:1px solid rgba(124,240,255,.38) !important;
+  background:url("ASSETS/UI/MENU/profile.png") center / 38px no-repeat, linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34)) !important;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.03) !important;
+}
+#gameWindowDock [data-window-id="boxMeta"].gameDockIcon:hover:not(.dockIconActive):not(.active):not(:disabled) {
+  border-color:rgba(124,240,255,.62) !important;
+  background:url("ASSETS/UI/MENU/profile_hover.png") center / 38px no-repeat, rgba(0,140,185,.3) !important;
+  box-shadow:0 0 16px rgba(0,217,255,.12) !important;
+}
+#gameWindowDock [data-window-id="boxMeta"].gameDockIcon.dockIconActive,
+#gameWindowDock [data-window-id="boxMeta"].gameDockIcon.active {
+  border-color:rgba(255,209,102,.9) !important;
+  background:url("ASSETS/UI/MENU/profile_select.png") center / 38px no-repeat, rgba(0,140,185,.3) !important;
+  box-shadow:0 0 16px rgba(255,209,102,.35) !important;
+}
+#gameWindowDock [data-window-id="boxMeta"].gameDockIcon span,
+#gameWindowDock [data-window-id="boxMeta"].gameDockIcon img {
+  display:none !important;
+}
+/* État du vaisseau (bouton dynamique data-window-id="boxVitals") : même modèle. */
+#gameWindowDock [data-window-id="boxVitals"].gameDockIcon {
+  width:46px !important;
+  height:44px !important;
+  min-height:44px !important;
+  padding:0 !important;
+  border-radius:8px !important;
+  font-size:0 !important;
+  color:transparent !important;
+  border:1px solid rgba(124,240,255,.38) !important;
+  background:url("ASSETS/UI/MENU/ship.png") center / 36px no-repeat, linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34)) !important;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.03) !important;
+}
+#gameWindowDock [data-window-id="boxVitals"].gameDockIcon:hover:not(.dockIconActive):not(.active):not(:disabled) {
+  border-color:rgba(124,240,255,.62) !important;
+  background:url("ASSETS/UI/MENU/ship_hover.png") center / 36px no-repeat, rgba(0,140,185,.3) !important;
+  box-shadow:0 0 16px rgba(0,217,255,.12) !important;
+}
+#gameWindowDock [data-window-id="boxVitals"].gameDockIcon.dockIconActive,
+#gameWindowDock [data-window-id="boxVitals"].gameDockIcon.active {
+  border-color:rgba(255,209,102,.9) !important;
+  background:url("ASSETS/UI/MENU/ship_select.png") center / 36px no-repeat, rgba(0,140,185,.3) !important;
+  box-shadow:0 0 16px rgba(255,209,102,.35) !important;
+}
+#gameWindowDock [data-window-id="boxVitals"].gameDockIcon span,
+#gameWindowDock [data-window-id="boxVitals"].gameDockIcon img {
+  display:none !important;
+}
+/* Mini-carte (bouton dynamique data-window-id="minimap") : même modèle, icônes cross. */
+#gameWindowDock [data-window-id="minimap"].gameDockIcon {
+  width:46px !important;
+  height:44px !important;
+  min-height:44px !important;
+  padding:0 !important;
+  border-radius:8px !important;
+  font-size:0 !important;
+  color:transparent !important;
+  border:1px solid rgba(124,240,255,.38) !important;
+  background:url("ASSETS/UI/MENU/cross.png") center / 36px no-repeat, linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34)) !important;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.03) !important;
+}
+#gameWindowDock [data-window-id="minimap"].gameDockIcon:hover:not(.dockIconActive):not(.active):not(:disabled) {
+  border-color:rgba(124,240,255,.62) !important;
+  background:url("ASSETS/UI/MENU/cross_hover.png") center / 36px no-repeat, rgba(0,140,185,.3) !important;
+  box-shadow:0 0 16px rgba(0,217,255,.12) !important;
+}
+#gameWindowDock [data-window-id="minimap"].gameDockIcon.dockIconActive,
+#gameWindowDock [data-window-id="minimap"].gameDockIcon.active {
+  border-color:rgba(255,209,102,.9) !important;
+  background:url("ASSETS/UI/MENU/cross_select.png") center / 36px no-repeat, rgba(0,140,185,.3) !important;
+  box-shadow:0 0 16px rgba(255,209,102,.35) !important;
+}
+#gameWindowDock [data-window-id="minimap"].gameDockIcon span,
+#gameWindowDock [data-window-id="minimap"].gameDockIcon img {
+  display:none !important;
+}
+/* Missions (bouton dynamique data-window-id="questWindow") : même modèle, icônes missions. */
+#gameWindowDock [data-window-id="questWindow"].gameDockIcon {
+  width:46px !important;
+  height:44px !important;
+  min-height:44px !important;
+  padding:0 !important;
+  border-radius:8px !important;
+  font-size:0 !important;
+  color:transparent !important;
+  border:1px solid rgba(124,240,255,.38) !important;
+  background:url("ASSETS/UI/MENU/missions.png") center / 34px no-repeat, linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34)) !important;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.03) !important;
+}
+#gameWindowDock [data-window-id="questWindow"].gameDockIcon:hover:not(.dockIconActive):not(.active):not(:disabled) {
+  border-color:rgba(124,240,255,.62) !important;
+  background:url("ASSETS/UI/MENU/missions_hover.png") center / 34px no-repeat, rgba(0,140,185,.3) !important;
+  box-shadow:0 0 16px rgba(0,217,255,.12) !important;
+}
+#gameWindowDock [data-window-id="questWindow"].gameDockIcon.dockIconActive,
+#gameWindowDock [data-window-id="questWindow"].gameDockIcon.active {
+  border-color:rgba(255,209,102,.9) !important;
+  background:url("ASSETS/UI/MENU/missions_select.png") center / 34px no-repeat, rgba(0,140,185,.3) !important;
+  box-shadow:0 0 16px rgba(255,209,102,.35) !important;
+}
+#gameWindowDock [data-window-id="questWindow"].gameDockIcon span,
+#gameWindowDock [data-window-id="questWindow"].gameDockIcon img {
+  display:none !important;
+}
+/* Galaxy Gates (bouton dynamique data-window-id="galaxyGateWindow") : même modèle, icônes portal. */
+#gameWindowDock [data-window-id="galaxyGateWindow"].gameDockIcon {
+  width:46px !important;
+  height:44px !important;
+  min-height:44px !important;
+  padding:0 !important;
+  border-radius:8px !important;
+  font-size:0 !important;
+  color:transparent !important;
+  border:1px solid rgba(124,240,255,.38) !important;
+  background:url("ASSETS/UI/MENU/portal.png") center / 38px no-repeat, linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34)) !important;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.03) !important;
+}
+#gameWindowDock [data-window-id="galaxyGateWindow"].gameDockIcon:hover:not(.dockIconActive):not(.active):not(:disabled) {
+  border-color:rgba(124,240,255,.62) !important;
+  background:url("ASSETS/UI/MENU/portal_hover.png") center / 38px no-repeat, rgba(0,140,185,.3) !important;
+  box-shadow:0 0 16px rgba(0,217,255,.12) !important;
+}
+#gameWindowDock [data-window-id="galaxyGateWindow"].gameDockIcon.dockIconActive,
+#gameWindowDock [data-window-id="galaxyGateWindow"].gameDockIcon.active {
+  border-color:rgba(255,209,102,.9) !important;
+  background:url("ASSETS/UI/MENU/portal_select.png") center / 38px no-repeat, rgba(0,140,185,.3) !important;
+  box-shadow:0 0 16px rgba(255,209,102,.35) !important;
+}
+#gameWindowDock [data-window-id="galaxyGateWindow"].gameDockIcon span,
+#gameWindowDock [data-window-id="galaxyGateWindow"].gameDockIcon img {
+  display:none !important;
+}
+/* Carte stellaire (bouton dynamique data-window-id="starMapWindow") : même modèle, icônes starmap. */
+#gameWindowDock [data-window-id="starMapWindow"].gameDockIcon {
+  width:46px !important;
+  height:44px !important;
+  min-height:44px !important;
+  padding:0 !important;
+  border-radius:8px !important;
+  font-size:0 !important;
+  color:transparent !important;
+  border:1px solid rgba(124,240,255,.38) !important;
+  background:url("ASSETS/UI/MENU/starmap.png") center / 36px no-repeat, linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34)) !important;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.03) !important;
+}
+#gameWindowDock [data-window-id="starMapWindow"].gameDockIcon:hover:not(.dockIconActive):not(.active):not(:disabled) {
+  border-color:rgba(124,240,255,.62) !important;
+  background:url("ASSETS/UI/MENU/starmap_hover.png") center / 36px no-repeat, rgba(0,140,185,.3) !important;
+  box-shadow:0 0 16px rgba(0,217,255,.12) !important;
+}
+#gameWindowDock [data-window-id="starMapWindow"].gameDockIcon.dockIconActive,
+#gameWindowDock [data-window-id="starMapWindow"].gameDockIcon.active {
+  border-color:rgba(255,209,102,.9) !important;
+  background:url("ASSETS/UI/MENU/starmap_select.png") center / 36px no-repeat, rgba(0,140,185,.3) !important;
+  box-shadow:0 0 16px rgba(255,209,102,.35) !important;
+}
+#gameWindowDock [data-window-id="starMapWindow"].gameDockIcon span,
+#gameWindowDock [data-window-id="starMapWindow"].gameDockIcon img {
+  display:none !important;
+}
+/* LOG (bouton dynamique data-window-id="gameLogWindow") : même modèle, icônes text. */
+#gameWindowDock [data-window-id="gameLogWindow"].gameDockIcon {
+  width:46px !important;
+  height:44px !important;
+  min-height:44px !important;
+  padding:0 !important;
+  border-radius:8px !important;
+  font-size:0 !important;
+  color:transparent !important;
+  border:1px solid rgba(124,240,255,.38) !important;
+  background:url("ASSETS/UI/MENU/text.png") center / 34px no-repeat, linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34)) !important;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.03) !important;
+}
+#gameWindowDock [data-window-id="gameLogWindow"].gameDockIcon:hover:not(.dockIconActive):not(.active):not(:disabled) {
+  border-color:rgba(124,240,255,.62) !important;
+  background:url("ASSETS/UI/MENU/text_hover.png") center / 34px no-repeat, rgba(0,140,185,.3) !important;
+  box-shadow:0 0 16px rgba(0,217,255,.12) !important;
+}
+#gameWindowDock [data-window-id="gameLogWindow"].gameDockIcon.dockIconActive,
+#gameWindowDock [data-window-id="gameLogWindow"].gameDockIcon.active {
+  border-color:rgba(255,209,102,.9) !important;
+  background:url("ASSETS/UI/MENU/text_select.png") center / 34px no-repeat, rgba(0,140,185,.3) !important;
+  box-shadow:0 0 16px rgba(255,209,102,.35) !important;
+}
+#gameWindowDock [data-window-id="gameLogWindow"].gameDockIcon span,
+#gameWindowDock [data-window-id="gameLogWindow"].gameDockIcon img {
+  display:none !important;
+}
+/* Chat (bouton dynamique data-window-id="chatWindow") : même modèle, icônes chat. */
+#gameWindowDock [data-window-id="chatWindow"].gameDockIcon {
+  width:46px !important;
+  height:44px !important;
+  min-height:44px !important;
+  padding:0 !important;
+  border-radius:8px !important;
+  font-size:0 !important;
+  color:transparent !important;
+  border:1px solid rgba(124,240,255,.38) !important;
+  background:url("ASSETS/UI/MENU/chat.png") center / 34px no-repeat, linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34)) !important;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.03) !important;
+}
+#gameWindowDock [data-window-id="chatWindow"].gameDockIcon:hover:not(.dockIconActive):not(.active):not(:disabled) {
+  border-color:rgba(124,240,255,.62) !important;
+  background:url("ASSETS/UI/MENU/chat_hover.png") center / 34px no-repeat, rgba(0,140,185,.3) !important;
+  box-shadow:0 0 16px rgba(0,217,255,.12) !important;
+}
+#gameWindowDock [data-window-id="chatWindow"].gameDockIcon.dockIconActive,
+#gameWindowDock [data-window-id="chatWindow"].gameDockIcon.active {
+  border-color:rgba(255,209,102,.9) !important;
+  background:url("ASSETS/UI/MENU/chat_select.png") center / 34px no-repeat, rgba(0,140,185,.3) !important;
+  box-shadow:0 0 16px rgba(255,209,102,.35) !important;
+}
+#gameWindowDock [data-window-id="chatWindow"].gameDockIcon span,
+#gameWindowDock [data-window-id="chatWindow"].gameDockIcon img {
+  display:none !important;
+}
+/* Groupe (bouton dynamique data-window-id="groupWindow") : même modèle, icônes crew. */
+#gameWindowDock [data-window-id="groupWindow"].gameDockIcon {
+  width:46px !important;
+  height:44px !important;
+  min-height:44px !important;
+  padding:0 !important;
+  border-radius:8px !important;
+  font-size:0 !important;
+  color:transparent !important;
+  border:1px solid rgba(124,240,255,.38) !important;
+  background:url("ASSETS/UI/MENU/crew.png") center / 34px no-repeat, linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34)) !important;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.03) !important;
+}
+#gameWindowDock [data-window-id="groupWindow"].gameDockIcon:hover:not(.dockIconActive):not(.active):not(:disabled) {
+  border-color:rgba(124,240,255,.62) !important;
+  background:url("ASSETS/UI/MENU/crew_hover.png") center / 34px no-repeat, rgba(0,140,185,.3) !important;
+  box-shadow:0 0 16px rgba(0,217,255,.12) !important;
+}
+#gameWindowDock [data-window-id="groupWindow"].gameDockIcon.dockIconActive,
+#gameWindowDock [data-window-id="groupWindow"].gameDockIcon.active {
+  border-color:rgba(255,209,102,.9) !important;
+  background:url("ASSETS/UI/MENU/crew_select.png") center / 34px no-repeat, rgba(0,140,185,.3) !important;
+  box-shadow:0 0 16px rgba(255,209,102,.35) !important;
+}
+#gameWindowDock [data-window-id="groupWindow"].gameDockIcon span,
+#gameWindowDock [data-window-id="groupWindow"].gameDockIcon img {
+  display:none !important;
+}
+/* Amis (bouton dynamique data-window-id="friendsWindow") : même modèle, icônes addfriend. */
+#gameWindowDock [data-window-id="friendsWindow"].gameDockIcon {
+  width:46px !important;
+  height:44px !important;
+  min-height:44px !important;
+  padding:0 !important;
+  border-radius:8px !important;
+  font-size:0 !important;
+  color:transparent !important;
+  border:1px solid rgba(124,240,255,.38) !important;
+  background:url("ASSETS/UI/MENU/addfriend.png") center / 34px no-repeat, linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34)) !important;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.03) !important;
+}
+#gameWindowDock [data-window-id="friendsWindow"].gameDockIcon:hover:not(.dockIconActive):not(.active):not(:disabled) {
+  border-color:rgba(124,240,255,.62) !important;
+  background:url("ASSETS/UI/MENU/addfriend_hover.png") center / 34px no-repeat, rgba(0,140,185,.3) !important;
+  box-shadow:0 0 16px rgba(0,217,255,.12) !important;
+}
+#gameWindowDock [data-window-id="friendsWindow"].gameDockIcon.dockIconActive,
+#gameWindowDock [data-window-id="friendsWindow"].gameDockIcon.active {
+  border-color:rgba(255,209,102,.9) !important;
+  background:url("ASSETS/UI/MENU/addfriend_select.png") center / 34px no-repeat, rgba(0,140,185,.3) !important;
+  box-shadow:0 0 16px rgba(255,209,102,.35) !important;
+}
+#gameWindowDock [data-window-id="friendsWindow"].gameDockIcon span,
+#gameWindowDock [data-window-id="friendsWindow"].gameDockIcon img {
+  display:none !important;
+}
+/* Clan (bouton dynamique data-window-id="clanWindow") : même modèle, icônes clan. */
+#gameWindowDock [data-window-id="clanWindow"].gameDockIcon {
+  width:46px !important;
+  height:44px !important;
+  min-height:44px !important;
+  padding:0 !important;
+  border-radius:8px !important;
+  font-size:0 !important;
+  color:transparent !important;
+  border:1px solid rgba(124,240,255,.38) !important;
+  background:url("ASSETS/UI/MENU/clan.png") center / 34px no-repeat, linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34)) !important;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.03) !important;
+}
+#gameWindowDock [data-window-id="clanWindow"].gameDockIcon:hover:not(.dockIconActive):not(.active):not(:disabled) {
+  border-color:rgba(124,240,255,.62) !important;
+  background:url("ASSETS/UI/MENU/clan_hover.png") center / 34px no-repeat, rgba(0,140,185,.3) !important;
+  box-shadow:0 0 16px rgba(0,217,255,.12) !important;
+}
+#gameWindowDock [data-window-id="clanWindow"].gameDockIcon.dockIconActive,
+#gameWindowDock [data-window-id="clanWindow"].gameDockIcon.active {
+  border-color:rgba(255,209,102,.9) !important;
+  background:url("ASSETS/UI/MENU/clan_select.png") center / 34px no-repeat, rgba(0,140,185,.3) !important;
+  box-shadow:0 0 16px rgba(255,209,102,.35) !important;
+}
+#gameWindowDock [data-window-id="clanWindow"].gameDockIcon span,
+#gameWindowDock [data-window-id="clanWindow"].gameDockIcon img {
+  display:none !important;
+}
+/* Classement (bouton dynamique data-window-id="rankingWindow") : même modèle, icônes ranking. */
+#gameWindowDock [data-window-id="rankingWindow"].gameDockIcon {
+  width:46px !important;
+  height:44px !important;
+  min-height:44px !important;
+  padding:0 !important;
+  border-radius:8px !important;
+  font-size:0 !important;
+  color:transparent !important;
+  border:1px solid rgba(124,240,255,.38) !important;
+  background:url("ASSETS/UI/MENU/ranking.png") center / 34px no-repeat, linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34)) !important;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.03) !important;
+}
+#gameWindowDock [data-window-id="rankingWindow"].gameDockIcon:hover:not(.dockIconActive):not(.active):not(:disabled) {
+  border-color:rgba(124,240,255,.62) !important;
+  background:url("ASSETS/UI/MENU/ranking_hover.png") center / 34px no-repeat, rgba(0,140,185,.3) !important;
+  box-shadow:0 0 16px rgba(0,217,255,.12) !important;
+}
+#gameWindowDock [data-window-id="rankingWindow"].gameDockIcon.dockIconActive,
+#gameWindowDock [data-window-id="rankingWindow"].gameDockIcon.active {
+  border-color:rgba(255,209,102,.9) !important;
+  background:url("ASSETS/UI/MENU/ranking_select.png") center / 34px no-repeat, rgba(0,140,185,.3) !important;
+  box-shadow:0 0 16px rgba(255,209,102,.35) !important;
+}
+#gameWindowDock [data-window-id="rankingWindow"].gameDockIcon span,
+#gameWindowDock [data-window-id="rankingWindow"].gameDockIcon img {
+  display:none !important;
+}
+/* P.E.T (bouton dynamique data-window-id="petWindow") : reprend le P.E.T du dock rapide. */
+#gameWindowDock [data-window-id="petWindow"].gameDockIcon {
+  width:46px !important;
+  height:44px !important;
+  min-height:44px !important;
+  padding:0 !important;
+  border-radius:8px !important;
+  font-size:0 !important;
+  color:transparent !important;
+  border:1px solid rgba(124,240,255,.38) !important;
+  background:url("ASSETS/CONTROL_MENU/pet_normal.png") center / contain no-repeat, linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34)) !important;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.03) !important;
+}
+#gameWindowDock [data-window-id="petWindow"].gameDockIcon:hover:not(.dockIconActive):not(.active):not(:disabled) {
+  border-color:rgba(124,240,255,.62) !important;
+  background:url("ASSETS/CONTROL_MENU/pet_hover.png") center / contain no-repeat, rgba(0,140,185,.3) !important;
+  box-shadow:0 0 16px rgba(0,217,255,.12) !important;
+}
+#gameWindowDock [data-window-id="petWindow"].gameDockIcon.dockIconActive,
+#gameWindowDock [data-window-id="petWindow"].gameDockIcon.active {
+  border-color:rgba(255,209,102,.9) !important;
+  background:url("ASSETS/CONTROL_MENU/pet_select.png") center / contain no-repeat, rgba(0,140,185,.3) !important;
+  box-shadow:0 0 16px rgba(255,209,102,.35) !important;
+}
+#gameWindowDock [data-window-id="petWindow"].gameDockIcon span,
+#gameWindowDock [data-window-id="petWindow"].gameDockIcon img {
+  display:none !important;
+}
+/* Boosters (bouton dynamique data-window-id="boosterWindow") : même modèle, icônes gauge. */
+#gameWindowDock [data-window-id="boosterWindow"].gameDockIcon {
+  width:46px !important;
+  height:44px !important;
+  min-height:44px !important;
+  padding:0 !important;
+  border-radius:8px !important;
+  font-size:0 !important;
+  color:transparent !important;
+  border:1px solid rgba(124,240,255,.38) !important;
+  background:url("ASSETS/UI/MENU/gauge.png") center / 36px no-repeat, linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34)) !important;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.03) !important;
+}
+#gameWindowDock [data-window-id="boosterWindow"].gameDockIcon:hover:not(.dockIconActive):not(.active):not(:disabled) {
+  border-color:rgba(124,240,255,.62) !important;
+  background:url("ASSETS/UI/MENU/gauge_hover.png") center / 36px no-repeat, rgba(0,140,185,.3) !important;
+  box-shadow:0 0 16px rgba(0,217,255,.12) !important;
+}
+#gameWindowDock [data-window-id="boosterWindow"].gameDockIcon.dockIconActive,
+#gameWindowDock [data-window-id="boosterWindow"].gameDockIcon.active {
+  border-color:rgba(255,209,102,.9) !important;
+  background:url("ASSETS/UI/MENU/gauge_select.png") center / 36px no-repeat, rgba(0,140,185,.3) !important;
+  box-shadow:0 0 16px rgba(255,209,102,.35) !important;
+}
+#gameWindowDock [data-window-id="boosterWindow"].gameDockIcon span,
+#gameWindowDock [data-window-id="boosterWindow"].gameDockIcon img {
+  display:none !important;
+}
+/* DPS (bouton dynamique data-window-id="dpsWindow") : même modèle, icônes dps. */
+#gameWindowDock [data-window-id="dpsWindow"].gameDockIcon {
+  width:46px !important;
+  height:44px !important;
+  min-height:44px !important;
+  padding:0 !important;
+  border-radius:8px !important;
+  font-size:0 !important;
+  color:transparent !important;
+  border:1px solid rgba(124,240,255,.38) !important;
+  background:url("ASSETS/UI/MENU/dps.png") calc(50% + 2px) calc(50% - 2.5px) / 34px no-repeat, linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34)) !important;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.03) !important;
+}
+#gameWindowDock [data-window-id="dpsWindow"].gameDockIcon:hover:not(.dockIconActive):not(.active):not(:disabled) {
+  border-color:rgba(124,240,255,.62) !important;
+  background:url("ASSETS/UI/MENU/dps_hover.png") calc(50% + 2px) calc(50% - 2.5px) / 34px no-repeat, rgba(0,140,185,.3) !important;
+  box-shadow:0 0 16px rgba(0,217,255,.12) !important;
+}
+#gameWindowDock [data-window-id="dpsWindow"].gameDockIcon.dockIconActive,
+#gameWindowDock [data-window-id="dpsWindow"].gameDockIcon.active {
+  border-color:rgba(255,209,102,.9) !important;
+  background:url("ASSETS/UI/MENU/dps_select.png") calc(50% + 2px) calc(50% - 2.5px) / 34px no-repeat, rgba(0,140,185,.3) !important;
+  box-shadow:0 0 16px rgba(255,209,102,.35) !important;
+}
+#gameWindowDock [data-window-id="dpsWindow"].gameDockIcon span,
+#gameWindowDock [data-window-id="dpsWindow"].gameDockIcon img {
+  display:none !important;
+}
+/* Disposition du dock (bouton dynamique #btnDockLayout) : même modèle, icônes dock. */
+#gameWindowDock #btnDockLayout.dockLayoutBtn {
+  width:46px !important;
+  height:44px !important;
+  min-width:0 !important;
+  min-height:44px !important;
+  padding:0 !important;
+  border-radius:8px !important;
+  font-size:0 !important;
+  color:transparent !important;
+  border:1px solid rgba(124,240,255,.38) !important;
+  background:url("ASSETS/UI/MENU/dock.png") center / 34px no-repeat, linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34)) !important;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.03) !important;
+}
+#gameWindowDock #btnDockLayout.dockLayoutBtn:hover:not(:disabled) {
+  border-color:rgba(124,240,255,.62) !important;
+  background:url("ASSETS/UI/MENU/dock_hover.png") center / 34px no-repeat, rgba(0,140,185,.3) !important;
+  box-shadow:0 0 16px rgba(0,217,255,.12) !important;
+}
+#gameWindowDock #btnDockLayout.dockLayoutBtn.dockIconActive,
+#gameWindowDock #btnDockLayout.dockLayoutBtn.active {
+  border-color:rgba(255,209,102,.9) !important;
+  background:url("ASSETS/UI/MENU/dock_select.png") center / 34px no-repeat, rgba(0,140,185,.3) !important;
+  box-shadow:0 0 16px rgba(255,209,102,.35) !important;
+}
+#gameWindowDock #btnDockLayout.dockLayoutBtn svg {
+  display:none !important;
+}
+/* Collapse : classe d'état uniquement (le masquage est en inline,
+   pixel-identique à la fin du fondu : pas de tick). */
+#gameWindowDock.dock-collapsed {
+}
+/* Collapse / Expand : même modèle que CPU et les autres boutons du dock. */
+#gameWindowDock #btnCollapseHub.gameDockIcon {
+  width:46px !important;
+  height:44px !important;
+  min-height:44px !important;
+  padding:0 !important;
+  border-radius:8px !important;
+  font-size:0 !important;
+  color:transparent !important;
+  border:1px solid rgba(124,240,255,.38) !important;
+  background:url("ASSETS/UI/MENU/expand.png") center / 34px no-repeat, linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34)) !important;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.03) !important;
+}
+#gameWindowDock #btnCollapseHub.gameDockIcon:hover:not(.collapsed):not(:disabled) {
+  border-color:rgba(124,240,255,.62) !important;
+  background:url("ASSETS/UI/MENU/expand_hover.png") center / 34px no-repeat, rgba(0,140,185,.3) !important;
+  box-shadow:0 0 16px rgba(0,217,255,.12) !important;
+}
+#gameWindowDock #btnCollapseHub.gameDockIcon.collapsed {
+  border-color:rgba(124,240,255,.38) !important;
+  background:url("ASSETS/UI/MENU/collapse.png") center / 34px no-repeat, linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34)) !important;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.03) !important;
+}
+#gameWindowDock #btnCollapseHub.gameDockIcon.collapsed:hover:not(:disabled) {
+  border-color:rgba(124,240,255,.62) !important;
+  background:url("ASSETS/UI/MENU/collapse_hover.png") center / 34px no-repeat, rgba(0,140,185,.3) !important;
+  box-shadow:0 0 16px rgba(0,217,255,.12) !important;
+}
+#gameWindowDock #btnCollapseHub.gameDockIcon span,
+#gameWindowDock #btnCollapseHub.gameDockIcon img {
+  display:none !important;
+}
+/* Assemblage (bouton dynamique data-window-id="craftingWindow") : même modèle, icônes tech. */
+#gameWindowDock [data-window-id="craftingWindow"].gameDockIcon {
+  width:46px !important;
+  height:44px !important;
+  min-height:44px !important;
+  padding:0 !important;
+  border-radius:8px !important;
+  font-size:0 !important;
+  color:transparent !important;
+  border:1px solid rgba(124,240,255,.38) !important;
+  background:url("ASSETS/UI/MENU/tech.png") center / 34px no-repeat, linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34)) !important;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.03) !important;
+}
+#gameWindowDock [data-window-id="craftingWindow"].gameDockIcon:hover:not(.dockIconActive):not(.active):not(:disabled) {
+  border-color:rgba(124,240,255,.62) !important;
+  background:url("ASSETS/UI/MENU/tech_hover.png") center / 34px no-repeat, rgba(0,140,185,.3) !important;
+  box-shadow:0 0 16px rgba(0,217,255,.12) !important;
+}
+#gameWindowDock [data-window-id="craftingWindow"].gameDockIcon.dockIconActive,
+#gameWindowDock [data-window-id="craftingWindow"].gameDockIcon.active {
+  border-color:rgba(255,209,102,.9) !important;
+  background:url("ASSETS/UI/MENU/tech_select.png") center / 34px no-repeat, rgba(0,140,185,.3) !important;
+  box-shadow:0 0 16px rgba(255,209,102,.35) !important;
+}
+#gameWindowDock [data-window-id="craftingWindow"].gameDockIcon span,
+#gameWindowDock [data-window-id="craftingWindow"].gameDockIcon img {
+  display:none !important;
 }
 /* Survol : le libellé apparaît sous le bouton (le bouton garde sa taille). */
 #gameWindowDock .gameDockIcon {
