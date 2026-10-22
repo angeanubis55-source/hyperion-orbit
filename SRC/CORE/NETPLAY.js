@@ -1823,8 +1823,10 @@ export function ensureNetplayConnection() {
           // Echantillon frais : le rendu converge vite vers la position
           // autoritaire (gros ping = decalage permanent sinon). Decroit
           // chaque frame dans tickNetplayRemotes. Le plafond maxCorrection
-          // garde-fou contre les teleports.
-          freshBoost: positionChanged ? 1 : Number(prev?.freshBoost || 0),
+          // garde-fou contre les teleports. Boost modéré (0.5) : un rappel
+          // trop fort (0.85+) contre l'extrapolation donne un yoyo visible
+          // (overshoot + snapback = "360 sur place" sur les orbites).
+          freshBoost: positionChanged ? 0.5 : Number(prev?.freshBoost || 0),
           updateInterval,
           updateJitter,
           motionSamples,
@@ -2640,11 +2642,11 @@ export function tickNetplayRemotes(dt = 0.016) {
     const correctionX = targetX - rx, correctionY = targetY - ry;
     const correctionDistance = Math.hypot(correctionX, correctionY);
     if (correctionDistance > netPerf.maxCorrection) netPerf.maxCorrection = Math.round(correctionDistance);
-    // Echantillon frais : convergence rapide vers l'autoritaire (le lissage
-    // seul laisserait un retard permanent, pire a haut ping). Borne a 0.85
-    // + plafond maxCorrection ci-dessous : pas de teleport.
+    // Echantillon frais : convergence douce vers l'autoritaire (un rappel
+    // trop fort + extrapolation = yoyo visible, pire a haut ping).
+    // Borne a 0.6 + plafond maxCorrection ci-dessous : pas de teleport.
     const boost = Math.max(0, Number(r.freshBoost || 0));
-    const kEff = Math.min(0.85, k * (1 + 2 * boost));
+    const kEff = Math.min(0.6, k * (1 + 1.5 * boost));
     r.freshBoost = boost * Math.exp(-6 * frameDt);
     // Un trou reseau peut faire arriver une correction importante d'un coup.
     // Le lissage exponentiel seul en absorbait ~26 % sur la premiere frame,

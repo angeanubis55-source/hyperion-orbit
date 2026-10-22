@@ -441,7 +441,7 @@ export const NPC_TYPES = {
     sprite: { path: "NPC/NPC_SPRITES/EMPEROR_LORDAKIUM/", frames: 33, firstNumber: 1, ext: ".png", w: 338, h: 302 },
     playSprite: true,
     passiveNative: true,
-    spriteSpeed: 30,
+    spriteSpeed: 40,
     bulletSprite: { src: "COMBAT/MUNITIONS/LORDAKIUM.png", w: 97, h: 37, glow: true, invert: true },
     r: 18, hp: 9600000, shield: 6800000, speed: 100, bulletDmg: 96000, bulletSpeed: 4500, shootRange: 700,
     onKill: { spawn: [ { type: "npc_Lordakia", count: 15, radius: 260 } ] },
