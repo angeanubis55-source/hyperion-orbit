@@ -1,13 +1,7 @@
 "use strict";
-import { isHalloweenEventActive } from "./NPC_HALLOWEEN.js";
 
 export function getNpcSpriteBrightness(entity, nowMs = Date.now()) {
-  const type = String(entity?.type || "");
-  const pulsing = /(?:^|_)(?:Uber|Emperor)_/i.test(type);
-  const boss = entity?.isBoss === true || /(?:^|_)Boss_/i.test(type);
-  if ((!pulsing && !boss) || !isHalloweenEventActive(nowMs)) return 1;
-  // Luminosité uniquement : une oscillation par seconde, sans transparence.
-  return pulsing ? 0.625 - 0.125 * Math.cos(nowMs / 1000 * Math.PI * 2) : 0.75;
+  return 1;
 }
 
 export function getNpcSpriteFrame(entity, config, angleToFrameIndex) {
