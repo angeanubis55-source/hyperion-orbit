@@ -2569,8 +2569,9 @@ export function tickNetplayRemotes(dt = 0.016) {
     let anchorX = Number(r.x), anchorY = Number(r.y);
     let anchorVx = Number(r.vx || 0), anchorVy = Number(r.vy || 0);
     let anchorAt = Number(r.sampleAt || now);
+    let afterIndex = -1;
     if (samples.length) {
-      let afterIndex = samples.findIndex((sample) => Number(sample.at) >= renderAt);
+      afterIndex = samples.findIndex((sample) => Number(sample.at) >= renderAt);
       if (afterIndex < 0) afterIndex = samples.length;
       if (afterIndex === 0) {
         const sample = samples[0];
@@ -2661,7 +2662,25 @@ export function tickNetplayRemotes(dt = 0.016) {
     const renderedAngle = Number(r.rangle ?? r.angle) || 0;
     // L'orientation arrive même sans déplacement : l'historique des
     // positions distinctes ne doit pas figer la visée d'un joueur immobile.
-    const targetAngle = Number(r.angle) || 0;
+    // Tampon anti-jitter actif : la position est rejouée depuis l'historique
+    // (dans le passé) — la visée doit venir du même instant, sinon le
+    // vaisseau regarde vers sa prochaine position (décalage visible en orbite).
+    let targetAngle = Number(r.angle) || 0;
+    if (samples.length && Number(r.renderDelay || 0) > 30) {
+      const lerpAngle = (aa, bb, mix) => {
+        const a = Number(aa) || 0, b = Number(bb) || 0;
+        return a + Math.atan2(Math.sin(b - a), Math.cos(b - a)) * Math.max(0, Math.min(1, mix));
+      };
+      if (afterIndex === 0) {
+        targetAngle = Number(samples[0].angle) || 0;
+      } else if (afterIndex < samples.length) {
+        const a = samples[afterIndex - 1], b = samples[afterIndex];
+        const span = Math.max(1, Number(b.at) - Number(a.at));
+        targetAngle = lerpAngle(a.angle, b.angle, (renderAt - Number(a.at)) / span);
+      } else {
+        targetAngle = Number(samples[samples.length - 1].angle) || 0;
+      }
+    }
     const angleDelta = Math.atan2(Math.sin(targetAngle - renderedAngle), Math.cos(targetAngle - renderedAngle));
     r.rangle = renderedAngle + angleDelta * k;
     // PET : quasi pas d'extrapolation. Le PET tournoie autour de son
