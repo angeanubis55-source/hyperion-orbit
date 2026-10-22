@@ -1354,7 +1354,7 @@ export function ensureNetplayConnection() {
         const shotMap = String(msg.map || "").toLowerCase();
         if (shotMap && shotMap !== currentMapId()) return;
       } catch {}
-      if (netShotInbox.length > 96) netShotInbox.shift();
+      if (netShotInbox.length > 512) netShotInbox.shift();
       netShotInbox.push(msg);
       return;
     }

@@ -93,7 +93,11 @@ export function acRecordViolation(state, kind, now, details = {}) {
 // propre. Sanction (kick + gel, JAMAIS de ban auto) à 100 : il faut
 // ~2 fenêtres grossières ou ~7 fenêtres simples d'affilée.
 const AUDIT_WIN_MS = 10000;
-const AUDIT_KILLS_SOFT = 40, AUDIT_KILLS_HARD = 120;
+// Farm intensif légitime à 50 sur une map (Low, QZ, Maudite...) : même en
+// chaîne, un joueur ne tient pas 15 kills/s sur la durée. Les seuils sont
+// calibrés pour ne jamais couper un farm réel : seuls les bots/cheats
+// (rafales bien au-delà + autres signaux) déclenchent encore.
+const AUDIT_KILLS_SOFT = 300, AUDIT_KILLS_HARD = 800;
 // Un vaisseau peut recolter 5 fois/s, un PET environ 3,3 fois/s.
 // 25 % de marge absorbent les frontieres de fenetre et les paquets retardes.
 const AUDIT_BOXES_SOFT = Math.ceil(AUDIT_WIN_MS / 1000 / COLLECTABLE_PICKUP_HOLD_SEC * 1.25);

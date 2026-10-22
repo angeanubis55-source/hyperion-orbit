@@ -503,7 +503,7 @@ function prepareFloating(card, r = card.getBoundingClientRect()) {
   function applyMinimapProportions(card, width) {
   if (!card || card.id !== "minimap") return;
 
-  const minW = 220;
+  const minW = 260;
   const maxW = Math.min(620, window.innerWidth - 28);
   const w = Math.max(minW, Math.min(Number(width) || 250, maxW));
 
@@ -571,11 +571,26 @@ function makeMinimapResizable(id, card) {
     // pour supprimer le trait entre "Map : X-X" et la mini-carte.
     if (zoomBar && zoomBar !== windowBar) zoomBar.style.display = "none";
   }
+  if (windowBar && !windowBar.querySelector(":scope > .miniStarmapBtn")) {
+    const starBtn = document.createElement("button");
+    starBtn.className = "gameWinMinBtn miniStarmapBtn";
+    starBtn.type = "button";
+    starBtn.title = "Ouvrir la carte stellaire";
+    starBtn.setAttribute("aria-label", "Ouvrir la carte stellaire");
+    starBtn.dataset.noDrag = "1";
+    starBtn.innerHTML = '<img src="ASSETS/UI/MENU/starmap_hover.png" alt="" draggable="false">';
+    starBtn.addEventListener("pointerdown", (e) => { e.stopPropagation(); });
+    starBtn.addEventListener("click", (event) => {
+      event.stopPropagation();
+      try { window.GameWindowManager?.restore("starMapWindow"); } catch {}
+    });
+    windowBar.insertBefore(starBtn, minimizeButton || null);
+  }
 
   const resizeFromButton = (delta) => {
     prepareFloating(card);
     const rect = card.getBoundingClientRect();
-    const minW = 220;
+    const minW = 260;
     // Largeur max absolue (viewport) : on grandit toujours, puis on
     // recale la fenêtre pour qu'elle reste entièrement visible,
     // même collée contre un bord droit / bas.
@@ -649,7 +664,7 @@ function makeMinimapResizable(id, card) {
     // ✅ garde les proportions : on prend le mouvement dominant
     let nextW = startW + Math.max(dx, dy / canvasRatio);
 
-    const minW = 220;
+    const minW = 260;
 
     // ✅ ne dépasse pas à droite
     const maxWByRight = window.innerWidth - startLeft - 14;

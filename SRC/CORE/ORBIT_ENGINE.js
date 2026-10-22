@@ -10712,45 +10712,45 @@ function registerHudWindows() {
   // chaque mise à jour au lieu de resservir un cache périmé.
   const menuIcon = (name) => `<img class="menuIconImg" src="ASSETS/UI/MENU/${name}.png?v=${encodeURIComponent(String(GAME_VERSION || "0"))}" alt="" draggable="false">`;
 
-  reg("boxMeta", "Stats joueur", menuIcon("pilotSheet"));
-  reg("boxVitals", "État du vaisseau", menuIcon("ship"));
-  reg("minimap", "Mini-carte", menuIcon("minimap"));
-  reg("settingsWindow", "Paramètres", menuIcon("settings"), false);
-  reg("questWindow", "Missions", menuIcon("quests"), false);
-  reg("questOfferWindow", "Terminal de quêtes", menuIcon("diminish_quests"), false, { dock: false });
+  reg("boxMeta", "Stats joueur", menuIcon("profile_hover"));
+  reg("boxVitals", "État du vaisseau", menuIcon("ship_hover"));
+  reg("minimap", "Mini-carte", menuIcon("cross_hover"));
+  reg("settingsWindow", "Paramètres", menuIcon("settings_hover"), false);
+  reg("questWindow", "Missions", menuIcon("missions_hover"), false);
+  reg("questOfferWindow", "Terminal de quêtes", menuIcon("diminish_quests_hover"), false, { dock: false });
   window.GameWindowManager?.close?.("questOfferWindow");
-  reg("galaxyGateWindow", "Galaxy Gates", menuIcon("ggBuilder"), false);
-  reg("starMapWindow", "Carte Stellaire", menuIcon("spacemap"), false);
-  reg("starMapInfoWindow", "Détails de la carte", menuIcon("spacemap"), false, { dock: false });
+  reg("galaxyGateWindow", "Galaxy Gates", menuIcon("portal_hover"), false);
+  reg("starMapWindow", "Carte Stellaire", menuIcon("starmap_hover"), false);
+  reg("starMapInfoWindow", "Détails de la carte", menuIcon("starmap_hover"), false, { dock: false });
   window.GameWindowManager.close("starMapInfoWindow");
-  reg("gameLogWindow", "LOG", menuIcon("log"), false);
-  reg("chatWindow", "Chat", menuIcon("chat"), true);
-  reg("groupWindow", "Groupe", menuIcon("group"), false);
-  reg("friendsWindow", "Amis", menuIcon("contacts"), false);
-  reg("clanWindow", "Clan", menuIcon("clan"), false);
-  reg("rankingWindow", "Classement", menuIcon("highscoregate"), false);
+  reg("gameLogWindow", "LOG", menuIcon("text_hover"), false);
+  reg("chatWindow", "Chat", menuIcon("chat_hover"), true);
+  reg("groupWindow", "Groupe", menuIcon("crew_hover"), false);
+  reg("friendsWindow", "Amis", menuIcon("addfriend_hover"), false);
+  reg("clanWindow", "Clan", menuIcon("clan_hover"), false);
+  reg("rankingWindow", "Classement", menuIcon("ranking_hover"), false);
   // Assemblage (voir CRAFTING_ENABLED) : icône dock + fenêtre si activé.
-  if (CRAFTING_ENABLED) reg("craftingWindow", "Assemblage", menuIcon("assembly"), false);
+  if (CRAFTING_ENABLED) reg("craftingWindow", "Assemblage", menuIcon("tech_hover"), false);
   else {
     document.getElementById("craftingWindow")?.style.setProperty("display", "none", "important");
     window.GameWindowManager?.close?.("craftingWindow");
   }
-  reg("petWindow", "P.E.T", menuIcon("pet"), false);
-  reg("oreTradeWindow", "Commerce", menuIcon("ore_trade"), false, { dock: false });
+  reg("petWindow", "P.E.T", `<img class="menuIconImg" src="ASSETS/CONTROL_MENU/pet_hover.png?v=${encodeURIComponent(String(GAME_VERSION || "0"))}" alt="" draggable="false">`, false);
+  reg("oreTradeWindow", "Commerce", menuIcon("ore_trade_hover"), false, { dock: false });
   window.GameWindowManager?.close?.("oreTradeWindow");
-  reg("stationWindow", "Station de Combat", menuIcon("armoryUnlock"), false, { dock: false });
+  reg("stationWindow", "Station de Combat", menuIcon("armoryUnlock_hover"), false, { dock: false });
   window.GameWindowManager?.close?.("stationWindow");
-  reg("refineryWindow", "Raffinage", menuIcon("refinement"), false);
-  reg("skylabWindow", "Skylab", menuIcon("skylab"), false);
-  reg("auctionWindow", "Enchères", menuIcon("auction"), false);
-  reg("pilotWindow", "Arbre des compétences", menuIcon("ship_boost_event"), false);
-  reg("boosterWindow", "Boosters", menuIcon("booster"), false);
-  reg("botWindow", "BOT", menuIcon("payload_escort"), false);
-  reg("wikiWindow", "Wiki / Aide", menuIcon("help"), false);
-  reg("tdmWindow", "Inventaire", menuIcon("monthly_deluxe"), false);
-  reg("titleWindow", "Titres", menuIcon("wargame_event"), false);
-  reg("passWindow", "Passe de combat", menuIcon("battle_pass"), false);
-  reg("dpsWindow", "DPS", menuIcon("infiltration"), false);
+  reg("refineryWindow", "Raffinage", menuIcon("refinement_hover"), false);
+  reg("skylabWindow", "Skylab", menuIcon("skylab_hover"), false);
+  reg("auctionWindow", "Enchères", menuIcon("auction_hover"), false);
+  reg("pilotWindow", "Arbre des compétences", menuIcon("skilltree_hover"), false);
+  reg("boosterWindow", "Boosters", menuIcon("gauge_hover"), false);
+  reg("botWindow", "BOT", menuIcon("bot_hover"), false);
+  reg("wikiWindow", "Wiki / Aide", menuIcon("help_hover"), false);
+  reg("tdmWindow", "Inventaire", menuIcon("inventory_hover"), false);
+  reg("titleWindow", "Titres", menuIcon("titles_hover"), false);
+  reg("passWindow", "Passe de combat", menuIcon("rank_hover"), false);
+  reg("dpsWindow", "DPS", menuIcon("dps_hover"), false);
   try {
     document.getElementById("dpsResetBtn")?.addEventListener("click", () => {
       try { resetDpsLog(); } catch {}
@@ -18723,7 +18723,8 @@ function addGameLog(text, type = "info") {
   if (!value) return;
   const entry = { text: value, type, timestamp: Date.now() };
   sessionGameLog.push(entry);
-  if (sessionGameLog.length > 250) sessionGameLog.shift();
+  // Pas de plafond mémoire : l'historique complet reste dispo (et persisté
+  // en IndexedDB via appendGameLog ci-dessous).
   const logVisibleNow = () => ui.gameLogWindow
     && ui.gameLogWindow.style.display !== "none"
     && !ui.gameLogWindow.classList.contains("gameWinMinimized");
@@ -18838,8 +18839,8 @@ function setNotificationText(node, value, { goldTerms = [], whiteTerms = [], vio
   if (cursor < value.length) node.append(document.createTextNode(value.slice(cursor)));
 }
 
-const MAX_VISIBLE_NOTIFICATIONS = 8;
-const NOTIFICATION_FLOW_STEP_MS = 1200;
+const MAX_VISIBLE_NOTIFICATIONS = 10;
+const NOTIFICATION_FLOW_STEP_MS = 600;
 const pendingNotifications = [];
 let pendingNotificationGroup = null;
 let notificationGroupFrame = 0;
@@ -18925,7 +18926,7 @@ function flushLatestNotificationGroup() {
       node._removeTimer = setTimeout(() => removeNotificationNode(node), 700);
     }
   }
-  const nodes = group.slice(-MAX_VISIBLE_NOTIFICATIONS).map(spec => mountNotification(spec, true));
+  const nodes = group.map(spec => mountNotification(spec, true));
   // Insere tout le groupe, lit toutes les hauteurs, puis applique les styles.
   // L'ancien aller-retour DOM/scrollHeight forcait un layout par ligne.
   const heights = nodes.map(node => node.scrollHeight);
@@ -18936,7 +18937,9 @@ function flushLatestNotificationGroup() {
 function showNotificationGroup(messages, type = "info", { goldTerms = [], whiteTerms = [], violetTerms = [], minVisibleMs = 3800 } = {}) {
   const values = messages.map(message => String(message ?? "").trim()).filter(Boolean);
   if (!values.length) return;
-  pendingNotificationGroup = values.map(value => ({
+  // File d'attente réelle : en rafale (farm à 50), les groupes s'ajoutent
+  // au lieu de s'écraser — chaque "Vous avez reçu" finit par s'afficher.
+  pendingNotificationGroup = [...(pendingNotificationGroup || []), ...values.map(value => ({
     value,
     type,
     goldTerms,
@@ -18945,7 +18948,7 @@ function showNotificationGroup(messages, type = "info", { goldTerms = [], whiteT
     minVisibleMs,
     stagger: true,
     durationMs: 4000,
-  }));
+  }))];
   if (!notificationGroupFrame) notificationGroupFrame = requestAnimationFrame(flushLatestNotificationGroup);
 }
 
@@ -18956,8 +18959,7 @@ function showNotification(text, dur = 2, type = "info", { log = true, goldTerms 
   if (!ui.orbitNotifications) return;
   const spec = { value, type, goldTerms, minVisibleMs, stagger, durationMs: Number(dur) * 1000 };
   if (ui.orbitNotifications.children.length >= MAX_VISIBLE_NOTIFICATIONS) {
-    pendingNotifications[0] = spec;
-    pendingNotifications.length = 1;
+    pendingNotifications.push(spec);
     makeRoomForLatestNotification();
   } else {
     mountNotification(spec);
@@ -26001,10 +26003,10 @@ function drawTbrClones(ox, oy, remote = null) {
 
 const ENTITY_LIMITS = Object.freeze({
   playerBullets: 320,
-  enemyBullets: 900,
+  enemyBullets: 1500,
   explosions: 48,
   sparks: 180,
-  floatTexts: 260,
+  floatTexts: 600,
   lasers: 80,
   pulseFxs: 12,
   smbFxs: 12,
@@ -26307,7 +26309,8 @@ function cleanupPlayerMissVolley(b) {
 function addMissText(x, y) {
   const base = 70 + Math.random() * 35;
 
-  pushBounded(floatTexts, {
+  // Pas de plafond (cf. addFloatText) : les MISS s'affichent tous.
+  floatTexts.push({
     x,
     y,
     vx: (Math.random() * 2 - 1) * base * 0.45,
@@ -26322,7 +26325,7 @@ function addMissText(x, y) {
     glow: 1.0,
     weight: 900,
     impact: true,
-  }, ENTITY_LIMITS.floatTexts);
+  });
 }
 
 const CUBI_RESET = { 
@@ -26633,7 +26636,9 @@ function addFloatText(x, y, n, color, opts = {}) {
   const vx0 = (Math.random() * 2 - 1) * base * 0.60;
   const vy0 = -(base * (0.85 + Math.random() * 0.35));
 
-  pushBounded(floatTexts, {
+  // Pas de plafond : les textes expirent par eux-mêmes (life), et chaque
+  // gain affiché compte. En farm à 50, aucun affichage ne saute.
+  floatTexts.push({
     x,
     y,
     vx: vx0,
@@ -26648,7 +26653,7 @@ function addFloatText(x, y, n, color, opts = {}) {
     glow: o.glow,
     weight: o.weight,
     impact: o.impact,
-  }, ENTITY_LIMITS.floatTexts);
+  });
 }
 
 function addPlayerCombatFloat(amount, color, prefix = "") {
@@ -29910,7 +29915,7 @@ function laserDpsBreakdown() {
   R("Boosters dégâts", fmtMult(booster), fmtMult(booster), "dpsF3");
   R("Améliorations laser", fmtMult(upgrade), fmtMult(upgrade), "dpsF6");
   const npcMult = laserBlock * (fVsNpc ? Math.max(0, 1 + fVsNpc / 100) : 1) * pilotNpc * booster * upgrade;
-  const pvpMult = laserBlock * (fVsPlayers ? Math.max(0, 1 + fVsPlayers / 100) : 1) * booster * upgrade;
+  const pvpMult = laserBlock * (fVsPlayers ? Math.max(0, 1 + fVsPlayers / 100) : 1) * pilotPvp * booster * upgrade;
   return {
     rows,
     npc: { totalMult: npcMult, perVolley: Math.round(base * npcMult) },
@@ -36602,7 +36607,7 @@ function tickNetplayVisuals(dt) {
   let evs = [];
   try { evs = drainNetShotEvents(); } catch {}
   if (!evs.length) return;
-  for (const ev of evs.slice(0, 32)) {
+  for (const ev of evs.slice(0, 128)) {
     try {
       if (!ev || (ev.t !== "shot" && ev.t !== "rshot")) continue;
       if (ev.t === "rshot") spawnNetRocketVisual(ev);

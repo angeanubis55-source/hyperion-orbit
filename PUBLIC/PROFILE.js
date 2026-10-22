@@ -6358,7 +6358,7 @@ function registerProfileWindow() {
   window.GameWindowManager.register({
     id: "profileWindow",
     title: "Espace pilote",
-    icon: `<img class="menuIconImg" src="/ASSETS/UI/MENU/user.png" alt="" draggable="false">`,
+    icon: `<img class="menuIconImg" src="/ASSETS/UI/MENU/profile_hover.png" alt="" draggable="false">`,
     root,
     card,
     defaultOpen: false,
@@ -6415,7 +6415,7 @@ function registerShopWindow() {
   window.GameWindowManager.register({
     id: "shopWindow",
     title: "Boutique",
-    icon: `<img class="menuIconImg" src="/ASSETS/UI/MENU/shop.png" alt="" draggable="false">`,
+    icon: `<img class="menuIconImg" src="/ASSETS/UI/MENU/shop_hover.png" alt="" draggable="false">`,
     root,
     card,
     defaultOpen: false,
@@ -6473,7 +6473,7 @@ function registerHangarWindow() {
   window.GameWindowManager.register({
     id: "hangarWindow",
     title: "Hangars & Équipement",
-    icon: `<img class="menuIconImg" src="/ASSETS/UI/MENU/hangar.png" alt="" draggable="false">`,
+    icon: `<img class="menuIconImg" src="/ASSETS/UI/MENU/hangar_hover.png" alt="" draggable="false">`,
     root,
     card,
     defaultOpen: false,
