@@ -8869,16 +8869,16 @@ function initializeCustomActionBar() {
       }
     }
     else if (category === "formations") {
-      // Formations non possédées : masquées (classiques toujours visibles).
-      let ownedFormations = null;
-      let activeFormationId = "";
-      try { ownedFormations = new Set(account.user?.drones?.formations || []); } catch { ownedFormations = null; }
-      try { activeFormationId = getActiveDroneFormation(account.user).id; } catch {}
+      // Dock rapide : seules les formations possédées sont affichées
+      // (l'activation est de toute façon refusée sans possession).
+      let ownedFormations = new Set(["standard"]);
+      try {
+        const list = account.user?.drones?.formations;
+        if (Array.isArray(list)) ownedFormations = new Set([...list.map((f) => String(f || "").toLowerCase()), "standard"]);
+      } catch {}
       formationButtons.filter((button) => {
-        const fid = String(button.dataset.actionId || "").slice("formation:".length);
-        if (fid && fid === activeFormationId) return true;
-        try { if (isClassicFormation(fid)) return true; } catch {}
-        return !!ownedFormations && ownedFormations.has(fid);
+        const fid = String(button.dataset.actionId || "").slice("formation:".length).toLowerCase();
+        return ownedFormations.has(fid);
       }).forEach(button => {
       const clone = button.cloneNode(true); clone.className = "formationQuickAction dockAction" + (button.classList.contains("formationClassic") ? " formationClassic" : ""); clone.draggable = true;
       clone.classList.toggle("active", button.dataset.actionId === `formation:${account?.user?.drones?.activeFormation}`);
@@ -10951,13 +10951,14 @@ function renderBoosterWindow() {
     for (const b of stationClanBaseBonuses()) {
       const pushBaseFacet = (key, pct, icon, short) => {
         if (!(Number(pct) > 0)) return;
-        const capped = key === "honorPct" || key === "expPct";
+        const capTxt = key === "honorPct" || key === "expPct" ? " (plafond +50 % au total)"
+          : key === "dmgPct" || key === "repairPct" ? " (plafond +10 % au total)" : "";
         facets.push({
           def: {
             id: `station-base-${String(b.map || "").toLowerCase()}-${key}`,
             code: `BASE ${b.map}`,
             name: `Base ${b.map} — module ${short}`,
-            desc: `Module ${short} de la base de combat : +${pct} %${capped ? " (plafond +50 % au total)" : ""}, cumulé aux boosters.`,
+            desc: `Module ${short} de la base de combat : +${pct} %${capTxt}, cumulé aux boosters.`,
             iconMini: icon,
             effect: { [key]: Number(pct) || 0 },
           },
@@ -11019,9 +11020,11 @@ function renderBoosterWindow() {
       html += `<div class="boosterSingle" data-family="${key}" data-base="${b.base}" style="--boost:${color}"><span class="singleRail"><span class="boosterPct">+${b.pct}%</span><span class="singleBar" aria-hidden="true"></span></span>${rowHtml(b)}</div>`;
     } else if (baseRows.length > 1) {
       const rawTotal = Math.round(baseRows.reduce((sum, f) => sum + (Number(f.pct) || 0), 0));
-      const capped = key === "honorPct" || key === "expPct";
-      const shownTotal = capped ? Math.min(rawTotal, 50) : rawTotal;
-      const capNote = capped && rawTotal > 50 ? ` title="Total appliqué (plafond +50 %)"` : "";
+      const cap50 = key === "honorPct" || key === "expPct";
+      const cap10 = key === "dmgPct" || key === "repairPct";
+      const cap = cap50 ? 50 : cap10 ? 10 : Infinity;
+      const shownTotal = Math.min(rawTotal, cap);
+      const capNote = rawTotal > cap ? ` title="Total appliqué (plafond +${cap} %)"` : "";
       html += `<div class="boosterGroup" data-family="${key}" style="--boost:${color}"><div class="boosterGroupRail"><span class="boosterCombined"${capNote}>+${shownTotal}%</span><span class="bracket" aria-hidden="true"></span></div><div class="boosterGroupCards">`;
       for (const b of baseRows) {
         html += `<div class="boosterSingle" data-family="${key}" data-base="${b.base}" style="--boost:${color}"><span class="singleRail"><span class="boosterPct">+${b.pct}%</span><span class="singleBar" aria-hidden="true"></span></span>${rowHtml(b)}</div>`;
@@ -20047,7 +20050,9 @@ function stationClanBonusTotal(key) {
 }
 
 function stationClanDmgMult() {
-  const total = stationClanBonusTotal("dmg");
+  // Bonus bases plafonné à +10 % : même avec 23 bases au module dégâts,
+  // seules 10 % s'appliquent (5 bases).
+  const total = Math.min(10, stationClanBonusTotal("dmg"));
   return total > 0 ? 1 + total / 100 : 1;
 }
 
@@ -20066,7 +20071,9 @@ function stationClanExpMult() {
 }
 
 function stationClanRepMult() {
-  const total = stationClanBonusTotal("rep");
+  // Bonus bases plafonné à +10 % : même avec 23 bases au module réparation,
+  // seules 10 % s'appliquent (5 bases).
+  const total = Math.min(10, stationClanBonusTotal("rep"));
   return total > 0 ? 1 + total / 100 : 1;
 }
 
@@ -20451,6 +20458,46 @@ function tickStationLogic() {
       zoneStation.cbsButtonPressed = false;
       if (isStationWindowOpen()) window.GameWindowManager?.minimize?.("stationWindow");
     }
+    // Fenêtre station : s'éloigner ou mourir la réduit dans tous les cas.
+    // Base NON construite : la pose en cours est annulée (module retiré,
+    // stock recrédité au sync). Base construite : le remplacement continue,
+    // seule la fenêtre se réduit.
+    try {
+      const st = zoneStation;
+      let dead = false;
+      try { dead = !!player?.dead; } catch {}
+      let far = true;
+      try { far = !isPlayerNearStation(); } catch {}
+      if ((far || dead) && isStationWindowOpen()
+        && !(ui.stationWindow && ui.stationWindow.classList.contains("gameWinMinimized"))) {
+        try { window.GameWindowManager?.minimize?.("stationWindow"); } catch {}
+      }
+      if (!st.built && (far || dead) && stationSharedActive()) {
+        const now = Date.now();
+        const sent = tickStationLogic._stationAutoCancel || (tickStationLogic._stationAutoCancel = {});
+        for (const k of Object.keys(sent)) {
+          if (now - Number(sent[k] || 0) > 15000) { try { delete sent[k]; } catch {} }
+        }
+        const me = (() => { try { return String(netMyId() || ""); } catch { return ""; } })();
+        const pendings = [];
+        try {
+          if (st.hub && Number(st.hubCd) > now && (!me || !st.hubPlacer || String(st.hubPlacer) === me)) pendings.push("hub");
+        } catch {}
+        try {
+          for (const s of st.slots || []) {
+            if (!s?.id || !s.resourceId || !(Number(s.cooldownUntil) > now)) continue;
+            if (me && s.placerId && String(s.placerId) !== me) continue;
+            pendings.push(String(s.id));
+          }
+        } catch {}
+        for (const sid of pendings) {
+          if (now - Number(sent[sid] || 0) < 10000) continue;
+          sent[sid] = now;
+          try { stationUninstallSlot(sid); } catch {}
+          try { showToast("Pose annulée — trop loin de la base.", 2); } catch {}
+        }
+      }
+    } catch {}
     // Flottants réparation : +85 000/+42 500 par seconde pendant un cycle
     // actif, +5 000 en passif REP. Membres du clan uniquement (même
     // chiffre sur tous les écrans). On marque les pièces ayant vraiment
@@ -21790,7 +21837,7 @@ function isTextOnlyMutation(records) {
 function ensureActionDockCache() {
   const bar = document.getElementById("ammoBar");
   if (!bar) return null;
-  const fresh = { bar, ammo: [], formations: [], skills: [], rockets: [], abilities: [], petmodes: [], techmodes: [] };
+  const fresh = { bar, ammo: [], formations: [], skills: [], rockets: [], launchers: [], abilities: [], petmodes: [], techmodes: [] };
   for (const button of bar.querySelectorAll("[data-ammo]")) {
     fresh.ammo.push({ button, ammo: button.dataset.ammo, small: button.querySelector("small") });
   }
@@ -21800,7 +21847,7 @@ function ensureActionDockCache() {
   for (const button of bar.querySelectorAll("[data-action-id^='rocket:']")) {
     // Standards uniquement : le lance-roquettes est exclu (comme pour l'IEM).
     const rid = String(button.dataset.actionId || "").slice("rocket:".length).toLowerCase();
-    if (getRocketType(rid)?.manual === false) continue;
+    if (getRocketType(rid)?.manual === false) { fresh.launchers.push({ button, rocketId: rid }); continue; }
     fresh.rockets.push({ button, rocketId: rid });
   }
   for (const button of bar.querySelectorAll("[data-skill]")) {
@@ -21867,6 +21914,12 @@ function syncActionDockState() {
     const value = ammo === "x1" ? "∞" : formatAmmoCount(player.ammo[ammo]);
     applyDockField(button, "active", ammo === activeAmmo,
       (v) => button.classList.toggle("active", v));
+    // Dock rapide : munition épuisée (sauf X1 infini) = masquée.
+    try {
+      const hasStock = String(ammo || "").toLowerCase() === "x1" || Number(player.ammo?.[ammo] || 0) > 0;
+      applyDockField(button, "stock", hasStock,
+        (v) => { button.style.display = v ? "" : "none"; });
+    } catch {}
     applyDockField(button, "text", value,
       (v) => { if (small) small.textContent = v; });
     // Survol : nom + quantité live.
@@ -21928,6 +21981,20 @@ function syncActionDockState() {
     const selected = actionId === `formation:${activeFormationId}`;
     applyDockField(button, "active", selected,
       (v) => button.classList.toggle("active", v));
+    // Dock rapide : seules les formations possédées sont affichées
+    // (standard toujours visible, c'est la formation de base).
+    try {
+      let owned = null;
+      try {
+        const list = account?.user?.drones?.formations;
+        if (Array.isArray(list) && list.length) owned = new Set(list.map((f) => String(f || "").toLowerCase()));
+      } catch {}
+      if (!owned) owned = new Set(["standard"]);
+      owned.add("standard");
+      const fid = String(actionId || "").split(":")[1] || "";
+      applyDockField(button, "owned", owned.has(fid.toLowerCase()),
+        (v) => { button.style.display = v ? "" : "none"; });
+    } catch {}
     // Pendant le verrou, toutes les formations sont indisponibles :
     // le voile s'affiche sur chaque slot qui contient une formation.
     const cooling = formationLockLeft > 0;
@@ -21950,6 +22017,12 @@ function syncActionDockState() {
     const cooldownLeft = rocketCooldownLeft(rocketId);
     const cooldownMax = rocketCooldownMaxFor(rocketId);
     const cooling = cooldownLeft > 0;
+    // Dock rapide : roquette épuisée = masquée (comme la palette).
+    try {
+      const hasStock = rocketCount(rocketId) > 0;
+      applyDockField(button, "stock", hasStock,
+        (v) => { button.style.display = v ? "" : "none"; });
+    } catch {}
     // Survol : nom + quantité live.
     try {
       const tip = rocketTip(rocketId);
@@ -21967,6 +22040,15 @@ function syncActionDockState() {
       if (edge) applyDockField(button, "cdEdge", edge,
         (v) => button.style.setProperty("--cd-edge", v));
     }
+  }
+
+  // Lance-roquettes : masqué si stock épuisé (comme roquettes et palette).
+  for (const { button, rocketId } of actionDockCache.launchers || []) {
+    try {
+      const hasStock = rocketCount(rocketId) > 0;
+      applyDockField(button, "stock", hasStock,
+        (v) => { button.style.display = v ? "" : "none"; });
+    } catch {}
   }
 
   // Aptitudes : voile de recharge sur chaque slot d'aptitude (slots + palette),
@@ -29710,14 +29792,15 @@ function dpsSnapshot(windowSec = 5) {
   const dps = win / Math.max(1, Number(windowSec) || 5);
   return { dps, plusGros: dpsMaxSalve, total: dpsTotalAll, byKind: { ...dpsByKindAll }, hits: dpsHitsAll, last: dpsSalveCur };
 }
-// Fiche du calcul laser : base coque + chaque multiplicateur de la
-// formule de tir, affichés en × (jamais de "+-"), avec le produit et
-// l'estimation par salve. La base inclut déjà le laserDamagePct de la
-// formation (hangar) : on le retire pour l'afficher dans sa propre ligne
-// sans double comptage. Les bonus conditionnels (vs joueurs / vs NPC)
-// sont informatifs et exclus du produit.
+// Fiche du calcul laser : deux colonnes (NPC / Joueurs), base coque +
+// chaque multiplicateur de la formule de tir, affichés en × (jamais de
+// "+-"), avec le produit et l'estimation par salve par cible. La base
+// inclut déjà modules + formation + designs (additif hangar) : chaque ligne
+// affiche son propre facteur (Modules stable à tout changement de
+// formation) et le total applique le bloc additif exact. Arbre pilote :
+// bonus vs aliens sur NPC, ×1,00 vs joueurs (aucun bonus pilote dégâts
+// vs joueurs n'existe).
 function laserDpsBreakdown() {
-  const rows = [];
   const num = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
   const fmtMult = (f) => `×${Number(f).toFixed(2).replace(".", ",")}`;
   const baseFull = Math.max(1, Math.round(num(player?.baseDamage)));
@@ -29741,38 +29824,55 @@ function laserDpsBreakdown() {
   rawLaser = Math.max(0, Math.round(rawLaser));
   const splitBase = rawLaser > 0 && baseNoFormation >= rawLaser;
   const base = splitBase ? rawLaser : baseNoFormation;
-  let mult = 1;
-  const push = (label, factor, cls) => {
-    const f = Math.max(0, Number(factor) || 0);
-    rows.push({ label, factor: f, detail: fmtMult(f), cls });
-    mult *= f;
-  };
-  if (splitBase) {
-    rows.push({ label: "Base laser", factor: 1, detail: formatInteger(base), cls: "dpsFBase" });
-    push("Modules", baseNoFormation / rawLaser, "dpsF1");
-  } else {
-    rows.push({ label: "Base coque + modules", factor: 1, detail: formatInteger(base), cls: "dpsFBase" });
-  }
-  push("Designs drones", 1 + num(player?.droneDamageBonusPct) / 100, "dpsF2");
+  // Deux calculs côte à côte : NPC et Joueurs. Le jeu cumule modules +
+  // formation de façon ADDITIVE dans baseDamage : séparer par division
+  // ferait bouger la ligne Modules à chaque changement de formation. On
+  // fige donc chaque ligne sur son propre facteur et on applique le bloc
+  // laser additif exact au total. Lignes "vs ..." et "Arbre pilote" :
+  // valeurs réelles par cible (la formule des tirs applique alienDmg aux
+  // NPC ; aucun bonus pilote dégâts vs joueurs n'existe).
   let booster = 1;
   try { booster = num(playerBoosterMults()?.dmg) || 1; } catch {}
-  push("Boosters dégâts", booster, "dpsF3");
-  push(formationName, fLaserFactor, "dpsF4");
-  let pilot = 1;
-  try { pilot = num(playerPilotMults()?.alienDmg) || 1; } catch {}
-  push("Arbre pilote", pilot, "dpsF5");
+  let pilotNpc = 1;
+  try { pilotNpc = num(playerPilotMults()?.alienDmg) || 1; } catch {}
   let upgrade = 1;
   try { upgrade = num(playerUpgradeMults()?.laser) || 1; } catch {}
-  push("Améliorations laser", upgrade, "dpsF6");
-  if (fVsPlayers) {
-    const f = Math.max(0, 1 + fVsPlayers / 100);
-    rows.push({ label: "Formation vs joueurs", factor: f, detail: fmtMult(f), conditional: true, cls: "dpsF5" });
+  // Une seule liste de lignes : libellé à gauche, valeur NPC, valeur
+  // Joueurs ("—" si sans objet). Évite de réécrire le texte deux fois.
+  const rows = [];
+  let laserBlock = 1;
+  const R = (label, npcDetail, pvpDetail, cls) => {
+    rows.push({ label, npc: npcDetail == null ? null : String(npcDetail), pvp: pvpDetail == null ? null : String(pvpDetail), cls });
+  };
+  if (splitBase) {
+    R("Base laser", formatInteger(base), formatInteger(base), "dpsFBase");
+    const totalLaserPct = baseFull > 0 ? (baseFull / rawLaser - 1) * 100 : 0;
+    // Designs drones déjà inclus dans baseDamage (bonusDamagePct) : les
+    // retirer du bloc Modules pour ne pas les compter deux fois.
+    const designsPct = num(player?.droneDamageBonusPct);
+    const modulesOwnPct = totalLaserPct - fLaser - designsPct;
+    R("Modules", fmtMult(1 + modulesOwnPct / 100), fmtMult(1 + modulesOwnPct / 100), "dpsF1");
+    R("Designs drones", fmtMult(1 + designsPct / 100), fmtMult(1 + designsPct / 100), "dpsF2");
+    R(formationName, fmtMult(fLaserFactor), fmtMult(fLaserFactor), "dpsF4");
+    laserBlock = Math.max(0, 1 + totalLaserPct / 100);
+  } else {
+    R("Base coque + modules", formatInteger(base), formatInteger(base), "dpsFBase");
+    R(formationName, fmtMult(fLaserFactor), fmtMult(fLaserFactor), "dpsF4");
+    R("Designs drones", fmtMult(1 + num(player?.droneDamageBonusPct) / 100), fmtMult(1 + num(player?.droneDamageBonusPct) / 100), "dpsF2");
+    laserBlock = Math.max(0, Number(fLaserFactor) || 0);
   }
-  if (fVsNpc) {
-    const f = Math.max(0, 1 + fVsNpc / 100);
-    rows.push({ label: "Formation vs NPC", factor: f, detail: fmtMult(f), conditional: true, cls: "dpsF5" });
-  }
-  return { rows, totalMult: mult, perVolley: Math.round(base * mult) };
+  if (fVsNpc) R("Formation vs NPC", fmtMult(Math.max(0, 1 + fVsNpc / 100)), null, "dpsF5");
+  if (fVsPlayers) R("Formation vs joueurs", null, fmtMult(Math.max(0, 1 + fVsPlayers / 100)), "dpsF5");
+  R("Arbre pilote", fmtMult(pilotNpc), fmtMult(1), "dpsF5");
+  R("Boosters dégâts", fmtMult(booster), fmtMult(booster), "dpsF3");
+  R("Améliorations laser", fmtMult(upgrade), fmtMult(upgrade), "dpsF6");
+  const npcMult = laserBlock * (fVsNpc ? Math.max(0, 1 + fVsNpc / 100) : 1) * pilotNpc * booster * upgrade;
+  const pvpMult = laserBlock * (fVsPlayers ? Math.max(0, 1 + fVsPlayers / 100) : 1) * booster * upgrade;
+  return {
+    rows,
+    npc: { totalMult: npcMult, perVolley: Math.round(base * npcMult) },
+    pvp: { totalMult: pvpMult, perVolley: Math.round(base * pvpMult) },
+  };
 }
 
 function applyRocketHit(e, b, recipient = player) {

@@ -1237,9 +1237,9 @@ body.phoneDockEditorOpen #ammoBar .phoneEditorSelected {
 }
 /* --- Fenêtre DPS --- */
 .dpsPanel {
-  min-width:min(240px,calc(100vw - 24px));
-  width:260px;
-  max-width:min(320px,calc(100vw - 24px));
+  min-width:min(340px,calc(100vw - 24px));
+  width:360px;
+  max-width:min(400px,calc(100vw - 24px));
   box-sizing:border-box;
   background:linear-gradient(180deg, rgba(17,22,34,.97), rgba(9,12,20,.97));
   border:1px solid rgba(255,255,255,.12);
@@ -1266,9 +1266,9 @@ body.phoneDockEditorOpen #ammoBar .phoneEditorSelected {
   min-width:0;
 }
 #dpsWindow.gameWindow.floating {
-  min-width:min(240px,calc(100vw - 24px)) !important;
-  max-width:min(320px,calc(100vw - 24px)) !important;
-  width:260px !important;
+  min-width:min(340px,calc(100vw - 24px)) !important;
+  max-width:min(400px,calc(100vw - 24px)) !important;
+  width:360px !important;
 }
 .dpsHeadRows .row .k,
 .dpsHeadRows .row .v,
@@ -1329,8 +1329,52 @@ body.phoneDockEditorOpen #ammoBar .phoneEditorSelected {
 .dpsCalcRows {
   padding:10px 14px 0;
 }
-.dpsCalcRows .row {
-  padding:1px 0;
+.dpsCalcTable {
+  width:100%;
+  border-collapse:collapse;
+  margin:6px 0 8px;
+  table-layout:fixed;
+}
+.dpsCalcTable thead th {
+  font-size:11px;
+  font-weight:800;
+  color:#fff;
+  padding:2px 6px 4px;
+  text-align:right;
+  white-space:nowrap;
+}
+.dpsCalcTable thead th:first-child { text-align:left; padding-left:14px; }
+.dpsCalcTable td:first-child { padding-left:14px; }
+.dpsCalcTable thead th.dpsColSep,
+.dpsCalcTable td.dpsColSep {
+  width:1px;
+  padding:0 3px;
+  background:rgba(255,255,255,.18);
+  background-clip:content-box;
+}
+.dpsCalcTable td {
+  padding:1px 6px;
+  font-variant-numeric:tabular-nums;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+.dpsCalcTable td.k { text-align:left; }
+.dpsCalcTable td.v { text-align:right; font-weight:700; }
+.dpsCalcTable thead th:last-child,
+.dpsCalcTable td:last-child { padding-right:14px; }
+.dpsCalcTable td.dpsEmpty { color:rgba(154,163,178,.5); }
+.dpsCalcTable thead th:nth-child(2),
+.dpsCalcTable thead th:nth-child(4),
+.dpsCalcTable td.v { width:64px; }
+.dpsCalcTable tfoot td {
+  padding-top:6px;
+  font-weight:700;
+}
+.dpsCalcTable tfoot td.k { color:#fff; }
+.dpsCalcTable tfoot td.v {
+  color:#ffd76b;
+  text-shadow:0 0 10px rgba(255,180,60,.4);
 }
 .dpsCalcRows .row .k {
   max-width:60%;
@@ -1347,13 +1391,13 @@ body.phoneDockEditorOpen #ammoBar .phoneEditorSelected {
   text-overflow:ellipsis;
   white-space:nowrap;
 }
-.dpsCalcRows .row .v.dpsFBase, .dpsCalcRows .row .k.dpsFBase { color:#9aa3b2; }
-.dpsCalcRows .row .v.dpsF1, .dpsCalcRows .row .k.dpsF1 { color:#7ec8ff; }
-.dpsCalcRows .row .v.dpsF2, .dpsCalcRows .row .k.dpsF2 { color:#ff9a5c; }
-.dpsCalcRows .row .v.dpsF3, .dpsCalcRows .row .k.dpsF3 { color:#c99aff; }
-.dpsCalcRows .row .v.dpsF4, .dpsCalcRows .row .k.dpsF4 { color:#57ff8a; }
-.dpsCalcRows .row .v.dpsF5, .dpsCalcRows .row .k.dpsF5 { color:#ff6b9d; }
-.dpsCalcRows .row .v.dpsF6, .dpsCalcRows .row .k.dpsF6 { color:#ff5252; }
+.dpsCalcTable td.dpsFBase, .dpsCalcRows .row .v.dpsFBase, .dpsCalcRows .row .k.dpsFBase { color:#9aa3b2; }
+.dpsCalcTable td.dpsF1, .dpsCalcRows .row .v.dpsF1, .dpsCalcRows .row .k.dpsF1 { color:#7ec8ff; }
+.dpsCalcTable td.dpsF2, .dpsCalcRows .row .v.dpsF2, .dpsCalcRows .row .k.dpsF2 { color:#ff9a5c; }
+.dpsCalcTable td.dpsF3, .dpsCalcRows .row .v.dpsF3, .dpsCalcRows .row .k.dpsF3 { color:#c99aff; }
+.dpsCalcTable td.dpsF4, .dpsCalcRows .row .v.dpsF4, .dpsCalcRows .row .k.dpsF4 { color:#57ff8a; }
+.dpsCalcTable td.dpsF5, .dpsCalcRows .row .v.dpsF5, .dpsCalcRows .row .k.dpsF5 { color:#ff6b9d; }
+.dpsCalcTable td.dpsF6, .dpsCalcRows .row .v.dpsF6, .dpsCalcRows .row .k.dpsF6 { color:#ff5252; }
 .dpsTotalRow {
   padding:1px 14px;
   font-weight:700;

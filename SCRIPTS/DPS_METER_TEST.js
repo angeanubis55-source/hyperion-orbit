@@ -85,7 +85,7 @@ test("dpsSnapshot : fenêtre glissante fixe de 5 s, totaux persistants et reset 
   assert.equal(snap.last, 0);
 });
 
-test("laserDpsBreakdown : base et produit des multiplicateurs", () => {
+test("laserDpsBreakdown : base et produit des multiplicateurs, sans double comptage", () => {
   const ctx = {
     player: { baseDamage: 8000, droneDamageBonusPct: 12, laserMods: [{ damage: 5000 }], droneLaserMods: [{ damage: 1000 }] },
     account: { user: {} },
@@ -101,11 +101,18 @@ test("laserDpsBreakdown : base et produit des multiplicateurs", () => {
   const out = vm.runInContext("laserDpsBreakdown()", ctx);
   assert.equal(out.rows.length, 7);
   assert.equal(out.rows[0].label, "Base laser");
-  assert.equal(out.rows[0].detail, "6000");
+  assert.equal(out.rows[0].npc, "6000");
+  assert.equal(out.rows[0].pvp, "6000");
   assert.equal(out.rows[1].label, "Modules");
-  assert.ok(Math.abs(out.totalMult - (Math.round(8000 / 1.08) / 6000) * 1.12 * 1.1 * 1.08 * 1.05) < 1e-6, "base × modules × reste, sans double comptage");
-  assert.equal(out.perVolley, Math.round(6000 * out.totalMult));
-  assert.equal(out.rows[4].detail, "×1,08", "facteur avec virgule, jamais de +-");
+  assert.equal(out.rows[3].label, "Cœur");
+  assert.equal(out.rows[3].npc, "×1,08", "facteur avec virgule, jamais de +-");
+  assert.equal(out.rows[4].label, "Arbre pilote");
+  assert.equal(out.rows[4].npc, "×1,05");
+  assert.equal(out.rows[4].pvp, "×1,00");
+  assert.ok(Math.abs(out.npc.totalMult - (8000 / 6000) * 1.1 * 1.05) < 1e-6, "base × boosters × pilote, designs non recomptés");
+  assert.equal(out.npc.perVolley, Math.round(6000 * out.npc.totalMult));
+  assert.ok(Math.abs(out.pvp.totalMult - (8000 / 6000) * 1.1) < 1e-6, "pas de bonus pilote vs joueurs");
+  assert.equal(out.pvp.perVolley, Math.round(6000 * out.pvp.totalMult));
 });
 
 test("laserDpsBreakdown : malus formation en ×0,80 sans double comptage", () => {
@@ -123,8 +130,10 @@ test("laserDpsBreakdown : malus formation en ×0,80 sans double comptage", () =>
   vm.runInContext(engine.slice(from, engine.indexOf("\n}", from) + 2), ctx);
   const out = vm.runInContext("laserDpsBreakdown()", ctx);
   assert.equal(out.rows[0].label, "Base coque + modules");
-  assert.equal(out.rows[3].label, "Formation Roue");
-  assert.equal(out.rows[3].detail, "×0,80");
+  assert.equal(out.rows[1].label, "Formation Roue");
+  assert.equal(out.rows[1].npc, "×0,80");
+  assert.equal(out.rows[1].pvp, "×0,80");
   assert.ok(!JSON.stringify(out.rows).includes("+-"), "aucun +- nulle part");
-  assert.equal(out.perVolley, 8000, "base déjà à -20 % : estimation inchangée");
+  assert.equal(out.npc.perVolley, 8000, "base déjà à -20 % : estimation inchangée");
+  assert.equal(out.pvp.perVolley, 8000);
 });

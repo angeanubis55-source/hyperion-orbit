@@ -25,47 +25,56 @@ function els() {
     max: $("dpsMaxTxt"),
     total: $("dpsTotalTxt"),
     last: $("dpsLastTxt"),
-    rows: $("dpsCalcRows"),
-    totalMult: $("dpsTotalMultTxt"),
-    perVolley: $("dpsPerVolleyTxt"),
+    table: $("dpsCalcBody"),
+    estNpc: $("dpsEstNpcTxt"),
+    estPvp: $("dpsEstPvpTxt"),
   };
   return el;
 }
 
-let calcSignature = "";
-
-const FACTOR_CLASS = ["dpsFBase", "dpsF1", "dpsF2", "dpsF3", "dpsF4", "dpsF5"];
+let calcSignature = {};
 
 function formatFactor(value) {
   return `×${Number(value).toFixed(2).replace(".", ",")}`;
 }
 
 function renderCalcRows(ui, breakdown) {
-  if (!ui.rows) return;
-  const rows = breakdown.rows || [];
-  const signature = JSON.stringify(rows.map((row) => [row.label, row.factor, row.detail]));
-  if (signature === calcSignature) return;
-  calcSignature = signature;
-  ui.rows.innerHTML = "";
-  rows.forEach((row, index) => {
-    const cls = row.cls || FACTOR_CLASS[Math.min(index, FACTOR_CLASS.length - 1)];
-    const line = document.createElement("div");
-    line.className = "row";
-    const key = document.createElement("span");
-    key.className = `k ${cls}`;
-    key.textContent = row.label;
-    const value = document.createElement("span");
-    value.className = `v ${cls}`;
-    value.textContent = row.detail || (row.factor !== 1 ? formatFactor(row.factor) : "0");
-    line.append(key, value);
-    ui.rows.append(line);
-  });
+  if (!breakdown) return;
+  renderCalcTable(ui.table, breakdown.rows);
+}
+
+function renderCalcTable(tbodyEl, rows) {
+  if (!tbodyEl) return;
+  const list = Array.isArray(rows) ? rows : [];
+  const signature = JSON.stringify(list.map((row) => [row.label, row.npc, row.pvp]));
+  if (signature === calcSignature.table) return;
+  calcSignature.table = signature;
+  tbodyEl.innerHTML = "";
+  for (const row of list) {
+    const cls = row.cls || "";
+    const tr = document.createElement("tr");
+    const tdLabel = document.createElement("td");
+    tdLabel.className = `k ${cls}`;
+    tdLabel.textContent = row.label;
+    const tdNpc = document.createElement("td");
+    tdNpc.className = `v ${cls}`;
+    tdNpc.textContent = row.npc == null ? "—" : row.npc;
+    if (row.npc == null) tdNpc.classList.add("dpsEmpty");
+    const tdSep = document.createElement("td");
+    tdSep.className = "dpsColSep";
+    const tdPvp = document.createElement("td");
+    tdPvp.className = `v ${cls}`;
+    tdPvp.textContent = row.pvp == null ? "—" : row.pvp;
+    if (row.pvp == null) tdPvp.classList.add("dpsEmpty");
+    tr.append(tdLabel, tdNpc, tdSep, tdPvp);
+    tbodyEl.appendChild(tr);
+  }
 }
 
 export function updateDpsHud(snapshot, breakdown) {
   if (!shouldRefreshWindow("dpsWindow")) return;
   const ui = els();
-  if (!ui.live) return;
+  if (!ui.last && !ui.live) return;
   const snap = snapshot || { dps: 0, plusGros: 0, total: 0 };
   setText(ui.live, formatInteger(Math.round(Number(snap.dps) || 0)));
   setText(ui.max, formatInteger(Math.round(Number(snap.plusGros) || 0)));
@@ -73,13 +82,13 @@ export function updateDpsHud(snapshot, breakdown) {
   setText(ui.last, formatInteger(Math.round(Number(snap.last) || 0)));
   if (breakdown) {
     renderCalcRows(ui, breakdown);
-    setText(ui.totalMult, formatFactor(breakdown.totalMult || 1));
-    setText(ui.perVolley, formatInteger(Math.round(Number(breakdown.perVolley) || 0)));
+    setText(ui.estNpc, formatInteger(Math.round(Number(breakdown.npc?.perVolley) || 0)));
+    setText(ui.estPvp, formatInteger(Math.round(Number(breakdown.pvp?.perVolley) || 0)));
   }
 }
 
 export function resetDpsHudCache() {
   lastText.clear();
-  calcSignature = "";
-  if (el?.rows) el.rows.innerHTML = "";
+  calcSignature = {};
+  if (el?.table) el.table.innerHTML = "";
 }
