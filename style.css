@@ -1366,7 +1366,7 @@ body.phoneDockEditorOpen #ammoBar .phoneEditorSelected {
 .dpsCalcTable td.dpsEmpty { color:rgba(154,163,178,.5); }
 .dpsCalcTable thead th:nth-child(2),
 .dpsCalcTable thead th:nth-child(4),
-.dpsCalcTable td.v { width:64px; }
+.dpsCalcTable td.v { width:92px; }
 .dpsCalcTable tfoot td {
   padding-top:6px;
   font-weight:700;
