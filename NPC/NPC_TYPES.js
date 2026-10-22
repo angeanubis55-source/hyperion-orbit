@@ -448,10 +448,10 @@ export const NPC_TYPES = {
   },
   npc_Emperor_Kristallon: {
     name: "* Emperor Kristallon *",
-    sprite: { path: "NPC/NPC_SPRITES/EMPEROR_KRISTALLON/", frames: 1, firstNumber: 1, ext: ".png", w: 300, h: 338 },
+    sprite: { path: "NPC/NPC_SPRITES/EMPEROR_KRISTALLON/", frames: 83, firstNumber: 1, ext: ".png", w: 256, h: 256 },
     playSprite: true,
     passiveNative: true,
-    spriteSpeed: 60,
+    spriteSpeed: 20,
     bulletSprite: { src: "COMBAT/MUNITIONS/KRISTALLON.png", w: 97, h: 37, glow: true, invert: true },
     r: 18, hp: 14080000, shield: 10560000, speed: 100, bulletDmg: 144000, bulletSpeed: 4500, shootRange: 700,
     shootRate: 0.25,

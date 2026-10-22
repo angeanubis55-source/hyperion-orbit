@@ -56,9 +56,10 @@ Le jeu reste une application navigateur rendue avec Canvas. `ORBIT_ENGINE.js` co
   (`buyLogDiskPack`, `exchangeLogDisksForPoint`, `investPilotSkill`,
   `resetPilotSkills`) et soute effective (Logistique).
 - Effets branchés moteur : PV, bouclier, résistance bouclier, réparation,
-  EXP, honneur, crédits, soute, butins, roquettes, vs aliens, précision
-  lasers, esquive (miss bleu), chance bonus box, réussite roquettes.
-  Restent non branchés : PvP (Bounty) et mines (Detonation/Explosifs).
+  EXP, honneur, crédits, soute, butins, roquettes, vs aliens, dégâts lasers
+  PvP (Bounty I/II), précision lasers, esquive (miss bleu), chance bonus
+  box, réussite roquettes.
+  Restent non branchés : mines (Detonation/Explosifs).
 - `SRC/DATA/AUCTION.js` : enchères façon DO (22 lots fixes chaque heure pile de Paris, reset à :00 :
   x2/x3/x4 (1000), x6 (250), B02, G3N-7900, LF-2/3/4/5, iris, PLT-3030/2021 (x100),
   boosters B01 x10 (EP/DMG/HP/SHD), Goliath/Vengeance/Leonov + Iris +

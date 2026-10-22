@@ -12,8 +12,8 @@
 //   par point repris de la table officielle (30, 33, 36... 3202) ;
 // - reset en crédits doublés (1M, 2M, 4M...) ;
 // - skills sans cible dans le moteur gardés avec leurs VRAIS effets
-//   affichés (branchés plus tard) : Bounty I/II (PvP), Detonation I/II +
-//   Explosifs (mines).
+//   affichés (branchés plus tard) : Detonation I/II + Explosifs (mines).
+//   Branchés : Bounty I/II (dégâts lasers PvP via pvpPct).
 // Ce module ne touche ni DOM ni stockage.
 
 export const PILOT_MAX_POINTS = 50;
@@ -145,7 +145,7 @@ export const PILOT_SKILLS = Object.freeze([
     C(400000, 400, { cargoLootPct: 4 }),
     C(500000, 500, { cargoLootPct: 6 }),
   ]),
-  sk("bounty01", "Chasseur de primes I", "Dégâts lasers en PvP.", 25, true, 2, 1, 2, 0, false, [
+  sk("bounty01", "Chasseur de primes I", "Dégâts lasers en PvP.", 25, true, 2, 1, 2, 0, true, [
     { type: "anyPP", skills: ["heatseeking", "shieldengineering"], points: 2 },
   ], [
     C(100000, 100, { pvpPct: 2 }),
@@ -240,7 +240,7 @@ export const PILOT_SKILLS = Object.freeze([
     C(2000000, 2000, { luckPct: 8 }),
     C(3000000, 3000, { luckPct: 12 }),
   ]),
-  sk("bounty02", "Chasseur de primes II", "Dégâts lasers en PvP.", 26, true, 3, 2, 2, 2, false, [
+  sk("bounty02", "Chasseur de primes II", "Dégâts lasers en PvP.", 26, true, 3, 2, 2, 2, true, [
     { type: "pp", skill: "bounty01", points: 2 },
     { type: "anyPP", skills: ["electrooptics", "tractor02"], points: 3 },
   ], [
@@ -320,7 +320,7 @@ export function pilotSkillMults(ps) {
   const m = {
     hpFlat: 0, repairPct: 0, shieldPct: 0, shieldToughPct: 0,
     expPct: 0, cargoPct: 0, honorPct: 0, creditPct: 0,
-    cargoLootPct: 0, bonusLootPct: 0, rocketDmgPct: 0,
+    cargoLootPct: 0, bonusLootPct: 0, rocketDmgPct: 0, pvpPct: 0,
     alienDmgPct: 0, laserHitPct: 0, evadePct: 0, luckPct: 0,
     rocketHitPct: 0,
   };

@@ -20143,6 +20143,7 @@ function playerPilotMults() {
     bonusLoot: fac(m?.bonusLootPct),
     rocketDmg: fac(m?.rocketDmgPct),
     alienDmg: fac(m?.alienDmgPct),
+    pvpDmg: fac(m?.pvpPct),
     laserHit: Math.max(0, num(m?.laserHitPct)),
     evade: Math.max(0, Math.min(0.9, num(m?.evadePct) / 100)),
     luck: fac(m?.luckPct),
@@ -27359,7 +27360,6 @@ function rollValue(v, fallback = 0) {
     const b = Number(v[1] ?? a);
     return Math.floor(rand(Math.min(a, b), Math.max(a, b) + 1));
   }
-
   if (v && typeof v === "object") {
     const a = Number(v.min ?? 0);
     const b = Number(v.max ?? a);
@@ -27369,7 +27369,6 @@ function rollValue(v, fallback = 0) {
   const n = Number(v);
   return Number.isFinite(n) ? n : fallback;
 }
-
 function pickExclusiveCollectableReward(entries) {
   const pool = Array.isArray(entries)
     ? entries.filter(entry => Number(entry?.weight) > 0 && entry?.reward)
@@ -29872,11 +29871,13 @@ function laserDpsBreakdown() {
   // fige donc chaque ligne sur son propre facteur et on applique le bloc
   // laser additif exact au total. Lignes "vs ..." et "Arbre pilote" :
   // valeurs réelles par cible (la formule des tirs applique alienDmg aux
-  // NPC ; aucun bonus pilote dégâts vs joueurs n'existe).
+  // NPC et pvpDmg aux joueurs).
   let booster = 1;
   try { booster = num(playerBoosterMults()?.dmg) || 1; } catch {}
   let pilotNpc = 1;
   try { pilotNpc = num(playerPilotMults()?.alienDmg) || 1; } catch {}
+  let pilotPvp = 1;
+  try { pilotPvp = num(playerPilotMults()?.pvpDmg) || 1; } catch {}
   let upgrade = 1;
   try { upgrade = num(playerUpgradeMults()?.laser) || 1; } catch {}
   // Une seule liste de lignes : libellé à gauche, valeur NPC, valeur
@@ -29905,7 +29906,7 @@ function laserDpsBreakdown() {
   }
   if (fVsNpc) R("Formation vs NPC", fmtMult(Math.max(0, 1 + fVsNpc / 100)), null, "dpsF5");
   if (fVsPlayers) R("Formation vs joueurs", null, fmtMult(Math.max(0, 1 + fVsPlayers / 100)), "dpsF5");
-  R("Arbre pilote", fmtMult(pilotNpc), fmtMult(1), "dpsF5");
+  R("Arbre pilote", fmtMult(pilotNpc), fmtMult(pilotPvp), "dpsF5");
   R("Boosters dégâts", fmtMult(booster), fmtMult(booster), "dpsF3");
   R("Améliorations laser", fmtMult(upgrade), fmtMult(upgrade), "dpsF6");
   const npcMult = laserBlock * (fVsNpc ? Math.max(0, 1 + fVsNpc / 100) : 1) * pilotNpc * booster * upgrade;
@@ -32987,7 +32988,7 @@ const shotBoosterMults = playerBoosterMults();
 const shotHitBonusPct = Number(player.laserHitBonusPct || 0) + Number(shotBoosterMults.hit || 0);
   const dmgShot = isSab
     ? laserBaseForTarget * SAB50.drainMult * shotBoosterMults.dmg
-    : (laserBase + overdrive) * mult * formationNpcDamageMult(t) * formationPlayerLaserDamageMult(t) * shotBoosterMults.dmg * playerPilotMults().alienDmg * playerUpgradeMults().laser * buoyDamageMult() * valourDamageMult() * berserkDamageMult() * holoDamageMult() * scrambleDamageMult() * specDamageMult() * tempestDischargeMult() * shipPassiveDamageMult();
+    : (laserBase + overdrive) * mult * formationNpcDamageMult(t) * formationPlayerLaserDamageMult(t) * shotBoosterMults.dmg * playerPilotMults().alienDmg * (t?._netPlayer ? (Number(playerPilotMults()?.pvpDmg) || 1) : 1) * playerUpgradeMults().laser * buoyDamageMult() * valourDamageMult() * berserkDamageMult() * holoDamageMult() * scrambleDamageMult() * specDamageMult() * tempestDischargeMult() * shipPassiveDamageMult();
 
   const shotMiss = Math.random() < Math.max(0, PLAYER_SHOTS.missChance - ((shotHitBonusPct + playerPilotMults().laserHit) / 100));
   // Multi : evenement de tir exact pour les allies (vrais tirs, MISS inclus).
@@ -44246,6 +44247,14 @@ if ((e.type === "npc_Cubikon" || e.cubikonMinions) && e._animPhase) {
         // l'avait figé via le snapshot (spritePlay remis à false).
         if (!e.spritePlay && typeof e.type === "string" && e.type.indexOf("Curcubitor") !== -1
           && isHalloweenVariantType(e.type)) {
+          e.spritePlay = true;
+          e.spriteAcc = 0;
+        }
+
+        // Emperor Kristallon : sprite joué en boucle en continu (comme les
+        // autres kristallons), solo comme multi — même après un JAMX/Creed
+        // qui l'avait figé (spritePlay remis à false).
+        if (!e.spritePlay && e.type === "npc_Emperor_Kristallon") {
           e.spritePlay = true;
           e.spriteAcc = 0;
         }
