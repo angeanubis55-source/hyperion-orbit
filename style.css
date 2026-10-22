@@ -3923,21 +3923,17 @@ html body #profileOverlay .profileHeaderTop .profileTitle, html body #profileOve
 #minimap.gameWindow > .gameWinBar > .gameWinMinBtn:not(.miniZoomBtn) {
   margin-left:-9px !important;
 }
-#minimap .miniStarmapBtn {
+#minimap .miniStarmapIcon {
+  margin:0 !important;
+  padding:0 !important;
+  cursor:pointer !important;
+}
+#minimap .miniStarmapIcon img.menuIconImg {
   width:26px !important;
   height:26px !important;
-  margin:0 0 0 -1px !important;
-  padding:0 !important;
-  border-radius:0 !important;
 }
-#minimap .miniStarmapBtn img {
-  width:18px !important;
-  height:18px !important;
-  object-fit:contain !important;
-  pointer-events:none !important;
-}
-#minimap.gameWindow > .gameWinBar > .miniStarmapBtn + .gameWinMinBtn:not(.miniZoomBtn) {
-  margin-left:-1px !important;
+#minimap.gameWindow > .gameWinBar > .miniStarmapIcon + .miniZoomActions {
+  margin-left:-4px !important;
 }
 #boxWave.gameWindow, #boxMeta.gameWindow, #boxVitals.gameWindow, #boxPerformance.gameWindow, #minimap.gameWindow, #settingsWindow.gameWindow {
   padding:0 !important;

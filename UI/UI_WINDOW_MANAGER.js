@@ -571,20 +571,23 @@ function makeMinimapResizable(id, card) {
     // pour supprimer le trait entre "Map : X-X" et la mini-carte.
     if (zoomBar && zoomBar !== windowBar) zoomBar.style.display = "none";
   }
-  if (windowBar && !windowBar.querySelector(":scope > .miniStarmapBtn")) {
-    const starBtn = document.createElement("button");
-    starBtn.className = "gameWinMinBtn miniStarmapBtn";
-    starBtn.type = "button";
-    starBtn.title = "Ouvrir la carte stellaire";
-    starBtn.setAttribute("aria-label", "Ouvrir la carte stellaire");
-    starBtn.dataset.noDrag = "1";
-    starBtn.innerHTML = '<img src="ASSETS/UI/MENU/starmap_hover.png" alt="" draggable="false">';
-    starBtn.addEventListener("pointerdown", (e) => { e.stopPropagation(); });
-    starBtn.addEventListener("click", (event) => {
+  if (windowBar) {
+    windowBar.querySelector(":scope > .miniStarmapBtn")?.remove();
+  }
+  if (windowBar && !windowBar.querySelector(":scope > .miniStarmapIcon")) {
+    const starIcon = document.createElement("div");
+    starIcon.className = "gameWinIcon miniStarmapIcon";
+    starIcon.title = "Ouvrir la carte stellaire";
+    starIcon.setAttribute("role", "button");
+    starIcon.setAttribute("aria-label", "Ouvrir la carte stellaire");
+    starIcon.dataset.noDrag = "1";
+    starIcon.innerHTML = '<img class="menuIconImg" src="ASSETS/UI/MENU/starmap_hover.png" alt="" draggable="false">';
+    starIcon.addEventListener("pointerdown", (e) => { e.stopPropagation(); });
+    starIcon.addEventListener("click", (event) => {
       event.stopPropagation();
       try { window.GameWindowManager?.restore("starMapWindow"); } catch {}
     });
-    windowBar.insertBefore(starBtn, minimizeButton || null);
+    windowBar.insertBefore(starIcon, zoomActions || minimizeButton || null);
   }
 
   const resizeFromButton = (delta) => {
