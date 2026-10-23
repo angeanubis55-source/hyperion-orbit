@@ -613,7 +613,6 @@ function applyServerModuleOperation(data, body) {
     const old = data.inventory.shipModules[index];
     const rerolls = Math.max(0, Math.floor(Number(old.rerolls) || 0));
     const cost = MODULE_ROLL_COST * Math.pow(5, rerolls + 1);
-    if (!Number.isSafeInteger(cost)) throw Object.assign(new Error("Limite de relance atteinte."), { client: true });
     const payment = payServerModuleRoll(data, cost, "auto");
     const module = generateShipModule(data, {
       shipId: old.shipId, familyId: old.familyId, type: old.type, tier: old.tier,

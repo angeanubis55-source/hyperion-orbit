@@ -292,6 +292,22 @@ test("achat de munitions laser autoritaire côté serveur", { timeout: 20000 }, 
   assert.equal(rerolled.module.rerolls, 1);
   assert.equal(rerolled.payment.type, "ticket", "le ticket possede est consomme en priorite");
 
+  const investedBeforeUnlimitedReroll = Number(rerolled.module.rerollCredits || 0);
+  const unlimitedModule = { ...rerolled.module, rerolls: 49 };
+  const unlimitedSeed = await api("/api/save", { token, body: {
+    user: { ...canonical, revision: canonical.revision + 1, inventory: { ...canonical.inventory,
+      shipModules: canonical.inventory.shipModules.map(module => module.id === rerolled.module.id ? unlimitedModule : module),
+      counts: { ...canonical.inventory.counts, ticket_module_reroll: 1 } } },
+    baseRevision: canonical.revision, saveId: "module-unlimited-reroll",
+  } });
+  assert.equal(unlimitedSeed.status, 200); canonical = unlimitedSeed.user;
+  const unlimitedReroll = await api("/api/modules", { token, body: { action: "reroll", moduleId: unlimitedModule.id } });
+  assert.equal(unlimitedReroll.status, 200); canonical = unlimitedReroll.user;
+  assert.equal(unlimitedReroll.module.rerolls, 50, "les tickets permettent de relancer sans limite technique");
+  assert.equal(unlimitedReroll.payment.type, "ticket");
+  assert.equal(unlimitedReroll.module.rerollCredits, investedBeforeUnlimitedReroll,
+    "la cinquantieme relance par ticket n'augmente pas la valeur de revente");
+
   const moduleDay = canonical.stats.moduleDailyRolls.day;
   const nearLimit = await api("/api/save", { token, body: {
     user: { ...canonical, revision: canonical.revision + 1, stats: { ...canonical.stats,
