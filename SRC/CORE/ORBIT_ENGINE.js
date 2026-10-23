@@ -23791,8 +23791,6 @@ function spawnHaloPulse(x, y, radius, life, fillRgb, edgeRgb, follow = null, alp
 const floatTexts = [];
 const lasers = [];
 const engineTrails = [];
-const shipWakeTrails = new Map();
-const shipWakeVisibleWidths = new WeakMap();
 
 // Clones Mimesis (hologrammes) : stockés ici pour le rendu / ciblage.
 // Le système d'escortes Goliath des gates Low/QZ a été supprimé.
@@ -26085,86 +26083,8 @@ function emitEngineTrail(entity, config, dt, ownerNpcId = null, engineKind = "sh
   }
 }
 
-function ageShipWakeTrails(dt) {
-  const life = 0.52;
-  for (const [key, trail] of shipWakeTrails) {
-    for (const points of [trail.left, trail.right]) {
-      for (const point of points) point.t += dt;
-      while (points.length && points[0].t >= life) points.shift();
-    }
-    if (!trail.left.length && !trail.right.length && performance.now() - trail.seenAt > 1000) shipWakeTrails.delete(key);
-  }
-}
-
-function shipWakeVisibleWidth(config) {
-  const declaredWidth = Math.max(1, Number(config?.w || config?.sprite?.w) || 100);
-  if (!config || typeof config !== "object") return declaredWidth;
-  const cached = shipWakeVisibleWidths.get(config);
-  if (cached > 0) return cached;
-  const images = Array.isArray(config._imgs) ? config._imgs : [];
-  const image = images.find(isImgReady);
-  if (!image) return declaredWidth;
-  try {
-    const width = Math.max(1, Number(image.naturalWidth || image.width) || 1);
-    const height = Math.max(1, Number(image.naturalHeight || image.height) || 1);
-    const probe = document.createElement("canvas");
-    probe.width = width; probe.height = height;
-    const probeCtx = probe.getContext("2d", { willReadFrequently: true });
-    probeCtx.drawImage(image, 0, 0);
-    const rgba = probeCtx.getImageData(0, 0, width, height).data;
-    let minX = width, maxX = -1;
-    for (let y = 0; y < height; y += 2) {
-      for (let x = 0; x < width; x += 2) {
-        if (rgba[(y * width + x) * 4 + 3] > 8) {
-          if (x < minX) minX = x;
-          if (x > maxX) maxX = x;
-        }
-      }
-    }
-    probe.width = probe.height = 0;
-    const visibleWidth = maxX >= minX ? declaredWidth * ((maxX - minX + 2) / width) : declaredWidth;
-    shipWakeVisibleWidths.set(config, visibleWidth);
-    return visibleWidth;
-  } catch {
-    shipWakeVisibleWidths.set(config, declaredWidth);
-    return declaredWidth;
-  }
-}
-
-function emitShipWakeTrail(key, entity, config, dt, frame, enabled = true) {
-  let trail = shipWakeTrails.get(key);
-  if (!trail) {
-    trail = { left: [], right: [], acc: 0, seenAt: performance.now() };
-    shipWakeTrails.set(key, trail);
-  }
-  trail.seenAt = performance.now();
-  const speed = Math.hypot(Number(entity.vx) || 0, Number(entity.vy) || 0);
-  if (!enabled || speed < 35) {
-    trail.acc = 0;
-    return;
-  }
-  trail.acc += dt;
-  if (trail.acc < 0.022) return;
-  trail.acc %= 0.022;
-  const emitters = shipEngine.emitters(entity, config, frame);
-  if (!emitters.length) return;
-  const angle = shipEngine.heading(entity, config, frame);
-  const fx = Math.cos(angle), fy = Math.sin(angle), px = -fy, py = fx;
-  const center = emitters.reduce((sum, point) => ({ x: sum.x + Number(point.x || 0), y: sum.y + Number(point.y || 0) }), { x: 0, y: 0 });
-  center.x /= emitters.length; center.y /= emitters.length;
-  const shipWidth = shipWakeVisibleWidth(config);
-  const rear = Number(shipEngine.trailRear || 0);
-  const side = clamp(shipWidth * 0.075, 8, 30);
-  const baseX = entity.x + center.x - fx * rear;
-  const baseY = entity.y + center.y - fy * rear;
-  trail.left.push({ x: baseX + px * side, y: baseY + py * side, t: 0 });
-  trail.right.push({ x: baseX - px * side, y: baseY - py * side, t: 0 });
-}
-
 function tickEngineTrails(dt) {
   const shipFrame = getPlayerSpriteFrame();
-  ageShipWakeTrails(dt);
-  emitShipWakeTrail("player", player, ACTIVE_SHIP, dt, shipFrame, !player.dead && GAME_SETTINGS.shipSmoke);
   if (!player.dead && GAME_SETTINGS.shipSmoke) emitEngineTrail(player, ACTIVE_SHIP, dt, null, "ship", shipFrame);
 
   const pet = account.user?.pet;
@@ -26205,7 +26125,6 @@ function tickEngineTrails(dt) {
         }
         const frames = Math.max(1, Number(pack.frames) || 32);
         const idx = angleToFrameIndex(Number(enemy.angle || 0) + (pack.angleOffset || 0), frames);
-        emitShipWakeTrail(`jpc:${enemy.id}`, enemy, pack, dt, idx, true);
         emitEngineTrail(enemy, pack, dt, enemy.id, "ship", idx);
         try { npcEngine.update(enemy, dt, false); } catch {}
         continue;
@@ -26242,24 +26161,6 @@ function tickEngineTrails(dt) {
 }
 
 function drawEngineTrails(ox, oy) {
-  ctx.save();
-  ctx.lineWidth = 1.4;
-  ctx.lineCap = "round";
-  ctx.lineJoin = "round";
-  for (const trail of shipWakeTrails.values()) {
-    for (const points of [trail.left, trail.right]) {
-      for (let i = 1; i < points.length; i++) {
-        const a = points[i - 1], b = points[i];
-        const alpha = Math.max(0, 1 - ((a.t + b.t) * 0.5) / 0.52);
-        ctx.strokeStyle = `rgba(185,192,195,${alpha * 0.62})`;
-        ctx.beginPath();
-        ctx.moveTo(a.x + ox, a.y + oy);
-        ctx.lineTo(b.x + ox, b.y + oy);
-        ctx.stroke();
-      }
-    }
-  }
-  ctx.restore();
   drawEngineTrailParticles(ctx, engineTrails, ox, oy, innerWidth, innerHeight);
 }
 
@@ -34523,7 +34424,6 @@ sparks.length = 0;
 floatTexts.length = 0;
 lasers.length = 0;
 engineTrails.length = 0;
-shipWakeTrails.clear();
 collectableSpawnT = 0;
 collectableFarTickT = 0;
 
@@ -37782,7 +37682,6 @@ function drawNetplayRemotes(ox, oy) {
       // particules que le vaisseau local produit maintenant la trainee monde,
       // avec un accumulateur persistant dans `eng`.
       if (GAME_SETTINGS.shipSmoke) {
-        emitShipWakeTrail(`remote:${r.id}`, eng, pack, 0.016, remoteFrame, !r.dead);
         emitEngineTrail(eng, pack, 0.016, null, "ship", remoteFrame);
       }
     } catch {}
