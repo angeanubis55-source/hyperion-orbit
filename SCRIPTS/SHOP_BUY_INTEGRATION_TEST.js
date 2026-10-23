@@ -292,6 +292,29 @@ test("achat de munitions laser autoritaire côté serveur", { timeout: 20000 }, 
   assert.equal(rerolled.module.rerolls, 1);
   assert.equal(rerolled.payment.type, "ticket", "le ticket possede est consomme en priorite");
 
+  const moduleDay = canonical.stats.moduleDailyRolls.day;
+  const nearLimit = await api("/api/save", { token, body: {
+    user: { ...canonical, revision: canonical.revision + 1, stats: { ...canonical.stats,
+      moduleDailyRolls: { day: moduleDay, count: 18 } } },
+    baseRevision: canonical.revision, saveId: "module-limit-18",
+  } });
+  assert.equal(nearLimit.status, 200); canonical = nearLimit.user;
+  for (let count = 19; count <= 20; count++) {
+    const result = await api("/api/modules", { token, body: { action: "roll" } });
+    assert.equal(result.status, 200); canonical = result.user;
+    assert.equal(canonical.stats.moduleDailyRolls.count, count);
+  }
+  const staleCounter = await api("/api/save", { token, body: {
+    user: { ...canonical, revision: canonical.revision + 1, stats: { ...canonical.stats,
+      moduleDailyRolls: { day: moduleDay, count: 18 } } },
+    baseRevision: canonical.revision, saveId: "module-limit-stale-18", compactSave: true,
+  } });
+  assert.equal(staleCounter.status, 200); canonical = staleCounter.user;
+  assert.equal(staleCounter.snapshotAccepted, undefined, "une correction serveur renvoie le compte canonique complet");
+  assert.equal(canonical.stats.moduleDailyRolls.count, 20, "une sauvegarde retardee ne baisse pas le compteur");
+  const overLimit = await api("/api/modules", { token, body: { action: "roll" } });
+  assert.equal(overLimit.status, 409, "le vingt-et-unieme tirage reste refuse apres une sauvegarde retardee");
+
   const keyed = await api("/api/save", { token, body: {
     user: { ...canonical, revision: canonical.revision + 1, inventory: { ...canonical.inventory,
       resources: { ...canonical.inventory.resources, battlepass_key: 3 } } },

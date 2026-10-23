@@ -9736,10 +9736,9 @@ const DEFAULT_GAME_SETTINGS = {
   npcExplosions: true,
   rocketSmoke: true,
   boxAnims: true,
-  // OFF par défaut : ACTIVE fixe + jump figé sur la frame 10.
-  // ON = respiration ACTIVE/DESACTIVE au repos ; au saut la respiration
-  // s'arrête et le sprite jump joue en entier (séquence 25 frames).
-  portalAnims: false,
+  speedStars: true,
+  // Animations des portails : toujours actives (option retirée des paramètres).
+  portalAnims: true,
   showBonusBoxes: true,
   showResourceBoxes: true,
   showCargoBoxes: true,
@@ -9826,7 +9825,7 @@ function normalizeFpsLimit(raw) {
 // Haute = tout actif. Visibilités (NPC, box, drones) jamais touchées.
 const GFX_QUALITY_ALL_FLAGS = Object.freeze([
   "shipSmoke", "npcEngineEffects", "npcExplosions", "rocketSmoke",
-  "showHalos", "showNpcShots", "boxAnims", "portalAnims",
+  "showHalos", "showNpcShots", "boxAnims", "speedStars",
   "shipEffect", "customDesignEffects",
   "textures", "smoothRender", "moveMarker", "drones", "remoteDrones",
   "showBonusBoxes", "showResourceBoxes", "showCargoBoxes", "showNpcs",
@@ -9835,7 +9834,7 @@ const GFX_QUALITY_LIGHT_FLAGS = Object.freeze([
   "showNpcs", "smoothRender",
 ]);
 const GFX_QUALITY_MID_FLAGS = Object.freeze([
-  "boxAnims", "portalAnims", "shipEffect", "customDesignEffects",
+  "boxAnims", "shipEffect", "customDesignEffects",
   "textures", "smoothRender", "moveMarker", "drones", "remoteDrones",
   "showBonusBoxes", "showResourceBoxes", "showCargoBoxes", "showNpcShots",
   "npcExplosions", "rocketSmoke", "showHalos", "showNpcs",
@@ -9901,6 +9900,8 @@ function loadGameSettings() {
     };
     settings.soundVolume = clamp(Math.round(Number(settings.soundVolume) || 0), 0, 100);
     settings.phoneMode = settings.phoneMode === true;
+    // Animations des portails : toujours actives (plus d'option en paramètres).
+    settings.portalAnims = true;
     settings.fpsLimit = normalizeFpsLimit(settings.fpsLimit);
     settings.backgroundRefresh = normalizeBackgroundRefresh(settings.backgroundRefresh);
     settings.fxDensity = normalizeFxDensity(settings.fxDensity);
@@ -10004,6 +10005,10 @@ function setGameSetting(key, value) {
 
   if (key === "smoothRender") {
     showToast(GAME_SETTINGS.smoothRender ? "Lissage du rendu activé" : "Lissage du rendu désactivé", 1.1);
+  }
+
+  if (key === "speedStars") {
+    showToast(GAME_SETTINGS.speedStars ? "Étoiles de vitesse affichées" : "Étoiles de vitesse masquées", 1.1);
   }
 
   // ✅ Anims portails activées en pleine session : on précharge les 25 frames
@@ -10449,8 +10454,8 @@ function renderSettingsWindow() {
   if (rocketSmoke) rocketSmoke.checked = !!GAME_SETTINGS.rocketSmoke;
   const boxAnims = document.getElementById("optBoxAnims");
   if (boxAnims) boxAnims.checked = !!GAME_SETTINGS.boxAnims;
-  const portalAnims = document.getElementById("optPortalAnims");
-  if (portalAnims) portalAnims.checked = !!GAME_SETTINGS.portalAnims;
+  const speedStarsOpt = document.getElementById("optSpeedStars");
+  if (speedStarsOpt) speedStarsOpt.checked = GAME_SETTINGS.speedStars !== false;
   const showBonusBoxes = document.getElementById("optShowBonusBoxes");
   // Regroupé "bonus + ressources" : la case reflète l'état commun.
   if (showBonusBoxes) showBonusBoxes.checked = !!GAME_SETTINGS.showBonusBoxes && !!GAME_SETTINGS.showResourceBoxes;
@@ -10570,8 +10575,8 @@ function wireSettingsWindow() {
     setGameSetting("boxAnims", ev.currentTarget.checked);
   });
 
-  document.getElementById("optPortalAnims")?.addEventListener("change", (ev) => {
-    setGameSetting("portalAnims", ev.currentTarget.checked);
+  document.getElementById("optSpeedStars")?.addEventListener("change", (ev) => {
+    setGameSetting("speedStars", ev.currentTarget.checked);
   });
 
   document.getElementById("optShowBonusBoxes")?.addEventListener("change", (ev) => {
@@ -23786,6 +23791,8 @@ function spawnHaloPulse(x, y, radius, life, fillRgb, edgeRgb, follow = null, alp
 const floatTexts = [];
 const lasers = [];
 const engineTrails = [];
+const shipWakeTrails = new Map();
+const shipWakeVisibleWidths = new WeakMap();
 
 // Clones Mimesis (hologrammes) : stockés ici pour le rendu / ciblage.
 // Le système d'escortes Goliath des gates Low/QZ a été supprimé.
@@ -26078,8 +26085,86 @@ function emitEngineTrail(entity, config, dt, ownerNpcId = null, engineKind = "sh
   }
 }
 
+function ageShipWakeTrails(dt) {
+  const life = 0.52;
+  for (const [key, trail] of shipWakeTrails) {
+    for (const points of [trail.left, trail.right]) {
+      for (const point of points) point.t += dt;
+      while (points.length && points[0].t >= life) points.shift();
+    }
+    if (!trail.left.length && !trail.right.length && performance.now() - trail.seenAt > 1000) shipWakeTrails.delete(key);
+  }
+}
+
+function shipWakeVisibleWidth(config) {
+  const declaredWidth = Math.max(1, Number(config?.w || config?.sprite?.w) || 100);
+  if (!config || typeof config !== "object") return declaredWidth;
+  const cached = shipWakeVisibleWidths.get(config);
+  if (cached > 0) return cached;
+  const images = Array.isArray(config._imgs) ? config._imgs : [];
+  const image = images.find(isImgReady);
+  if (!image) return declaredWidth;
+  try {
+    const width = Math.max(1, Number(image.naturalWidth || image.width) || 1);
+    const height = Math.max(1, Number(image.naturalHeight || image.height) || 1);
+    const probe = document.createElement("canvas");
+    probe.width = width; probe.height = height;
+    const probeCtx = probe.getContext("2d", { willReadFrequently: true });
+    probeCtx.drawImage(image, 0, 0);
+    const rgba = probeCtx.getImageData(0, 0, width, height).data;
+    let minX = width, maxX = -1;
+    for (let y = 0; y < height; y += 2) {
+      for (let x = 0; x < width; x += 2) {
+        if (rgba[(y * width + x) * 4 + 3] > 8) {
+          if (x < minX) minX = x;
+          if (x > maxX) maxX = x;
+        }
+      }
+    }
+    probe.width = probe.height = 0;
+    const visibleWidth = maxX >= minX ? declaredWidth * ((maxX - minX + 2) / width) : declaredWidth;
+    shipWakeVisibleWidths.set(config, visibleWidth);
+    return visibleWidth;
+  } catch {
+    shipWakeVisibleWidths.set(config, declaredWidth);
+    return declaredWidth;
+  }
+}
+
+function emitShipWakeTrail(key, entity, config, dt, frame, enabled = true) {
+  let trail = shipWakeTrails.get(key);
+  if (!trail) {
+    trail = { left: [], right: [], acc: 0, seenAt: performance.now() };
+    shipWakeTrails.set(key, trail);
+  }
+  trail.seenAt = performance.now();
+  const speed = Math.hypot(Number(entity.vx) || 0, Number(entity.vy) || 0);
+  if (!enabled || speed < 35) {
+    trail.acc = 0;
+    return;
+  }
+  trail.acc += dt;
+  if (trail.acc < 0.022) return;
+  trail.acc %= 0.022;
+  const emitters = shipEngine.emitters(entity, config, frame);
+  if (!emitters.length) return;
+  const angle = shipEngine.heading(entity, config, frame);
+  const fx = Math.cos(angle), fy = Math.sin(angle), px = -fy, py = fx;
+  const center = emitters.reduce((sum, point) => ({ x: sum.x + Number(point.x || 0), y: sum.y + Number(point.y || 0) }), { x: 0, y: 0 });
+  center.x /= emitters.length; center.y /= emitters.length;
+  const shipWidth = shipWakeVisibleWidth(config);
+  const rear = Number(shipEngine.trailRear || 0);
+  const side = clamp(shipWidth * 0.075, 8, 30);
+  const baseX = entity.x + center.x - fx * rear;
+  const baseY = entity.y + center.y - fy * rear;
+  trail.left.push({ x: baseX + px * side, y: baseY + py * side, t: 0 });
+  trail.right.push({ x: baseX - px * side, y: baseY - py * side, t: 0 });
+}
+
 function tickEngineTrails(dt) {
   const shipFrame = getPlayerSpriteFrame();
+  ageShipWakeTrails(dt);
+  emitShipWakeTrail("player", player, ACTIVE_SHIP, dt, shipFrame, !player.dead && GAME_SETTINGS.shipSmoke);
   if (!player.dead && GAME_SETTINGS.shipSmoke) emitEngineTrail(player, ACTIVE_SHIP, dt, null, "ship", shipFrame);
 
   const pet = account.user?.pet;
@@ -26120,6 +26205,7 @@ function tickEngineTrails(dt) {
         }
         const frames = Math.max(1, Number(pack.frames) || 32);
         const idx = angleToFrameIndex(Number(enemy.angle || 0) + (pack.angleOffset || 0), frames);
+        emitShipWakeTrail(`jpc:${enemy.id}`, enemy, pack, dt, idx, true);
         emitEngineTrail(enemy, pack, dt, enemy.id, "ship", idx);
         try { npcEngine.update(enemy, dt, false); } catch {}
         continue;
@@ -26156,6 +26242,24 @@ function tickEngineTrails(dt) {
 }
 
 function drawEngineTrails(ox, oy) {
+  ctx.save();
+  ctx.lineWidth = 1.4;
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  for (const trail of shipWakeTrails.values()) {
+    for (const points of [trail.left, trail.right]) {
+      for (let i = 1; i < points.length; i++) {
+        const a = points[i - 1], b = points[i];
+        const alpha = Math.max(0, 1 - ((a.t + b.t) * 0.5) / 0.52);
+        ctx.strokeStyle = `rgba(185,192,195,${alpha * 0.62})`;
+        ctx.beginPath();
+        ctx.moveTo(a.x + ox, a.y + oy);
+        ctx.lineTo(b.x + ox, b.y + oy);
+        ctx.stroke();
+      }
+    }
+  }
+  ctx.restore();
   drawEngineTrailParticles(ctx, engineTrails, ox, oy, innerWidth, innerHeight);
 }
 
@@ -34419,6 +34523,7 @@ sparks.length = 0;
 floatTexts.length = 0;
 lasers.length = 0;
 engineTrails.length = 0;
+shipWakeTrails.clear();
 collectableSpawnT = 0;
 collectableFarTickT = 0;
 
@@ -37677,6 +37782,7 @@ function drawNetplayRemotes(ox, oy) {
       // particules que le vaisseau local produit maintenant la trainee monde,
       // avec un accumulateur persistant dans `eng`.
       if (GAME_SETTINGS.shipSmoke) {
+        emitShipWakeTrail(`remote:${r.id}`, eng, pack, 0.016, remoteFrame, !r.dead);
         emitEngineTrail(eng, pack, 0.016, null, "ship", remoteFrame);
       }
     } catch {}
@@ -44399,7 +44505,63 @@ const MAP_BACKGROUND = {
 // ✅ Fond par tranche de vagues (ex. GG Awakened via rules.waveBackgrounds) :
 // sinon fond global. Résolu à chaque frame pour changer dès la vague suivante.
 // Pendant l'event Halloween : fond dédié, en direct, sans changer de map.
+// Nouveau : 5 variantes résolution (voir /Map sur le bureau) — on sert
+// celle qui couvre l'écran du joueur pour rester net sans surcharger.
 const MAP_BACKGROUND_HALLOWEEN = "ASSETS/BACKGROUNDS/Hyperion_fond_Halloween.webp?v=2";
+const MAP_BACKGROUND_HALLOWEEN_VARIANTS = [
+  { w: 1920, h: 1080, src: "ASSETS/BACKGROUNDS/Hyperion_Halloween_1920x1080.webp" },
+  { w: 2560, h: 1440, src: "ASSETS/BACKGROUNDS/Hyperion_Halloween_2560x1440.webp" },
+  { w: 3440, h: 1440, src: "ASSETS/BACKGROUNDS/Hyperion_Halloween_3440x1440.webp" },
+  { w: 3840, h: 2160, src: "ASSETS/BACKGROUNDS/Hyperion_Halloween_3840x2160.webp" },
+  { w: 5120, h: 1440, src: "ASSETS/BACKGROUNDS/Hyperion_Halloween_5120x1440.webp" },
+];
+
+// Détecte l'écran du joueur et retourne le fond Halloween le plus adapté :
+// - pixels cibles = innerWidth/Height × DPR (plafonné à 2, comme le canvas)
+// - on préfère le ratio le plus proche qui couvre la cible (ex. 32:9 → 5120x1440,
+//   21:9 → 3440x1440, 16:9 → 1920/2560/3840 selon la déf)
+// - sinon le plus petit qui couvre, sinon le plus grand (jamais de trou noir).
+function pickHalloweenBackgroundSrc(vw, vh, dpr) {
+  try {
+    const W = Math.max(320, Math.floor(Number(vw) || window.innerWidth || 1920));
+    const H = Math.max(200, Math.floor(Number(vh) || window.innerHeight || 1080));
+    const D = Math.max(1, Math.min(2, Number(dpr) || window.devicePixelRatio || 1));
+    const targetW = Math.ceil(W * D);
+    const targetH = Math.ceil(H * D);
+    const screenAspect = W / Math.max(1, H);
+    const scored = MAP_BACKGROUND_HALLOWEEN_VARIANTS.map((v) => {
+        const aspect = v.w / Math.max(1, v.h);
+        const aspectDiff = Math.abs(aspect - screenAspect) / Math.max(0.5, screenAspect);
+        const covers = v.w >= targetW && v.h >= targetH;
+        const coversNear = v.w >= targetW * 0.85 && v.h >= targetH * 0.85;
+        const waste = Math.max(0, v.w * v.h - targetW * targetH);
+        return { v, aspectDiff, covers, coversNear, waste };
+      });
+    // 1) même famille de ratio (≈15 %) qui couvre, le plus petit d'abord
+    const sameFamily = scored
+      .filter((s) => s.covers && s.aspectDiff <= 0.15)
+      .sort((a, b) => a.waste - b.waste || a.aspectDiff - b.aspectDiff);
+    if (sameFamily.length) return sameFamily[0].v.src;
+    // 2) n'importe quel variant qui couvre (ratio proche d'abord)
+    const covering = scored
+      .filter((s) => s.covers)
+      .sort((a, b) => a.aspectDiff - b.aspectDiff || a.waste - b.waste);
+    if (covering.length) return covering[0].v.src;
+    // 3) couvre à 15 % près, ratio proche d'abord
+    const nearCover = scored
+      .filter((s) => s.coversNear)
+      .sort((a, b) => a.aspectDiff - b.aspectDiff || a.waste - b.waste);
+    if (nearCover.length) return nearCover[0].v.src;
+    // 4) repli : le plus grand (jamais de trou noir)
+    const pool = scored.length ? scored : MAP_BACKGROUND_HALLOWEEN_VARIANTS.map((v) => ({ v }));
+    const biggest = [...pool].sort((a, b) => b.v.w * b.v.h - a.v.w * a.v.h)[0];
+    return biggest?.v.src || MAP_BACKGROUND_HALLOWEEN;
+  } catch { return MAP_BACKGROUND_HALLOWEEN; }
+}
+
+function currentHalloweenBackgroundSrc() {
+  return pickHalloweenBackgroundSrc(window.innerWidth, window.innerHeight, window.devicePixelRatio || 1);
+}
 
 function currentMapBackgroundSrc() {
   try {
@@ -44414,27 +44576,51 @@ function currentMapBackgroundSrc() {
     }
   } catch {}
   try {
-    if (isHalloweenEventActive()) return MAP_BACKGROUND_HALLOWEEN;
+    if (isHalloweenEventActive()) return currentHalloweenBackgroundSrc();
   } catch {}
   return MAP_BACKGROUND.src;
 }
 
 loadImage(MAP_BACKGROUND.src, { priority: true });
 try {
-  if (isHalloweenEventActive()) loadImage(MAP_BACKGROUND_HALLOWEEN, { priority: true });
+  if (isHalloweenEventActive()) loadImage(currentHalloweenBackgroundSrc(), { priority: true });
+} catch {}
+// Précharge la variante adaptée si l'écran change (redim / drag inter-écrans).
+// Enregistré une seule fois : le fondu existant (bgCrossfade) bascule tout seul
+// vers la nouvelle src retournée par currentMapBackgroundSrc().
+if (!window.__hwBgResizeHook) {
+  window.__hwBgResizeHook = true;
+  let __bgResizeT = 0;
+  window.addEventListener("resize", () => {
+    clearTimeout(__bgResizeT);
+    __bgResizeT = setTimeout(() => {
+      try {
+        if (isHalloweenEventActive()) loadImage(currentHalloweenBackgroundSrc(), { priority: false });
+      } catch {}
+    }, 250);
+  });
+}
+// Debug : window.__hwBgInfo() -> { vw, vh, dpr, src } pour tester chaque résolution.
+try {
+  window.__hwBgInfo = () => ({
+    vw: window.innerWidth,
+    vh: window.innerHeight,
+    dpr: window.devicePixelRatio || 1,
+    src: currentHalloweenBackgroundSrc(),
+  });
 } catch {}
 
 // Fondu enchaîné entre deux fonds (ex : bascule Halloween en direct).
 const BG_FADE_MS = 1500;
 const bgCrossfade = { from: null, to: null, start: 0 };
 
-function drawBgCover(img, alpha) {
+function drawBgCover(img, alpha, ox = 0, oy = 0) {
   const sourceW = Math.max(1, Number(img.naturalWidth || img.width) || 1920);
   const sourceH = Math.max(1, Number(img.naturalHeight || img.height) || 1080);
-  // Fond fixe en mode "cover" : pas de sur-échantillonnage volontaire,
-  // donc un fichier 1920x1080 reste parfaitement net en Full HD. Comme le
-  // fond ne glisse plus, aucun bord ne peut apparaître, même en radiation.
-  const scale = Math.max(innerWidth / sourceW, innerHeight / sourceH);
+  // Cover + overscan : l'image est dessinée un peu plus grande que l'écran
+  // pour laisser une marge au parallaxe (sinon le moindre décalage montre un bord).
+  const overscan = bgParallaxCfg.enabled ? bgParallaxCfg.overscan : 1;
+  const scale = Math.max(innerWidth / sourceW, innerHeight / sourceH) * overscan;
   const drawW = sourceW * scale;
   const drawH = sourceH * scale;
   ctx.save();
@@ -44445,8 +44631,43 @@ function drawBgCover(img, alpha) {
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = "high";
   if (alpha < 1) ctx.globalAlpha = Math.max(0, Math.min(1, alpha));
-  ctx.drawImage(img, (innerWidth - drawW) / 2, (innerHeight - drawH) / 2, drawW, drawH);
+  ctx.drawImage(img, (innerWidth - drawW) / 2 + ox, (innerHeight - drawH) / 2 + oy, drawW, drawH);
   ctx.restore();
+  return { drawW, drawH };
+}
+
+// Parallaxe du fond : mapping direct position sur la map <-> image.
+// - en haut à gauche de la map on voit le haut-gauche de l'image,
+//   en bas à droite le bas-droite (strength 1 = coins exacts)
+// - en radiation (hors WORLD) on reste bloqué sur le bord de l'image
+// - aucun retour élastique : le fond reste où la position le met.
+// Test console : __bgParallax({strength:1}) / __bgParallax({enabled:false})
+const bgParallaxCfg = { enabled: true, strength: 1, overscan: 1.18 };
+const bgPar = { x: 0, y: 0 };
+try {
+  window.__bgParallax = (opts = {}) => {
+    Object.assign(bgParallaxCfg, opts);
+    return { ...bgParallaxCfg, offset: { ...bgPar } };
+  };
+  window.__bgParallaxInfo = () => ({ ...bgParallaxCfg, offset: { ...bgPar } });
+} catch {}
+
+function currentBgParallaxOffset(drawW, drawH) {
+  if (!bgParallaxCfg.enabled) return { x: 0, y: 0 };
+  try {
+    const excessX = Math.max(0, drawW - innerWidth);
+    const excessY = Math.max(0, drawH - innerHeight);
+    // Position caméra normalisée 0..1 (bloquée aux bords en radiation),
+    // centrée sur -0.5..0.5 : le fond suit la position, sans retard ni rebond.
+    const nx = (WORLD?.w > 0 ? Math.min(1, Math.max(0, camera.x / WORLD.w)) : 0.5) - 0.5;
+    const ny = (WORLD?.h > 0 ? Math.min(1, Math.max(0, camera.y / WORLD.h)) : 0.5) - 0.5;
+    const s = Number(bgParallaxCfg.strength ?? 1);
+    const tx = Math.max(-excessX / 2, Math.min(excessX / 2, -nx * excessX * s));
+    const ty = Math.max(-excessY / 2, Math.min(excessY / 2, -ny * excessY * s));
+    bgPar.x = tx;
+    bgPar.y = ty;
+    return { x: tx, y: ty };
+  } catch { return { x: bgPar.x, y: bgPar.y }; }
 }
 
 function drawMapBackground() {
@@ -44471,15 +44692,93 @@ function drawMapBackground() {
   }
   const toImg = getCachedImage(bgCrossfade.to || target);
   if (!isImgReady(toImg)) return;
+  // Parallaxe calculée une fois par frame (même offset pour les 2 couches du fondu).
+  const probeW = Math.max(1, Number(toImg.naturalWidth || toImg.width) || 1920);
+  const probeH = Math.max(1, Number(toImg.naturalHeight || toImg.height) || 1080);
+  const probeScale = Math.max(innerWidth / probeW, innerHeight / probeH) * (bgParallaxCfg.enabled ? bgParallaxCfg.overscan : 1);
+  const off = currentBgParallaxOffset(probeW * probeScale, probeH * probeScale);
   const fromImg = bgCrossfade.from ? getCachedImage(bgCrossfade.from) : null;
   const t = bgCrossfade.from ? (now - bgCrossfade.start) / BG_FADE_MS : 1;
   if (!fromImg || !isImgReady(fromImg) || t >= 1) {
     if (t >= 1) bgCrossfade.from = null;
-    drawBgCover(toImg, 1);
+    drawBgCover(toImg, 1, off.x, off.y);
     return;
   }
-  drawBgCover(fromImg, 1);
-  drawBgCover(toImg, t);
+  drawBgCover(fromImg, 1, off.x, off.y);
+  drawBgCover(toImg, t, off.x, off.y);
+}
+
+// Champ d'étoiles permanent : petites étoiles autour du joueur qui
+// défilent en sens inverse du mouvement (vitesse × facteur, 2 couches de
+// profondeur) + traînées quand ça va vite → sensation de vitesse.
+// Test console : __speedStars({enabled:false}) / __speedStars({count:220, speed:1.8})
+const speedStarCfg = { enabled: true, count: 140, speed: 1.4 };
+const speedStars = [];
+let lastDrawDt = 1 / 60;
+try {
+  window.__speedStars = (opts = {}) => { Object.assign(speedStarCfg, opts); return { ...speedStarCfg }; };
+} catch {}
+
+function drawSpeedStars() {
+  if (speedStarCfg.enabled !== true || GAME_SETTINGS.speedStars === false) {
+    if (speedStars.length) speedStars.length = 0;
+    return;
+  }
+  const W = innerWidth, H = innerHeight;
+  const m = 48; // marge hors écran : entrée/sortie en douceur
+  // Densité adaptée à la surface d'écran (70..240 étoiles).
+  const want = Math.max(70, Math.min(240,
+    Math.round((Number(speedStarCfg.count) || 140) * (W * H) / (1920 * 1080))));
+  while (speedStars.length < want) {
+    const layer = Math.random() < 0.55 ? 0 : 1; // 0 = loin, 1 = près
+    speedStars.push({
+      x: Math.random() * (W + m * 2) - m,
+      y: Math.random() * (H + m * 2) - m,
+      layer,
+      s: layer === 0 ? 1 + Math.random() * 1.2 : 1.6 + Math.random() * 1.6,
+      ph: Math.random() * 6.283,
+      warm: Math.random() < 0.18,
+    });
+  }
+  if (speedStars.length > want) speedStars.length = want;
+  const dt = Math.max(0.0001, Math.min(0.1, Number(lastDrawDt) || 1 / 60));
+  const vx = Number(player?.vx) || 0, vy = Number(player?.vy) || 0;
+  const spd = Math.hypot(vx, vy);
+  const ux = spd > 1 ? vx / spd : 0, uy = spd > 1 ? vy / spd : 0;
+  const f = Math.max(0.2, Math.min(3, Number(speedStarCfg.speed) || 1.4));
+  const t = performance.now() / 1000;
+  const spanX = W + m * 2, spanY = H + m * 2;
+  ctx.save();
+  ctx.lineWidth = 1;
+  for (const s of speedStars) {
+    // Dérive inverse du vaisseau (couche près = plus vite) + micro-dérive
+    // pour que le ciel vive même à l'arrêt.
+    const k = (s.layer === 0 ? 0.55 : 1.15) * f;
+    s.x += (-vx * k - 3) * dt;
+    s.y += (-vy * k + 2) * dt;
+    let rx = (s.x + m) % spanX;
+    if (rx < 0) rx += spanX;
+    s.x = rx - m;
+    let ry = (s.y + m) % spanY;
+    if (ry < 0) ry += spanY;
+    s.y = ry - m;
+    // Scintillement doux.
+    const tw = 0.35 + 0.65 * Math.abs(Math.sin(t * (0.8 + (s.ph % 1)) + s.ph));
+    ctx.globalAlpha = (s.layer === 0 ? 0.5 : 0.9) * tw;
+    ctx.strokeStyle = ctx.fillStyle = s.warm ? "#ffd9a0" : "#bcd8ff";
+    // Traînée dans le sens du mouvement quand ça trace (vitesse ressentie).
+    const L = Math.min(16, spd * k * 0.028);
+    if (L > 1.5 && spd > 60) {
+      ctx.beginPath();
+      ctx.moveTo(s.x, s.y);
+      ctx.lineTo(s.x + ux * L, s.y + uy * L);
+      ctx.stroke();
+    } else {
+      ctx.fillRect(s.x, s.y, s.s, s.s);
+    }
+  }
+  ctx.restore();
+  ctx.globalAlpha = 1;
 }
 
 function drawZoneWalls(ox, oy) {
@@ -44726,6 +45025,7 @@ function draw() {
     return;
   }
 
+  drawSpeedStars();
   drawZoneWalls(ox, oy);
 
   drawZonePortals(ox, oy);
@@ -46475,6 +46775,7 @@ function frame(t) {
     try { measureGameTask("frame.netVisuals", () => tickNetplayVisuals(Math.min(0.1, realDt))); } catch {}
 
     if (document.visibilityState !== "hidden") {
+      lastDrawDt = Math.min(0.1, realDt);
       measureGameTask("frame.draw", draw);
       if (botMinimalRenderActive()) {
         minimalUiRefreshAcc += realDt;

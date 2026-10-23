@@ -2679,6 +2679,18 @@ function saveResponseUser(body, user) {
   return { snapshotAccepted: true, saveId: String(body.saveId).slice(0, 128), user: metadata };
 }
 
+function protectServerModuleDailyRolls(serverData, incomingData) {
+  const day = serverModuleDailyKey();
+  const serverRolls = serverData?.stats?.moduleDailyRolls;
+  const incomingRolls = incomingData?.stats?.moduleDailyRolls;
+  const serverCount = serverRolls?.day === day ? Math.max(0, Math.floor(Number(serverRolls.count) || 0)) : 0;
+  const incomingCount = incomingRolls?.day === day ? Math.max(0, Math.floor(Number(incomingRolls.count) || 0)) : 0;
+  const count = Math.max(serverCount, incomingCount);
+  incomingData.stats = incomingData.stats && typeof incomingData.stats === "object" ? incomingData.stats : {};
+  incomingData.stats.moduleDailyRolls = { day, count };
+  return incomingRolls?.day !== day || Math.max(0, Math.floor(Number(incomingRolls?.count) || 0)) !== count;
+}
+
 // POST /api/save { user } — plein blob, revision strictement croissante.
 function handleSave(req, body, res) {
   const me = authUser(req);
@@ -2759,6 +2771,9 @@ function handleSave(req, body, res) {
   data.faction = faction;
   data.revision = incomingRev;
   data.updatedAt = Date.now();
+  // Les tirages sont validés par /api/modules. Une sauvegarde de jeu créée
+  // juste avant un tirage ne doit jamais pouvoir remettre un ancien compteur.
+  const moduleRollsCorrected = protectServerModuleDailyRolls(serverData, data);
   // Mot de passe : le hash colonne fait foi. Un clair entrant = changement
   // volontaire -> on le re-hache. Un hash entrant est ignore.
   let pwHash = me.password_hash;
@@ -2787,7 +2802,8 @@ function handleSave(req, body, res) {
   }
   const responseUser = body.compactSave === true && saveId ? data
     : rowToPublic({ id: me.id, pseudo: finalPseudo, email: finalEmail, faction, data: JSON.stringify(data) });
-  return json(res, 200, { ok: true, conflict: conflict || undefined, ...saveResponseUser(body, responseUser) });
+  return json(res, 200, { ok: true, conflict: conflict || undefined,
+    ...(moduleRollsCorrected ? { user: responseUser } : saveResponseUser(body, responseUser)) });
 }
 
 export function handleAccountApi(req, res) {
