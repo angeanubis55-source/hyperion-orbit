@@ -78,6 +78,7 @@ import {
   armCurrentUserGalaxyGateMultiplierOnline,
   craftCurrentUserRecipeOnline,
   refineCurrentUserOreOnline,
+  refineChainCurrentUserOresOnline,
   sellCurrentUserOreOnline,
   exchangeCurrentUserPalladiumForEnergyOnline,
   chargeShipUpgrade,
@@ -799,8 +800,8 @@ function isBaseOnlyRespawnMap() {
 // CD anti-spam : démarrent dès qu'on utilise l'option payante une fois.
 const RESPAWN_PORTAL_COST = 50000;
 const RESPAWN_HERE_COST = 75000;
-const RESPAWN_PORTAL_CD_SEC = 60;
-const RESPAWN_HERE_CD_SEC = 120;
+const RESPAWN_PORTAL_CD_SEC = 10;
+const RESPAWN_HERE_CD_SEC = 20;
 const RESPAWN_CD_STORE_KEY = "hyperion_respawn_cd_v1";
 
 function getRespawnCdStore() {
@@ -9693,6 +9694,9 @@ const DEFAULT_KEYBINDS = {
   slot16: "F6", slot17: "F7", slot18: "F8", slot19: "F9", slot20: "F10",
   toggleWindows: "KeyH",
   toggleDock: "Tab",
+  petToggle: "KeyE",
+  petCombat: "KeyR",
+  botToggle: "KeyX",
 };
 
 // Volumes par défaut réglés par le joueur (ne pas remettre à 50).
@@ -9883,6 +9887,27 @@ function normalizeKeybinds(raw) {
   }
   // ✅ migration : l'ancien raccourci de réparation directe est supprimé.
   delete normalized.respawn;
+  // Anti-doublon : une touche = une seule action. Sinon un seul appui
+  // déclenche tout en chaîne (ex. X = pet + combat + bot). En cas de conflit
+  // (sauvegarde corrompue), on garde l'action dont c'est la touche par défaut,
+  // les autres retombent sur leur défaut.
+  for (let pass = 0; pass < 3; pass++) {
+    let fixed = false;
+    const byCode = new Map();
+    for (const key of Object.keys(normalized)) {
+      const code = normalized[key];
+      if (!byCode.has(code)) byCode.set(code, []);
+      byCode.get(code).push(key);
+    }
+    for (const keys of byCode.values()) {
+      if (keys.length < 2) continue;
+      const keeper = keys.find((k) => normalized[k] === DEFAULT_KEYBINDS[k]) || keys[0];
+      for (const k of keys) {
+        if (k !== keeper) { normalized[k] = DEFAULT_KEYBINDS[k]; fixed = true; }
+      }
+    }
+    if (!fixed) break;
+  }
   return normalized;
 }
 
@@ -10150,6 +10175,9 @@ const KEYBIND_LABELS = {
   slot16: "Slot 16", slot17: "Slot 17", slot18: "Slot 18", slot19: "Slot 19", slot20: "Slot 20",
   toggleWindows: "Masquer / restaurer les fenêtres",
   toggleDock: "Ouvrir / fermer le menu du dock rapide",
+  petToggle: "Activation / Désactivation du P.E.T",
+  petCombat: "Activation du P.E.T + combat",
+  botToggle: "Start / Stop Bot",
 };
 
 function getKeybind(action) {
@@ -15719,10 +15747,34 @@ async function refineryRefineAll({ refineOres = true } = {}) {
   try {
   // Passes répétées : une recette peut débloquer la suivante (ex : Xenomit -> Promerium).
   let total = 0;
-  let charged = refineryChargeEquipment({ deferSave: true, applyStats: false });
-  for (let pass = 0; refineOres && pass < 10; pass++) {
+  let charged = 0;
+  if (!(refineOres && netActive())) {
+    // Hors-ligne ou équipements seuls : chargement local initial, puis boucle
+    // locale (aucun envoi serveur). En ligne, le bulk serveur s'en charge.
+    charged = refineryChargeEquipment({ deferSave: true, applyStats: false });
+  }
+  if (refineOres && netActive()) {
+    // En ligne : UN seul aller-retour (chaîne complète + chargement
+    // équipements côté serveur). Fini les dizaines d'adoptions/rendus.
+    const bulk = await refineChainCurrentUserOresOnline(refineryEquipmentPrefs.ores, refineryEquipmentPrefs.cursors);
+    if (bulk.ok) {
+      account.user = bulk.user;
+      total += Math.max(0, Math.floor(Number(bulk.gained) || 0));
+      charged += Math.max(0, Math.floor(Number(bulk.charged) || 0));
+      if (bulk.cursors && typeof bulk.cursors === "object") {
+        refineryEquipmentPrefs.cursors = bulk.cursors;
+        saveRefineryEquipmentPrefs();
+      }
+    }
+  } else for (let pass = 0; refineOres && pass < 10; pass++) {
     let progress = 0;
     for (const recipe of REFINERY_RECIPES) {
+      // Pré-vérif locale : évite un aller-retour serveur complet (adoption
+      // du compte + rendu) quand le stock ne permet de toute façon rien.
+      // Sans ça : jusqu'à 60 requêtes séquentielles par cycle de 3 s,
+      // même soute vide — d'où les gros freezes.
+      const canDo = refineOreOutput(account.user?.inventory?.resources, recipe, 1);
+      if (!(canDo.quantity > 0)) continue;
       const result = await refineCurrentUserOreOnline(recipe.id, Infinity);
       if (result.ok) {
         account.user = result.user;
@@ -22609,6 +22661,40 @@ const used = [...boundKeys];
   { passive: false }
 );
 
+// Touches E / R (rebindables en paramètres) : activation du P.E.T,
+// et activation + passage direct en mode combat.
+// (Définies ici, au même niveau que triggerBoundCommand, pour être visibles.)
+// NOTE : on relit l'état persisté (getCurrentUserFull) plutôt que le cache
+// mémoire account.user, qui peut être écrasé par un snapshot (multi/autosave)
+// entre deux appuis — sinon le 2e appui ne désactive pas.
+function petFreshActive() {
+  try {
+    const fresh = getCurrentUserFull();
+    if (fresh?.pet?.owned === true) return fresh.pet.active === true;
+  } catch {}
+  return account.user?.pet?.active === true;
+}
+function togglePetByKey() {
+  const live = account.user?.pet?.owned === true ? account.user.pet : null;
+  if (!live) return showToast("P.E.T non possédé.", 1.5);
+  const out = setPetActive(!petFreshActive());
+  if (!out?.ok) return showToast(out?.error || "Impossible.", 1.5);
+  loadAccountUser();
+  showToast(out.active ? "P.E.T activé" : "P.E.T désactivé", 1.2);
+}
+function activatePetCombatByKey() {
+  const live = account.user?.pet?.owned === true ? account.user.pet : null;
+  if (!live) return showToast("P.E.T non possédé.", 1.5);
+  if (!petFreshActive()) {
+    const out = setPetActive(true);
+    if (!out?.ok) return showToast(out?.error || "Impossible.", 1.5);
+  }
+  const m = setPetMode("combat");
+  if (!m?.ok) return showToast(m?.error || "Impossible.", 1.5);
+  loadAccountUser();
+  showToast("P.E.T activé — mode combat", 1.5);
+}
+
 function triggerBoundCommand(code, repeat = false) {
     keyboard.keyDown(code, repeat);
     if (repeat) return;
@@ -22643,6 +22729,21 @@ function triggerBoundCommand(code, repeat = false) {
 
     if (isKeybind("toggleDock", code)) {
       toggleActionDockMenu?.();
+      return;
+    }
+
+    if (isKeybind("petToggle", code)) {
+      togglePetByKey();
+      return;
+    }
+
+    if (isKeybind("petCombat", code)) {
+      activatePetCombatByKey();
+      return;
+    }
+
+    if (isKeybind("botToggle", code)) {
+      botSetActive(!Bot.active);
       return;
     }
 
@@ -44629,12 +44730,13 @@ function drawSpeedStars() {
   const want = Math.max(70, Math.min(240,
     Math.round((Number(speedStarCfg.count) || 140) * (W * H) / (1920 * 1080))));
   while (speedStars.length < want) {
-    const layer = Math.random() < 0.55 ? 0 : 1; // 0 = loin, 1 = près
+    const rl = Math.random();
+    const layer = rl < 0.3 ? 2 : rl < 0.65 ? 0 : 1; // 2 = très loin, 0 = loin, 1 = près
     speedStars.push({
       x: Math.random() * (W + m * 2) - m,
       y: Math.random() * (H + m * 2) - m,
       layer,
-      s: layer === 0 ? 1 + Math.random() * 1.2 : 1.6 + Math.random() * 1.6,
+      s: layer === 2 ? 0.8 + Math.random() * 1 : layer === 0 ? 1 + Math.random() * 1.2 : 1.6 + Math.random() * 1.6,
       ph: Math.random() * 6.283,
       warm: Math.random() < 0.18,
     });
@@ -44650,9 +44752,8 @@ function drawSpeedStars() {
   ctx.save();
   ctx.lineWidth = 1;
   for (const s of speedStars) {
-    // Dérive inverse du vaisseau (couche près = plus vite) + micro-dérive
-    // pour que le ciel vive même à l'arrêt.
-    const k = (s.layer === 0 ? 0.55 : 1.15) * f;
+    // Dérive inverse du vaisseau (près = plus vite, très loin = à peine).
+    const k = (s.layer === 2 ? 0.3 : s.layer === 0 ? 0.55 : 1.15) * f;
     s.x += (-vx * k - 3) * dt;
     s.y += (-vy * k + 2) * dt;
     let rx = (s.x + m) % spanX;
@@ -44663,7 +44764,7 @@ function drawSpeedStars() {
     s.y = ry - m;
     // Scintillement doux.
     const tw = 0.35 + 0.65 * Math.abs(Math.sin(t * (0.8 + (s.ph % 1)) + s.ph));
-    ctx.globalAlpha = (s.layer === 0 ? 0.5 : 0.9) * tw;
+    ctx.globalAlpha = (s.layer === 2 ? 0.35 : s.layer === 0 ? 0.5 : 0.9) * tw;
     ctx.strokeStyle = ctx.fillStyle = s.warm ? "#ffd9a0" : "#bcd8ff";
     // Traînée dans le sens du mouvement quand ça trace (vitesse ressentie).
     const L = Math.min(16, spd * k * 0.028);

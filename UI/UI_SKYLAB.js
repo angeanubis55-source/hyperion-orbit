@@ -55,6 +55,30 @@ try {
 let lastDynamicRefresh = 0;
 let lastServerSync = 0;
 let syncInFlight = false;
+// Envoi optimiste (transporteur + immédiat, deux sens) : feedback immédiat
+// sans attendre le serveur, anti-double-clic, rollback visuel sur refus.
+let pendingSkylabSend = 0;
+
+// Améliorations optimistes : effet immédiat en local sans attendre le serveur.
+// moduleId -> { to, finishesAt, at }. Le serveur confirme en arrière-plan ;
+// en cas de refus on resync (rollback visuel). Évite aussi les doubles-clics
+// avalés en silence par le verrou d'écriture.
+const pendingSkylabUpgrades = new Map();
+function pendingSkylabUpgrade(moduleId, sky, nowMs = Date.now()) {
+  const id = String(moduleId || "");
+  const p = pendingSkylabUpgrades.get(id);
+  if (!p) return null;
+  const m = sky?.modules?.[id];
+  const level = Math.floor(Number(m?.level) || 0);
+  if (m?.upgrading || p.to !== level + 1 || Number(nowMs) - Number(p.at) > 60000) {
+    pendingSkylabUpgrades.delete(id);
+    return null;
+  }
+  return p;
+}
+function sweepStaleSkylabPendings(sky, nowMs = Date.now()) {
+  for (const [id] of pendingSkylabUpgrades) pendingSkylabUpgrade(id, sky, nowMs);
+}
 
 const NODE_POS = Object.freeze({
   // Zone modules officielle 772x364 (internalSkylab.css : #modules).
@@ -324,7 +348,8 @@ function popupSigFor(sky, user, now) {
     robots = 0;
   }
   const transportActive = Number(sky.transportReadyAt) > Number(now) ? 1 : 0;
-  return `${selectedModule}:${Math.floor(Number(m.level) || 0)}:${m.enabled !== false ? 1 : 0}:${m.upgrading ? m.upgrading.to : 0}:${robots}:${Math.floor(credits / 5000)}:${bucket("prometium")}:${bucket("endurium")}:${bucket("terbium")}:${transportDir}:${transportActive}`;
+  const pend = pendingSkylabUpgrade(selectedModule, sky, now);
+  return `${selectedModule}:${Math.floor(Number(m.level) || 0)}:${m.enabled !== false ? 1 : 0}:${m.upgrading ? m.upgrading.to : 0}:${pend ? pend.to : 0}:${robots}:${Math.floor(credits / 5000)}:${bucket("prometium")}:${bucket("endurium")}:${bucket("terbium")}:${transportDir}:${transportActive}`;
 }
 
 function renderPopup(sky, user, now, force = false) {
@@ -340,8 +365,9 @@ function renderPopup(sky, user, now, force = false) {
     // Compte à rebours et statuts en place, sans reconstruire les boutons.
     const timer = popup.querySelector("[data-detail-timer]");
     const m = sky.modules?.[selectedModule];
-    if (timer && m?.upgrading) {
-      const left = Math.max(0, Math.ceil((Number(m.upgrading.finishesAt) - now) / 1000));
+    const upFinishes = Number(m?.upgrading?.finishesAt) || Number(pendingSkylabUpgrade(selectedModule, sky, now)?.finishesAt) || 0;
+    if (timer && upFinishes > 0) {
+      const left = Math.max(0, Math.ceil((upFinishes - now) / 1000));
       const next = `Prêt dans ${formatSkylabDuration(left)}`;
       if (timer.textContent !== next) timer.textContent = next;
     }
@@ -432,11 +458,14 @@ function detailBodyHtml(sky, user, def, now) {
     html += `<button type="button" class="warnBtn" data-sky-action="toggle" data-module="${escapeHtml(def.id)}">${m.enabled === false ? "Activer" : "Mettre en pause"}</button>`;
   }
 
-  // Construction / amélioration.
+  // Construction / amélioration (le pending optimiste s'affiche comme un
+  // upgrading réel : effet immédiat, le serveur confirme en arrière-plan).
   if (def.upgradeable) {
-    if (m.upgrading) {
-      const left = Math.max(0, Math.ceil((Number(m.upgrading.finishesAt) - now) / 1000));
-      html += `<div class="detailProgress"><span>Amélioration vers le niveau ${m.upgrading.to}…</span><span data-detail-timer>Prêt dans ${formatSkylabDuration(left)}</span><span>(production du module en pause)</span></div>`;
+    const pend = pendingSkylabUpgrade(def.id, sky, now);
+    const up = m.upgrading || (pend ? { to: pend.to, finishesAt: pend.finishesAt } : null);
+    if (up) {
+      const left = Math.max(0, Math.ceil((Number(up.finishesAt) - now) / 1000));
+      html += `<div class="detailProgress"><span>Amélioration vers le niveau ${up.to}…</span><span data-detail-timer>Prêt dans ${formatSkylabDuration(left)}</span><span>(production du module en pause)</span></div>`;
     } else if (level >= SKYLAB_MAX_LEVEL) {
       html += `<div class="detailCost"><span>Niveau maximum atteint.</span></div>`;
     } else {
@@ -464,8 +493,8 @@ function transportBodyHtml(savedInputs = {}) {
   return `<button class="skylabDirToggle" type="button" data-sky-action="dir" data-dir="${transportDir === "toSky" ? "toShip" : "toSky"}"></button>`
     + `<div class="skyTransTopRow"><span class="skylabTransportStatus" data-transport-status></span><span class="skylabCargoLine" data-cargo-line></span></div>`
     + `<div class="skyTransInputs">${rows}</div>`
-    + `<div class="skyTransActions"><button type="button" data-sky-action="send-instant">Envoi immédiat<span>${formatInteger(SKYLAB_INSTANT_TRANSPORT_COST)} crédits</span></button>`
-    + `<button type="button" data-sky-action="send">Envoyer</button></div>`;
+    + `<div class="skyTransActions"><button type="button" data-sky-action="send-instant"${(Date.now() - pendingSkylabSend < 30000) ? " disabled" : ""}>Envoi immédiat<span>${formatInteger(SKYLAB_INSTANT_TRANSPORT_COST)} crédits</span></button>`
+    + `<button type="button" data-sky-action="send"${(Date.now() - pendingSkylabSend < 30000) ? " disabled" : ""}>Envoyer</button></div>`;
 }
 
 function refreshTransportDynamic(sky, now) {
@@ -502,7 +531,7 @@ function refreshTransportDynamic(sky, now) {
   }
   const statusEl = transport.querySelector("[data-transport-status]");
   if (statusEl) {
-    const next = readyIn > 0 ? `En vol : ${formatSkylabDuration(readyIn)}` : "Prêt.";
+    const next = Date.now() - pendingSkylabSend < 30000 ? "Envoi en cours…" : readyIn > 0 ? `En vol : ${formatSkylabDuration(readyIn)}` : "Prêt.";
     if (statusEl.textContent !== next) statusEl.textContent = next;
   }
   for (const input of transport.querySelectorAll("input[data-sky-send]")) {
@@ -525,6 +554,7 @@ export function renderSkylabWindow(force = false) {
   if (!root) return;
   const sky = liveSkylab();
   if (!sky) return;
+  try { sweepStaleSkylabPendings(sky, Date.now()); } catch {}
   let user = null;
   try {
     user = ctx?.getUser?.();
@@ -587,23 +617,63 @@ async function onSkylabClick(event) {
     return;
   }
   if (action === "upgrade") {
-    const res = await startSkylabUpgradeOnline(btn.dataset.module);
-    if (!res?.ok) { if (!res?.silent) ctx?.toast?.(res?.error || "Impossible.", 2.2); return; }
-    after(true, "", `${getSkylabModuleDef(btn.dataset.module)?.name || "Module"} : amélioration lancée.`);
+    const moduleId = String(btn.dataset.module || "");
+    // Garde anti-double-clic : une demande est déjà partie, le serveur confirme.
+    if (pendingSkylabUpgrade(moduleId, liveSkylab(), Date.now())) {
+      ctx?.toast?.("Amélioration déjà lancée.", 1.2);
+      return;
+    }
+    // Vérif locale immédiate (mêmes règles que le serveur) : feedback instantané.
+    let pre = null;
+    try {
+      const u0 = ctx?.getUser?.();
+      pre = canStartSkylabUpgrade(liveSkylab(), moduleId, Number(u0?.credits || 0), Date.now());
+    } catch { pre = null; }
+    if (!pre?.ok) {
+      ctx?.toast?.(pre?.error || "Impossible.", 2);
+      try { renderSkylabWindow(true); } catch {}
+      return;
+    }
+    // Optimiste : affiché comme lancé tout de suite, sans attendre le serveur.
+    pendingSkylabUpgrades.set(moduleId, {
+      to: pre.to,
+      finishesAt: Date.now() + Math.max(1, Number(pre.cost?.timeSecGame) || 1) * 1000,
+      at: Date.now(),
+    });
+    try { renderSkylabWindow(true); } catch {}
+    ctx?.toast?.(`${getSkylabModuleDef(moduleId)?.name || "Module"} : amélioration lancée.`, 1.8);
+    const res = await startSkylabUpgradeOnline(moduleId);
+    pendingSkylabUpgrades.delete(moduleId);
+    if (!res?.ok) {
+      if (res?.busy) ctx?.toast?.("Opération en cours, réessaie dans un instant.", 1.5);
+      else if (!res?.silent) ctx?.toast?.(res?.error || "Impossible.", 2.2);
+      try { renderSkylabWindow(true); } catch {}
+      try { requestSkylabSync(); } catch {}
+      return;
+    }
+    try { renderSkylabWindow(true); } catch {}
     return;
   }
   if (action === "toggle") {
     const sky = liveSkylab();
     const cur = sky?.modules?.[btn.dataset.module];
     const res = await setSkylabModuleEnabledOnline(btn.dataset.module, !(cur?.enabled !== false));
-    if (!res?.ok) { if (!res?.silent) ctx?.toast?.(res?.error || "Impossible.", 2); return; }
+    if (!res?.ok) {
+      if (res?.busy) { ctx?.toast?.("Opération en cours, réessaie dans un instant.", 1.5); return; }
+      if (!res?.silent) ctx?.toast?.(res?.error || "Impossible.", 2);
+      return;
+    }
     after(true, "", null);
     renderSkylabWindow();
     return;
   }
   if (action === "robot") {
     const res = await buySkylabRobotOnline(btn.dataset.module);
-    if (!res?.ok) { if (!res?.silent) ctx?.toast?.(res?.error || "Impossible.", 2.2); return; }
+    if (!res?.ok) {
+      if (res?.busy) { ctx?.toast?.("Opération en cours, réessaie dans un instant.", 1.5); return; }
+      if (!res?.silent) ctx?.toast?.(res?.error || "Impossible.", 2.2);
+      return;
+    }
     after(true, "", "Robot +5 % ajouté (12 h).");
     return;
   }
@@ -644,14 +714,36 @@ async function onSkylabClick(event) {
       }
     }
     const toSky = transportDir === "toSky";
+    // Optimiste (comme l'amélioration) : accusé immédiat, anti-double-clic,
+    // le serveur confirme en arrière-plan. Les deux sens pareil.
+    if (Date.now() - pendingSkylabSend < 30000) {
+      ctx?.toast?.("Envoi déjà en cours.", 1.2);
+      return;
+    }
+    pendingSkylabSend = Date.now();
+    try { renderSkylabWindow(true); } catch {}
+    ctx?.toast?.(action === "send-instant" ? "Envoi immédiat en cours…" : "Transporteur envoyé.", 1.5);
+    let res = null;
+    try {
+      if (action === "send-instant") {
+        res = await instantSkylabTransportOnline(amounts, toSky);
+      } else {
+        res = toSky ? await loadSkylabFromShipOnline(amounts) : await transportSkylabToShipOnline(amounts);
+      }
+    } finally {
+      pendingSkylabSend = 0;
+    }
+    if (!res?.ok) {
+      if (res?.busy) ctx?.toast?.("Opération en cours, réessaie dans un instant.", 1.5);
+      else if (!res?.silent) ctx?.toast?.(res?.error || "Impossible.", 2.2);
+      try { renderSkylabWindow(true); } catch {}
+      try { requestSkylabSync(); } catch {}
+      return;
+    }
     if (action === "send-instant") {
-      const res = await instantSkylabTransportOnline(amounts, toSky);
-      if (!res?.ok) { if (!res?.silent) ctx?.toast?.(res?.error || "Impossible.", 2.2); return; }
       after(true, "", `Envoi immédiat : +${formatInteger(res.totalMoved)} ressources.`);
       return;
     }
-    const res = toSky ? await loadSkylabFromShipOnline(amounts) : await transportSkylabToShipOnline(amounts);
-    if (!res?.ok) { if (!res?.silent) ctx?.toast?.(res?.error || "Impossible.", 2.2); return; }
     after(true, "", toSky
       ? `Chargé vers le Skylab : +${formatInteger(res.totalMoved)} ressources.`
       : `Transporteur envoyé : +${formatInteger(res.totalMoved)} ressources en soute.`);

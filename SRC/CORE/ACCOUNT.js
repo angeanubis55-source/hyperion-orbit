@@ -1,7 +1,7 @@
 // SRC/CORE/ACCOUNT.js
 "use strict";
 
-import { apiGalaxyGateOperation, apiModuleOperation, apiProduction, apiShopBuyItem, apiShopSell, apiSkylabOperation, bootNetFromCache, flushNetUser, netActive, netCurrent, netHasPendingSave, netList, netSetCurrent, netStore, noteNetConsumption, noteNetCreditGain, noteNetEquipmentSold, noteNetGateEnergy, noteNetPurchase, noteNetResourceGain, noteNetSelection, noteNetSkylabMoved, noteNetUpgradeCharge } from "./ACCOUNT_NET.js";
+import { apiGalaxyGateOperation, apiModuleOperation, apiProduction, apiRefineChain, apiShopBuyItem, apiShopSell, apiSkylabOperation, bootNetFromCache, flushNetUser, netActive, netCurrent, netHasPendingSave, netList, netSetCurrent, netStore, noteNetConsumption, noteNetCreditGain, noteNetEquipmentSold, noteNetGateEnergy, noteNetPurchase, noteNetResourceGain, noteNetSelection, noteNetSkylabMoved, noteNetUpgradeCharge } from "./ACCOUNT_NET.js";
 // Multi : session serveur restauree au chargement (token + cache local),
 // puis refresh async via /api/me (revision canonique).
 try { bootNetFromCache(); } catch {}
@@ -4196,6 +4196,14 @@ export async function refineCurrentUserOreOnline(recipeId, requestedQuantity = 1
     return out;
   }
   return refineCurrentUserOre(recipeId, requestedQuantity);
+}
+
+// Raffinage auto groupé : UN seul aller-retour serveur pour toute la chaîne
+// (10 passes max) + chargement des équipements entrelacé côté serveur.
+// Évite les dizaines d'adoptions/rendus qui figeaient le jeu.
+export async function refineChainCurrentUserOresOnline(selections = {}, cursors = {}) {
+  if (!netActive()) return { ok: false, error: "Session serveur inactive." };
+  return apiRefineChain(selections, cursors);
 }
 
 // Vente de minerais au comptoir pirate (prix fixes, tout le stock du minerai).

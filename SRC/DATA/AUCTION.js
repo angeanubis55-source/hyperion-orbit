@@ -5,25 +5,26 @@
 // pas de roulement aléatoire, dans cet ordre :
 //   1-3. munitions x2 / x3 / x4 (pack 10 000)
 //   4. munition x6 (pack 2 500)
-//   5. bouclier SG3N-B02
-//   6. générateur G3N-7900
-//   7-10. lasers LF-2 / LF-3 / LF-4 / LF-5 (pas de Xénocide)
-//   11. drone Iris (masqué si 8 possédés)
-//   12-13. roquettes PLT-3030 / PLT-2021 (x1 000 chacune)
-//   14-17. boosters B01 x10 (10 h) : Expérience / Dégâts / Coque / Bouclier
-//   18-20. vaisseaux Goliath / Vengeance / Leonov (masqués si possédés)
-//   21. 1 design aléatoire par heure, déterministe (même pour tous)
-//   22-31. Base de Combat : cœur, canons laser/roquette, modules (lots ressources)
-//   32. 1 ticket relance module, 25 M SANS décote (toujours dernier)
+//   5. munition A-BL (pack 10 000)
+//   6. bouclier SG3N-B02
+//   7. générateur G3N-7900
+//   8-11. lasers LF-2 / LF-3 / LF-4 / LF-5 (pas de Xénocide)
+//   12. drone Iris (masqué si 8 possédés)
+//   13-14. roquettes PLT-3030 / PLT-2021 (x1 000 chacune)
+//   15-18. boosters B01 x10 (10 h) : Expérience / Dégâts / Coque / Bouclier
+//   19-21. vaisseaux Goliath / Vengeance / Leonov (masqués si possédés)
+//   22. 1 design aléatoire par heure, déterministe (même pour tous)
+//   23-32. Base de Combat : cœur, canons laser/roquette, modules (lots ressources)
+//   33. 1 ticket relance module, 25 M SANS décote (toujours dernier)
 // Mise de départ à -70 % du prix boutique. Pas d'enchérisseurs fantômes :
 // la mise est réservée aussitôt, le plus offrant (joueur ou personne) clôt
 // le lot. L'orchestration (crédits, gains) vit dans ACCOUNT.js ; ce module
 // ne touche ni DOM ni stockage.
 
 export const AUCTION_DURATION_MS = 60 * 60 * 1000; // un cycle = 1 heure pile de Paris
-export const AUCTION_ACTIVE_LOTS = 32;
-// Historique "Dernières enchères" : 1 cycle complet (32 lots).
-export const AUCTION_HISTORY_LEN = 32;
+export const AUCTION_ACTIVE_LOTS = 33;
+// Historique "Dernières enchères" : 1 cycle complet (33 lots).
+export const AUCTION_HISTORY_LEN = 33;
 // Fuseau du cycle : réinitialisation à chaque heure pile de Paris (:00).
 export const AUCTION_TZ = "Europe/Paris";
 
@@ -72,7 +73,8 @@ export function parisHourSeed(nowMs = Date.now()) {
 // (avec remboursement des mises réservées) puis reconstruits en fixe.
 // v10 : retrait du laser Xénocide (LF-6) des enchères.
 // v11 : ajout des 10 lots Base de Combat (cœur + canons + modules).
-export const AUCTION_CYCLE_VERSION = 11;
+// v12 : ajout de la munition A-BL (10 packs = 10 000 tirs).
+export const AUCTION_CYCLE_VERSION = 12;
 
 // Prix de départ : -70 % (30 % du prix).
 export const AUCTION_START_RATIO = 0.3;
@@ -217,17 +219,20 @@ export function buildHourlyLots(catalog, filters = {}, nowMs = Date.now(), rng =
     }
   }
 
-  // 5. Bouclier B02 + 6. Générateur G3N-7900.
+  // 5. Munition A-BL : 10 packs boutique (10 000 tirs), comme x2/x3/x4.
+  pushCatalog("ammo_abl", 10);
+
+  // 6. Bouclier B02 + 7. Générateur G3N-7900.
   pushCatalog("shd_sg3nb02");
   pushCatalog("spd_g3n7900");
 
-  // 7-10. Lasers LF-2 / LF-3 / LF-4 / LF-5 (pas de Xénocide LF-6).
+  // 8-11. Lasers LF-2 / LF-3 / LF-4 / LF-5 (pas de Xénocide LF-6).
   pushCatalog("laser_lf2");
   pushCatalog("laser_lf3");
   pushCatalog("laser_lf4");
   pushCatalog("laser_lf5");
 
-  // 11. Iris (masqué si 8 possédés).
+  // 12. Iris (masqué si 8 possédés).
   if (irisOwned < 8) {
     const iris = findInCatalog(catalog, "drone_iris");
     if (iris) {
@@ -238,23 +243,23 @@ export function buildHourlyLots(catalog, filters = {}, nowMs = Date.now(), rng =
     }
   }
 
-  // 12-13. Roquettes PLT-3030 / PLT-2021 : x1 000 chacune (100 packs boutique).
+  // 13-14. Roquettes PLT-3030 / PLT-2021 : x1 000 chacune (100 packs boutique).
   pushCatalog("rocket_plt3030", 100);
   pushCatalog("rocket_plt2021", 100);
 
-  // 14-17. Boosters B01 x10 (= 10 h) : Expérience / Dégâts / Coque / Bouclier.
+  // 15-18. Boosters B01 x10 (= 10 h) : Expérience / Dégâts / Coque / Bouclier.
   pushCatalog("booster_ep", AUCTION_B01_HOURS);
   pushCatalog("booster_dmg", AUCTION_B01_HOURS);
   pushCatalog("booster_hp", AUCTION_B01_HOURS);
   pushCatalog("booster_shd", AUCTION_B01_HOURS);
 
-  // 18-20. Vaisseaux Goliath / Vengeance / Leonov (masqués si possédés).
+  // 19-21. Vaisseaux Goliath / Vengeance / Leonov (masqués si possédés).
   for (const shipId of ["goliath", "vengeance", "leonov"]) {
     if (ownedShips.has(shipId)) continue;
     pushCatalog(`ship_${shipId}`);
   }
 
-  // 21. 1 design aléatoire par heure de Paris, DÉTERMINISTE
+  // 22. 1 design aléatoire par heure de Paris, DÉTERMINISTE
   // (graine = heure pile de Paris) : stable entre les ticks et les refresh
   // (pas d'accumulation). Les designs déjà possédés sont masqués.
   {
@@ -268,7 +273,7 @@ export function buildHourlyLots(catalog, filters = {}, nowMs = Date.now(), rng =
     }
   }
 
-  // 22-31. Base de Combat : cœur, canons laser/roquette, modules.
+  // 23-32. Base de Combat : cœur, canons laser/roquette, modules.
   // Prix boutique calibrés sur l'atelier (mise de départ = -70 %) :
   // cœur légendaire ~ ticket, canons ~ LF-3/LF-4, modules ~ B02.
   // catalogId = id ressource (clé de dédup stable, voir auctionLotKey).
@@ -293,7 +298,7 @@ export function buildHourlyLots(catalog, filters = {}, nowMs = Date.now(), rng =
     ));
   }
 
-  // 32. Ticket relance module (décote normale des -70 % comme les autres).
+  // 33. Ticket relance module (décote normale des -70 % comme les autres).
   pushCatalog("ticket_module_reroll", 1);
 
   return lots.slice(0, AUCTION_ACTIVE_LOTS);

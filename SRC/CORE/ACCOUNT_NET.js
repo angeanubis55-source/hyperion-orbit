@@ -659,6 +659,49 @@ export async function apiAccountIdentity(kind, value, currentPassword) {
   }
 }
 
+export async function apiRefineChain(selections = {}, cursors = {}) {
+  if (!netActive()) return { ok: false, error: "Session serveur inactive." };
+  const busy = accountWriteNotice();
+  const operationKey = "production:refineChain";
+  if (!beginAuthoritativeOperation(operationKey)) return busy;
+  const token = memToken;
+  const userId = memUser.id;
+  let writer = null;
+  try {
+    if (saveInFlight) await saveInFlight;
+    if (netHasPendingSave()) {
+      await flushNetUser();
+      if (retrySave) return busy;
+    }
+    if (!netActive() || memToken !== token || memUser.id !== userId) return { ok: false, ignored: true };
+    writer = authoritativeWriter ? await waitForAuthoritativeWriter() : createAuthoritativeWriter();
+    if (!netActive() || memToken !== token || memUser.id !== userId) return { ok: false, ignored: true };
+    clearTimeout(saveTimer); saveTimer = null;
+    const cleanCursors = {};
+    if (cursors && typeof cursors === "object") {
+      for (const [k, v] of Object.entries(cursors)) {
+        const n = Math.floor(Number(v) || 0);
+        if (Number.isFinite(n) && n >= 0) cleanCursors[String(k)] = n;
+      }
+    }
+    const cleanSelections = {};
+    if (selections && typeof selections === "object") {
+      for (const [k, v] of Object.entries(selections)) cleanSelections[String(k)] = String(v ?? "");
+    }
+    const out = await api("/api/production", { method: "POST", body: { action: "refineChain", selections: cleanSelections, cursors: cleanCursors }, token });
+    if (!netActive() || memToken !== token || memUser.id !== userId) return { ok: false, ignored: true };
+    if (out?.ok && out.user) {
+      adoptServerUser(out.user, { reason: "production" });
+      try { window.dispatchEvent(new CustomEvent("orbit:user-updated", { detail: { userId: memUser.id, revision: memUser.revision, source: "production" } })); } catch {}
+    }
+    return out || { ok: false, error: "Reponse serveur invalide." };
+  } catch {
+    return { ok: false, error: "Reseau." };
+  } finally {
+    finishAuthoritativeOperation(writer, operationKey);
+  }
+}
+
 export async function apiShopBuyItem(itemId, quantity = 1, options = {}) {
   if (!netActive()) return { ok: false, error: "Session serveur inactive." };
   const busy = accountWriteNotice();

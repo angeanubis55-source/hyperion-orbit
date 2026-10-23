@@ -23,7 +23,7 @@ import { generateShipModule } from "../SRC/DATA/MODULE_GEN.js";
 import { findCatalogItem } from "../SRC/CORE/CATALOG.js";
 import { createDrone, DRONE_FORMATIONS, DRONE_TYPES, getIrisPrice, SPECIAL_DRONE_PRICE } from "../DRONE/DRONE_TYPES.js";
 import { getFaction, getFactionBaseSpawn } from "../SRC/CORE/FACTIONS.js";
-import { CARGO_CAPACITY, cargoAdd, getRefineryRecipe, ORE_SELL_PRICES, refineOreOutput } from "../SRC/DATA/RESOURCES.js";
+import { CARGO_CAPACITY, cargoAdd, getRefineryRecipe, ORE_SELL_PRICES, planAutoUpgradeCharges, REFINERY_RECIPES, refineOreOutput, upgradeOreCapacity } from "../SRC/DATA/RESOURCES.js";
 import { getPetTradeBonusPct } from "../PET/PET_GEARS.js";
 import { CRAFTING_ENABLED, getCraftingRecipe } from "../SRC/DATA/CRAFTING.js";
 import { isHalloweenEventActive } from "../NPC/NPC_HALLOWEEN.js";
@@ -3026,7 +3026,7 @@ export function handleAccountApi(req, res) {
       const action = String(body?.action || "");
       const recipeId = String(body?.recipeId || "");
       const requested = Math.floor(Number(body?.quantity ?? 1));
-      if (!recipeId || !Number.isSafeInteger(requested) || requested < 1 || requested > 1_000_000) return json(res, 400, { ok: false, error: "Operation invalide." });
+      if (action !== "refineChain" && (!recipeId || !Number.isSafeInteger(requested) || requested < 1 || requested > 1_000_000)) return json(res, 400, { ok: false, error: "Operation invalide." });
       let inTx = false;
       try {
         db.exec("BEGIN IMMEDIATE"); inTx = true;
@@ -3043,7 +3043,58 @@ export function handleAccountApi(req, res) {
           for (const [resourceId, amount] of Object.entries(recipe.inputs)) data.inventory.resources[resourceId] = Math.max(0, Math.floor(Number(data.inventory.resources[resourceId]) || 0)) - Math.max(0, Math.floor(Number(amount) || 0)) * refined.quantity;
           data.inventory.resources[recipe.output.id] = Math.max(0, Math.floor(Number(data.inventory.resources[recipe.output.id]) || 0)) + refined.gained;
           result = { recipeId: recipe.id, quantity: refined.quantity, gained: refined.gained };
-        } else if (action === "craft") {
+        } else if (action === "refineChain") {
+        // Raffinage auto groupé : TOUTE la chaîne (10 passes max) + chargement
+        // des équipements entrelacé, en UNE transaction et UN aller-retour.
+        // Sans ça, l'auto envoyait jusqu'à 60 requêtes séquentielles par cycle.
+        data.inventory ||= {}; data.inventory.resources ||= {}; data.upgrades ||= {};
+        const selections = {};
+        if (body?.selections && typeof body.selections === "object") {
+          for (const [k, v] of Object.entries(body.selections)) selections[String(k)] = String(v ?? "");
+        }
+        let cursors = {};
+        if (body?.cursors && typeof body.cursors === "object") {
+          for (const [k, v] of Object.entries(body.cursors)) {
+            const n = Math.floor(Number(v) || 0);
+            if (Number.isFinite(n) && n >= 0) cursors[String(k)] = n;
+          }
+        }
+        const chargeSelected = () => {
+          let moved = 0;
+          const plan = planAutoUpgradeCharges(data.inventory.resources, selections, cursors, data.upgrades);
+          cursors = plan.cursors || cursors;
+          for (const { slot, ore, amount } of plan.charges) {
+            const cur = data.upgrades[slot] || {};
+            const owned = Math.max(0, Math.floor(Number(data.inventory.resources[ore]) || 0));
+            const qty = Math.max(0, Math.min(Math.floor(Number(amount) || 0), owned, upgradeOreCapacity(data.upgrades, slot, ore)));
+            if (qty <= 0) continue;
+            data.inventory.resources[ore] = owned - qty;
+            data.upgrades[slot] = String(cur.ore) === String(ore)
+              ? { ore, stock: Math.max(0, Math.floor(Number(cur.stock) || 0)) + qty * 10 }
+              : { ore, stock: qty * 10 };
+            moved += qty;
+          }
+          return moved;
+        };
+        let total = 0, chargedTotal = chargeSelected();
+        const byRecipe = {};
+        for (let pass = 0; pass < 10; pass++) {
+          let progress = 0;
+          for (const recipe of REFINERY_RECIPES) {
+            const refined = refineOreOutput(data.inventory.resources, recipe, 1_000_000);
+            if (refined.quantity <= 0) continue;
+            for (const [resourceId, amount] of Object.entries(recipe.inputs)) data.inventory.resources[resourceId] = Math.max(0, Math.floor(Number(data.inventory.resources[resourceId]) || 0) - Math.max(0, Math.floor(Number(amount) || 0)) * refined.quantity);
+            data.inventory.resources[recipe.output.id] = Math.max(0, Math.floor(Number(data.inventory.resources[recipe.output.id]) || 0)) + refined.gained;
+            progress += refined.gained;
+            byRecipe[recipe.id] = (byRecipe[recipe.id] || 0) + refined.gained;
+            chargedTotal += chargeSelected();
+          }
+          total += progress;
+          if (progress <= 0) break;
+        }
+        if (total <= 0 && chargedTotal <= 0) throw Object.assign(new Error("Rien à raffiner."), { client: true });
+        result = { gained: total, charged: chargedTotal, byRecipe, cursors };
+      } else if (action === "craft") {
           const recipe = getCraftingRecipe(recipeId);
           if (!recipe) throw Object.assign(new Error("Recette introuvable."), { client: true });
           result = applyServerCraft(data, recipe, requested);

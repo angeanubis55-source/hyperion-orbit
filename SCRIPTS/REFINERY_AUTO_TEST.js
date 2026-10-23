@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import { readFileSync } from 'node:fs';
-import { planAutoUpgradeCharges, REFINERY_RECIPES } from '../SRC/DATA/RESOURCES.js';
+import { planAutoUpgradeCharges, REFINERY_RECIPES, refineOreOutput } from '../SRC/DATA/RESOURCES.js';
 import { chargeShipUpgrade, chargeShipUpgradesAutomatically, refineCurrentUserOre } from '../SRC/CORE/ACCOUNT.js';
 
 const all = { laser: 'promerium', rocket: 'promerium', speed: 'promerium', shield: 'promerium' };
@@ -47,7 +47,8 @@ function refinery(resources, selections, equipment = true, ores = false) {
   const user = { id: 'refinery-test', inventory: { resources: { ...resources } }, upgrades: {} };
   const saved = [], ctx = vm.createContext({
     account: { user }, ui: { refineryAuto: { checked: ores }, refineryAutoUpgrades: { checked: equipment } },
-    REFINERY_RECIPES, chargeShipUpgradesAutomatically,
+    REFINERY_RECIPES, refineOreOutput, chargeShipUpgradesAutomatically,
+    netActive: () => false,
     refineCurrentUserOreOnline: async (recipeId, quantity) => refineCurrentUserOre(recipeId, quantity, { user, deferSave: true }),
     localStorage: { setItem() {} }, loadAccountUser() {}, applyCurrentConfigStats() { ctx.stats++; },
     saveUser(user) { saved.push(structuredClone(user)); }, stats: 0, started: true,

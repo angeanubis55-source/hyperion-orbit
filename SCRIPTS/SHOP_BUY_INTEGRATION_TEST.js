@@ -238,6 +238,38 @@ test("achat de munitions laser autoritaire côté serveur", { timeout: 20000 }, 
   assert.equal(loaded.totalMoved, 5);
   assert.equal(canonical.credits, instantCredits - loaded.cost, "le cout du transport instantane vient du serveur");
 
+  const refineSeedSave = await api("/api/save", { token, body: {
+    user: { ...canonical, revision: canonical.revision + 1,
+      inventory: { ...canonical.inventory, resources: { ...canonical.inventory.resources,
+        prometium: 0, endurium: 0, terbium: 0, prometid: 0, duranium: 0, xenomit: 0, promerium: 40, seprom: 0 } },
+      upgrades: {} },
+    baseRevision: canonical.revision, saveId: "stock-server-refine-chain",
+  } });
+  assert.equal(refineSeedSave.status, 200); canonical = refineSeedSave.user;
+  const chained = await api("/api/production", { token, body: {
+    action: "refineChain", selections: { laser: "promerium", speed: "promerium" }, cursors: {},
+  } });
+  assert.equal(chained.status, 200, "le raffinage groupe passe en un seul appel");
+  canonical = chained.user;
+  assert.equal(chained.charged, 40, "le chargement des equipements est inclus dans le bulk");
+  assert.equal(canonical.upgrades.laser.stock, 200);
+  assert.equal(canonical.upgrades.speed.stock, 200);
+  assert.equal(Number(canonical.inventory.resources.promerium || 0), 0);
+  const chainSeedSave = await api("/api/save", { token, body: {
+    user: { ...canonical, revision: canonical.revision + 1,
+      inventory: { ...canonical.inventory, resources: { ...canonical.inventory.resources,
+        prometium: 200, endurium: 200, terbium: 200, prometid: 0, duranium: 0, xenomit: 0, promerium: 0, seprom: 0 } } },
+    baseRevision: canonical.revision, saveId: "stock-server-refine-chain2",
+  } });
+  assert.equal(chainSeedSave.status, 200); canonical = chainSeedSave.user;
+  const chainedFull = await api("/api/production", { token, body: { action: "refineChain", selections: {}, cursors: {} } });
+  assert.equal(chainedFull.status, 200); canonical = chainedFull.user;
+  assert.equal(chainedFull.gained, 20, "prometid + duranium en une passe");
+  assert.equal(Number(canonical.inventory.resources.prometid || 0), 10);
+  assert.equal(Number(canonical.inventory.resources.duranium || 0), 10);
+  const chainedIdle = await api("/api/production", { token, body: { action: "refineChain", selections: {}, cursors: {} } });
+  assert.equal(chainedIdle.status, 409, "rien a raffiner : lot vide sans ecriture");
+
   const gateSeedState = normalizeGalaxyGateState(canonical.galaxyGates);
   gateSeedState.energy = 20;
   gateSeedState.multipliers ||= {};

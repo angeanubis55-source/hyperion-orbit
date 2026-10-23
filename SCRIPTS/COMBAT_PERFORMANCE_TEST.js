@@ -542,7 +542,21 @@ test("raffinage auto : chaine complete, une sauvegarde, debits reseau conserves"
     netActive: () => true, noteNetConsumption: (field, id, count) => { assert.equal(field, "ores"); debits[id] = (debits[id] || 0) + count; },
     getCurrentUserFull: () => { reads++; return user; }, ensureUserShape: u => u,
     saveUser: (u, options) => { assert.equal(u, user); assert.equal(options.source, "progress"); saves++; },
+    refineryEquipmentPrefs: { ores: {}, cursors: {} }, saveRefineryEquipmentPrefs() {},
     refineCurrentUserOreOnline: async (recipeId, quantity) => context.refineCurrentUserOre(recipeId, quantity, { user, deferSave: true }),
+    refineChainCurrentUserOresOnline: async () => {
+      let gained = 0; const byRecipe = {};
+      for (let pass = 0; pass < 10; pass++) {
+        let progress = 0;
+        for (const recipe of REFINERY_RECIPES) {
+          const r = await context.refineCurrentUserOreOnline(recipe.id, Infinity);
+          if (r.ok) { progress += r.gained; byRecipe[recipe.id] = (byRecipe[recipe.id] || 0) + r.gained; }
+        }
+        gained += progress;
+        if (!progress) break;
+      }
+      return { ok: true, user, gained, charged: 0, byRecipe, cursors: {} };
+    },
     refineryServerBusy: false,
   });
   const asyncRefine = engine.slice(engine.indexOf("async function refineryRefineAll("), engine.indexOf("\n}\n\nasync function maybeRefineryAuto", engine.indexOf("async function refineryRefineAll(")) + 2);
