@@ -4287,7 +4287,7 @@ function tbrCloneFire(c) {
       miss: missRolls.some(Boolean), v: volleyId });
   } catch {}
   playEscortShot(ammoKey);
-  const salvoShots = isRsbLike(ammoKey) ? 12 : 6;
+  const salvoShots = salvoShotCount(ammoKey);
   const salvoInterval = isRsbLike(ammoKey) ? 1 / 12 : 0.2;
   for (let i = 1; i < salvoShots; i++) {
     const items = stage >= 4 && i % 2 === 0 ? [[-SIDE_OFFSET, 0], [SIDE_OFFSET, 0]] : [[0, 0]];
@@ -18475,6 +18475,9 @@ function applyCurrentConfigStats(keepRatios = true, restoreShieldConfigNo = null
 
   player.baseDamage = Math.max(1, Math.floor(stats.totalLaserDamage || 1));
   player.baseDamageNoLeonov = Math.max(1, Math.floor(stats.totalLaserDamageNoLeonov ?? stats.totalLaserDamage ?? 1));
+  // Cadence de tir (formations type Polygone) : appliquée ici aussi, sinon
+  // un changement de formation en cours de jeu ne l'active jamais.
+  player.fireRateMult = BASE_RUN.fireRateMult * formationFireRateMult();
   // Modules roulette dégâts ciblés (appliqués au tir, pas dans la base).
   player.bonusNpcDmgPct = Number(stats.bonusNpcDmgPct || 0);
   player.bonusPvpDmgPct = Number(stats.bonusPvpDmgPct || 0);
@@ -21637,8 +21640,8 @@ function resetPlayerToBase() {
   player.honorBonusPct = Number(stats.bonusHonorPct || 0);
 
   player.baseFireRate = BASE_RUN.baseFireRate;
-  player.baseBulletSpeed = BASE_RUN.baseBulletSpeed;
-  player.fireRateMult = BASE_RUN.fireRateMult;
+  player.baseBulletSpeed = BASE_RUN.baseBulletSpeed * formationBulletSpeedMult();
+  player.fireRateMult = BASE_RUN.fireRateMult * formationFireRateMult();
   player.laserDmgMult = BASE_RUN.laserDmgMult;
 
   const shipBaseSpeed = Number(pack?.speed || 0);
@@ -24271,7 +24274,7 @@ const isSab = ammoKey === "sab";
   // par le joueur. Le X1 reste naturellement illimité.
   consumeAmmo(count);
   playEscortShot(ammoKey);
-  const salvoShots = isRsbLike(ammoKey) ? 12 : 6;
+  const salvoShots = salvoShotCount(ammoKey);
   const salvoInterval = isRsbLike(ammoKey) ? 1 / 12 : 0.2;
   for (let i = 1; i < salvoShots; i++) {
     const fakeIsPair = canFirePair && (isRealPair ? i % 2 === 0 : i % 2 === 1);
@@ -32090,6 +32093,24 @@ function formationRocketCooldownMult() {
   return Math.max(0.05, 1 + Number(activeFormationEffects().rocketCooldownPct || 0) / 100);
 }
 
+// Cadence de tir laser (formations type Polygone) : +100 % => x2.
+function formationFireRateMult() {
+  return Math.max(0.05, 1 + Number(activeFormationEffects().fireRatePct || 0) / 100);
+}
+
+// Vitesse visuelle des tirs laser (Polygone : -50 % => 2000 au lieu de 4000).
+function formationBulletSpeedMult() {
+  return Math.max(0.05, 1 + Number(activeFormationEffects().bulletSpeedPct || 0) / 100);
+}
+
+// Nombre d'éclairs affichés par salve (le 1er = vrai tir, les suivants =
+// faux tirs esthétiques dmg 0) : divisé par la cadence pour garder un nombre
+// de faux tirs standard par seconde (Polygone x2 => moitié moins par salve).
+function salvoShotCount(ammoKey) {
+  const base = isRsbLike(ammoKey) ? 12 : 6;
+  return Math.max(1, Math.round(base / formationFireRateMult()));
+}
+
 function formationNpcDamageMult(target) {
   const isNpc = target && !target._netPlayer && !target._netPet;
   return isNpc ? Math.max(0, 1 + Number(activeFormationEffects().npcDamagePct || 0) / 100) : 1;
@@ -33264,7 +33285,8 @@ addCappedProjectile(bullets, {
   // ✅ Salve visuelle : seule la première volée (le vrai tir) inflige les dégâts ;
   // les éclairs suivants sont des doublons esthétiques (dmg 0) qui convergent sur la cible.
   // X6/RCB → 12 tirs affichés par seconde ; autres munitions → 6 tirs (1 toutes les 200 ms).
-  const salvoShots = isRsbLike(ammoKey) ? 12 : 6;
+  // Nombre ajusté à la cadence (salvoShotCount) : les faux tirs restent standards par seconde.
+  const salvoShots = salvoShotCount(ammoKey);
   const salvoInterval = isRsbLike(ammoKey) ? 1 / 12 : 0.2;
 
   // ðŸ”« salve : le vrai tir compte pour le premier éclair affiché (t=0).

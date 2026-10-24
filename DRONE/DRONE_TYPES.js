@@ -31,6 +31,7 @@ export const DRONE_FORMATIONS=Object.freeze([
   makeFormation("wheel","Formation Roue",150000000,{speedPct:5,laserDamagePct:-20,shieldDrainPct:5},"+5 % vitesse · -20 % dégâts laser · -5 % bouclier"),
   makeFormation("x","Formation X",200000000,{npcDamagePct:5,npcXpPct:5,hpPct:30,honorPct:-100},"+5 % dégâts laser NPC · +5 % expérience · +30 % HP · -100 % honneur (soit 0 par destruction)"),
   makeFormation("wave","Formation Vague",500000),
+  makeFormation("polygon","Formation Polygone",65000000000,{fireRatePct:100,speedPct:-70},"+100 % cadence de tir laser · -70 % vitesse"),
 ]);
 export function getIrisPrice(n){return IRIS_BASE_PRICE*(2**Math.max(0,Math.min(7,Math.floor(Number(n)||0))));}
 // Icones CONTROL_MENU (officielles) pour le dock rapide / HUD : la boutique
