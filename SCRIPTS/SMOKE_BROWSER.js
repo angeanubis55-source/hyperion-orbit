@@ -108,6 +108,69 @@ try {
         await page.waitForTimeout(500);
       }
       if (inspectWindows) {
+        const moduleHitTarget = await page.locator("#btnModuleHub").evaluate((button) => {
+          const rect = button.getBoundingClientRect();
+          const hit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+          return { id: hit?.closest?.("button")?.id || "", width: rect.width, height: rect.height };
+        });
+        if (moduleHitTarget.id !== "btnModuleHub" || Math.round(moduleHitTarget.width) !== 46 || Math.round(moduleHitTarget.height) !== 44) {
+          errors.push(`Bouton Modules recouvert ou hors dimensions: ${JSON.stringify(moduleHitTarget)}`);
+        } else {
+          await page.click("#btnModuleHub");
+          await page.waitForSelector("#moduleWindow", { state: "visible", timeout: 10_000 });
+          await page.waitForSelector("#moduleWindow .extrasRoulettePanel", { state: "visible", timeout: 10_000 });
+          const rouletteCentered = await page.locator("#rouletteView").evaluate((view) => getComputedStyle(view).justifyContent === "center");
+          if (!rouletteCentered) errors.push("Contenu Modules non centré");
+          const rouletteSummaryAligned = await page.evaluate(() => {
+            const summary = document.getElementById("extrasRouletteCost")?.getBoundingClientRect();
+            const credits = document.getElementById("moduleWindowCredits")?.closest(".shopBalance")?.getBoundingClientRect();
+            return !!summary && !!credits && Math.abs((summary.top + summary.height / 2) - (credits.top + credits.height / 2)) <= 4;
+          });
+          if (!rouletteSummaryAligned) errors.push("Résumé Modules non aligné avec Crédits disponibles");
+          await page.click('#moduleWindowTabs [data-module-tab="history"]');
+          await page.waitForSelector("#moduleHistoryView", { state: "visible", timeout: 10_000 });
+          const historySummaryAligned = await page.evaluate(() => {
+            const summary = document.getElementById("moduleHistoryHeadRight")?.getBoundingClientRect();
+            const credits = document.getElementById("moduleWindowCredits")?.closest(".shopBalance")?.getBoundingClientRect();
+            return !!summary && !!credits && Math.abs((summary.top + summary.height / 2) - (credits.top + credits.height / 2)) <= 4;
+          });
+          if (!historySummaryAligned) errors.push("Résumé Historique non aligné avec Crédits disponibles");
+          await page.click('#moduleWindowTabs [data-module-tab="extras"]');
+          await page.waitForSelector("#rouletteView", { state: "visible", timeout: 10_000 });
+          await page.click("#btnModuleHub");
+          await page.waitForSelector("#moduleWindow", { state: "hidden", timeout: 10_000 });
+
+          // Régression : si Modules était ouverte pendant un refresh, son
+          // cadre revenait mais son contenu restait vide jusqu'à deux clics.
+          await page.click("#btnModuleHub");
+          await page.waitForSelector("#moduleWindow .extrasRoulettePanel", { state: "visible", timeout: 10_000 });
+          await page.reload({ waitUntil: "domcontentloaded", timeout: 20_000 });
+          await page.waitForFunction(() => {
+            const overlay = document.getElementById("loadingOverlay");
+            const button = document.getElementById("loadingStartBtn");
+            return (overlay && getComputedStyle(overlay).display === "none") || (button && !button.disabled);
+          }, null, { timeout: 90_000 });
+          const restartRequired = await page.locator("#loadingStartBtn").evaluate(button => !button.disabled && getComputedStyle(button).display !== "none");
+          if (restartRequired) await page.click("#loadingStartBtn");
+          await page.waitForFunction(() => getComputedStyle(document.getElementById("loadingOverlay")).display === "none", null, { timeout: 30_000 });
+          await page.waitForFunction(() => !document.documentElement.classList.contains("orbitBooting"), null, { timeout: 30_000 });
+          await page.waitForSelector("#moduleWindow", { state: "visible", timeout: 10_000 });
+          await page.waitForSelector("#moduleWindow .extrasRoulettePanel", { state: "visible", timeout: 10_000 });
+          await page.click("#btnModuleHub");
+          await page.waitForSelector("#moduleWindow", { state: "hidden", timeout: 10_000 });
+        }
+        await page.click("#btnShopHub");
+        await page.waitForSelector('#shopWindowTabs [data-shop="ammo"].active', { state: "visible", timeout: 10_000 });
+        await page.waitForSelector("#shopWindowList .shopRow", { state: "visible", timeout: 10_000 });
+        await page.click('#shopWindowTabs [data-shop="ships"]');
+        await page.waitForSelector('#shopWindowTabs [data-shop="ships"].active', { state: "visible", timeout: 10_000 });
+        await page.click("#btnShopHub");
+        await page.waitForSelector("#shopWindow", { state: "hidden", timeout: 10_000 });
+        await page.click("#btnShopHub");
+        await page.waitForSelector('#shopWindowTabs [data-shop="ammo"].active', { state: "visible", timeout: 10_000 });
+        await page.waitForSelector("#shopWindowList .shopRow", { state: "visible", timeout: 10_000 });
+        await page.click("#btnShopHub");
+        await page.waitForSelector("#shopWindow", { state: "hidden", timeout: 10_000 });
         await page.click('[data-window-id="galaxyGateWindow"]');
         await page.waitForSelector("#galaxyGateWindow", { state: "visible", timeout: 10_000 });
         const windowIssue = await page.locator("#galaxyGateWindow").evaluate((card) => {

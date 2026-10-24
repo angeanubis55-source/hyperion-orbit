@@ -665,6 +665,17 @@ export const CRAFTING_RECIPES = Object.freeze([
     },
     output: { items: { ticket_module_reroll: 1 } },
   }),
+  Object.freeze({
+    id: "craft_ticket_roll",
+    name: "Ticket tirage module",
+    description: "Un tirage supplémentaire à la roulette des modules, même quand le quota du jour est épuisé.",
+    rarity: "legendary",
+    costs: {
+      credits: 3000000000,
+      resources: { npc_debris: 2500 },
+    },
+    output: { items: { ticket_module_roll: 1 } },
+  }),
   // ---- Halloween (event uniquement : masquées hors event, items conservés) ----
   // Protocoles P.E.T niveau 5 (+25 % du N4).
   Object.freeze({

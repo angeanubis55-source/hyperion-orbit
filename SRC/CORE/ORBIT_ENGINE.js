@@ -10776,6 +10776,7 @@ function registerHudWindows() {
   reg("refineryWindow", "Raffinage", menuIcon("refinement_hover"), false);
   reg("skylabWindow", "Skylab", menuIcon("skylab_hover"), false);
   reg("auctionWindow", "Enchères", menuIcon("auction_hover"), false);
+  reg("moduleWindow", "Modules", menuIcon("modules_hover"), false);
   reg("pilotWindow", "Arbre des compétences", menuIcon("skilltree_hover"), false);
   reg("boosterWindow", "Boosters", menuIcon("gauge_hover"), false);
   reg("botWindow", "BOT", menuIcon("bot_hover"), false);
@@ -18474,6 +18475,10 @@ function applyCurrentConfigStats(keepRatios = true, restoreShieldConfigNo = null
 
   player.baseDamage = Math.max(1, Math.floor(stats.totalLaserDamage || 1));
   player.baseDamageNoLeonov = Math.max(1, Math.floor(stats.totalLaserDamageNoLeonov ?? stats.totalLaserDamage ?? 1));
+  // Modules roulette dégâts ciblés (appliqués au tir, pas dans la base).
+  player.bonusNpcDmgPct = Number(stats.bonusNpcDmgPct || 0);
+  player.bonusPvpDmgPct = Number(stats.bonusPvpDmgPct || 0);
+  player.bonusRocketDmgPct = Number(stats.bonusRocketDmgPct || 0);
 
   player.laserHitBonusPct = clamp(Number(stats.bonusLaserHitPct || 0), -100, 100);
   player.rocketHitBonusPct = clamp(Number(stats.bonusRocketHitPct || 0), -100, 100);
@@ -21618,6 +21623,10 @@ function resetPlayerToBase() {
 
   player.baseDamage = Math.max(1, Math.floor(stats.totalLaserDamage || 1));
   player.baseDamageNoLeonov = Math.max(1, Math.floor(stats.totalLaserDamageNoLeonov ?? stats.totalLaserDamage ?? 1));
+  // Modules roulette dégâts ciblés (appliqués au tir, pas dans la base).
+  player.bonusNpcDmgPct = Number(stats.bonusNpcDmgPct || 0);
+  player.bonusPvpDmgPct = Number(stats.bonusPvpDmgPct || 0);
+  player.bonusRocketDmgPct = Number(stats.bonusRocketDmgPct || 0);
 
   player.laserHitBonusPct = clamp(Number(stats.bonusLaserHitPct || 0), -100, 100);
   player.rocketHitBonusPct = clamp(Number(stats.bonusRocketHitPct || 0), -100, 100);
@@ -30017,11 +30026,17 @@ function laserDpsBreakdown() {
   }
   if (fVsNpc) R("Formation vs NPC", fmtMult(Math.max(0, 1 + fVsNpc / 100)), null, "dpsF5");
   if (fVsPlayers) R("Formation vs joueurs", null, fmtMult(Math.max(0, 1 + fVsPlayers / 100)), "dpsF5");
+  // Modules roulette ciblées : Dég. NPC (colonne NPC) et Dég. PvP
+  // (colonne Joueurs, JPC inclus). Dég. Laser déjà dans le bloc Modules.
+  const modNpc = num(player?.bonusNpcDmgPct);
+  const modPvp = num(player?.bonusPvpDmgPct);
+  if (modNpc) R("Modules vs NPC", fmtMult(Math.max(0, 1 + modNpc / 100)), null, "dpsF5");
+  if (modPvp) R("Modules vs joueurs", null, fmtMult(Math.max(0, 1 + modPvp / 100)), "dpsF5");
   R("Arbre pilote", fmtMult(pilotNpc), fmtMult(pilotPvp), "dpsF5");
   R("Boosters dégâts", fmtMult(booster), fmtMult(booster), "dpsF3");
   R("Améliorations laser", fmtMult(upgrade), fmtMult(upgrade), "dpsF6");
-  const npcMult = laserBlock * (fVsNpc ? Math.max(0, 1 + fVsNpc / 100) : 1) * pilotNpc * booster * upgrade;
-  const pvpMult = laserBlock * (fVsPlayers ? Math.max(0, 1 + fVsPlayers / 100) : 1) * pilotPvp * booster * upgrade;
+  const npcMult = laserBlock * (fVsNpc ? Math.max(0, 1 + fVsNpc / 100) : 1) * (modNpc ? Math.max(0, 1 + modNpc / 100) : 1) * pilotNpc * booster * upgrade;
+  const pvpMult = laserBlock * (fVsPlayers ? Math.max(0, 1 + fVsPlayers / 100) : 1) * (modPvp ? Math.max(0, 1 + modPvp / 100) : 1) * pilotPvp * booster * upgrade;
   return {
     rows,
     npc: { totalMult: npcMult, perVolley: Math.round(base * npcMult) },
@@ -32086,6 +32101,27 @@ function formationPlayerLaserDamageMult(target) {
     : 1;
 }
 
+// Modules roulette dégâts ciblés (équipés sur le hangar actif) :
+// Dég. NPC -> lasers + roquettes vs NPC (ni joueurs, ni pets, ni JPC, ni stations) ;
+// Dég. PvP -> lasers + roquettes vs joueurs ET bots JPC (faux joueurs) ;
+// Dég. Roquettes -> toutes les roquettes. Cumul additif, jamais négatif.
+function moduleNpcDamageMult(target) {
+  const isNpc = target && target._netPlayer == null && target._netPet == null
+    && target.isJpcBot !== true && !target._stationTarget;
+  return isNpc ? Math.max(0, 1 + Number(player.bonusNpcDmgPct || 0) / 100) : 1;
+}
+
+function modulePvpDamageMult(target) {
+  const isPvp = target?._netPlayer != null || target?.isJpcBot === true;
+  return isPvp
+    ? Math.max(0, 1 + Number(player.bonusPvpDmgPct || 0) / 100)
+    : 1;
+}
+
+function moduleRocketDamageMult() {
+  return Math.max(0, 1 + Number(player.bonusRocketDmgPct || 0) / 100);
+}
+
 function rocketCount(id = player.rocketActive) {
   const key = String(id || "r310").toLowerCase();
   return Math.max(0, Math.floor(Number(player.rockets?.[key] || 0)));
@@ -32173,6 +32209,9 @@ function spawnRocketProjectile(rocket, t, { spread = 0, volleyId = 0, volleySize
     * tartLauncherDmgMult(rocket?.manual === false)
     * formationRocketDamageMult()
     * formationNpcDamageMult(t)
+    * moduleNpcDamageMult(t)
+    * modulePvpDamageMult(t)
+    * moduleRocketDamageMult()
     * rocketBoosterMults.dmg * playerPilotMults().rocketDmg * playerUpgradeMults().rocket
     * leonovRocketMultForTarget(t);
   consumeUpgradeStock("rocket");
@@ -33099,7 +33138,7 @@ const shotBoosterMults = playerBoosterMults();
 const shotHitBonusPct = Number(player.laserHitBonusPct || 0) + Number(shotBoosterMults.hit || 0);
   const dmgShot = isSab
     ? laserBaseForTarget * SAB50.drainMult * shotBoosterMults.dmg
-    : (laserBase + overdrive) * mult * formationNpcDamageMult(t) * formationPlayerLaserDamageMult(t) * shotBoosterMults.dmg * playerPilotMults().alienDmg * (t?._netPlayer ? (Number(playerPilotMults()?.pvpDmg) || 1) : 1) * playerUpgradeMults().laser * buoyDamageMult() * valourDamageMult() * berserkDamageMult() * holoDamageMult() * scrambleDamageMult() * specDamageMult() * tempestDischargeMult() * shipPassiveDamageMult();
+    : (laserBase + overdrive) * mult * formationNpcDamageMult(t) * formationPlayerLaserDamageMult(t) * moduleNpcDamageMult(t) * modulePvpDamageMult(t) * shotBoosterMults.dmg * playerPilotMults().alienDmg * (t?._netPlayer ? (Number(playerPilotMults()?.pvpDmg) || 1) : 1) * playerUpgradeMults().laser * buoyDamageMult() * valourDamageMult() * berserkDamageMult() * holoDamageMult() * scrambleDamageMult() * specDamageMult() * tempestDischargeMult() * shipPassiveDamageMult();
 
   const shotMiss = Math.random() < Math.max(0, PLAYER_SHOTS.missChance - ((shotHitBonusPct + playerPilotMults().laserHit) / 100));
   // Multi : evenement de tir exact pour les allies (vrais tirs, MISS inclus).

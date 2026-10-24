@@ -842,6 +842,11 @@ if (barIcon && minimizable !== false) {
         card.classList.remove("gameWinMinimized");
         root.style.display = "block";
         card.style.display = "block";
+        // Une fenêtre restaurée dès son enregistrement doit suivre le même
+        // cycle qu'un restore() manuel. Les panneaux dont le contenu est
+        // construit à l'ouverture (Modules, Boutique, etc.) ne doivent pas
+        // rester vides après un rechargement de page.
+        window.dispatchEvent(new CustomEvent("orbit:window-restoring", { detail: { id } }));
         requestAnimationFrame(() => keepWindowInsideViewport(card, { centerIfUnpositioned: true }));
         // Barre des tâches : l'icône reste visible, état actif.
         if (minimizable !== false && wantDock) {
@@ -852,6 +857,7 @@ if (barIcon && minimizable !== false) {
           const dockBtn = getDock().querySelector(`[data-window-id="${id}"]`);
           if (dockBtn) dockBtn.remove();
         }
+        window.dispatchEvent(new CustomEvent("orbit:window-restored", { detail: { id } }));
       } else {
         root.classList.add("gameWinMinimized");
         card.classList.add("gameWinMinimized");

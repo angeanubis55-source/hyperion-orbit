@@ -124,6 +124,10 @@ const fit =
 
   // ✅ ÉTAPE 2 : appliquer les modules roulette (bonus en %)
   let bonusDamagePct = 0;
+  let bonusLaserDmgPct = 0;
+  let bonusNpcDmgPct = 0;
+  let bonusPvpDmgPct = 0;
+  let bonusRocketDmgPct = 0;
   let bonusSpeedPct = 0;
   let bonusShieldPct = 0;
   let bonusHPPct = 0;
@@ -154,6 +158,10 @@ const fit =
       if (stat === "hp") bonusHPPct += pct;
       if (stat === "shield") bonusShieldPct += pct;
       if (stat === "damage") bonusDamagePct += pct;
+      if (stat === "dmg_laser") bonusLaserDmgPct += pct;
+      if (stat === "dmg_npc") bonusNpcDmgPct += pct;
+      if (stat === "dmg_pvp") bonusPvpDmgPct += pct;
+      if (stat === "dmg_rocket") bonusRocketDmgPct += pct;
       if (stat === "speed") bonusSpeedPct += pct;
       if (stat === "penetration") bonusPenetrationPct += pct;
       if (stat === "laser_hit") bonusLaserHitPct += pct;
@@ -218,11 +226,12 @@ const fit =
   bonusSpeedPct += droneDesignEffects.speedPct;
 
   // ✅ ÉTAPE 3 : calculer les valeurs finales
-  const totalLaserDamage = baseDamage * (1 + bonusDamagePct / 100);
+  // Dég. Laser module : bonus laser global, cumulé avec Dégâts.
+  const totalLaserDamage = baseDamage * (1 + (bonusDamagePct + bonusLaserDmgPct) / 100);
   // ✅ Sans le bonus dégâts Leonov (+150 %) : utilisé quand la cible est
   // un Emperor Sibelon (le buff Leonov ne s'y applique pas).
   const totalLaserDamageNoLeonov = leonovHome
-    ? baseDamage * (1 + (bonusDamagePct - 150) / 100)
+    ? baseDamage * (1 + (bonusDamagePct - 150 + bonusLaserDmgPct) / 100)
     : totalLaserDamage;
   // The engine adds the hull speed: include its percentage bonus here too.
   const hullSpeed = Number(getShipPackById(hangar?.shipId)?.speed || 0);
@@ -247,6 +256,10 @@ const fit =
     laserMods,            // détail canons du vaisseau (bonus vsMatch appliqués au tir)
     droneLaserMods,       // détail canons des drones (overdrive/vs/instable x nombre équipé)
     bonusHPPct,           // % à appliquer sur le HP du ship
+    bonusLaserDmgPct,     // % dégâts laser (modules, cumulé dans totalLaserDamage)
+    bonusNpcDmgPct,       // % dégâts vs NPC (appliqué au tir)
+    bonusPvpDmgPct,       // % dégâts vs joueurs (appliqué au tir)
+    bonusRocketDmgPct,    // % dégâts roquettes (appliqué au tir)
     bonusPenetrationPct,  // % absolu de pénétration
     bonusLaserHitPct,     // % de réduction du taux de MISS du joueur
     bonusRocketHitPct,    // % de réduction du taux de MISS des roquettes

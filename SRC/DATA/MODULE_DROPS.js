@@ -75,13 +75,14 @@ export const MODULE_TIER_MALUS = Object.freeze({
 // Cap MAXIMAL d'une stat tirée dans SA couleur naturelle :
 //   🟢 vert (hp)  -> PV 32 %
 //   🔵 bleu (shd) -> Bouclier 30 %
-//   🔴 rouge (dmg)-> Dégâts 20 %
+//   🔴 rouge (dmg)-> Dégâts 20 %, Dég. Laser 20 %, Dég. NPC 32 %,
+//                   Dég. PvP 20 %, Dég. Roquettes 25 %
 //   🟡 jaune (spc)-> Chance de réussite laser 10 %, Pénétration 12 %, Vitesse 12 %,
 //                   Précision roquettes 10 %, Évitement 12 %
 export const MODULE_STAT_MAX_BY_COLOR = Object.freeze({
   hp: Object.freeze({ hp: 32 }),
   shd: Object.freeze({ shield: 30 }),
-  dmg: Object.freeze({ damage: 20 }),
+  dmg: Object.freeze({ damage: 20, dmg_laser: 20, dmg_npc: 32, dmg_pvp: 20, dmg_rocket: 25 }),
   spc: Object.freeze({ laser_hit: 10, penetration: 12, speed: 12, rocket_hit: 10, evasion: 12 }),
 });
 
@@ -111,6 +112,10 @@ export const MODULE_ALL_STATS = Object.freeze([
   "hp",
   "shield",
   "damage",
+  "dmg_laser",
+  "dmg_npc",
+  "dmg_pvp",
+  "dmg_rocket",
   "speed",
   "penetration",
   "laser_hit",
@@ -119,6 +124,35 @@ export const MODULE_ALL_STATS = Object.freeze([
   "exp",
   "honor",
 ]);
+
+// Piscine du type "dmg" : la stat principale est choisie parmi celles-ci.
+export const MODULE_DMG_STATS = Object.freeze([
+  "damage",
+  "dmg_laser",
+  "dmg_npc",
+  "dmg_pvp",
+  "dmg_rocket",
+]);
+
+// Famille d'une stat (sa couleur naturelle) : un module ne peut cumuler
+// qu'UNE stat par famille. Ex : Dégâts + Dég. PvP ensemble = interdit,
+// Pénétration + Vitesse ensemble = interdit. Exp/Honneur = familles à part.
+export const MODULE_STAT_FAMILY = Object.freeze({
+  hp: "hp",
+  shield: "shd",
+  damage: "dmg",
+  dmg_laser: "dmg",
+  dmg_npc: "dmg",
+  dmg_pvp: "dmg",
+  dmg_rocket: "dmg",
+  speed: "spc",
+  penetration: "spc",
+  laser_hit: "spc",
+  rocket_hit: "spc",
+  evasion: "spc",
+  exp: "exp",
+  honor: "honor",
+});
 
 // Piscine du type "spc" : la stat principale est choisie parmi celles-ci.
 export const MODULE_SPC_STATS = Object.freeze([

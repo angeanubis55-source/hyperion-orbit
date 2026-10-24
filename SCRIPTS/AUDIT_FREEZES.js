@@ -195,7 +195,8 @@ try {
         localStorage.setItem('orbit_users', JSON.stringify(users));
         window.HyperionProfile.open();
         window.HyperionProfile.openShop();
-        document.querySelector('#shopWindowTabs [data-shop="extras"]').click();
+        document.querySelector('#btnModuleHub').click();
+        await settle();
         require(document.querySelectorAll('.moduleHistoryRow').length === 4, 'History unbounded');
         require(document.querySelector('.moduleHistoryIndex').textContent === '65', 'History ordering incorrect');
         document.querySelector('[data-history-page="1"]').click();

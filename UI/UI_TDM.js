@@ -16,7 +16,7 @@ let started = false;
 let buildersPromise = null;
 
 const TABS = [
-  { id: "all", label: "Tout", kinds: null },
+  { id: "all", label: "Tout (sauf modules)", kinds: ["ammo", "equipment", "ship", "shipDesign", "drone", "droneDesign", "droneFormation", "pet", "resource"] },
   { id: "ammo", label: "Munitions", kinds: ["ammo"] },
   { id: "equipment", label: "Équipements", kinds: ["equipment"] },
   { id: "modules", label: "Modules", kinds: ["module"] },
@@ -33,7 +33,6 @@ let typeFilter = "";
 const MODULE_TYPE_IDS = ["hp", "shd", "dmg", "spc"];
 const MODULE_TYPE_NAMES = { hp: "HP · PV", shd: "SHD · Bouclier", dmg: "DMG · Dégâts", spc: "SPC · Spécial" };
 let pageIndex = 0;
-let pagerEl = null;
 let lastSignature = "";
 let lastShipOptionsKey = "";
 // Sélection unique pour la vente : clé stable "kind:id".
@@ -70,30 +69,6 @@ function emptyHtml(text) {
   return `<div class="inventoryEmpty">${escapeHtml(text)}</div>`;
 }
 
-function ensurePager(dst) {
-  if (pagerEl || !dst) return;
-  pagerEl = document.createElement("nav");
-  pagerEl.className = "tdmPager";
-  pagerEl.setAttribute("aria-label", "Pages de l'inventaire");
-  dst.before(pagerEl);
-  pagerEl.addEventListener("click", (event) => {
-    const button = event.target instanceof Element ? event.target.closest("[data-tdm-page]") : null;
-    if (!button || button.disabled) return;
-    pageIndex += Number(button.dataset.tdmPage);
-    void render();
-    try {
-      dst.scrollTop = 0;
-    } catch {}
-  });
-}
-
-function setPager(page, pages, total) {
-  if (!pagerEl) return;
-  pagerEl.innerHTML = `<button data-tdm-page="-1" ${page === 0 ? "disabled" : ""} type="button">Précédent</button>`
-    + `<span role="status">Page ${page + 1} / ${pages} – ${formatInteger(total)} emplacements</span>`
-    + `<button data-tdm-page="1" ${page + 1 >= pages ? "disabled" : ""} type="button">Suivant</button>`;
-}
-
 function slotHtml(b, entry) {
   const stacked = entry.stacked !== false && !["drone", "pet", "droneDesign", "droneFormation"].includes(entry.kind);
   const quantity = entry.quantityLabel || b.inventoryQuantityLabel(entry.quantity);
@@ -122,7 +97,19 @@ function selectedEntry() {
 function updateSellBtn() {
   const btn = $("tdmSellBtn");
   if (!btn) return;
-  btn.disabled = selectedKeys.size === 0;
+  // Resté désactivé tant que la sélection n'est pas vendable (mêmes règles
+  // que le dialogue : catégorie, quantité, prix, tickets exclus).
+  const entry = selectedEntry();
+  let ok = false;
+  if (entry) {
+    try {
+      ok = SELLABLE_KINDS.includes(entry.kind)
+        && !entry.item?.ticket
+        && Math.floor(Number(entry.quantity) || 0) > 0
+        && sellUnitPrice(entry.kind, entry.id, entry.module) > 0;
+    } catch { ok = false; }
+  }
+  btn.disabled = !ok;
   btn.textContent = "Vendre";
 }
 
@@ -387,7 +374,6 @@ async function render() {
   if (!shouldRefreshWindow("tdmWindow")) return;
   const dst = $("tdmInventorySections");
   if (!dst) return;
-  ensurePager(dst);
 
   let user = null;
   try {
@@ -432,8 +418,9 @@ async function render() {
     }),
   }));
 
-  const result = inventoryPage(filtered, pageIndex);
-  pageIndex = result.page;
+  // Liste infinie : tout d'un coup, sans pagination (scroll vertical).
+  const result = inventoryPage(filtered, 0, Number.MAX_SAFE_INTEGER);
+  pageIndex = 0;
   try {
     dst.dataset.totalSlots = String(result.total);
   } catch {}
@@ -445,7 +432,6 @@ async function render() {
   } catch {}
   if (signature && signature === lastSignature) return;
   lastSignature = signature;
-  setPager(result.page, result.pages, result.total);
   hideTooltip();
   dst.innerHTML = result.slots.length
     ? result.slots.map((entry) => slotHtml(b, entry)).join("")

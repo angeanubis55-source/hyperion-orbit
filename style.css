@@ -2599,7 +2599,7 @@ body.phoneDockEditorOpen #ammoBar .phoneEditorSelected {
   display:flex;
   align-items:center;
   gap:8px;
-  margin:14px 0 8px;
+  margin:-10px 0 8px;
 }
 .shopPreview .moduleHistorySearchField > span {
   flex:0 0 auto;
@@ -2681,7 +2681,8 @@ body.phoneDockEditorOpen #ammoBar .phoneEditorSelected {
 #shopOverlay .extrasRouletteCost .moduleCostGrid .moduleCostCol, #profileOverlay .extrasRouletteCost .moduleCostGrid .moduleCostCol {
   display:flex !important;
   flex-direction:column !important;
-  align-items:flex-end !important;
+  align-items:center !important;
+  text-align:center !important;
   gap:3px !important;
 }
 .shopPreview .moduleCostLabel {
@@ -2723,6 +2724,9 @@ body.phoneDockEditorOpen #ammoBar .phoneEditorSelected {
 }
 .shopPreview .moduleDailyRolls.limited strong {
   color:#ff8080;
+}
+.shopPreview .moduleRollTickets strong {
+  color:#ffd15c;
 }
 #shopOverlay .extrasRouletteCost .moduleCostCol .moduleDailyRolls strong, #profileOverlay .extrasRouletteCost .moduleCostCol .moduleDailyRolls strong {
   font-size:18px !important;
@@ -14685,7 +14689,7 @@ html body #profileOverlay #panel_shop .shopLayout.extrasMode .shopPreview {
   min-height: 48px !important;
   padding: 7px 5px !important;
   display: grid !important;
-  grid-template-columns: 28px 38px 40px minmax(0,1fr) auto !important;
+  grid-template-columns: 38px 40px minmax(0,1fr) !important;
   align-items: center !important;
   gap: 9px !important;
   border-bottom: 1px solid rgba(124,240,255,.08) !important;
@@ -14694,6 +14698,7 @@ html body #profileOverlay #panel_shop .shopLayout.extrasMode .shopPreview {
   color: rgba(204,228,241,.38) !important;
   font-size: 9px !important;
   text-align: center !important;
+  display: none !important;
 }
 #profileOverlay .moduleHistoryRow img {
   width: 34px !important;
@@ -14704,9 +14709,9 @@ html body #profileOverlay #panel_shop .shopLayout.extrasMode .shopPreview {
 #profileOverlay .moduleHistoryShipImg {
   width: 40px !important;
   height: 40px !important;
-  background: rgba(0,217,255,0.06) !important;
-  border: 1px solid rgba(124,240,255,.12) !important;
-  border-radius: 9px !important;
+  background: none !important;
+  border: 0 !important;
+  margin-left: 10px !important;
 }
 #profileOverlay .moduleHistoryMeta {
   min-width: 0 !important;
@@ -17540,7 +17545,7 @@ html body #shopOverlay .shopPreviewContainer, html body #shopOverlay .shipPrevie
   min-height: 48px !important;
   padding: 7px 5px !important;
   display: grid !important;
-  grid-template-columns: 28px 38px 40px minmax(0,1fr) auto !important;
+  grid-template-columns: 38px 40px minmax(0,1fr) !important;
   align-items: center !important;
   gap: 9px !important;
   border-bottom: 1px solid rgba(124,240,255,.08) !important;
@@ -17549,6 +17554,7 @@ html body #shopOverlay .shopPreviewContainer, html body #shopOverlay .shipPrevie
   color: rgba(204,228,241,.38) !important;
   font-size: 9px !important;
   text-align: center !important;
+  display: none !important;
 }
 #shopOverlay .moduleHistoryRow img {
   width: 34px !important;
@@ -17559,9 +17565,9 @@ html body #shopOverlay .shopPreviewContainer, html body #shopOverlay .shipPrevie
 #shopOverlay .moduleHistoryShipImg {
   width: 40px !important;
   height: 40px !important;
-  background: rgba(0,217,255,0.06) !important;
-  border: 1px solid rgba(124,240,255,.12) !important;
-  border-radius: 9px !important;
+  background: none !important;
+  border: 0 !important;
+  margin-left: 10px !important;
 }
 #shopOverlay .moduleHistoryMeta {
   min-width: 0 !important;
@@ -17571,6 +17577,10 @@ html body #shopOverlay .shopPreviewContainer, html body #shopOverlay .shipPrevie
 #shopOverlay .moduleHistoryMeta strong.moduleHistoryName {
   color: #75e8ff !important;
   font-size: 10px !important;
+  white-space: nowrap !important;
+}
+#shopOverlay .moduleHistoryMeta strong.moduleHistoryName span {
+  white-space: nowrap !important;
 }
 #shopOverlay .moduleHistoryMeta span:not(.moduleHistoryRarity) {
   overflow: hidden !important;
@@ -22938,9 +22948,9 @@ body #hangarOverlay .hangarListItem .tileActions button:disabled {
 }
 @media (max-width:700px){ .questOfferLayout{ grid-template-columns:1fr !important; grid-template-rows:minmax(0,1.4fr) minmax(0,1fr) !important; } #questOfferList{ grid-column:1 !important; grid-row:1 !important; border-right:0 !important; border-bottom:1px solid rgba(124,240,255,.16) !important; } #questOfferDetail{ grid-column:1 !important; grid-row:2 !important; } }
 .tdmPanel {
-  width:880px !important;
+  width:1000px !important;
   min-width:0 !important;
-  max-width:min(880px, calc(100vw - 20px)) !important;
+  max-width:min(1000px, calc(100vw - 20px)) !important;
 }
 .tdmBody {
   display:grid !important;
@@ -23132,7 +23142,7 @@ body #hangarOverlay .hangarListItem .tileActions button:disabled {
   justify-content:center !important;
   gap:8px !important;
   padding:10px 4px !important;
-  border-top:1px solid rgba(124,240,255,.16) !important;
+  border-top:0 !important;
   border-bottom:1px solid rgba(124,240,255,.16) !important;
 }
 .tdmTab, .tdmPager button, .tdmSellQtyRow button, .tdmSellActions button {
@@ -23184,10 +23194,10 @@ body #hangarOverlay .hangarListItem .tileActions button:disabled {
 }
 #tdmWindow .tdmSections {
   min-height:120px !important;
-  max-height:min(480px, calc(100vh - 260px)) !important;
+  max-height:min(560px, calc(100vh - 200px)) !important;
   padding:4px !important;
   display:grid !important;
-  grid-template-columns:repeat(auto-fill, 72px) !important;
+  grid-template-columns:repeat(12, 72px) !important;
   grid-auto-rows:72px !important;
   align-content:start !important;
   justify-content:center !important;
@@ -23221,6 +23231,11 @@ body #hangarOverlay .hangarListItem .tileActions button:disabled {
   height:84% !important;
   object-fit:contain !important;
   pointer-events:none !important;
+}
+#tdmWindow .inventorySlot[data-kind="ship"] img,
+#tdmWindow .inventorySlot[data-kind="shipDesign"] img {
+  width:96% !important;
+  height:96% !important;
 }
 #tdmWindow .inventorySlotQuantity {
   position:absolute !important;
@@ -23276,8 +23291,8 @@ body #hangarOverlay .hangarListItem .tileActions button:disabled {
   grid-column:span 3 !important;
   display:flex !important;
   align-items:center !important;
-  gap:8px !important;
-  padding:6px 8px !important;
+  gap:4px !important;
+  padding:4px 6px !important;
   text-align:left !important;
 }
 #tdmWindow .inventorySlot.is-module img.invModIcon {
@@ -23288,11 +23303,12 @@ body #hangarOverlay .hangarListItem .tileActions button:disabled {
   pointer-events:none !important;
 }
 #tdmWindow .inventorySlot.is-module img.invModShip {
-  width:64px !important;
-  height:44px !important;
+  width:88px !important;
+  height:60px !important;
   flex:0 0 auto !important;
   object-fit:contain !important;
   pointer-events:none !important;
+  transform:scale(1.18) !important;
 }
 #tdmWindow .invModStats {
   display:flex !important;
@@ -23671,8 +23687,8 @@ html body #shopOverlay .moduleHistoryPanel > header span,
 html body #profileOverlay .moduleHistoryPanel > header span,
 html body #shopOverlay .moduleHistoryIndex,
 html body #profileOverlay .moduleHistoryIndex,
-html body #shopOverlay .moduleHistoryMeta span:not(.moduleHistoryRarity),
-html body #profileOverlay .moduleHistoryMeta span:not(.moduleHistoryRarity),
+html body #shopOverlay .moduleHistoryMeta span:not(.moduleHistoryRarity):not(.moduleHistoryModName),
+html body #profileOverlay .moduleHistoryMeta span:not(.moduleHistoryRarity):not(.moduleHistoryModName),
 html body #shopOverlay .moduleHistoryRow time,
 html body #profileOverlay .moduleHistoryRow time,
 html body #shopOverlay .moduleHistoryEmpty,
@@ -25631,3 +25647,1898 @@ html body #profileOverlay #shopTabs .subtabBtn[data-shop="extras"] {
 #titleWindow .settingsPage[data-settings-page="general"]{padding-top:6px !important}
 #titleWindow .settingsPage[data-settings-page="general"] .settingsColScroll > .settingsCheck:first-child{margin-top:6px !important}
 #titleWindow .settingsPage[data-settings-page="general"] .settingsColScroll > .settingsSectionSub:first-child{padding-top:0 !important;margin-top:0 !important}
+
+
+/* ===== Fenetre Modules : miroir des styles roulette (#shopOverlay) ===== */
+html body #moduleWindow .shopLayout.extrasMode {
+  display: block !important;
+  overflow-y: auto !important;
+}
+html body #moduleWindow .shopLayout.extrasMode .shopList {
+  display: none !important;
+}
+html body #moduleWindow .shopLayout.extrasMode .shopPreview {
+  width: 100% !important;
+  min-height: 100% !important;
+  overflow: visible !important;
+}
+html body #moduleWindow .shopPreview > .tile {
+  min-height: 100% !important;
+  padding: 4px !important;
+  box-sizing: border-box !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: stretch !important;
+  justify-content: center !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+#moduleWindow .shopPreview .moduleAutoRoll input[type="checkbox"] {
+appearance:none !important;
+  -webkit-appearance:none !important;
+  flex:0 0 auto !important;
+  width:17px !important;
+  height:17px !important;
+  margin:0 !important;
+  padding:0 !important;
+  display:grid !important;
+  place-items:center !important;
+  border:1px solid rgba(124,240,255,.38) !important;
+  border-radius:6px !important;
+  background:linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34)) !important;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.03) !important;
+  accent-color:unset !important;
+  cursor:pointer !important;
+}
+#moduleWindow .shopPreview .moduleAutoRoll input[type="checkbox"]:checked::after {
+content:"✓" !important;
+  color:#eaffff !important;
+  font-size:11px !important;
+  font-weight:900 !important;
+  line-height:1 !important;
+}
+#moduleWindow .shopPreview .moduleAutoRoll input[type="checkbox"]:hover {
+border-color:rgba(124,240,255,.62) !important;
+}
+#moduleWindow .extrasRouletteHeader.noSeparator {
+border-bottom:none !important;
+  padding-bottom:0 !important;
+  margin-bottom:0 !important;
+}
+#moduleWindow .extrasRouletteCost .moduleCostGrid {
+display:flex !important;
+  align-items:stretch !important;
+  gap:10px !important;
+}
+#moduleWindow .extrasRouletteCost .moduleCostGrid .moduleCostCol {
+display:flex !important;
+  flex-direction:column !important;
+  align-items:center !important;
+  text-align:center !important;
+  gap:3px !important;
+}
+#moduleWindow .extrasRouletteCost .moduleCostCol .moduleCreditCost {
+display:inline-flex !important;
+  align-items:center !important;
+  gap:5px !important;
+  min-height:26px !important;
+  text-transform:none !important;
+  font-size:18px !important;
+}
+#moduleWindow .extrasRouletteCost .moduleCostCol .moduleTicketStock {
+display:inline-flex !important;
+  align-items:center !important;
+  gap:5px !important;
+  min-height:26px !important;
+  text-transform:none !important;
+  font-size:18px !important;
+}
+#moduleWindow .extrasRouletteCost .moduleCostCol .moduleCreditCost strong {
+font-size:18px !important;
+}
+#moduleWindow .extrasRouletteCost .moduleCostGrid .moduleCostVSeparator {
+width:1px !important;
+  align-self:stretch !important;
+  background:rgba(124,240,255,.25) !important;
+}
+#moduleWindow .extrasRouletteCost .moduleCostCol .moduleDailyRolls strong {
+font-size:18px !important;
+  line-height:26px !important;
+  font-weight:700 !important;
+}
+#moduleWindow .extrasRouletteCost .moduleCostCol .moduleTicketStock strong {
+color:#75e8ff !important;
+  font-size:18px !important;
+  font-weight:700 !important;
+  line-height:26px !important;
+}
+#moduleWindow .extrasRoulettePanel {
+justify-content: flex-start !important;
+}
+#moduleWindow #rouletteView {
+  justify-content:center !important;
+  min-height:0 !important;
+}
+#moduleWindow .extrasRouletteHeader {
+padding-bottom: 14px !important;
+  display: flex !important;
+  align-items: flex-start !important;
+  justify-content: space-between !important;
+  gap: 20px !important;
+  border-bottom: 1px solid rgba(124,240,255,.12) !important;
+}
+#moduleWindow .extrasRouletteHeader h3 {
+margin-bottom: 5px !important;
+}
+#moduleWindow .extrasRouletteHeader p {
+margin: 0 !important;
+}
+#moduleWindow .extrasRouletteCost {
+flex: 0 0 auto !important;
+  color: rgba(204,228,241,.55) !important;
+  font-size: 9px !important;
+  text-align: right !important;
+}
+#moduleWindow .extrasRouletteCost span {
+display: block !important;
+  text-transform: uppercase !important;
+}
+#moduleWindow .extrasRouletteCost strong {
+margin-right: 4px !important;
+  color: #75e8ff !important;
+  font-size: 16px !important;
+}
+#moduleWindow .moduleHistoryPanel {
+min-height: 0 !important;
+  margin-top: 18px !important;
+  border-top: 1px solid rgba(124,240,255,.13) !important;
+}
+#moduleWindow .moduleHistoryPanel > header {
+min-height: 42px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 16px !important;
+  color: #effbff !important;
+}
+#moduleWindow .moduleHistoryPanel > header strong {
+font-size: 12px !important;
+}
+#moduleWindow .moduleHistoryPanel > header span {
+color: rgba(204,228,241,.52) !important;
+  font-size: 9px !important;
+}
+#moduleWindow .moduleHistoryList {
+max-height:none !important;
+  overflow:visible !important;
+  border-top:none !important;
+}
+/* Historique en liste infinie : ~4 lignes visibles, le reste au scroll. */
+#moduleWindow .moduleHistoryList.moduleHistoryList,
+#profileOverlay .moduleHistoryList.moduleHistoryList,
+#shopOverlay .moduleHistoryList.moduleHistoryList {
+  flex:1 1 auto !important;
+  min-height:0 !important;
+  max-height:none !important;
+  overflow-y:auto !important;
+  scroll-behavior:smooth !important;
+  padding-right:4px !important;
+}
+/* (Effet de fondu retiré : liste nette en haut comme en bas.) */
+/* La vue historique ne dépasse jamais : seule la liste défile, les filtres
+   (recherche + 2 listes) restent fixes en haut, sans sticky. */
+#moduleHistoryView {
+  max-height:calc(100vh - 320px) !important;
+  min-height:0 !important;
+}
+/* Filtres (recherche + 2 listes) : fixes en haut, les modules défilent
+   en fondu en dessous. */
+#moduleHistoryView .moduleHistoryFilters.moduleHistoryFilters {
+  position:-webkit-sticky !important;
+  position:sticky !important;
+  top:0 !important;
+  z-index:5 !important;
+  background:linear-gradient(180deg,rgba(5,14,25,.97) 70%,rgba(5,14,25,.85)) !important;
+  padding:6px 0 10px !important;
+}
+#moduleWindow .moduleHistoryCount,
+#profileOverlay .moduleHistoryCount,
+#shopOverlay .moduleHistoryCount {
+  text-align:center !important;
+  color:rgba(204,228,241,.65) !important;
+  font-size:11px !important;
+  font-weight:700 !important;
+  padding:4px 0 !important;
+}
+#moduleWindow .moduleHistoryRow {
+min-height: 48px !important;
+  padding: 7px 5px !important;
+  display: grid !important;
+  grid-template-columns: 38px 40px minmax(0,1fr) auto !important;
+  align-items: center !important;
+  gap: 9px !important;
+  border-bottom: 1px solid rgba(124,240,255,.08) !important;
+}
+#moduleWindow {
+  position:relative;
+}
+/* Confirmation cantonnée à la fenêtre Modules (même carte que l'inventaire). */
+#moduleConfirmDialog {
+  position:absolute !important;
+  inset:0 !important;
+  z-index:60 !important;
+  display:grid !important;
+  place-items:center !important;
+  border-radius:8px !important;
+  background:rgba(0,0,0,.55) !important;
+}
+#moduleWindow .moduleHistoryIndex {
+color: rgba(204,228,241,.38) !important;
+  font-size: 9px !important;
+  text-align: center !important;
+  display: none !important;
+}
+/* Onglet Probabilités : explications + beaux tableaux. */
+.moduleProba {
+  display:flex !important;
+  flex-direction:column !important;
+  gap:10px !important;
+  padding:6px 2px 18px !important;
+  color:#eaffff !important;
+}
+.moduleProbaTitle {
+  margin:8px 0 0 !important;
+  color:#75e8ff !important;
+  font-size:13px !important;
+  font-weight:900 !important;
+  text-transform:uppercase !important;
+  letter-spacing:.6px !important;
+}
+.moduleProbaSteps {
+  margin:0 !important;
+  padding-left:20px !important;
+  display:grid !important;
+  gap:5px !important;
+  font-size:12px !important;
+  line-height:1.5 !important;
+  color:rgba(234,255,255,.92) !important;
+}
+.moduleProbaTable {
+  width:100% !important;
+  border-collapse:collapse !important;
+  font-size:12px !important;
+}
+.moduleProbaTable th {
+  padding:6px 8px !important;
+  text-align:left !important;
+  color:#75e8ff !important;
+  font-size:10px !important;
+  font-weight:900 !important;
+  text-transform:uppercase !important;
+  letter-spacing:.6px !important;
+  border-bottom:1px solid rgba(124,240,255,.35) !important;
+}
+.moduleProbaTable td {
+  padding:6px 8px !important;
+  border-bottom:1px solid rgba(124,240,255,.10) !important;
+  color:#eaffff !important;
+}
+.moduleProbaTable tbody tr:hover td {
+  background:rgba(0,217,255,.06) !important;
+}
+.moduleProbaNote {
+  margin:0 !important;
+  font-size:11px !important;
+  color:rgba(204,228,241,.75) !important;
+  font-style:italic !important;
+}
+#moduleWindow .moduleHistoryRow img {
+width: 34px !important;
+  height: 34px !important;
+  object-fit: contain !important;
+  image-rendering: pixelated !important;
+}
+#moduleWindow .moduleHistoryShipImg {
+width: 40px !important;
+  height: 40px !important;
+  background: none !important;
+  border: 0 !important;
+  margin-left: 10px !important;
+}
+#moduleWindow .moduleHistoryMeta {
+min-width: 0 !important;
+  display: grid !important;
+  gap: 3px !important;
+}
+#moduleWindow .moduleHistoryMeta strong.moduleHistoryName {
+color: #75e8ff !important;
+  font-size: 10px !important;
+  white-space: nowrap !important;
+}
+#moduleWindow .moduleHistoryMeta strong.moduleHistoryName span {
+  white-space: nowrap !important;
+}
+#moduleWindow .moduleHistoryMeta span:not(.moduleHistoryRarity) {
+overflow: hidden !important;
+  color: rgba(204,228,241,.60) !important;
+  font-size: 9px !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+}
+#moduleWindow .moduleHistoryRow time {
+color: rgba(204,228,241,.38) !important;
+  font-size: 8px !important;
+  white-space: nowrap !important;
+}
+#moduleWindow .moduleHistoryEmpty {
+padding: 24px !important;
+  color: rgba(204,228,241,.45) !important;
+  font-size: 10px !important;
+  text-align: center !important;
+}
+html body #moduleWindow .moduleHistoryEmpty {
+padding:28px 12px !important;
+  font-size:12px !important;
+}
+html body #moduleWindow .moduleHistoryRow {
+min-height:76px !important;
+  padding:10px 0 !important;
+  padding-right:100px !important;
+  grid-template-columns:54px 84px minmax(0,1fr) !important;
+  gap:12px !important;
+  align-items:center !important;
+}
+html body #moduleWindow .moduleHistoryRow img {
+width:52px !important;
+  height:52px !important;
+}
+html body #moduleWindow .moduleHistoryRow img.moduleHistoryShipImg {
+width:80px !important;
+  height:80px !important;
+  border-radius:12px !important;
+}
+html body #moduleWindow .moduleHistoryIndex {
+font-size:12px !important;
+}
+html body #moduleWindow .moduleHistoryMeta {
+gap:4px !important;
+}
+html body #moduleWindow .moduleHistoryMeta strong.moduleHistoryName {
+font-size:13px !important;
+  white-space:nowrap !important;
+}
+html body #moduleWindow .moduleHistoryMeta strong.moduleHistoryName span {
+  white-space:nowrap !important;
+  font-size:inherit !important;
+}
+/* Bonus de l'historique : retour à la ligne autorisé (pas de "..."),
+   pour tout voir même avec 3-4 stats. */
+#moduleWindow .moduleHistoryMeta span.moduleHistoryBonuses.moduleHistoryBonuses,
+#profileOverlay .moduleHistoryMeta span.moduleHistoryBonuses.moduleHistoryBonuses,
+#shopOverlay .moduleHistoryMeta span.moduleHistoryBonuses.moduleHistoryBonuses {
+  white-space:nowrap !important;
+  overflow:hidden !important;
+  text-overflow:ellipsis !important;
+  font-size:13px !important;
+  margin-top:3px !important;
+}
+/* Icônes des stats dans l'historique : à gauche des pourcentages. */
+html body #moduleWindow .moduleHistoryRow .moduleHistoryBonuses img.moduleHistoryStatIcon,
+html body #profileOverlay .moduleHistoryRow .moduleHistoryBonuses img.moduleHistoryStatIcon,
+html body #shopOverlay .moduleHistoryRow .moduleHistoryBonuses img.moduleHistoryStatIcon {
+  width:22px !important;
+  height:22px !important;
+  object-fit:contain !important;
+  vertical-align:-5px !important;
+  margin-right:3px !important;
+}
+/* Boutons relance + revente : collés à droite, hors flux (plan séparé) pour
+   que le texte d'une ligne ne puisse jamais les pousser ni casser la grille. */
+#moduleWindow .moduleHistoryRow,
+#profileOverlay .moduleHistoryRow,
+#shopOverlay .moduleHistoryRow {
+  position:relative !important;
+  padding-right:158px !important;
+}
+html body #moduleWindow .moduleHistoryRow .moduleHistoryActions,
+html body #profileOverlay .moduleHistoryRow .moduleHistoryActions,
+html body #shopOverlay .moduleHistoryRow .moduleHistoryActions {
+  position:absolute !important;
+  right:8px !important;
+  top:50% !important;
+  transform:translateY(-50%) !important;
+  z-index:3 !important;
+  margin:0 !important;
+  display:flex !important;
+  align-items:center !important;
+  gap:8px !important;
+}
+html body #moduleWindow .moduleHistoryRow .moduleHistoryActions:hover:not(:disabled),
+html body #moduleWindow .moduleHistoryRow .moduleHistoryActions:active:not(:disabled),
+html body #profileOverlay .moduleHistoryRow .moduleHistoryActions:hover:not(:disabled),
+html body #profileOverlay .moduleHistoryRow .moduleHistoryActions:active:not(:disabled),
+html body #shopOverlay .moduleHistoryRow .moduleHistoryActions:hover:not(:disabled),
+html body #shopOverlay .moduleHistoryRow .moduleHistoryActions:active:not(:disabled) {
+  transform:translateY(-50%) !important;
+}
+/* Bouton relance au ticket (historique) : doré pour le distinguer du cyan crédits. */
+html body #moduleWindow .moduleHistoryRow .moduleHistoryTicketBtn,
+html body #profileOverlay .moduleHistoryRow .moduleHistoryTicketBtn,
+html body #shopOverlay .moduleHistoryRow .moduleHistoryTicketBtn {
+  border-color:rgba(255,209,92,.65) !important;
+  background:linear-gradient(135deg,rgba(255,180,60,.38),rgba(150,100,10,.38)) !important;
+}
+html body #moduleWindow .moduleHistoryRow .moduleHistoryTicketBtn:hover:not(:disabled),
+html body #profileOverlay .moduleHistoryRow .moduleHistoryTicketBtn:hover:not(:disabled),
+html body #shopOverlay .moduleHistoryRow .moduleHistoryTicketBtn:hover:not(:disabled) {
+  border-color:rgba(255,209,92,.9) !important;
+  background:linear-gradient(135deg,rgba(255,180,60,.5),rgba(170,115,15,.5)) !important;
+}
+/* Revente depuis l'historique : même gabarit que relance, en rouge. */
+html body #moduleWindow .moduleHistoryRow .moduleHistorySellBtn,
+html body #profileOverlay .moduleHistoryRow .moduleHistorySellBtn,
+html body #shopOverlay .moduleHistoryRow .moduleHistorySellBtn {
+  width:42px !important;
+  height:42px !important;
+  display:grid !important;
+  place-items:center !important;
+  border-radius:8px !important;
+  cursor:pointer !important;
+  color:#ffdfe4 !important;
+  border:1px solid rgba(255,90,110,.65) !important;
+  background:linear-gradient(135deg,rgba(220,30,50,.5),rgba(130,10,25,.5)) !important;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.06), 0 0 16px rgba(255,60,80,.25) !important;
+}
+html body #moduleWindow .moduleHistoryRow .moduleHistorySellBtn:hover:not(:disabled),
+html body #profileOverlay .moduleHistoryRow .moduleHistorySellBtn:hover:not(:disabled),
+html body #shopOverlay .moduleHistoryRow .moduleHistorySellBtn:hover:not(:disabled) {
+  border-color:rgba(255,120,135,.9) !important;
+  background:linear-gradient(135deg,rgba(255,60,80,.6),rgba(160,15,30,.6)) !important;
+  box-shadow:0 0 18px rgba(255,60,80,.35) !important;
+}
+html body #moduleWindow .moduleHistoryRow .moduleHistorySellBtn:disabled,
+html body #profileOverlay .moduleHistoryRow .moduleHistorySellBtn:disabled,
+html body #shopOverlay .moduleHistoryRow .moduleHistorySellBtn:disabled {
+  opacity:.35 !important;
+  cursor:default !important;
+}
+/* Date d'obtention à droite de la rareté : blanc cassé, en gras comme elle. */
+#moduleWindow .moduleHistoryMeta time.moduleHistoryDate.moduleHistoryDate,
+#profileOverlay .moduleHistoryMeta time.moduleHistoryDate.moduleHistoryDate,
+#shopOverlay .moduleHistoryMeta time.moduleHistoryDate.moduleHistoryDate {
+  color:#e8e2d2 !important;
+  font-weight:700 !important;
+  font-size:inherit !important;
+  font-family:inherit !important;
+  margin-left:0 !important;
+}
+/* Ligne Relances sous les stats : labels en blanc cassé, compteur bleu
+   gardé, prochaine en doré. */
+#moduleWindow .moduleHistoryMeta .moduleHistoryReroll.moduleHistoryReroll,
+#profileOverlay .moduleHistoryMeta .moduleHistoryReroll.moduleHistoryReroll,
+#shopOverlay .moduleHistoryMeta .moduleHistoryReroll.moduleHistoryReroll {
+  color:#e8e2d2 !important;
+}
+html body #moduleWindow .moduleHistoryMeta .moduleHistoryReroll strong.moduleHistoryNextCost,
+html body #profileOverlay .moduleHistoryMeta .moduleHistoryReroll strong.moduleHistoryNextCost,
+html body #shopOverlay .moduleHistoryMeta .moduleHistoryReroll strong.moduleHistoryNextCost {
+  color:#ffd15c !important;
+}
+/* Ligne Relances sous les stats : même taille que les stats + marge. */
+html body #moduleWindow .moduleHistoryMeta .moduleHistoryReroll.moduleHistoryReroll,
+html body #profileOverlay .moduleHistoryMeta .moduleHistoryReroll.moduleHistoryReroll,
+html body #shopOverlay .moduleHistoryMeta .moduleHistoryReroll.moduleHistoryReroll {
+  font-size:11px !important;
+  margin-top:3px !important;
+}
+html body #moduleWindow .moduleHistoryMeta span {
+font-size:11px !important;
+  white-space:normal !important;
+}
+html body #moduleWindow .moduleHistoryRow time {
+font-size:10px !important;
+}
+html body #moduleWindow .moduleHistorySide {
+min-width:0 !important;
+  display:grid !important;
+  gap:3px !important;
+  justify-items:end !important;
+  text-align:right !important;
+}
+html body #moduleWindow .moduleHistoryReroll {
+color:rgba(204,228,241,.55) !important;
+  font-size:10px !important;
+  white-space:nowrap !important;
+}
+html body #moduleWindow .moduleHistoryReroll strong {
+color:#75e8ff !important;
+}
+html body #moduleWindow .moduleHistoryRerollBtn {
+display:grid !important;
+  place-items:center !important;
+  border:1px solid rgba(124,240,255,.38) !important;
+  border-radius:8px !important;
+  background:linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34)) !important;
+  color:#eaffff !important;
+  font:750 11px/1.2 ui-sans-serif,system-ui !important;
+  text-transform:none !important;
+  cursor:pointer !important;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.03) !important;
+  transform:none !important;
+  transition:none !important;
+}
+html body #moduleWindow .moduleHistoryRerollBtn:hover:not(:disabled) {
+border-color:rgba(124,240,255,.62) !important;
+  background:rgba(0,140,185,.3) !important;
+  box-shadow:0 0 16px rgba(0,217,255,.12) !important;
+}
+html body #moduleWindow .moduleHistoryRerollBtn:disabled {
+opacity:.35 !important;
+  cursor:default !important;
+}
+#moduleWindow .moduleTicketCost {
+display:inline-flex !important;
+  align-items:center !important;
+  justify-content:flex-end !important;
+  gap:5px !important;
+  white-space:nowrap !important;
+}
+#moduleWindow .moduleTicketCost img {
+width:18px !important;
+  height:18px !important;
+  object-fit:contain !important;
+}
+#moduleWindow .moduleTicketCost small {
+color:rgba(204,228,241,.58) !important;
+  font-size:9px !important;
+}
+html body #moduleWindow .moduleHistoryReroll .moduleTicketCost img {
+width:14px !important;
+  height:14px !important;
+  object-fit:contain !important;
+}
+html body #moduleWindow .moduleHistoryPayment img {
+width:14px !important;
+  height:14px !important;
+  object-fit:contain !important;
+}
+html body #moduleWindow .moduleHistoryPayment {
+display:inline-flex !important;
+  align-items:center !important;
+  justify-content:flex-end !important;
+  gap:4px !important;
+  color:rgba(204,228,241,.62) !important;
+  font-size:9px !important;
+  white-space:nowrap !important;
+}
+html body #moduleWindow .moduleHistoryPayment.legacy {
+color:rgba(204,228,241,.35) !important;
+}
+/* Modules + historique des modules : tous les textes gris en blanc (accents cyan/doré et couleurs de rareté conservés). */ html body #moduleWindow .extrasRouletteCost {
+color:#ffffff !important;
+}
+html body #moduleWindow .extrasRouletteHeader p {
+color:#ffffff !important;
+}
+html body #moduleWindow .moduleCostLabel {
+color:#ffffff !important;
+  font-weight:800 !important;
+}
+html body #moduleWindow .moduleCreditCost {
+color:#ffffff !important;
+}
+html body #moduleWindow .moduleTicketStock {
+color:#ffffff !important;
+}
+html body #moduleWindow .moduleDailyRolls {
+color:#ffffff !important;
+}
+html body #moduleWindow .moduleAutoRoll span {
+color:#ffffff !important;
+  font-size:14px !important;
+  font-weight:700 !important;
+}
+#moduleWindow .moduleResultStat {
+  display:inline-flex;
+  align-items:center;
+  gap:4px;
+  white-space:nowrap;
+}
+#moduleWindow .moduleResultStatIcon {
+  width:18px;
+  height:18px;
+  object-fit:contain;
+  vertical-align:middle;
+}
+#moduleWindow .moduleResultStatsLine {
+  display:grid;
+  justify-items:start;
+  gap:5px;
+  font-size:13px;
+  font-weight:400;
+}
+#moduleWindow .moduleResultStatsList {
+  display:grid;
+  justify-items:start;
+  gap:4px;
+  padding-left:12px;
+  font-size:16px;
+  font-weight:700;
+}
+#moduleWindow .moduleResultStatsLine .moduleResultStatIcon {
+  width:24px;
+  height:24px;
+}
+html body #moduleWindow .moduleHistoryPanel > header span {
+color:#ffffff !important;
+}
+html body #moduleWindow .moduleHistoryMeta span:not(.moduleHistoryRarity):not(.moduleHistoryModName) {
+color:#ffffff !important;
+}
+/* Couleurs de faculté du nom de module : spécificité maximale pour passer
+   devant toutes les anciennes règles blanches/grises. */
+html body #moduleWindow .moduleHistoryMeta strong.moduleHistoryName span.moduleHistoryModName[data-mtype="hp"],
+html body #profileOverlay .moduleHistoryMeta strong.moduleHistoryName span.moduleHistoryModName[data-mtype="hp"],
+html body #shopOverlay .moduleHistoryMeta strong.moduleHistoryName span.moduleHistoryModName[data-mtype="hp"] {
+  color:#00ff88 !important;
+}
+html body #moduleWindow .moduleHistoryMeta strong.moduleHistoryName span.moduleHistoryModName[data-mtype="shd"],
+html body #profileOverlay .moduleHistoryMeta strong.moduleHistoryName span.moduleHistoryModName[data-mtype="shd"],
+html body #shopOverlay .moduleHistoryMeta strong.moduleHistoryName span.moduleHistoryModName[data-mtype="shd"] {
+  color:#55aaff !important;
+}
+html body #moduleWindow .moduleHistoryMeta strong.moduleHistoryName span.moduleHistoryModName[data-mtype="dmg"],
+html body #profileOverlay .moduleHistoryMeta strong.moduleHistoryName span.moduleHistoryModName[data-mtype="dmg"],
+html body #shopOverlay .moduleHistoryMeta strong.moduleHistoryName span.moduleHistoryModName[data-mtype="dmg"] {
+  color:#ff5566 !important;
+}
+html body #moduleWindow .moduleHistoryMeta strong.moduleHistoryName span.moduleHistoryModName[data-mtype="spc"],
+html body #profileOverlay .moduleHistoryMeta strong.moduleHistoryName span.moduleHistoryModName[data-mtype="spc"],
+html body #shopOverlay .moduleHistoryMeta strong.moduleHistoryName span.moduleHistoryModName[data-mtype="spc"] {
+  color:#ffd45a !important;
+}
+html body #moduleWindow .moduleTicketCost small {
+color:#ffffff !important;
+}
+/* Revente module tiré/relancé : même gabarit que Lancer (primary) mais rouge.
+   Sélecteur + !important volontaires : les règles bleues
+   body #profileOverlay button.primary utilisent déjà !important. */
+html body button#btnSellRolledModule.primary,
+html body #moduleWindow button#btnSellRolledModule.primary {
+  color:#ffffff !important;
+  border:1px solid rgba(255,90,110,.7) !important;
+  background:linear-gradient(135deg,rgba(220,30,50,.55),rgba(130,10,25,.55)) !important;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.06), 0 0 16px rgba(255,60,80,.25) !important;
+}
+html body button#btnSellRolledModule.primary:hover:not(:disabled),
+html body #moduleWindow button#btnSellRolledModule.primary:hover:not(:disabled) {
+  border-color:rgba(255,120,135,.9) !important;
+  background:linear-gradient(135deg,rgba(255,60,80,.65),rgba(160,15,30,.65)) !important;
+  box-shadow:0 0 18px rgba(255,60,80,.35) !important;
+}
+
+#gameWindowDock #btnModuleHub.gameDockIcon {
+  width:46px !important; min-width:46px !important; max-width:46px !important; height:44px !important; min-height:44px !important; max-height:44px !important; flex:0 0 46px !important; padding:0 !important; margin:0 !important; position:relative !important; z-index:1 !important; overflow:hidden !important; isolation:isolate !important; pointer-events:auto !important; border-radius:8px !important; font-size:0 !important; color:transparent !important; border:1px solid rgba(124,240,255,.38) !important; background:url("ASSETS/UI/MENU/modules.png") center / 34px 34px no-repeat, linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34)) !important; box-shadow:inset 0 0 0 1px rgba(255,255,255,.03) !important;
+}
+#gameWindowDock #btnModuleHub.gameDockIcon:hover:not(.dockIconActive):not(.active):not(:disabled) {
+  border-color:rgba(124,240,255,.62) !important; background:url("ASSETS/UI/MENU/modules_hover.png") center / 34px no-repeat, rgba(0,140,185,.3) !important; box-shadow:0 0 16px rgba(0,217,255,.12) !important;
+}
+#gameWindowDock #btnModuleHub.gameDockIcon.dockIconActive,
+#gameWindowDock #btnModuleHub.gameDockIcon.active {
+  border-color:rgba(255,209,102,.9) !important; background:url("ASSETS/UI/MENU/modules_select.png") center / 34px no-repeat, rgba(0,140,185,.3) !important; box-shadow:0 0 16px rgba(255,209,102,.35) !important;
+}
+#gameWindowDock #btnModuleHub.gameDockIcon img {
+  display:none !important;
+}
+
+/* ===== Fenetre Modules : cadre (contenu roulette = miroir #shopOverlay ci-dessus) ===== */
+#moduleWindow.modulePanel {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+#moduleWindow.gameWinMinimized {
+  display:none !important;
+}
+/* Clone exact de la boutique en jeu : 1180x720, onglets a gauche, contenu a droite. */
+#moduleWindow.gameWindow {
+  position: fixed !important;
+  width: min(1180px, calc(100vw - 32px)) !important;
+  height: min(720px, calc(100vh - 90px)) !important;
+  min-width: 760px !important;
+  min-height: 520px !important;
+  padding: 0 !important;
+  display: grid !important;
+  grid-template-columns: 290px minmax(0, 1fr) !important;
+  grid-template-rows: 26px minmax(0, 1fr) !important;
+  gap: 0 !important;
+  overflow: hidden !important;
+  color: #e8f4ff !important;
+  border: 1px solid rgba(124, 240, 255, .24) !important;
+  border-radius: 8px !important;
+  background: linear-gradient(135deg, rgba(10,18,36,.88), rgba(3,8,20,.80)) !important;
+  box-shadow: 0 18px 42px rgba(0,0,0,.55), 0 0 26px rgba(0,217,255,.12), inset 0 0 0 1px rgba(255,255,255,.04) !important;
+  backdrop-filter: none !important;
+  pointer-events: auto !important;
+}
+#moduleWindow.gameWindow > .gameWinBar {
+  grid-column: 1 / -1 !important;
+  grid-row: 1 !important;
+  height: 26px !important;
+  min-height: 26px !important;
+  margin: 0 !important;
+  padding: 0 8px !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  border: 0 !important;
+  border-bottom: 1px solid rgba(124, 240, 255, .18) !important;
+  border-radius: 0 !important;
+  background: linear-gradient(90deg, rgba(0,217,255,.18), rgba(124,240,255,.05), rgba(255,255,255,.035)) !important;
+  box-shadow: none !important;
+  cursor: grab !important;
+}
+html body #moduleWindow.gameWindow > .gameWinBar .gameWinMinBtn {
+  width: 26px !important;
+  height: 26px !important;
+  min-width: 26px !important;
+  min-height: 26px !important;
+  margin: 0 -8px 0 auto !important;
+  padding: 0 !important;
+  display: grid !important;
+  place-items: center !important;
+  border: 1px solid rgba(124,240,255,.38) !important;
+  border-radius: 0 8px 0 0 !important;
+  background: linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34)) !important;
+  color: #eaffff !important;
+  font: 750 11px/1.2 ui-sans-serif,system-ui !important;
+  text-transform: none !important;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.03) !important;
+  transition: none !important;
+}
+#moduleWindow .profileHeaderCard {
+  grid-column: 1 !important;
+  grid-row: 2 !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  margin: 0 !important;
+  padding: 20px 14px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  justify-content: flex-start !important;
+  gap: 22px !important;
+  overflow-y: auto !important;
+  border: 0 !important;
+  border-right: 1px solid rgba(124,240,255,.16) !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  scrollbar-width: none !important;
+}
+#moduleWindow .shopLayout.extrasMode {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+#moduleWindow .shopLayout.extrasMode .shopList {
+  display: none !important;
+}
+#moduleWindow .shopLayout.extrasMode .shopPreview {
+  width: 100% !important;
+  min-height: 100% !important;
+}
+
+/* ===== Fenetre Modules : structure boutique (panneau/liste/apercu) ===== */
+#moduleWindow .profileMainCard {
+grid-column: 2 !important;
+  grid-row: 2 !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  margin: 0 !important;
+  padding: 14px !important;
+  display: flex !important;
+  position: relative !important;
+  overflow: hidden !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+}
+#moduleWindow .profilePanel {
+display: none !important;
+}
+#moduleWindow .profilePanel.active {
+width: 100% !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  padding: 16px !important;
+  box-sizing: border-box !important;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+  border: 1px solid rgba(124,240,255,.16) !important;
+  border-radius: 11px !important;
+  background: #091a28 !important;
+  box-shadow: none !important;
+}
+#moduleWindow .shopToolbar {
+flex: 0 0 auto !important;
+  min-height: 54px !important;
+  margin: 0 0 8px !important;
+  padding: 2px 4px 12px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 14px !important;
+  box-sizing: border-box !important;
+  border: 0 !important;
+  border-bottom: 1px solid rgba(124,240,255,.14) !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+}
+#moduleWindow .shopToolbarTitle {
+color: #effbff !important;
+  font-size: 11px !important;
+  font-weight: 900 !important;
+}
+#moduleWindow .shopBalance {
+flex: 0 0 auto !important;
+  margin-left: auto !important;
+  text-align: right !important;
+}
+#moduleWindow .shopBalance span {
+display: block !important;
+  color: #ffffff !important;
+  font-size: 9px !important;
+  font-weight: 800 !important;
+  text-transform: uppercase !important;
+}
+#moduleWindow .shopBalance strong {
+display: block !important;
+  margin-top: 2px !important;
+  color: #75e8ff !important;
+  font-size: 18px !important;
+}
+html body #moduleWindow .shopLayout.extrasMode {
+display: block !important;
+  overflow-y: auto !important;
+  scrollbar-width:none !important;
+  -ms-overflow-style:none !important;
+}
+html body #moduleWindow .shopLayout.extrasMode::-webkit-scrollbar {
+  display:none !important;
+  width:0 !important;
+}
+#moduleWindow .shopPreview h3 {
+margin: 0 0 8px !important;
+  color: #effbff !important;
+  font-size: 17px !important;
+}
+#moduleWindow .shopPreview p {
+color: rgba(209,231,243,.68) !important;
+  font-size: 11px !important;
+  line-height: 1.45 !important;
+}
+body #moduleWindow .profileMainCard {
+grid-column:2 !important;
+  grid-row:2 !important;
+  min-width:0 !important;
+  min-height:0 !important;
+  margin:0 !important;
+  padding:4px !important;
+  display:flex !important;
+  overflow:hidden !important;
+  border:0 !important;
+  border-radius:0 !important;
+  background:transparent !important;
+  box-shadow:none !important;
+  backdrop-filter:none !important;
+}
+body #moduleWindow .profilePanel {
+display:none !important;
+  min-width:0 !important;
+  min-height:0 !important;
+}
+body #moduleWindow .profilePanel.active {
+width:100% !important;
+  min-width:0 !important;
+  min-height:0 !important;
+  padding:20px !important;
+  box-sizing:border-box !important;
+  display:flex !important;
+  flex-direction:column !important;
+  overflow:hidden auto !important;
+  border:0 !important;
+  border-radius:0 !important;
+  background:transparent !important;
+  box-shadow:0 0 0 1px rgba(255,255,255,.02) inset !important;
+  backdrop-filter:none !important;
+}
+html body #moduleWindow .shopLayout {
+flex:1 1 auto !important;
+  min-width:0 !important;
+  min-height:0 !important;
+  display:grid !important;
+  grid-template-columns:310px minmax(0,1fr) !important;
+  gap:0 !important;
+  overflow:hidden !important;
+  border:0 !important;
+  border-radius:0 !important;
+  background:transparent !important;
+}
+html body #moduleWindow .shopList {
+min-width:0 !important;
+  min-height:0 !important;
+  padding:8px !important;
+  box-sizing:border-box !important;
+  overflow-y:auto !important;
+  border:0 !important;
+  border-radius:0 !important;
+  background:transparent !important;
+  box-shadow:none !important;
+}
+html body #moduleWindow .shopPreview {
+min-width:0 !important;
+  min-height:0 !important;
+  padding:8px !important;
+  box-sizing:border-box !important;
+  overflow-y:auto !important;
+  border:0 !important;
+  border-radius:0 !important;
+  background:transparent !important;
+  box-shadow:none !important;
+}
+html body #moduleWindow .shopLayout.extrasMode {
+display: block !important;
+  overflow-y: auto !important;
+  scrollbar-width:none !important;
+  -ms-overflow-style:none !important;
+}
+html body #moduleWindow .shopLayout.extrasMode::-webkit-scrollbar {
+  display:none !important;
+  width:0 !important;
+}
+
+/* ===== Fenetre Modules : miroir large boutique (boutons, onglets, tuiles) ===== */
+body.orbitDead #moduleWindow {
+opacity:0 !important;
+  pointer-events:none !important;
+  transition:opacity .6s ease;
+}
+body.orbitNoFade #moduleWindow {
+transition:none !important;
+}
+#moduleWindow.profileOverlay {
+position: fixed !important;
+  inset: 0 !important;
+  z-index: 90000 !important;
+  display: none;
+  padding: 0 !important;
+  overflow: visible !important;
+  background: transparent !important;
+  backdrop-filter: none !important;
+  pointer-events: none !important;
+}
+#moduleWindow .profileOverlayInner {
+display: contents !important;
+}
+#moduleWindow #shopWindow.gameWindow {
+position: fixed !important;
+  width: min(1180px, calc(100vw - 32px)) !important;
+  height: min(720px, calc(100vh - 90px)) !important;
+  min-width: 760px !important;
+  min-height: 520px !important;
+  padding: 0 !important;
+  display: grid !important;
+  grid-template-columns: 290px minmax(0, 1fr) !important;
+  grid-template-rows: 26px minmax(0, 1fr) !important;
+  gap: 0 !important;
+  overflow: hidden !important;
+  color: #e8f4ff !important;
+  border: 1px solid rgba(124, 240, 255, .24) !important;
+  border-radius: 8px !important;
+  background: linear-gradient(135deg, rgba(10,18,36,.88), rgba(3,8,20,.80)) !important;
+  box-shadow: 0 18px 42px rgba(0,0,0,.55), 0 0 26px rgba(0,217,255,.12), inset 0 0 0 1px rgba(255,255,255,.04) !important;
+  backdrop-filter: none !important;
+  pointer-events: auto !important;
+}
+#moduleWindow #shopWindow.gameWindow:hover {
+border-color: rgba(124, 240, 255, .42) !important;
+  box-shadow: 0 18px 42px rgba(0,0,0,.50), 0 0 28px rgba(0,217,255,.16), inset 0 0 0 1px rgba(255,255,255,.05) !important;
+}
+html body #moduleWindow #shopWindow.gameWindow:not(.floating) {
+left: max(16px, calc(50vw - 590px)) !important;
+  top: 70px !important;
+}
+#moduleWindow #shopWindow.gameWindow > .gameWinBar {
+grid-column: 1 / -1 !important;
+  grid-row: 1 !important;
+  height: 26px !important;
+  min-height: 26px !important;
+  margin: 0 !important;
+  padding: 0 8px !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  border: 0 !important;
+  border-bottom: 1px solid rgba(124, 240, 255, .18) !important;
+  border-radius: 0 !important;
+  background: linear-gradient(90deg, rgba(0,217,255,.18), rgba(124,240,255,.05), rgba(255,255,255,.035)) !important;
+  box-shadow: none !important;
+  cursor: grab !important;
+}
+#moduleWindow #shopWindow .gameWinIcon {
+width: auto !important;
+  height: auto !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  border: 0 !important;
+  background: transparent !important;
+  font-size: 15px !important;
+}
+#moduleWindow #shopWindow .gameWinTitle {
+flex: 1 !important;
+  min-width: 0 !important;
+  color: rgba(232,244,255,.88) !important;
+  font-size: 11px !important;
+  font-weight: 900 !important;
+  letter-spacing: .35px !important;
+}
+html body #moduleWindow #shopWindow.gameWindow > .gameWinBar .gameWinMinBtn {
+width: 26px !important;
+  height: 26px !important;
+  min-width: 26px !important;
+  min-height: 26px !important;
+  margin: 0 -8px 0 auto !important;
+  padding: 0 !important;
+  display: grid !important;
+  place-items: center !important;
+  border: 1px solid rgba(124,240,255,.38) !important;
+  border-radius: 0 8px 0 0 !important;
+  background: linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34)) !important;
+  color: #eaffff !important;
+  font: 750 11px/1.2 ui-sans-serif,system-ui !important;
+  text-transform: none !important;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.03) !important;
+  transition: none !important;
+}
+html body #moduleWindow #shopWindow.gameWindow > .gameWinBar .gameWinMinBtn:hover:not(:disabled) {
+border-color: rgba(124,240,255,.62) !important;
+  background: rgba(0,140,185,.3) !important;
+  box-shadow: 0 0 16px rgba(0,217,255,.12) !important;
+}
+#moduleWindow .profileHeaderCard::-webkit-scrollbar {
+display: none !important;
+}
+#moduleWindow .profileTabs {
+width: 100% !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 8px !important;
+  overflow: visible !important;
+}
+#moduleWindow .profileMainCard {
+grid-column: 2 !important;
+  grid-row: 2 !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  margin: 0 !important;
+  padding: 14px !important;
+  display: flex !important;
+  position: relative !important;
+  overflow: hidden !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+}
+html body #moduleWindow .shopRow {
+background-image: none !important;
+}
+body #moduleWindow .shopPreview .profileTile {
+padding: 16px !important;
+}
+#moduleWindow button:not(.gameWinMinBtn) {
+box-sizing: border-box !important;
+  min-width: 0 !important;
+  min-height: 30px !important;
+  margin: 0 !important;
+  padding: 6px 10px !important;
+  border: 1px solid rgba(124,240,255,.38) !important;
+  border-radius: 8px !important;
+  color: #eaffff !important;
+  background: linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34)) !important;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.03) !important;
+  font: 750 11px/1.2 ui-sans-serif,system-ui !important;
+  text-transform: none !important;
+  cursor: pointer !important;
+  transform: none !important;
+  transition: none !important;
+}
+#moduleWindow button:not(.gameWinMinBtn):hover:not(:disabled) {
+border-color: rgba(124,240,255,.62) !important;
+  background: rgba(0,140,185,.3) !important;
+  box-shadow: 0 0 16px rgba(0,217,255,.12) !important;
+  transform: none !important;
+}
+#moduleWindow button:not(.gameWinMinBtn):active:not(:disabled) {
+border-color: rgba(124,240,255,.62) !important;
+  background: rgba(0,140,185,.3) !important;
+  box-shadow: 0 0 16px rgba(0,217,255,.12) !important;
+  transform: none !important;
+}
+#moduleWindow button:not(.gameWinMinBtn):disabled {
+opacity: .35 !important;
+  cursor: default !important;
+}
+#moduleWindow .tile {
+box-sizing: border-box !important;
+  border: 1px solid rgba(124,240,255,.14) !important;
+  border-radius: 9px !important;
+  background: #0a2232 !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+}
+#moduleWindow .profileTile {
+box-sizing: border-box !important;
+  border: 1px solid rgba(124,240,255,.14) !important;
+  border-radius: 9px !important;
+  background: #0a2232 !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+}
+html body #moduleWindow .shopGroupHeader {
+flex: 0 0 auto !important;
+  padding: 10px 10px 6px !important;
+  color: #ffd9a8 !important;
+  font-size: 10px !important;
+  font-weight: 900 !important;
+  text-transform: uppercase !important;
+  letter-spacing: .08em !important;
+  border-bottom: 1px solid rgba(255,154,60,.25) !important;
+  background: rgba(255,154,60,.06) !important;
+}
+#moduleWindow .shopRow img {
+width: 48px !important;
+  height: 48px !important;
+  padding: 3px !important;
+  flex: 0 0 auto !important;
+  object-fit: contain !important;
+}
+#moduleWindow .shopMeta {
+flex: 1 !important;
+  min-width: 0 !important;
+}
+#moduleWindow .shopMeta b {
+display: block !important;
+  overflow: hidden !important;
+  color: #e9f8ff !important;
+  font-size: 11px !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+}
+#moduleWindow .shopMeta span {
+color: rgba(204,228,241,.57) !important;
+  font-size: 9px !important;
+}
+html body #moduleWindow .shopPreview .bigImg {
+width: min(200px, 70%) !important;
+}
+html body #moduleWindow .shopPreview .bigImg.ammoShopImage {
+width: 100px !important;
+  height: 100px !important;
+  padding: 0 !important;
+}
+html body #moduleWindow .shopPreview .bigImg.equipShopImage {
+width: 100px !important;
+  max-width: 100px !important;
+  height: 100px !important;
+  max-height: 100px !important;
+  padding: 8px !important;
+  border: 0 !important;
+  background: transparent !important;
+}
+html body #moduleWindow .shopPreview .bigImg.petPreviewImage {
+width: 160px !important;
+  max-width: 160px !important;
+  height: 160px !important;
+  max-height: 160px !important;
+}
+html body #moduleWindow .shopPreviewCard {
+width: 105px !important;
+  height: 105px !important;
+  margin: 0 auto 12px !important;
+  display: grid !important;
+  place-items: center !important;
+  border-radius: 12px !important;
+  background: rgba(0,0,0,.25) !important;
+  border: 1px solid rgba(0,217,255,.3) !important;
+}
+html body #moduleWindow .shopPreviewCard .bigImg {
+width: 100px !important;
+  max-width: 100px !important;
+  height: 100px !important;
+  max-height: 100px !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+  object-fit: contain !important;
+}
+html body #moduleWindow .shopPreview .tile {
+display: flex !important;
+  flex-direction: column !important;
+  min-height: 100% !important;
+  box-sizing: border-box !important;
+}
+html body #moduleWindow .shopPreview .shopBuySection {
+margin-top: auto !important;
+  padding-top: 12px !important;
+}
+html body #moduleWindow .shopPreviewContainer {
+width: 100% !important;
+  height: 210px !important;
+  margin: 0 0 12px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  overflow: hidden !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+}
+html body #moduleWindow .shipPreviewContainer {
+width: 100% !important;
+  height: 210px !important;
+  margin: 0 0 12px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  overflow: hidden !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+}
+#moduleWindow .shipPreviewContainer img {
+image-rendering: pixelated !important;
+  object-fit: contain !important;
+}
+#moduleWindow .shopPreview .shopItemStat {
+margin: 8px 0 !important;
+  color: rgba(209,231,243,.72) !important;
+}
+#moduleWindow .shopPreview .shopItemStat strong {
+margin-left: 5px !important;
+  color: #75e8ff !important;
+  font-size: 13px !important;
+}
+#moduleWindow .shopPreview .shopItemStat.ammoDesc {
+color:#f4fbff !important;
+  font-weight:600 !important;
+  font-size:12px !important;
+  line-height:1.6 !important;
+  margin-top:6px !important;
+  text-align:center !important;
+}
+#moduleWindow .shopPreview .shopItemStat.ammoDesc strong {
+margin-left:0 !important;
+}
+#moduleWindow .shopPreview h3.ammoTitle {
+text-align:center !important;
+  font-size:20px !important;
+  margin-bottom:0 !important;
+}
+#moduleWindow .shopAmmoStock {
+margin:2px 0 0 !important;
+  color:#f4fbff !important;
+  font-size:13px !important;
+  font-weight:800 !important;
+  text-align:center !important;
+}
+#moduleWindow .shopAmmoStock .shopAmmoWord {
+color:#f4fbff !important;
+}
+#moduleWindow .shopAmmoStock .shopAmmoGold {
+color:#ffd56a !important;
+  font-size:16px !important;
+}
+#moduleWindow .shopPreview .shopItemStat.shopAbility img {
+width: 26px !important;
+  height: 26px !important;
+  object-fit: contain !important;
+  vertical-align: middle !important;
+}
+#moduleWindow .shopPreview .shopItemStat.shopAbility em {
+color: rgba(180,200,220,.75) !important;
+}
+#moduleWindow .shopPreview .shopAbilitiesGrid {
+display: flex !important;
+  flex-wrap: wrap !important;
+  gap: 4px !important;
+  padding: 4px 2px !important;
+}
+#moduleWindow .shopPreview .shopAbilitiesGrid img {
+width: 30px !important;
+  height: 30px !important;
+  object-fit: contain !important;
+}
+#moduleWindow .shopPreview .shopAbilityInherit {
+color: rgba(140,220,150,.85) !important;
+  font-style: italic !important;
+}
+#moduleWindow .shopAmmoOwned {
+margin: 8px 0 !important;
+  color: rgba(225,241,249,.82) !important;
+  font-size: 12px !important;
+}
+#moduleWindow .shopPurchaseRow {
+margin: 14px 0 0 !important;
+  padding: 14px 4px !important;
+  display: grid !important;
+  grid-template-columns: minmax(160px,1fr) 110px !important;
+  align-items: center !important;
+  gap: 18px !important;
+  border-top: 1px solid rgba(124,240,255,.15) !important;
+}
+#moduleWindow .shopPurchaseInfo {
+min-width: 0 !important;
+  display: grid !important;
+  gap: 8px !important;
+}
+#moduleWindow .shopPurchaseInfo > label {
+color: rgba(225,241,249,.78) !important;
+  font-size: 11px !important;
+  font-weight: 850 !important;
+}
+#moduleWindow .shopPurchaseRow > select {
+width: 110px !important;
+  height: 36px !important;
+  padding: 0 30px 0 12px !important;
+  box-sizing: border-box !important;
+  outline: 0 !important;
+  border: 1px solid rgba(124,240,255,.30) !important;
+  border-radius: 7px !important;
+  color: #effcff !important;
+  background: #051521 !important;
+  font: 900 12px/1 system-ui !important;
+  text-align: center !important;
+  cursor: pointer !important;
+}
+#moduleWindow .shopPurchaseRow > select:focus {
+border-color: #69e9ff !important;
+}
+#moduleWindow .shopPurchaseRow > select option {
+color: #effcff !important;
+  background: #071622 !important;
+}
+#moduleWindow .shopQuantityBox {
+width: 110px !important;
+  display: grid !important;
+  gap: 6px !important;
+}
+#moduleWindow .shopQuantityBox > input {
+width: 100% !important;
+  height: 36px !important;
+  padding: 0 8px !important;
+  box-sizing: border-box !important;
+  outline: 0 !important;
+  border: 1px solid rgba(124,240,255,.30) !important;
+  border-radius: 7px !important;
+  color: #effcff !important;
+  background: #051521 !important;
+  font: 900 12px/1 system-ui !important;
+  text-align: center !important;
+}
+#moduleWindow .shopQuantityBox > input:focus {
+border-color: #69e9ff !important;
+}
+#moduleWindow .shopAmmoBuyRow {
+margin: 14px 0 0 !important;
+  padding: 14px 4px 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 8px !important;
+}
+#moduleWindow .shopAmmoQtyRow {
+display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 10px !important;
+}
+#moduleWindow .shopAmmoQtyRow > label {
+color: #f4fbff !important;
+  font-size: 13px !important;
+  font-weight: 800 !important;
+  white-space: nowrap !important;
+}
+#moduleWindow .shopAmmoBuyRow > input {
+flex: 0 0 90px !important;
+  width: 90px !important;
+  height: 36px !important;
+  padding: 0 8px !important;
+  box-sizing: border-box !important;
+  outline: 0 !important;
+  border: 1px solid rgba(124,240,255,.30) !important;
+  border-radius: 7px !important;
+  color: #effcff !important;
+  background: #051521 !important;
+  font: 900 12px/1 system-ui !important;
+  text-align: center !important;
+}
+#moduleWindow .shopAmmoQtyRow > input {
+flex: 0 0 90px !important;
+  width: 90px !important;
+  height: 36px !important;
+  padding: 0 8px !important;
+  box-sizing: border-box !important;
+  outline: 0 !important;
+  border: 1px solid rgba(124,240,255,.30) !important;
+  border-radius: 7px !important;
+  color: #effcff !important;
+  background: #051521 !important;
+  font: 900 12px/1 system-ui !important;
+  text-align: center !important;
+}
+#moduleWindow .shopAmmoBuyRow > input:focus {
+border-color: #69e9ff !important;
+}
+#moduleWindow .shopAmmoQtyRow > input:focus {
+border-color: #69e9ff !important;
+}
+#moduleWindow .shopQtyBtn:focus {
+border-color: #69e9ff !important;
+}
+#moduleWindow .shopQtyCombo {
+position: relative !important;
+  flex: 0 0 90px !important;
+  width: 90px !important;
+}
+#moduleWindow .shopQtyBtn {
+width: 100% !important;
+  height: 36px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 6px !important;
+  padding: 0 8px !important;
+  box-sizing: border-box !important;
+  outline: 0 !important;
+  border: 1px solid rgba(124,240,255,.30) !important;
+  border-radius: 7px !important;
+  color: #effcff !important;
+  background: #051521 !important;
+  font: 900 12px/1 system-ui !important;
+  cursor: pointer !important;
+}
+#moduleWindow .shopQtyPopup {
+position: absolute !important;
+  top: calc(100% + 4px) !important;
+  left: 0 !important;
+  right: 0 !important;
+  z-index: 60 !important;
+  background: #051521 !important;
+  border: 1px solid rgba(124,240,255,.38) !important;
+  border-radius: 8px !important;
+  padding: 4px !important;
+  max-height: 264px !important;
+  overflow-y: auto !important;
+  box-shadow: 0 8px 24px rgba(0,0,0,.5) !important;
+}
+#moduleWindow .shopQtyOpt {
+padding: 4px 8px !important;
+  border-radius: 6px !important;
+  font: 800 12px/1.5 ui-sans-serif,system-ui !important;
+  color: #effcff !important;
+  cursor: pointer !important;
+  text-align: center !important;
+}
+#moduleWindow .shopQtyOpt:hover {
+background: rgba(0,217,255,.15) !important;
+}
+#moduleWindow .shopQtyPopup::-webkit-scrollbar {
+width: 8px !important;
+}
+#moduleWindow .shopQtyPopup::-webkit-scrollbar-track {
+background: rgba(255,255,255,.05) !important;
+  border-radius: 10px !important;
+}
+#moduleWindow .shopQtyPopup::-webkit-scrollbar-thumb {
+background: rgba(0,217,255,.3) !important;
+  border-radius: 10px !important;
+}
+#moduleWindow .shopAmmoCost {
+margin: 0 !important;
+  color: #f4fbff !important;
+  font-size: 16px !important;
+  font-weight: 600 !important;
+  text-align: center !important;
+}
+#moduleWindow .shopAmmoCost #shopPurchaseTotal {
+color: #ffd56a !important;
+  font-size: 16px !important;
+}
+#moduleWindow .shopAmmoCost #shopAmmoUnitsVal {
+color: #ffd56a !important;
+  font-size: 16px !important;
+}
+#moduleWindow .shopAmmoCost .shopAmmoWord {
+color: #f4fbff !important;
+}
+#moduleWindow .shopAmmoCost + .shopAmmoStock {
+margin-top: 35px !important;
+}
+#moduleWindow .shopAmmoCost .shopAmmoGold {
+color: #ffd56a !important;
+  font-size: 16px !important;
+}
+#moduleWindow .shopAmmoStock [data-booster-status] {
+font-size: 16px !important;
+}
+#moduleWindow .shopAmmoStock [data-booster-countdown] {
+font-size: 16px !important;
+}
+#moduleWindow .shopQuantityBox > select {
+width: 100% !important;
+  height: 30px !important;
+  padding: 0 26px 0 10px !important;
+  box-sizing: border-box !important;
+  outline: 0 !important;
+  border: 1px solid rgba(124,240,255,.30) !important;
+  border-radius: 7px !important;
+  color: #effcff !important;
+  background: #051521 !important;
+  font: 900 11px/1 system-ui !important;
+  text-align: center !important;
+  cursor: pointer !important;
+}
+#moduleWindow .shopQuantityBox > select:focus {
+border-color: #69e9ff !important;
+}
+#moduleWindow .shopQuantityBox > select option {
+color: #effcff !important;
+  background: #071622 !important;
+}
+#moduleWindow .shopPurchasePrice {
+min-width: 0 !important;
+  display: grid !important;
+  gap: 3px !important;
+  text-align: left !important;
+}
+#moduleWindow .shopPurchasePrice > span {
+color: rgba(204,228,241,.48) !important;
+  font-size: 8px !important;
+  font-weight: 800 !important;
+  text-transform: uppercase !important;
+}
+#moduleWindow .shopPurchasePrice strong {
+color: #72efff !important;
+  font-size: 13px !important;
+  white-space: nowrap !important;
+}
+#moduleWindow .shopBuySection {
+margin-top: 12px !important;
+  padding-top: 12px !important;
+  border-top: 1px solid rgba(124,240,255,.12) !important;
+}
+#moduleWindow #btnBuyPreview {
+margin-top: auto !important;
+  width: 100% !important;
+}
+body #moduleWindow .droneShopImage {
+width: 74px !important;
+  height: 66px !important;
+  object-fit: contain !important;
+  image-rendering: pixelated !important;
+  transform: scale(1.12);
+}
+body #moduleWindow .formationShopImage {
+width: min(420px,90%) !important;
+  height: 190px !important;
+  object-fit: contain !important;
+  image-rendering: auto !important;
+}
+body #moduleWindow .formationDescription {
+line-height: 1.55;
+  color: #d8c17c;
+}
+body #moduleWindow .shopRow img.droneShopRowImage {
+width: 58px !important;
+  height: 52px !important;
+  padding: 0 !important;
+  image-rendering: pixelated !important;
+}
+body #moduleWindow .shopRow img.petShopRowImage {
+width: 48px !important;
+  height: 48px !important;
+  padding: 0 !important;
+  object-fit: contain !important;
+}
+body #moduleWindow .shopRow img.formationShopRowImage {
+width: 72px !important;
+  height: 48px !important;
+  padding: 0 !important;
+  object-fit: contain !important;
+}
+body #moduleWindow .profileHeaderCard {
+grid-column:1 !important;
+  grid-row:2 !important;
+  min-width:0 !important;
+  min-height:0 !important;
+  margin:14px 0 14px 14px !important;
+  padding:18px !important;
+  display:flex !important;
+  flex-direction:column !important;
+  justify-content:flex-start !important;
+  gap:22px !important;
+  overflow:hidden auto !important;
+  border:0 !important;
+  border-right:1px solid rgba(124,240,255,.16) !important;
+  border-radius:0 !important;
+  background:transparent !important;
+  box-shadow:none !important;
+  backdrop-filter:none !important;
+  scrollbar-width:none !important;
+}
+body #moduleWindow .profileTabs {
+width:100% !important;
+  margin:0 !important;
+  padding:0 0 2px !important;
+  display:flex !important;
+  flex:1 1 auto !important;
+  flex-direction:column !important;
+  align-items:stretch !important;
+  justify-content:flex-start !important;
+  gap:6px !important;
+  overflow-y:auto !important;
+  overflow-x:hidden !important;
+  scrollbar-width:none !important;
+}
+body #moduleWindow .profileTabs::-webkit-scrollbar {
+display:none !important;
+}
+body #moduleWindow button:not(.gameWinMinBtn) {
+min-height:30px !important;
+  padding:6px 10px !important;
+  border-radius:8px !important;
+  font:750 11px/1.2 ui-sans-serif,system-ui !important;
+  text-transform:none !important;
+}
+body #moduleWindow .profileTabs .tabBtn {
+width:100% !important;
+  flex:0 0 auto !important;
+  min-width:0 !important;
+  max-width:100% !important;
+  min-height:38px !important;
+  padding:9px 11px !important;
+  display:flex !important;
+  align-items:center !important;
+  justify-content:flex-start !important;
+  gap:8px !important;
+  text-align:left !important;
+  overflow:hidden !important;
+  text-overflow:ellipsis !important;
+  border:1px solid rgba(124,240,255,.38) !important;
+  border-radius:8px !important;
+  color:#eaffff !important;
+  background:linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34)) !important;
+  font:750 11px/1.2 ui-sans-serif,system-ui !important;
+  text-transform:none !important;
+  white-space:nowrap !important;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.03) !important;
+  cursor:pointer !important;
+  transform:none !important;
+  transition:none !important;
+}
+body #moduleWindow .profileTabs .tabBtn:hover:not(:disabled) {
+transform:none !important;
+  border-color:rgba(124,240,255,.62) !important;
+  background:rgba(0,140,185,.3) !important;
+  box-shadow:0 0 16px rgba(0,217,255,.12) !important;
+}
+body #moduleWindow .profileTabs .tabBtn.active {
+color:#eaffff !important;
+  border:1px solid rgba(124,240,255,.38) !important;
+  background:linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34)) !important;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.03) !important;
+}
+body #moduleWindow .profileTabs .tabBtn.active::after {
+content:"" !important;
+  flex:0 0 auto !important;
+  width:8px !important;
+  height:8px !important;
+  margin-left:auto !important;
+  border-radius:50% !important;
+  background:#00d9ff !important;
+  box-shadow:0 0 8px rgba(0,217,255,.9) !important;
+  animation:shopTabDotBlink 1s ease-in-out infinite !important;
+}
+html body #moduleWindow .shopRow.active {
+border-bottom-color:rgba(124,240,255,.09) !important;
+  background:rgba(0,140,185,.18) !important;
+  box-shadow:none !important;
+}
+body #moduleWindow .shopRow {
+transition:none !important;
+}
+body #moduleWindow .shopRow:hover {
+transform:none !important;
+  border-bottom-color:rgba(124,240,255,.09) !important;
+  background:rgba(0,140,185,.10) !important;
+  box-shadow:none !important;
+}
+html body #moduleWindow .shopRow.active::after {
+content:"" !important;
+  flex:0 0 auto !important;
+  width:8px !important;
+  height:8px !important;
+  margin-left:auto !important;
+  border-radius:50% !important;
+  background:#00d9ff !important;
+  box-shadow:0 0 8px rgba(0,217,255,.9) !important;
+  animation:shopTabDotBlink 1s ease-in-out infinite !important;
+}
+html body #moduleWindow #moduleRollHistory {
+flex:1 1 auto !important;
+  min-height:120px !important;
+  max-height:none !important;
+  overflow-y:auto !important;
+}
+/* Prix boutique (liste) : montant dore + "credits" blanc. Place en fin de fichier pour battre : - #profileOverlay .shopMeta span - #moduleWindow .shopMeta span */ html body #moduleWindow .shopMeta .shopRowPrice {
+color:#ffd24d !important;
+  font-size:11px !important;
+  font-weight:600 !important;
+}
+html body #moduleWindow .shopMeta span.shopRowPrice {
+color:#ffd24d !important;
+  font-size:11px !important;
+  font-weight:600 !important;
+}
+html body #moduleWindow .shopMeta .shopRowPrice .shopPriceValue {
+color:#ffd24d !important;
+  font-size:11px !important;
+  font-weight:600 !important;
+}
+html body #moduleWindow .shopMeta span.shopRowPrice span.shopPriceValue {
+color:#ffd24d !important;
+  font-size:11px !important;
+  font-weight:600 !important;
+}
+html body #moduleWindow .shopMeta .shopRowPrice .shopPriceCurrency {
+color:#ffffff !important;
+  font-size:10px !important;
+  font-weight:600 !important;
+}
+html body #moduleWindow .shopMeta span.shopRowPrice span.shopPriceCurrency {
+color:#ffffff !important;
+  font-size:10px !important;
+  font-weight:600 !important;
+}
+texte blanc. */ html body #moduleWindow .shopPreview .shopItemStat.shopAbility {
+display:block !important;
+  margin:2px 0 !important;
+  text-align:center !important;
+  color:#ffffff !important;
+}
+html body #moduleWindow .shopPreview .shopItemStat.shopAbilityTitle {
+text-align:center !important;
+  color:#ffffff !important;
+}
+html body #moduleWindow .shopPreview .shopItemStat.shopEffetLine {
+text-align:center !important;
+  color:#ffffff !important;
+}
+html body #moduleWindow .shopPreview .shopItemStat.shopEffetLine > strong:first-child {
+color:#ffd56a !important;
+}
+html body #moduleWindow .shopPreview .shopItemStat.shopEffetLine strong {
+margin-left:0 !important;
+}
+html body #moduleWindow .shopPreview .shopItemStat.shipStatLine strong {
+margin-left:0 !important;
+}
+html body #moduleWindow .shopPreview .shopItemStat.shopAbility strong {
+color:#ffd56a !important;
+}
+html body #moduleWindow .shopPreview .shopItemStat.shopAbility em {
+color:#ffffff !important;
+}
+html body #moduleWindow .shopPreview .shopAbilitiesGrid {
+justify-content:center !important;
+}
+html body #moduleWindow .shopPreview p.shopDesignWarn {
+color:#ff5b6a !important;
+}
+html body #moduleWindow .shopPreview .shopFormationReq {
+color:#ff5b6a !important;
+  font-weight:600 !important;
+}
+rapproché du dessus. */ html body #moduleWindow .shopPreview .shopAmmoCost.shipCostBlock {
+margin-top:8px !important;
+  text-align:center !important;
+}
+/* Previews boutique : pas de séparateur au-dessus d'Acheter. */ html body #moduleWindow .shopPreview .shopBuySection {
+border-top:0 !important;
+}
+gears) : taille réelle. */ html body #moduleWindow .shopPreview .stillPreviewWrap {
+display:flex !important;
+  justify-content:center !important;
+  margin:0 auto 16px !important;
+}
+html body #moduleWindow .shopPreview .stillPreviewWrap img.stillPreviewImg {
+width:auto !important;
+  height:auto !important;
+  max-width:100% !important;
+  max-height:none !important;
+  padding:0 !important;
+  border:0 !important;
+  background:transparent !important;
+  transform:none !important;
+}
+html body #moduleWindow .shopPreview .dronePreviewWrap img.droneShopImage {
+width:auto !important;
+  height:auto !important;
+  max-width:100% !important;
+  max-height:none !important;
+  padding:0 !important;
+  border:0 !important;
+  background:transparent !important;
+  transform:none !important;
+}
+collé à droite. */ html body #moduleWindow .shopRow > .shopOwnedCheck {
+margin-left:auto !important;
+  flex:0 0 auto !important;
+  align-self:center !important;
+  color:#00ff88 !important;
+  font-weight:900 !important;
+  font-size:18px !important;
+  line-height:1 !important;
+}
+/* Mention "Possédé ✓" des previews : vert + espacée. */ html body #moduleWindow .shopPreview .previewOwnedWord {
+color:#00ff88 !important;
+  font-weight:700 !important;
+  letter-spacing:1px !important;
+  margin-left:8px !important;
+}
+html body #moduleWindow .shopPreview .previewOwnedCheck {
+color:#00ff88 !important;
+  font-weight:900 !important;
+}
+sans retour auto. */ html body #moduleWindow .shopPreview .shopItemStat.singleline {
+white-space:nowrap !important;
+  overflow:hidden !important;
+  text-overflow:ellipsis !important;
+}
+P.E.T...) : centrées. */ html body #moduleWindow .shopPreview .shopAmmoOwned {
+text-align:center !important;
+}
+/* Onglet MODULES collé tout en bas de la liste des onglets. */ html body #moduleWindow .profileHeaderCard .profileTabs {
+flex:1 1 auto !important;
+}
+/* ===== Fenetre Modules : miroir des styles roulette (#moduleWindow) ===== */ html body #moduleWindow .shopLayout.extrasMode {
+display: block !important;
+  overflow-y: auto !important;
+  scrollbar-width:none !important;
+  -ms-overflow-style:none !important;
+}
+html body #moduleWindow .shopLayout.extrasMode::-webkit-scrollbar {
+  display:none !important;
+  width:0 !important;
+}
+/* ===== Fenetre Modules : cadre (contenu roulette = miroir #moduleWindow ci-dessus) ===== */ #moduleWindow.modulePanel {
+display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+#moduleWindow.gameWindow.gameWinMinimized {
+  display:none !important;
+}

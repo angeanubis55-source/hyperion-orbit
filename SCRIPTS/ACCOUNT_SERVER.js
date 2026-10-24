@@ -18,7 +18,7 @@ import { DRONE_DESIGNS, getDroneDesign } from "../DRONE/DRONE_DESIGNS.js";
 import { createPet, getPetHullPrice, getPetLevel, PET_FUEL_MAX, PET_HULL_MAX_BUYS, PET_XP_SHARE } from "../PET/PET_TYPES.js";
 import { npcMapCreditMultiplier, resolveNpcReward } from "../NPC/NPC_BALANCE.js";
 import { rollNpcAssemblyDirect } from "../NPC/NPC_ASSEMBLY.js";
-import { MODULE_ALL_STATS, MODULE_DAILY_ROLL_LIMIT, MODULE_PCT_BAN, MODULE_ROLL_COST, MODULE_SELL_PRICES, MODULE_SPC_STATS, MODULE_TIER_MALUS, getModuleRarity, getStatMaxPct } from "../SRC/DATA/MODULE_DROPS.js";
+import { MODULE_ALL_STATS, MODULE_DAILY_ROLL_LIMIT, MODULE_DMG_STATS, MODULE_PCT_BAN, MODULE_ROLL_COST, MODULE_SELL_PRICES, MODULE_SPC_STATS, MODULE_STAT_FAMILY, MODULE_TIER_MALUS, getModuleRarity, getStatMaxPct } from "../SRC/DATA/MODULE_DROPS.js";
 import { generateShipModule } from "../SRC/DATA/MODULE_GEN.js";
 import { findCatalogItem } from "../SRC/CORE/CATALOG.js";
 import { createDrone, DRONE_FORMATIONS, DRONE_TYPES, getIrisPrice, SPECIAL_DRONE_PRICE } from "../DRONE/DRONE_TYPES.js";
@@ -597,13 +597,23 @@ function applyServerModuleOperation(data, body) {
     const day = serverModuleDailyKey();
     const stored = data.stats.moduleDailyRolls;
     const count = stored?.day === day ? Math.max(0, Math.floor(Number(stored.count) || 0)) : 0;
-    if (count >= MODULE_DAILY_ROLL_LIMIT) throw Object.assign(new Error(`Limite quotidienne atteinte (${MODULE_DAILY_ROLL_LIMIT} tirages/jour).`), { client: true });
-    const payment = payServerModuleRoll(data, MODULE_ROLL_COST, "credits");
+    let payment;
+    if (count >= MODULE_DAILY_ROLL_LIMIT) {
+      // Quota du jour épuisé : seul un ticket de tirage permet un tirage
+      // supplémentaire (hors quota, le compteur n'avance pas).
+      const tickets = Math.max(0, Math.floor(Number(data.inventory.counts.ticket_module_roll) || 0));
+      if (!(tickets > 0)) throw Object.assign(new Error(`Limite quotidienne atteinte (${MODULE_DAILY_ROLL_LIMIT} tirages/jour).`), { client: true });
+      data.inventory.counts.ticket_module_roll = tickets - 1;
+      if (data.inventory.counts.ticket_module_roll <= 0) delete data.inventory.counts.ticket_module_roll;
+      payment = { type: "ticket", amount: 1 };
+    } else {
+      payment = payServerModuleRoll(data, MODULE_ROLL_COST, "credits");
+      data.stats.moduleDailyRolls = { day, count: count + 1 };
+    }
     const module = generateShipModule(data);
     module.rerolls = 0; module.rerollCredits = 0;
     data.inventory.shipModules.push(module);
     data.inventory.moduleRollHistory.push({ ...module, rollPayment: payment });
-    data.stats.moduleDailyRolls = { day, count: count + 1 };
     return { module, payment };
   }
   if (action === "reroll") {
@@ -613,7 +623,21 @@ function applyServerModuleOperation(data, body) {
     const old = data.inventory.shipModules[index];
     const rerolls = Math.max(0, Math.floor(Number(old.rerolls) || 0));
     const cost = MODULE_ROLL_COST * Math.pow(5, rerolls + 1);
-    const payment = payServerModuleRoll(data, cost, "auto");
+    // Choix explicite du client ("credits" / "ticket"), "auto" = ticket
+    // d'abord comme avant. Un ticket exigé mais absent = refus net.
+    const want = String(body?.payWith || "auto").toLowerCase();
+    let payment;
+    if (want === "credits") {
+      payment = payServerModuleRoll(data, cost, "credits");
+    } else if (want === "ticket") {
+      const tickets = Math.max(0, Math.floor(Number(data.inventory.counts.ticket_module_reroll) || 0));
+      if (!(tickets > 0)) throw Object.assign(new Error("Aucun ticket de relance."), { client: true });
+      data.inventory.counts.ticket_module_reroll = tickets - 1;
+      if (data.inventory.counts.ticket_module_reroll <= 0) delete data.inventory.counts.ticket_module_reroll;
+      payment = { type: "ticket", amount: 1 };
+    } else {
+      payment = payServerModuleRoll(data, cost, "auto");
+    }
     const module = generateShipModule(data, {
       shipId: old.shipId, familyId: old.familyId, type: old.type, tier: old.tier,
       statCount: Math.max(1, Array.isArray(old.bonuses) ? old.bonuses.length : 1),
@@ -2487,15 +2511,21 @@ export function grantSundayModule(accountId, rarity) {
     const families = getShipFamilyIds().filter((f) => !/police/i.test(String(f || "")));
     const family = String(families.length ? families[Math.floor(Math.random() * families.length)] : "goliath");
     const type = SUNDAY_MODULE_TYPES[Math.floor(Math.random() * SUNDAY_MODULE_TYPES.length)];
-    const mainStat = type === "hp" ? "hp" : type === "shd" ? "shield" : type === "dmg" ? "damage"
+    const mainStat = type === "hp" ? "hp" : type === "shd" ? "shield" : type === "dmg" ? MODULE_DMG_STATS[Math.floor(Math.random() * MODULE_DMG_STATS.length)]
       : MODULE_SPC_STATS[Math.floor(Math.random() * MODULE_SPC_STATS.length)];
     const mn = MODULE_TIER_MALUS[spec.tier] ?? -4;
+    // UNE stat par famille, comme les tirages boutique (voir MODULE_GEN).
     const picked = new Set([mainStat]);
+    const usedFamilies = new Set([MODULE_STAT_FAMILY[mainStat]]);
     const bonuses = [{ stat: mainStat, pct: sundayRollPct(mn, getStatMaxPct(mainStat, type)) }];
-    const pool = MODULE_ALL_STATS.filter((s) => !picked.has(s));
+    const pool = MODULE_ALL_STATS.filter((s) => !picked.has(s) && !usedFamilies.has(MODULE_STAT_FAMILY[s]));
     while (bonuses.length < spec.statCount && pool.length) {
       const s = pool.splice(Math.floor(Math.random() * pool.length), 1)[0];
       picked.add(s);
+      usedFamilies.add(MODULE_STAT_FAMILY[s]);
+      for (let i = pool.length - 1; i >= 0; i--) {
+        if (MODULE_STAT_FAMILY[pool[i]] === MODULE_STAT_FAMILY[s]) pool.splice(i, 1);
+      }
       bonuses.push({ stat: s, pct: sundayRollPct(mn, getStatMaxPct(s, type)) });
     }
     const now = Math.floor(Date.now() / 1000);

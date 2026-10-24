@@ -7,8 +7,10 @@
 
 import {
   MODULE_ALL_STATS,
+  MODULE_DMG_STATS,
   MODULE_PCT_BAN,
   MODULE_SPC_STATS,
+  MODULE_STAT_FAMILY,
   MODULE_TIER_MALUS,
   MODULE_TIER_WEIGHTS,
   MODULE_TYPE_WEIGHTS,
@@ -64,20 +66,28 @@ export function generateShipModule(user, opts = {}) {
   let mainStat = "hp";
   if (type === "hp") mainStat = "hp";
   if (type === "shd") mainStat = "shield";
-  if (type === "dmg") mainStat = "damage";
+  if (type === "dmg") mainStat = MODULE_DMG_STATS[randInt(0, MODULE_DMG_STATS.length - 1)];
   if (type === "spc") mainStat = MODULE_SPC_STATS[randInt(0, MODULE_SPC_STATS.length - 1)];
 
   // Chaque stat est tirée indépendamment : bonus (+) ou malus (-).
   // Une stat hors de sa couleur est plafonnée à 5% (ex : Dégâts dans un
   // module bleu/Shield), sauf Exp/Honneur toujours à 12%.
+  // UNE stat par famille : après chaque pioche, toute la fratrie est
+  // retirée du pool (ex : Dégâts bloque Dég. PvP, Vitesse bloque Pénétration).
   const picked = new Set([mainStat]);
+  const usedFamilies = new Set([MODULE_STAT_FAMILY[mainStat]]);
   const bonuses = [{ stat: mainStat, pct: rollModulePct(mn, getStatMaxPct(mainStat, type)) }];
 
-  const pool = MODULE_ALL_STATS.filter((s) => !picked.has(s));
+  const pool = MODULE_ALL_STATS.filter((s) => !picked.has(s) && !usedFamilies.has(MODULE_STAT_FAMILY[s]));
   while (bonuses.length < statCount && pool.length) {
     const index = randInt(0, pool.length - 1);
     const s = pool.splice(index, 1)[0];
     picked.add(s);
+    usedFamilies.add(MODULE_STAT_FAMILY[s]);
+    // Retire les stats de la même famille que celle qui vient de tomber.
+    for (let i = pool.length - 1; i >= 0; i--) {
+      if (MODULE_STAT_FAMILY[pool[i]] === MODULE_STAT_FAMILY[s]) pool.splice(i, 1);
+    }
     bonuses.push({ stat: s, pct: rollModulePct(mn, getStatMaxPct(s, type)) });
   }
 

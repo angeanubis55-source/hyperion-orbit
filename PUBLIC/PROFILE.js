@@ -16,6 +16,8 @@ import {
   replaceShipModule,
   buyAndAddShipModuleOnline,
   buyAndReplaceShipModuleOnline,
+  sellShipModulesOnline,
+  moduleSellUnitPrice,
   moduleDailyRollInfo,
   moduleRerollInvested,
   shipModuleGroupKey,
@@ -53,7 +55,7 @@ import { getItemRarity, ITEM_RARITIES } from "../SRC/DATA/ITEM_RARITIES.js";
 import { DRONE_FORMATIONS, DRONE_LEVEL_XP, DRONE_MAX_LEVEL, DRONE_TYPES, getDroneSpritePath, getDroneShopStillPath, getIrisPrice } from "../DRONE/DRONE_TYPES.js";
 import { getDroneDesign, getDroneDesignBonuses, droneDesignBonusLabel } from "../DRONE/DRONE_DESIGNS.js";
 import { emptyPetFit, getPetHullPrice, getPetLevel, getPetLevelBonus, getPetLevelXp, getPetNextLevelXp, getPetSlots, getPetSpritePath, PET_FUEL_MAX, PET_HULL_MAX_BUYS } from "../PET/PET_TYPES.js";
-import { MODULE_ALL_STATS, MODULE_DAILY_ROLL_LIMIT, MODULE_PCT_BAN, MODULE_ROLL_COST, MODULE_SPC_STATS, MODULE_STAT_COUNT_WEIGHTS, MODULE_TIER_MALUS, MODULE_TIER_WEIGHTS, MODULE_TYPE_WEIGHTS, getModuleRarity, getModuleStatCountWeights, getStatMaxPct } from "../SRC/DATA/MODULE_DROPS.js";
+import { MODULE_ALL_STATS, MODULE_DAILY_ROLL_LIMIT, MODULE_DMG_STATS, MODULE_PCT_BAN, MODULE_RARITY_BY_STAT_COUNT, MODULE_ROLL_COST, MODULE_SELL_PRICES, MODULE_SPC_STATS, MODULE_STAT_COUNT_WEIGHTS, MODULE_STAT_COUNT_WEIGHTS_BY_TIER, MODULE_STAT_MAX_ANY, MODULE_STAT_MAX_BY_COLOR, MODULE_STAT_MAX_OFF_COLOR, MODULE_TIER_MALUS, MODULE_TIER_WEIGHTS, MODULE_TYPE_WEIGHTS, getModuleRarity, getModuleStatCountWeights, getStatMaxPct } from "../SRC/DATA/MODULE_DROPS.js";
 import { generateShipModule } from "../SRC/DATA/MODULE_GEN.js";
 import { appendToFitSlots, compactDroneEquipment, compactFitArray, compactFitDraft, compactPetFit, moveEquipmentSlots } from "../SRC/CORE/FIT_LAYOUT.js";
 import { pruneUnavailableLoadout } from "../SRC/CORE/FIT_INVENTORY.js";
@@ -128,6 +130,40 @@ const inventorySections = $("inventorySections");
 const inventoryTooltip = $("inventoryTooltip");
 const shopList = $("shopWindowList") || $("shopList");
 const shopPreview = $("shopWindowPreview") || $("shopPreview");
+
+// Hôte d'affichage de la roulette modules : boutique (défaut, page standalone
+// + compatible) ou fenêtre Modules dédiée (jeu : onglet boutique retiré).
+function moduleHostEls() {
+  return {
+    list: document.getElementById("moduleWindowList"),
+    preview: document.getElementById("moduleWindowPreview"),
+    credits: document.getElementById("moduleWindowCredits"),
+  };
+}
+function moduleWindowVisible() {
+  const el = document.getElementById("moduleWindow");
+  return !!el && el.style.display !== "none" && !el.hidden
+    && !el.classList.contains("gameWinMinimized");
+}
+function extrasHost() {
+  const m = moduleHostEls();
+  if (m.list && m.preview && moduleWindowVisible()) {
+    return { list: m.list, preview: m.preview, credits: m.credits, visible: moduleWindowVisible, name: "modules" };
+  }
+  return { list: shopList, preview: shopPreview, credits: shopCredits, visible: shopIsVisible, name: "shop" };
+}
+function renderModuleWindow() {
+  if (!moduleWindowVisible()) { try { console.warn("[modules] fenetre non visible"); } catch {} return; }
+  try {
+    const fresh = getCurrentUserFull();
+    if (fresh) user = fresh;
+  } catch (e) { try { console.warn("[modules] getCurrentUserFull: " + (e && e.message)); } catch {} }
+  if (!user) { try { console.warn("[modules] pas de user"); } catch {} return; }
+  const m = moduleHostEls();
+  if (!m.list || !m.preview) return;
+  if (m.credits) m.credits.textContent = formatNumber(user?.credits || 0);
+  renderExtrasRoulette(user, { list: m.list, preview: m.preview, credits: m.credits, visible: moduleWindowVisible, name: "modules" });
+}
 const btnStart = $("btnStart");
 const btnLogout = $("btnLogout");
 const btnSessionMenu = $("btnSessionMenu");
@@ -149,12 +185,20 @@ let shopTab = localStorage.getItem("orbit_shop_tab") || "ammo";
 if (shopTab === "launchers") shopTab = "rockets"; // onglet fusionné
 if (shopTab === "petGears" || shopTab === "petProtocols" || shopTab === "petGearProto") shopTab = "petEquipment"; // GEARS + PROTOCOLES fusionnés
 if (shopTab === "speedGen" || shopTab === "shieldGen") shopTab = "generators"; // générateurs fusionnés
+if (shopTab === "extras" && document.getElementById("shopWindowPanel")) shopTab = "ammo"; // onglet Modules déplacé dans la fenêtre Modules dédiée (jeu)
 // Recherche de l'onglet DESIGNS (conservée entre les re-renders).
 let designSearchQuery = "";
 // Recherche de l'onglet VAISSEAUX (conservée entre les re-renders).
 let shipSearchQuery = "";
-// Recherche par vaisseau dans l'historique des modules (conservée entre les re-renders).
+// Filtres de l'historique des modules (conservés entre les re-renders) :
+// recherche texte + famille de vaisseau ("", toutes) + faculté ("", tous).
+// Même principe que l'inventaire (recherche + dropdown vaisseaux + filtre type).
 let moduleHistoryShipQuery = "";
+let moduleHistoryShipFilter = "";
+let moduleHistoryTypeFilter = "";
+// Clic extérieur / Échap refermant le dropdown vaisseaux de l'historique
+// (branché une seule fois, le panneau se re-rend souvent).
+let moduleHistoryPopupWired = false;
 let selectedShopItemId = null;
 let selectedHangarId = null;
 let shopRenderToken = 0;
@@ -169,6 +213,14 @@ let moduleReroll = null;
 // garder des closures fraîches ; le coût est recalculé sur le module live.
 let moduleHistoryRerollHandler = null;
 let moduleHistoryRerollWired = false;
+// Rafraîchit les compteurs de la fenêtre Modules (tickets, quota, crédits)
+// quand le compte bouge ailleurs (craft, boutique, events...). Slot réassigné
+// à chaque rendu, écouteurs branchés une seule fois (comme les relances).
+let moduleCostsRefreshHandler = null;
+let moduleCostsRefreshWired = false;
+// Clic revente depuis l'historique : même délégation (vente classique +
+// confirmation, comme le bouton Revendre sous la card).
+let moduleHistorySellHandler = null;
 // Tirage auto (roulette) : enchaîne les tirages de base tant que la case
 // est cochée et que les crédits suivent. Persisté entre les re-renders.
 let moduleAutoRoll = false;
@@ -181,6 +233,19 @@ function nextModuleRerollCost(rerollsDone) {
 }
 const MODULE_REROLL_TICKET_ID = "ticket_module_reroll";
 const MODULE_REROLL_TICKET_ICON = "/ASSETS/ITEMS/TICKET_MODULE_REROLL.png";
+const MODULE_ROLL_TICKET_ID = "ticket_module_roll";
+const MODULE_ROLL_TICKET_ICON = "/ASSETS/ITEMS/TICKET_MODULE_TIRAGE.png";
+// Tickets de TIRAGE (tirages supplémentaires hors quota, craft 3 Mds).
+function moduleRollTicketCount(currentUser) {
+  return Math.max(0, Math.floor(Number(currentUser?.inventory?.counts?.[MODULE_ROLL_TICKET_ID]) || 0));
+}
+function moduleRollTicketStockHtml(currentUser) {
+  const tickets = moduleRollTicketCount(currentUser);
+  return `<span class="moduleTicketStock" style="display:inline-flex;align-items:center;gap:5px;" title="Tickets de tirage : tirages supplémentaires hors quota"><img src="${MODULE_ROLL_TICKET_ICON}" alt="ticket" style="width:26px;height:26px;object-fit:contain;vertical-align:middle;" />×<strong>${formatNumber(tickets)}</strong></span>`;
+}
+// Mode du prochain tirage de base : "credits" (quota restant), "ticket"
+// (quota épuisé + ticket dispo), null (impossible). Le ticket ne sert QUE
+// quota épuisé, jamais en auto (pas de consommation silencieuse à 3 Mds).
 // Paiement des RELANCES (ticket automatique si dispo, sinon crédits).
 // Le TIRAGE de base est toujours en crédits (jamais de ticket).
 function moduleRerollTicketCount(currentUser) {
@@ -211,22 +276,124 @@ function moduleRouletteCostHtml(currentUser) {
     + `<span class="moduleCostVSeparator" aria-hidden="true"></span>`
     + `<span class="moduleCostCol"><span class="moduleCostLabel">Coût du tirage</span><span class="moduleCreditCost"><strong>${formatNumber(MODULE_ROLL_COST)}</strong> crédits</span></span>`
     + `<span class="moduleCostVSeparator" aria-hidden="true"></span>`
-    + `<span class="moduleCostCol"><span class="moduleCostLabel">Tickets</span>${moduleTicketStockHtml(currentUser)}</span>`
+    + `<span class="moduleCostCol"><span class="moduleCostLabel">Ticket de relance</span>${moduleTicketStockHtml(currentUser)}</span>`
+    + `<span class="moduleCostVSeparator" aria-hidden="true"></span>`
+    + `<span class="moduleCostCol"><span class="moduleCostLabel">Ticket de tirage</span>${moduleRollTicketStockHtml(currentUser)}</span>`
+    + `</span>`;
+  return `<span class="moduleCostGrid">`
+    + `<span class="moduleCostCol"><span class="moduleCostLabel">Tirages du jour</span>${dailyValue}</span>`
+    + `<span class="moduleCostVSeparator" aria-hidden="true"></span>`
+    + `<span class="moduleCostCol"><span class="moduleCostLabel">Coût du tirage</span><span class="moduleCreditCost"><strong>${formatNumber(MODULE_ROLL_COST)}</strong> crédits</span></span>`
+    + `<span class="moduleCostVSeparator" aria-hidden="true"></span>`
+    + `<span class="moduleCostCol"><span class="moduleCostLabel">Ticket de relance</span>${moduleTicketStockHtml(currentUser)}</span>`
     + `</span>`;
 }
-// Tirage de base possible : crédits OK + quota du jour restant.
+// Tirage de base possible : crédits + quota, OU ticket si quota épuisé.
+function moduleBaseRollMode(currentUser) {
+  if (moduleDailyRollInfo(currentUser).left > 0) {
+    return Number(currentUser?.credits || 0) >= MODULE_ROLL_COST ? "credits" : null;
+  }
+  return moduleRollTicketCount(currentUser) > 0 ? "ticket" : null;
+}
 function moduleCanBaseRoll(currentUser) {
-  return Number(currentUser?.credits || 0) >= MODULE_ROLL_COST && moduleDailyRollInfo(currentUser).left > 0;
+  return moduleBaseRollMode(currentUser) !== null;
 }
 // Tête d'historique : comme la roulette, deux colonnes séparées.
 // À gauche "Relance", à droite les tickets. PAS de prix ici :
 // chaque ligne a déjà son propre "Prochaine".
 function moduleHistoryHeadHtml(currentUser) {
+  const owned = Array.isArray(currentUser?.inventory?.shipModules) ? currentUser.inventory.shipModules.length : 0;
   return `<span class="moduleCostGrid">`
     + `<span class="moduleCostCol"><span class="moduleCostLabel">Relance</span><span class="moduleCreditCost"><strong>Tickets ou Crédits</strong></span></span>`
     + `<span class="moduleCostVSeparator" aria-hidden="true"></span>`
-    + `<span class="moduleCostCol"><span class="moduleCostLabel">Tickets</span>${moduleTicketStockHtml(currentUser)}</span>`
+    + `<span class="moduleCostCol"><span class="moduleCostLabel">Ticket de relance</span>${moduleTicketStockHtml(currentUser)}</span>`
+    + `<span class="moduleCostVSeparator" aria-hidden="true"></span>`
+    + `<span class="moduleCostCol"><span class="moduleCostLabel">Module Possédés</span><span class="moduleCreditCost"><strong>${formatNumber(owned)}</strong></span></span>`
     + `</span>`;
+}
+// Onglet Probabilités : explique le tirage et affiche les vraies tables
+// (lues depuis MODULE_DROPS, jamais recopiées en dur).
+function moduleProbaHtml() {
+  const pct = (pairs) => {
+    const total = pairs.reduce((s, [, w]) => s + Number(w || 0), 0) || 1;
+    return pairs.map(([v, w]) => [v, (Number(w || 0) / total) * 100]);
+  };
+  const fmtPct = (v) => `${String(Number(v).toFixed(v % 1 === 0 ? 0 : 1)).replace(".", ",")} %`;
+  const tierRows = pct(MODULE_TIER_WEIGHTS).map(([tier, p]) =>
+    `<tr><td>${escapeHtml(String(tier).toUpperCase())}</td><td>${escapeHtml(fmtPct(p))}</td></tr>`).join("");
+  const TYPE_MAIN = {
+    hp: ["PV"],
+    shd: ["Bouclier"],
+    dmg: ["damage", "dmg_laser", "dmg_npc", "dmg_pvp", "dmg_rocket"].map((s) => formatStatLabel(s)),
+    spc: [...MODULE_SPC_STATS].map((s) => formatStatLabel(s)),
+  };
+  const TYPE_COLOR = { hp: "#00ff88", shd: "#55aaff", dmg: "#ff5566", spc: "#ffd45a" };
+  const typeRows = pct(MODULE_TYPE_WEIGHTS).map(([type, p]) =>
+    `<tr><td><strong style="color:${TYPE_COLOR[String(type)] || "#fff"};">${escapeHtml(String(type).toUpperCase())}</strong></td>`
+    + `<td>${escapeHtml(fmtPct(p))}</td>`
+    + `<td>${escapeHtml((TYPE_MAIN[String(type)] || []).join(" · "))}</td></tr>`).join("");
+  const tiers = ["x1", "x2", "x3"];
+  const statCounts = [1, 2, 3, 4];
+  const countHead = tiers.map((t) => `<th>${escapeHtml(t.toUpperCase())}</th>`).join("");
+  const countRows = statCounts.map((n) => {
+    const cells = tiers.map((t) => {
+      const table = MODULE_STAT_COUNT_WEIGHTS_BY_TIER[t] || MODULE_STAT_COUNT_WEIGHTS;
+      const w = table.find(([c]) => Number(c) === n);
+      const total = table.reduce((s, [, x]) => s + Number(x || 0), 0) || 1;
+      return `<td>${escapeHtml(fmtPct((Number(w?.[1] || 0) / total) * 100))}</td>`;
+    }).join("");
+    return `<tr><td><strong>${n} stat${n > 1 ? "s" : ""}</strong></td>${cells}</tr>`;
+  }).join("");
+  const rarityRows = statCounts.map((n) => {
+    const id = MODULE_RARITY_BY_STAT_COUNT[n] || getModuleRarity(n);
+    const base = Number(MODULE_SELL_PRICES[id]) || 0;
+    const meta = (typeof ITEM_RARITIES !== "undefined" && ITEM_RARITIES[id]) || { name: id, color: "#fff" };
+    return `<tr><td><strong>${n}</strong></td>`
+      + `<td><strong style="color:${escapeHtml(meta.color)};">${escapeHtml(meta.name)}</strong></td>`
+      + `<td>${escapeHtml(formatNumber(base))} crédits</td></tr>`;
+  }).join("");
+  const FAMILY_LABEL = { hp: "PV", shd: "Bouclier", dmg: "Dégâts", spc: "Spécial", exp: "Expérience", honor: "Honneur" };
+  const FAMILY_COLOR = { hp: "#00ff88", shd: "#55aaff", dmg: "#ff5566", spc: "#ffd45a", exp: "#fff", honor: "#fff" };
+  const capRows = [...MODULE_ALL_STATS].map((stat) => {
+    let home = "—";
+    let max = MODULE_STAT_MAX_OFF_COLOR;
+    for (const [color, table] of Object.entries(MODULE_STAT_MAX_BY_COLOR)) {
+      if (table && table[stat] != null) { home = color; max = table[stat]; }
+    }
+    if (MODULE_STAT_MAX_ANY[stat] != null) { home = "toutes"; max = MODULE_STAT_MAX_ANY[stat]; }
+    return `<tr><td>${escapeHtml(formatStatLabel(stat))}</td>`
+      + `<td><strong style="color:${FAMILY_COLOR[home] || "#fff"};">${escapeHtml(FAMILY_LABEL[home] || home)}</strong></td>`
+      + `<td><strong>+${escapeHtml(formatNumber(max))} %</strong></td></tr>`;
+  }).join("");
+  const malusLine = tiers.map((t) => `${t.toUpperCase()} : ${MODULE_TIER_MALUS[t] ?? "?"} %`).join(" · ");
+  const rerollRows = [1, 2, 3, 4, 5].map((n) =>
+    `<tr><td><strong>Relance n°${n}</strong></td><td>${escapeHtml(formatNumber(MODULE_ROLL_COST * Math.pow(5, n)))} crédits</td></tr>`).join("");
+  return `
+  <div class="moduleProba">
+    <h3 class="moduleProbaTitle">Comment marche un tirage ?</h3>
+    <ol class="moduleProbaSteps">
+      <li>Le <strong>tier</strong> est tiré (X1 / X2 / X3), puis le <strong>type</strong> (HP / SHD / DMG / SPC).</li>
+      <li>La <strong>stat principale est garantie</strong> selon le type (voir tableau).</li>
+      <li>Les stats suivantes sont tirées au hasard : <strong>une seule par famille</strong> (jamais 2 Dégâts, jamais Vitesse + Pénétration).</li>
+      <li>Chaque % va du <strong>malus du tier</strong> au <strong>cap de sa couleur</strong> (5 % hors couleur, 12 % Exp/Honneur partout), jamais 0 %.</li>
+      <li>La <strong>rareté = le nombre de stats</strong>. Tirage : ${escapeHtml(formatNumber(MODULE_ROLL_COST))} crédits, ${MODULE_DAILY_ROLL_LIMIT}/jour. Relances illimitées. <strong>Ticket de tirage</strong> (craft 3 Mds) : 1 tirage supplémentaire même à 0/${MODULE_DAILY_ROLL_LIMIT}.</li>
+    </ol>
+    <h3 class="moduleProbaTitle">Tier du module</h3>
+    <table class="moduleProbaTable"><thead><tr><th>Tier</th><th>Chance</th></tr></thead><tbody>${tierRows}</tbody></table>
+    <h3 class="moduleProbaTitle">Type et stat principale garantie</h3>
+    <table class="moduleProbaTable"><thead><tr><th>Type</th><th>Chance</th><th>Stat principale</th></tr></thead><tbody>${typeRows}</tbody></table>
+    <h3 class="moduleProbaTitle">Nombre de stats selon le tier</h3>
+    <table class="moduleProbaTable"><thead><tr><th>Stats</th>${countHead}</tr></thead><tbody>${countRows}</tbody></table>
+    <h3 class="moduleProbaTitle">Rareté et revente de base</h3>
+    <table class="moduleProbaTable"><thead><tr><th>Stats</th><th>Rareté</th><th>Revente de base</th></tr></thead><tbody>${rarityRows}</tbody></table>
+    <p class="moduleProbaNote">Revente réelle = base + la moitié des crédits de relance investis (tickets exclus).</p>
+    <h3 class="moduleProbaTitle">Bonus max en couleur (% positifs)</h3>
+    <table class="moduleProbaTable"><thead><tr><th>Stat</th><th>Couleur</th><th>Max</th></tr></thead><tbody>${capRows}</tbody></table>
+    <p class="moduleProbaNote">Hors de sa couleur : ${MODULE_STAT_MAX_OFF_COLOR} % max (Exp/Honneur : ${MODULE_STAT_MAX_ANY.exp} % partout). Malus mini : ${escapeHtml(malusLine)}.</p>
+    <h3 class="moduleProbaTitle">Coût des relances (crédits, ×5 à chaque fois)</h3>
+    <table class="moduleProbaTable"><thead><tr><th>Relance</th><th>Coût</th></tr></thead><tbody>${rerollRows}</tbody></table>
+    <p class="moduleProbaNote">Ticket de relance utilisable à la place des crédits (1 par relance).</p>
+  </div>`;
 }
 let inventoryQuery = "";
 
@@ -320,6 +487,41 @@ function showConfirm(title, message, onConfirm) {
     cleanup();
     if (onConfirm) onConfirm();
   };
+}
+
+// Confirmation cantonnée à la fenêtre Modules (même carte que le dialogue
+// de vente de l'inventaire) : n'assombrit pas tout l'écran, Échap/clic
+// à côté pour annuler.
+function showModuleConfirm(title, message, onConfirm) {
+  const host = document.getElementById("moduleWindow");
+  if (!host) return;
+  document.getElementById("moduleConfirmDialog")?.remove();
+  const dlg = document.createElement("div");
+  dlg.id = "moduleConfirmDialog";
+  dlg.innerHTML = `
+    <div class="tdmSellCard" role="dialog" aria-modal="false">
+      <div class="tdmSellTitle">${escapeHtml(title)}</div>
+      <div class="tdmSellItem">${escapeHtml(message)}</div>
+      <div class="tdmSellActions">
+        <button id="moduleConfirmCancel" type="button">Annuler</button>
+        <button id="moduleConfirmOk" type="button">Confirmer</button>
+      </div>
+    </div>`;
+  host.appendChild(dlg);
+  const onKey = (event) => {
+    if (event?.key === "Escape") cleanup();
+  };
+  const cleanup = () => {
+    document.removeEventListener("keydown", onKey);
+    dlg.remove();
+  };
+  document.addEventListener("keydown", onKey);
+  dlg.addEventListener("pointerdown", (event) => { if (event.target === dlg) cleanup(); });
+  dlg.querySelector("#moduleConfirmCancel")?.addEventListener("click", cleanup);
+  dlg.querySelector("#moduleConfirmOk")?.addEventListener("click", () => {
+    cleanup();
+    if (onConfirm) onConfirm();
+  });
 }
 
 // Fenêtre temporaire à l'achat du REX : choisir son pseudo.
@@ -723,8 +925,49 @@ const MODULE_ICONS = {
   "spc-x3": ITEM_ICON_BASE + "SPCX3.png",
 };
 
+const MODULE_STAT_ICONS = Object.freeze({
+  hp: "/ASSETS/UI/MODULE_STATS/276_hitpoints.png",
+  shield: "/ASSETS/UI/MODULE_STATS/127_shield.png",
+  damage: "/ASSETS/UI/MODULE_STATS/350_damage.png",
+  dmg_laser: "/ASSETS/UI/MODULE_STATS/348_dmg_laser.png",
+  dmg_npc: "/ASSETS/UI/MODULE_STATS/347_dmg_npc.png",
+  dmg_pvp: "/ASSETS/UI/MODULE_STATS/346_dmg_pvp.png",
+  dmg_rocket: "/ASSETS/UI/MODULE_STATS/345_dmg_rockets.png",
+  speed: "/ASSETS/UI/MODULE_STATS/46_speed.png",
+  penetration: "/ASSETS/UI/MODULE_STATS/126_shield_penetration.png",
+  laser_hit: "/ASSETS/UI/MODULE_STATS/278_hitchance_laser.png",
+  rocket_hit: "/ASSETS/UI/MODULE_STATS/277_hitchance_rocket.png",
+  evasion: "/ASSETS/UI/MODULE_STATS/296_evasion.png",
+  exp: "/ASSETS/UI/MODULE_STATS/295_experience.png",
+  honor: "/ASSETS/UI/MODULE_STATS/268_honour.png",
+});
+
+function moduleStatIconSrc(stat) {
+  return MODULE_STAT_ICONS[String(stat || "")] || "";
+}
+
+function moduleTypeColor(type) {
+  return ({ hp: "#00ff88", shd: "#55aaff", dmg: "#ff5566", spc: "#ffd45a" })[String(type || "").toLowerCase()] || "#ffffff";
+}
+
 function moduleIconSrc(type, tier) {
   return MODULE_ICONS[`${type}-${tier}`] || FALLBACK_ICON;
+}
+// Pré-décodage des 12 icônes de modules : évite le freeze quand le rail
+// se reconstruit à la réponse serveur (images déjà décodées).
+let moduleIconsPreloaded = false;
+function preloadModuleIcons() {
+  if (moduleIconsPreloaded) return;
+  moduleIconsPreloaded = true;
+  try {
+    for (const type of ["hp", "shd", "dmg", "spc"]) {
+      for (const tier of ["x1", "x2", "x3"]) {
+        const img = new Image();
+        try { img.decoding = "async"; } catch {}
+        img.src = moduleIconSrc(type, tier);
+      }
+    }
+  } catch {}
 }
 
 function randInt(min, max) {
@@ -747,6 +990,10 @@ function formatStatLabel(stat) {
   if (stat === "hp") return "PV";
   if (stat === "shield") return "Bouclier";
   if (stat === "damage") return "Dégâts";
+  if (stat === "dmg_laser") return "Dégâts Laser";
+  if (stat === "dmg_npc") return "Dégâts NPC";
+  if (stat === "dmg_pvp") return "Dégâts PvP";
+  if (stat === "dmg_rocket") return "Dégâts Roquettes";
   if (stat === "penetration") return "Pénétration";
   if (stat === "speed") return "Vitesse";
   if (stat === "laser_hit") return "Ch. Laser";
@@ -937,6 +1184,7 @@ function setShopTab(next) {
   if (next === "launchers") next = "rockets";
   if (next === "petGears" || next === "petProtocols" || next === "petGearProto") next = "petEquipment";
   if (next === "speedGen" || next === "shieldGen") next = "generators";
+  if (next === "extras" && document.getElementById("shopWindowPanel")) next = "ammo"; // onglet Modules déplacé dans la fenêtre Modules dédiée (jeu)
   shopTab = next;
   localStorage.setItem("orbit_shop_tab", shopTab);
   document.querySelectorAll("#shopWindowTabs .tabBtn, #shopTabs .subtabBtn").forEach((button) => {
@@ -2344,15 +2592,17 @@ card.className = "shipCard" + (owned ? " owned" : "");
   }
 }
 
-function renderExtrasRoulette(user) {
-  if (!shopList || !shopPreview) return;
+function renderExtrasRoulette(user, host = null) {
+  const H = host || extrasHost();
+  const listEl = H.list || shopList, previewEl = H.preview || shopPreview;
+  if (!listEl || !previewEl) return;
 
-  shopList.innerHTML = "";
+  listEl.innerHTML = "";
   // La carte doit remplir toute la hauteur du panneau pour plaquer les
   // boutons en bas : le conteneur passe en colonne flex (réinitialisé en
   // block pour les autres onglets dans renderShopMeasured).
-  shopPreview.style.display = "flex";
-  shopPreview.style.flexDirection = "column";
+  previewEl.style.display = "flex";
+  previewEl.style.flexDirection = "column";
 
   const visible = 9;
   const centerIndex = Math.floor(visible / 2);
@@ -2395,21 +2645,143 @@ function renderExtrasRoulette(user) {
   // L'historique ne montre que les modules encore possédés.
   // Les anciennes relances (remplacées) et les modules vendus restent en
   // sauvegarde (moduleRollHistory append-only) mais sont masqués.
-  // Recherche par vaisseau dans l'historique des modules (nom de famille,
-  // id de vaisseau ou type de module). Persistée pendant la session roulette.
+  // Filtres historique (recherche texte + dropdown vaisseau + filtre type,
+  // comme l'inventaire). Tous combinés (ET). Persistés pendant la session roulette.
   let historyShipQuery = moduleHistoryShipQuery || "";
-  function moduleHistoryMatches(module, q) {
-    const query = String(q || "").trim().toLowerCase();
-    if (!query) return true;
-    const familyId = moduleFamilyId(module);
-    const haystack = [
-      module?.shipId || "",
-      getShipFamilyName(familyId) || "",
-      familyId || "",
-      `${module?.type || ""}-${module?.tier || ""}`,
-      module?.type || "",
-    ].join(" ").toLowerCase();
-    return query.split(/\s+/).every((word) => word && haystack.includes(word));
+  let historyShipFilter = moduleHistoryShipFilter || "";
+  let historyTypeFilter = moduleHistoryTypeFilter || "";
+  function moduleHistoryMatches(module) {
+    if (historyTypeFilter && String(module?.type || "") !== historyTypeFilter) return false;
+    if (historyShipFilter) {
+      const familyId = moduleFamilyId(module);
+      if (familyId !== historyShipFilter && String(module?.shipId || "") !== historyShipFilter) return false;
+    }
+    const query = String(historyShipQuery || "").trim().toLowerCase();
+    if (query) {
+      const familyId = moduleFamilyId(module);
+      const haystack = [
+        module?.shipId || "",
+        getShipFamilyName(familyId) || "",
+        familyId || "",
+        `${module?.type || ""}-${module?.tier || ""}`,
+        module?.type || "",
+      ].join(" ").toLowerCase();
+      if (!query.split(/\s+/).every((word) => word && haystack.includes(word))) return false;
+    }
+    return true;
+  }
+  // Toutes les familles de vaisseaux (avec comptage des modules possédés),
+  // triées par nom : même dropdown que l'inventaire.
+  function moduleHistoryShipOptions(currentUser) {
+    const counts = new Map();
+    for (const module of currentUser?.inventory?.shipModules || []) {
+      const familyId = moduleFamilyId(module);
+      if (!familyId) continue;
+      counts.set(familyId, (counts.get(familyId) || 0) + 1);
+    }
+    let families = [];
+    try { families = getShipFamilyIds().filter((f) => !/police/i.test(String(f || ""))); } catch { families = [...counts.keys()]; }
+    for (const familyId of counts.keys()) {
+      if (!families.includes(familyId)) families.push(familyId);
+    }
+    return families
+      .map((familyId) => {
+        let name = "";
+        try { name = getShipFamilyName(familyId) || ""; } catch {}
+        return { id: familyId, name: name || familyId, count: counts.get(familyId) || 0 };
+      })
+      .sort((a, b) => String(a.name).localeCompare(String(b.name), "fr"));
+  }
+  let historyShipOptionsKey = "";
+  // Libellé du bouton : "Tous les vaisseaux" ou "Nom (n)".
+  function historyShipFilterLabel(options) {
+    if (!historyShipFilter) return "Tous les vaisseaux";
+    const found = (options || []).find((o) => o.id === historyShipFilter);
+    return found ? `${found.name} (${found.count})` : "Tous les vaisseaux";
+  }
+  // Reconstruit le dropdown vaisseaux (sans toucher au DOM si rien n'a
+  // changé). La sélection est conservée, le compteur reste frais.
+  function refreshHistoryShipFilter(currentUser) {
+    const label = document.getElementById("moduleHistoryShipBtnLabel");
+    const popup = document.getElementById("moduleHistoryShipPopup");
+    if (!label && !popup) return;
+    const options = moduleHistoryShipOptions(currentUser);
+    if (popup) {
+      const key = options.map((o) => `${o.id}:${o.count}`).join("|") + `#${historyShipFilter}`;
+      if (key !== historyShipOptionsKey) {
+        historyShipOptionsKey = key;
+        popup.innerHTML = `<div class="tdmShipOpt" data-ship="" role="option" aria-selected="${!historyShipFilter}">Tous les vaisseaux</div>`
+          + options.map((o) => `<div class="tdmShipOpt" data-ship="${escapeHtml(o.id)}" role="option" aria-selected="${o.id === historyShipFilter}">${escapeHtml(o.name)} (${o.count})</div>`).join("");
+      }
+    }
+    if (label) {
+      const text = historyShipFilterLabel(options);
+      if (label.textContent !== text) label.textContent = text;
+    }
+  }
+  function setHistoryShipPopupOpen(open) {
+    const btn = document.getElementById("moduleHistoryShipBtn");
+    const popup = document.getElementById("moduleHistoryShipPopup");
+    if (!btn || !popup) return;
+    popup.hidden = !open;
+    btn.setAttribute("aria-expanded", String(!!open));
+  }
+  function isHistoryShipPopupOpen() {
+    const popup = document.getElementById("moduleHistoryShipPopup");
+    return !!popup && !popup.hidden;
+  }
+  // Facultés de module : mêmes 5 options fixes que l'inventaire, dans un
+  // dropdown custom identique à celui des vaisseaux (menu ouvert pareil).
+  const HISTORY_TYPE_OPTIONS = Object.freeze([
+    Object.freeze({ id: "", name: "Tous types" }),
+    Object.freeze({ id: "hp", name: "HP · PV" }),
+    Object.freeze({ id: "shd", name: "SHD · Bouclier" }),
+    Object.freeze({ id: "dmg", name: "DMG · Dégâts" }),
+    Object.freeze({ id: "spc", name: "SPC · Spécial" }),
+  ]);
+  function historyTypeFilterLabel() {
+    const found = HISTORY_TYPE_OPTIONS.find((o) => o.id === historyTypeFilter);
+    return found ? found.name : "Tous types";
+  }
+  function refreshHistoryTypeFilter() {
+    const label = document.getElementById("moduleHistoryTypeBtnLabel");
+    const popup = document.getElementById("moduleHistoryTypePopup");
+    if (popup) {
+      popup.innerHTML = HISTORY_TYPE_OPTIONS.map((o) => `<div class="tdmShipOpt" data-type="${escapeHtml(o.id)}" role="option" aria-selected="${o.id === historyTypeFilter}">${escapeHtml(o.name)}</div>`).join("");
+    }
+    if (label) {
+      const text = historyTypeFilterLabel();
+      if (label.textContent !== text) label.textContent = text;
+    }
+  }
+  function setHistoryTypePopupOpen(open) {
+    const btn = document.getElementById("moduleHistoryTypeBtn");
+    const popup = document.getElementById("moduleHistoryTypePopup");
+    if (!btn || !popup) return;
+    popup.hidden = !open;
+    btn.setAttribute("aria-expanded", String(!!open));
+  }
+  function isHistoryTypePopupOpen() {
+    const popup = document.getElementById("moduleHistoryTypePopup");
+    return !!popup && !popup.hidden;
+  }
+  // Nouveau tirage / relance : le module doit toujours être visible,
+  // les filtres sont levés (comme l'ancienne recherche texte).
+  function resetHistoryFilters(currentUser) {
+    historyShipQuery = "";
+    moduleHistoryShipQuery = "";
+    historyShipFilter = "";
+    moduleHistoryShipFilter = "";
+    historyTypeFilter = "";
+    moduleHistoryTypeFilter = "";
+    historyPage = 0;
+    const searchInput = document.getElementById("moduleHistorySearchInput");
+    if (searchInput) searchInput.value = "";
+    setHistoryShipPopupOpen(false);
+    setHistoryTypePopupOpen(false);
+    refreshHistoryShipFilter(currentUser);
+    refreshHistoryTypeFilter();
+    updateModuleHistory(currentUser);
   }
   function filteredModuleHistory(currentUser) {
     const history = Array.isArray(currentUser?.inventory?.moduleRollHistory)
@@ -2424,14 +2796,74 @@ function renderExtrasRoulette(user) {
         seenIds.add(String(module?.id));
       }
     }
-    const searched = history.filter((module) => moduleHistoryMatches(module, historyShipQuery));
+    const searched = history.filter((module) => moduleHistoryMatches(module));
     const ownedIds = new Set((currentUser?.inventory?.shipModules || []).map((m) => String(m?.id)));
     return searched.filter((module) => ownedIds.has(String(module?.id)));
+  }
+  // Liste infinie par paquets : 20 lignes par rendu, la suite au scroll.
+  // (Un rendu complet des 500+ lignes à chaque tirage = le freeze au clic.)
+  const HISTORY_CHUNK = 20;
+  let historyCurrentList = [];
+  let historyRenderedCount = 0;
+  function historyRowHtml(module, number, currentUser) {
+      const bonuses = Array.isArray(module?.bonuses)
+        ? module.bonuses.map(bonus => {
+            const pct = Number(bonus.pct) || 0;
+            const color = pct < 0 ? "#ff5566" : "#00ff88";
+            const sign = pct > 0 ? "+" : "";
+            const statIcon = moduleStatIconSrc(bonus.stat);
+            return `${statIcon ? `<img class="moduleHistoryStatIcon" src="${statIcon}" alt="" />` : ""}<strong style="color:${color};">${sign}${pct}%</strong> ${escapeHtml(formatStatLabel(bonus.stat))}`;
+          }).join(' ')
+        : "Aucun bonus";
+      const rarity = moduleRarityMeta(module);
+      const familyId = moduleFamilyId(module);
+      const familyShipImg = shipPreviewSrc(familyBaseShipId(familyId));
+      const obtainedAt = Number(module?.createdAt || 0) > 0
+        ? new Date(Number(module.createdAt) * 1000).toLocaleString("fr-FR").replace(",", "")
+        : "Date inconnue";
+      const rerollsDone = Number(module?.rerolls) || 0;
+      const nextCost = nextModuleRerollCost(rerollsDone);
+      const ownedModule = (currentUser?.inventory?.shipModules || []).find((m) => String(m?.id) === String(module?.id)) || null;
+      const showTicketBtn = moduleRerollTicketCount(currentUser) > 0;
+      const canPayCredits = !!ownedModule && Number(currentUser?.credits || 0) >= Number(nextCost || 0);
+      const canReroll = !!ownedModule && moduleCanPay(currentUser, nextCost);
+      let sellPrice = 0;
+      try { sellPrice = Number(moduleSellUnitPrice(ownedModule || module)) || 0; } catch { sellPrice = 0; }
+      return `
+        <div class="moduleHistoryRow">
+          <span class="moduleHistoryIndex">${formatNumber(number)}</span>
+          <img src="${moduleIconSrc(module?.type, module?.tier)}" alt="" class="moduleHistoryModImg" />
+          <img src="${familyShipImg}" alt="" class="moduleHistoryShipImg" />
+          <div class="moduleHistoryMeta">
+            <strong class="moduleHistoryName"><span class="moduleHistoryModName" data-mtype="${escapeHtml(String(module?.type || "").toLowerCase())}" style="color:${moduleTypeColor(module?.type)};">${escapeHtml(String(module?.type || "module").toUpperCase())}-${escapeHtml(String(module?.tier || "x1").toUpperCase())}</span><span style="color:#ffffff;"> &nbsp;—&nbsp; </span><span style="color:#ffffff;">${escapeHtml(getShipFamilyName(familyId))}</span><span style="color:#ffffff;"> &nbsp;—&nbsp; </span><span class="moduleHistoryRarity" style="color:${rarity.color};font-weight:700;">${escapeHtml(rarity.name)}</span><span style="color:#ffffff;"> &nbsp;—&nbsp; </span><time class="moduleHistoryDate">${escapeHtml(obtainedAt)}</time></strong>
+            <span class="moduleHistoryBonuses">${bonuses}</span>
+            <span class="moduleHistoryReroll">Relance effectuée : <strong>${formatNumber(rerollsDone)}</strong><span style="color:#ffffff;"> &nbsp;—&nbsp; </span>Coût de la prochaine relance : <strong class="moduleHistoryNextCost">${escapeHtml(formatNumber(nextCost))}</strong> crédits ou <strong class="moduleHistoryNextCost">1</strong> ticket</span>
+          </div>
+          ${module?.id ? `<div class="moduleHistoryActions">${showTicketBtn
+            ? `<button type="button" class="moduleHistoryRerollBtn" style="width:42px;height:42px;" data-reroll-module="${escapeHtml(String(module.id))}" data-pay="credits" title="Relancer avec ${escapeHtml(formatNumber(nextCost))} crédits" ${canPayCredits ? "" : "disabled"}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#7cf0ff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="17 1 21 5 17 9"></polyline><path d="M3 11V9a4 4 0 0 1 4-4h14"></path><polyline points="7 23 3 19 7 15"></polyline><path d="M21 13v2a4 4 0 0 1-4 4H3"></path></svg></button><button type="button" class="moduleHistoryRerollBtn moduleHistoryTicketBtn" style="width:42px;height:42px;" data-reroll-module="${escapeHtml(String(module.id))}" data-pay="ticket" title="Relancer avec 1 ticket"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#ffd15c" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="17 1 21 5 17 9"></polyline><path d="M3 11V9a4 4 0 0 1 4-4h14"></path><polyline points="7 23 3 19 7 15"></polyline><path d="M21 13v2a4 4 0 0 1-4 4H3"></path></svg></button>`
+            : `<button type="button" class="moduleHistoryRerollBtn" style="width:42px;height:42px;" data-reroll-module="${escapeHtml(String(module.id))}" title="Relancer ce module avec ${escapeHtml(moduleRollCostText(currentUser, nextCost))}" ${canReroll ? "" : "disabled"}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#7cf0ff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="17 1 21 5 17 9"></polyline><path d="M3 11V9a4 4 0 0 1 4-4h14"></path><polyline points="7 23 3 19 7 15"></polyline><path d="M21 13v2a4 4 0 0 1-4 4H3"></path></svg></button>`}<button type="button" class="moduleHistorySellBtn" data-sell-module="${escapeHtml(String(module.id))}" title="Revendre ce module (+${escapeHtml(formatNumber(sellPrice))} crédits)" ${sellPrice > 0 ? "" : "disabled"}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#ffdfe4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg></button></div>` : ""}
+        </div>
+      `;
+  }
+  function appendHistoryMore() {
+    const listEl = document.getElementById("moduleRollHistory");
+    if (!listEl) return;
+    if (historyRenderedCount >= historyCurrentList.length) return;
+    const currentUser = historyUser;
+    const next = Math.min(historyCurrentList.length, historyRenderedCount + HISTORY_CHUNK);
+    let html = "";
+    for (let i = historyRenderedCount; i < next; i++) {
+      html += historyRowHtml(historyCurrentList[i], historyCurrentList.length - i, currentUser);
+    }
+    historyRenderedCount = next;
+    listEl.insertAdjacentHTML("beforeend", html);
   }
   function renderModuleHistory(currentUser) {
     historyUser = currentUser;
     const history = filteredModuleHistory(currentUser);
     if (!history.length) {
+      historyCurrentList = [];
+      historyRenderedCount = 0;
       const total = Array.isArray(currentUser?.inventory?.moduleRollHistory)
         ? currentUser.inventory.moduleRollHistory.length
         : 0;
@@ -2439,78 +2871,22 @@ function renderExtrasRoulette(user) {
         ? currentUser.inventory.shipModules.length
         : 0;
       if (!total) return `<div class="moduleHistoryEmpty">Aucun module obtenu pour le moment.</div>`;
-      if (owned > 0) return `<div class="moduleHistoryEmpty">Aucun module possédé pour cette recherche.</div>`;
+      if (owned > 0) return `<div class="moduleHistoryEmpty">Aucun module possédé pour ces filtres.</div>`;
       return `<div class="moduleHistoryEmpty">Aucun module possédé pour le moment.</div>`;
     }
-
-    const pages = Math.max(1, Math.ceil(history.length / 4));
-    historyPage = Math.max(0, Math.min(historyPage, pages - 1));
-    const end = history.length - historyPage * 4;
-    const entries = history.slice(Math.max(0, end - 4), end).reverse();
-    return entries.map((module, index) => {
-      const bonuses = Array.isArray(module?.bonuses)
-        ? module.bonuses.map(bonus => {
-            const pct = Number(bonus.pct) || 0;
-            const color = pct < 0 ? "#ff5566" : "#00ff88";
-            const sign = pct > 0 ? "+" : "";
-            return `<strong style="color:${color};">${sign}${pct}%</strong> ${escapeHtml(formatStatLabel(bonus.stat))}`;
-          }).join(" • ")
-        : "Aucun bonus";
-      const rarity = moduleRarityMeta(module);
-      const familyId = moduleFamilyId(module);
-      const familyShipImg = shipPreviewSrc(familyBaseShipId(familyId));
-      const obtainedAt = Number(module?.createdAt || 0) > 0
-        ? new Date(Number(module.createdAt) * 1000).toLocaleString("fr-FR")
-        : "Date inconnue";
-      const rerollsDone = Number(module?.rerolls) || 0;
-      const nextCost = nextModuleRerollCost(rerollsDone);
-      const ownedModule = (currentUser?.inventory?.shipModules || []).some((m) => String(m?.id) === String(module?.id));
-      const canReroll = ownedModule && moduleCanPay(currentUser, nextCost);
-      return `
-        <div class="moduleHistoryRow">
-          <span class="moduleHistoryIndex">${formatNumber(end - index)}</span>
-          <img src="${moduleIconSrc(module?.type, module?.tier)}" alt="" class="moduleHistoryModImg" />
-          <img src="${familyShipImg}" alt="" class="moduleHistoryShipImg" />
-          <div class="moduleHistoryMeta">
-            <strong class="moduleHistoryName">${escapeHtml(String(module?.type || "module").toUpperCase())}-${escapeHtml(String(module?.tier || "x1").toUpperCase())}</strong>
-            <span class="moduleHistoryRarity" style="color:${rarity.color};font-weight:700;">${escapeHtml(rarity.name)}</span>
-            <span>${escapeHtml(getShipFamilyName(familyId))} • ${bonuses}</span>
-          </div>
-          <div class="moduleHistorySide">
-            <time>${escapeHtml(obtainedAt)}</time>
-            <span class="moduleHistoryReroll">Relances : <strong>${formatNumber(rerollsDone)}</strong> · Prochaine : ${escapeHtml(moduleRollCostText(currentUser, nextCost))}</span>
-          </div>
-          ${module?.id ? `<button type="button" class="moduleHistoryRerollBtn" style="width:42px;height:42px;" data-reroll-module="${escapeHtml(String(module.id))}" title="Relancer ce module avec ${escapeHtml(moduleRollCostText(currentUser, nextCost))}" ${canReroll ? "" : "disabled"}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#7cf0ff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="17 1 21 5 17 9"></polyline><path d="M3 11V9a4 4 0 0 1 4-4h14"></path><polyline points="7 23 3 19 7 15"></polyline><path d="M21 13v2a4 4 0 0 1-4 4H3"></path></svg></button>` : ""}
-        </div>
-      `;
-    }).join("");
-  }
-  function renderModuleHistoryPager(currentUser) {
-    const history = filteredModuleHistory(currentUser);
-    if (!history.length) return "";
-    const pages = Math.max(1, Math.ceil(history.length / 4));
-    historyPage = Math.max(0, Math.min(historyPage, pages - 1));
-    return `<nav class="inventoryPager" aria-label="Pages de l'historique"><button data-history-page="-1" ${historyPage === 0 ? "disabled" : ""}>Précédent</button><span>Page ${historyPage + 1} / ${pages}</span><button data-history-page="1" ${historyPage + 1 === pages ? "disabled" : ""}>Suivant</button></nav>`;
+    const list = history.slice().reverse();
+    historyCurrentList = list;
+    historyRenderedCount = Math.min(HISTORY_CHUNK, list.length);
+    return list.slice(0, historyRenderedCount).map((module, index) => historyRowHtml(module, list.length - index, currentUser)).join("");
   }
   function updateModuleHistory(currentUser) {
     const historyEl = document.getElementById("moduleRollHistory");
     if (historyEl) historyEl.innerHTML = renderModuleHistory(currentUser);
-    const pagerEl = document.getElementById("moduleHistoryPager");
-    if (pagerEl) pagerEl.innerHTML = renderModuleHistoryPager(currentUser);
+    refreshHistoryShipFilter(currentUser);
   }
 
-  shopPreview.innerHTML = `
+  previewEl.innerHTML = `
     <div class="tile extrasRoulettePanel" style="display:flex;flex-direction:column;flex:1 0 auto;min-height:100%;box-sizing:border-box;">
-      <div class="extrasRouletteHeader">
-        <div>
-          <h3 id="extrasPanelTitle">Roulette de modules</h3>
-          <p id="extrasPanelSub">Obtiens un module bonus aléatoire pour l'un de tes vaisseaux.</p>
-        </div>
-        <div style="flex:0 0 auto;display:flex;flex-direction:column;align-items:flex-end;gap:8px;">
-          <div class="extrasRouletteCost" id="extrasRouletteCost">${moduleRouletteCostHtml(user)}</div>
-          <div class="extrasRouletteCost" id="moduleHistoryHeadRight" style="display:none;">${moduleHistoryHeadHtml(user)}</div>
-        </div>
-      </div>
       <div id="rouletteView" style="display:flex;flex-direction:column;flex:1 1 auto;">
         <label class="moduleAutoRoll moduleAutoRollTop" for="btnAutoRoll" style="display:flex;justify-content:center;align-items:center;gap:6px;margin-bottom:8px;cursor:pointer;"><input type="checkbox" id="btnAutoRoll" ${moduleAutoRoll ? "checked" : ""} /><span>Tirage auto — enchaîne les tirages tant qu'il y a des crédits</span></label>
         <div id="rouletteWindow" style="margin:2px auto 16px;position:relative;overflow:hidden;width:${WINDOW_W}px;padding:16px 0;-webkit-mask-image:linear-gradient(to right,transparent,#000 7%,#000 93%,transparent);mask-image:linear-gradient(to right,transparent,#000 7%,#000 93%,transparent);">
@@ -2519,45 +2895,66 @@ function renderExtrasRoulette(user) {
         </div>
 
         <button id="btnRoll" class="primary" style="width: 100%;" ${moduleCanBaseRoll(user) ? "" : "disabled"}>
-          Lancer (${formatNumber(MODULE_ROLL_COST)} crédits)
+          ${moduleBaseRollMode(user) === "ticket" ? "Lancer (1 ticket de tirage)" : `Lancer (${formatNumber(MODULE_ROLL_COST)} crédits)`}
         </button>
 
         <div id="rollResult" style="margin-top: 16px; text-align: center; color: var(--muted);"></div>
-        <div style="margin-top:auto;padding:12px 0 2px;position:sticky;bottom:0;background:linear-gradient(180deg,rgba(5,14,25,0),rgba(5,14,25,.92) 45%);">
-          <button id="btnModuleHistory" class="secondary" type="button" style="width:100%;">Historique <span aria-hidden="true">→</span></button>
-        </div>
       </div>
       <div id="moduleHistoryView" style="display:none;flex-direction:column;flex:1 1 auto;">
-        <label class="moduleHistorySearchField" for="moduleHistorySearchInput">
-          <span>Recherche de vaisseaux :</span>
-          <input id="moduleHistorySearchInput" type="search" placeholder="Rechercher un vaisseau…" autocomplete="off"
-            aria-label="Rechercher un vaisseau dans l'historique" value="${escapeHtml(historyShipQuery)}" />
-        </label>
-        <div id="moduleRollHistory" class="moduleHistoryList" style="border:0;">${renderModuleHistory(user)}</div>
-        <div style="margin-top:auto;padding:12px 0 2px;position:sticky;bottom:0;background:linear-gradient(180deg,rgba(5,14,25,0),rgba(5,14,25,.92) 45%);display:grid;gap:8px;">
-          <div id="moduleHistoryPager">${renderModuleHistoryPager(user)}</div>
-          <button id="btnBackRoulette" class="secondary" type="button" style="width:100%;"><span aria-hidden="true">←</span> Roulette de modules</button>
+        <div class="moduleHistoryFilters" style="display:flex;gap:8px;align-items:center;margin:-10px 0 8px;">
+          <label class="moduleHistorySearchField" for="moduleHistorySearchInput" style="flex:1 1 auto;min-width:0;margin:0;">
+            <input id="moduleHistorySearchInput" type="search" placeholder="Rechercher un vaisseau…" autocomplete="off"
+              aria-label="Rechercher un vaisseau dans l'historique" value="${escapeHtml(historyShipQuery)}" />
+          </label>
+          <div class="tdmShipCombo" id="moduleHistoryShipCombo" style="flex:1 1 auto;min-width:0;">
+            <button type="button" id="moduleHistoryShipBtn" class="tdmShipBtn" aria-haspopup="listbox" aria-expanded="false">
+              <span id="moduleHistoryShipBtnLabel" class="tdmShipBtnLabel">Tous les vaisseaux</span>
+              <span class="tdmShipChevron" aria-hidden="true">▾</span>
+            </button>
+            <div class="tdmShipPopup" id="moduleHistoryShipPopup" role="listbox" aria-label="Filtrer par vaisseau" hidden></div>
+          </div>
+          <div class="tdmShipCombo" id="moduleHistoryTypeCombo" style="flex:0 0 auto;min-width:0;width:min(190px,50%);">
+            <button type="button" id="moduleHistoryTypeBtn" class="tdmShipBtn" aria-haspopup="listbox" aria-expanded="false">
+              <span id="moduleHistoryTypeBtnLabel" class="tdmShipBtnLabel">Tous types</span>
+              <span class="tdmShipChevron" aria-hidden="true">▾</span>
+            </button>
+            <div class="tdmShipPopup" id="moduleHistoryTypePopup" role="listbox" aria-label="Filtrer par type de module" hidden></div>
+          </div>
         </div>
+        <div id="moduleRollHistory" class="moduleHistoryList" style="border:0;">${renderModuleHistory(user)}</div>
       </div>
+      <div id="moduleProbaView" style="display:none;flex-direction:column;flex:1 1 auto;overflow-y:auto;">${moduleProbaHtml()}</div>
     </div>
   `;
 
   const rouletteView = document.getElementById("rouletteView");
   const historyView = document.getElementById("moduleHistoryView");
-  const panelTitle = document.getElementById("extrasPanelTitle");
-  const panelSub = document.getElementById("extrasPanelSub");
+  const probaView = document.getElementById("moduleProbaView");
   const costEl = document.getElementById("extrasRouletteCost");
-  const historyBtn = document.getElementById("btnModuleHistory");
-  const headerEl = panelTitle?.closest(".extrasRouletteHeader") || costEl?.closest(".extrasRouletteHeader");
+  const toolbarEl = costEl ? costEl.closest(".shopToolbar") : null;
+  if (costEl) costEl.innerHTML = moduleRouletteCostHtml(user);
   const historyHeadEl = document.getElementById("moduleHistoryHeadRight");
+  const setModuleNav = (view) => {
+    if (H.name !== "modules") return;
+    document.querySelectorAll("#moduleWindowTabs [data-module-tab]").forEach((button) => {
+      button.classList.toggle("active", button.dataset.moduleTab === view);
+    });
+  };
+  const showToolbar = (show) => {
+    if (!toolbarEl) return;
+    try {
+      if (show) toolbarEl.style.removeProperty("display");
+      else toolbarEl.style.setProperty("display", "none", "important");
+    } catch {}
+  };
   const showRoulette = () => {
     if (rouletteView) rouletteView.style.display = "flex";
     if (historyView) historyView.style.display = "none";
-    if (panelTitle) panelTitle.textContent = "Roulette de modules";
-    if (panelSub) panelSub.textContent = "Obtiens un module bonus aléatoire pour l'un de tes vaisseaux.";
+    if (probaView) probaView.style.display = "none";
+    showToolbar(true);
     if (costEl) costEl.style.display = "";
     if (historyHeadEl) historyHeadEl.style.display = "none";
-    if (headerEl) { headerEl.style.removeProperty("border-bottom"); headerEl.classList.remove("noSeparator"); }
+    setModuleNav("extras");
   };
   const showHistory = () => {
     historyPage = 0;
@@ -2565,36 +2962,102 @@ function renderExtrasRoulette(user) {
     refreshHistoryHead(user);
     if (rouletteView) rouletteView.style.display = "none";
     if (historyView) historyView.style.display = "flex";
-    if (panelTitle) panelTitle.textContent = "Historique des modules";
-    const ownedCount = Array.isArray(user?.inventory?.shipModules) ? user.inventory.shipModules.length : 0;
-    const totalCount = Array.isArray(user?.inventory?.moduleRollHistory) ? user.inventory.moduleRollHistory.length : 0;
-    if (panelSub) panelSub.textContent = `${formatNumber(ownedCount)} possédé(s) / ${formatNumber(totalCount)} tirage(s)`;
+    if (probaView) probaView.style.display = "none";
+    showToolbar(true);
     if (costEl) costEl.style.display = "none";
     if (historyHeadEl) historyHeadEl.style.display = "";
-    // Pas de séparateur au-dessus de la recherche en vue historique.
-    if (headerEl) { headerEl.style.setProperty("border-bottom", "none", "important"); headerEl.classList.add("noSeparator"); }
+    setModuleNav("history");
+  };
+  const showProba = () => {
+    if (rouletteView) rouletteView.style.display = "none";
+    if (historyView) historyView.style.display = "none";
+    if (probaView) probaView.style.display = "flex";
+    showToolbar(false);
+    if (costEl) costEl.style.display = "none";
+    if (historyHeadEl) historyHeadEl.style.display = "none";
+    setModuleNav("proba");
   };
   // Tickets de relance collés à droite, en face du titre "Historique des modules".
   // Pas de prix ici : chaque ligne a déjà son propre "Prochaine".
   const refreshHistoryHead = (currentUser) => {
     if (historyHeadEl) historyHeadEl.innerHTML = moduleHistoryHeadHtml(currentUser);
   };
-  historyBtn?.addEventListener("click", showHistory);
-  document.getElementById("btnBackRoulette")?.addEventListener("click", showRoulette);
-  // Recherche par vaisseau : filtre l'historique sans perdre le focus.
+  if (H.name === "modules") {
+    const moduleTab = document.querySelector('#moduleWindowTabs [data-module-tab="extras"]');
+    const historyTab = document.querySelector('#moduleWindowTabs [data-module-tab="history"]');
+    const probaTab = document.querySelector('#moduleWindowTabs [data-module-tab="proba"]');
+    if (moduleTab) moduleTab.onclick = showRoulette;
+    if (historyTab) historyTab.onclick = showHistory;
+    if (probaTab) probaTab.onclick = showProba;
+    showRoulette();
+  }
+  // Filtres historique : recherche texte + dropdown vaisseaux + filtre type
+  // (comme l'inventaire). Les nœuds sont recréés à chaque rendu :
+  // écouteurs directs, pas de doublons.
   document.getElementById("moduleHistorySearchInput")?.addEventListener("input", (event) => {
     historyShipQuery = String(event?.target?.value ?? "");
     moduleHistoryShipQuery = historyShipQuery;
     historyPage = 0;
     updateModuleHistory(historyUser || user);
   });
+  refreshHistoryShipFilter(user);
+  refreshHistoryTypeFilter();
+  // Liste infinie : charge 20 lignes de plus en approchant du bas.
+  document.getElementById("moduleRollHistory")?.addEventListener("scroll", () => {
+    const listEl = document.getElementById("moduleRollHistory");
+    if (!listEl) return;
+    if (listEl.scrollTop + listEl.clientHeight > listEl.scrollHeight - 400) appendHistoryMore();
+  }, { passive: true });
+  document.getElementById("moduleHistoryShipBtn")?.addEventListener("click", () => {
+    setHistoryTypePopupOpen(false);
+    setHistoryShipPopupOpen(!isHistoryShipPopupOpen());
+  });
+  document.getElementById("moduleHistoryShipPopup")?.addEventListener("click", (event) => {
+    const opt = event.target instanceof Element ? event.target.closest(".tdmShipOpt") : null;
+    if (!opt) return;
+    historyShipFilter = String(opt.getAttribute("data-ship") || "");
+    moduleHistoryShipFilter = historyShipFilter;
+    historyPage = 0;
+    setHistoryShipPopupOpen(false);
+    updateModuleHistory(historyUser || user);
+  });
+  document.getElementById("moduleHistoryTypeBtn")?.addEventListener("click", () => {
+    setHistoryShipPopupOpen(false);
+    setHistoryTypePopupOpen(!isHistoryTypePopupOpen());
+  });
+  document.getElementById("moduleHistoryTypePopup")?.addEventListener("click", (event) => {
+    const opt = event.target instanceof Element ? event.target.closest(".tdmShipOpt") : null;
+    if (!opt) return;
+    const v = String(opt.getAttribute("data-type") || "").toLowerCase();
+    historyTypeFilter = ["hp", "shd", "dmg", "spc"].includes(v) ? v : "";
+    moduleHistoryTypeFilter = historyTypeFilter;
+    historyPage = 0;
+    setHistoryTypePopupOpen(false);
+    refreshHistoryTypeFilter();
+    updateModuleHistory(historyUser || user);
+  });
+  if (!moduleHistoryPopupWired && typeof document !== "undefined") {
+    moduleHistoryPopupWired = true;
+    // Clic ailleurs / Échap : referme les dropdowns (ne touche pas à l'inventaire).
+    document.addEventListener("click", (event) => {
+      const target = event.target instanceof Element ? event.target : null;
+      if (isHistoryShipPopupOpen()) {
+        const combo = document.getElementById("moduleHistoryShipCombo");
+        if (!combo || !target || !combo.contains(target)) setHistoryShipPopupOpen(false);
+      }
+      if (isHistoryTypePopupOpen()) {
+        const combo = document.getElementById("moduleHistoryTypeCombo");
+        if (!combo || !target || !combo.contains(target)) setHistoryTypePopupOpen(false);
+      }
+    });
+    document.addEventListener("keydown", (event) => {
+      if (event.key !== "Escape") return;
+      if (isHistoryShipPopupOpen()) setHistoryShipPopupOpen(false);
+      if (isHistoryTypePopupOpen()) setHistoryTypePopupOpen(false);
+    });
+  }
 
-  document.getElementById("moduleHistoryPager").onclick = event => {
-    const button = event.target.closest("[data-history-page]");
-    if (!button || button.disabled) return;
-    historyPage += Number(button.dataset.historyPage);
-    updateModuleHistory(historyUser);
-  };
+  // (Liste infinie : pas de pagination, tout est affiché d'un coup.)
   // Relance depuis une ligne d'historique : résolu sur le module LIVE
   // (pas le snapshot d'historique) pour un prix toujours juste.
   moduleHistoryRerollHandler = (btn) => {
@@ -2613,22 +3076,113 @@ function renderExtrasRoulette(user) {
       cost: nextModuleRerollCost(Number(live.rerolls) || 0),
       rerolls: Number(live.rerolls) || 0,
     };
-    showRoulette();
-    handleReroll();
+    // Pas de switch d'onglet avant confirmation (géré dans handleReroll).
+    // Choix explicite porté par le bouton (crédits / ticket), auto sinon.
+    const pay = btn.dataset.pay === "credits" || btn.dataset.pay === "ticket" ? btn.dataset.pay : "auto";
+    handleReroll(pay);
+  };
+  // Revente depuis une ligne d'historique : vente classique (force:true,
+  // comme l'inventaire) + confirmation, comme le bouton Revendre sous la card.
+  // Si c'était le module en cours de relance, sa relance + sa card sont effacées.
+  moduleHistorySellHandler = async (btn) => {
+    if (!btn || btn.disabled) return;
+    const id = btn.dataset.sellModule;
+    const fresh = getCurrentUserFull();
+    const live = (fresh?.inventory?.shipModules || []).find((m) => String(m?.id) === String(id));
+    if (!live?.id) { setMsg("Module plus en inventaire : revente impossible.", false); return; }
+    let groupKey = "";
+    try { groupKey = shipModuleGroupKey(live); } catch { groupKey = ""; }
+    if (!groupKey) { setMsg("Revente impossible.", false); return; }
+    let estimate = 0;
+    try { estimate = Number(moduleSellUnitPrice(live)) || 0; } catch { estimate = 0; }
+    if (!(estimate > 0)) { setMsg("Ce module ne se vend pas ici.", false); return; }
+    const label = `${String(live?.type || "module").toUpperCase()}-${String(live?.tier || "x1").toUpperCase()}`;
+    showModuleConfirm(
+      "Revendre ce module ?",
+      `${label} sera définitivement vendu pour +${formatNumber(estimate)} crédits.`,
+      async () => {
+        let res = null;
+        try {
+          res = await sellShipModulesOnline(groupKey, 1, { force: true });
+        } catch (e) {
+          res = { ok: false, error: String(e?.message || e) };
+        }
+        if (!res?.ok) {
+          if (res?.silent) return;
+          setMsg(res?.error || "Vente impossible.", false);
+          return;
+        }
+        const gain = Number(res?.gain) || 0;
+        user = getCurrentUserFull() || res.user || user;
+        // Le module vendu était celui en cours de relance : on casse tout
+        // (relance + card + bouton Revendre), comme la vente sous la card.
+        if (moduleReroll && String(moduleReroll.currentId) === String(live.id)) {
+          moduleReroll = null;
+          const rerollRowEl = document.getElementById("rerollRow");
+          if (rerollRowEl) { rerollRowEl.innerHTML = ""; rerollRowEl.style.display = "none"; }
+          const resEl = document.getElementById("rollResult");
+          if (resEl) resEl.innerHTML = "";
+          const sellRowEl = document.getElementById("sellRolledRow");
+          if (sellRowEl) { sellRowEl.innerHTML = ""; sellRowEl.style.display = "none"; }
+        }
+        refreshAfterModule(user, `Module revendu (+${formatNumber(gain)} crédits).`);
+      }
+    );
   };
   if (!moduleHistoryRerollWired && typeof document !== "undefined") {
     moduleHistoryRerollWired = true;
     document.addEventListener("click", (event) => {
-      const btn = event.target instanceof Element ? event.target.closest("[data-reroll-module]") : null;
+      const target = event.target instanceof Element ? event.target : null;
+      if (!target) return;
+      const sellBtn = target.closest("[data-sell-module]");
+      if (sellBtn) { try { moduleHistorySellHandler?.(sellBtn); } catch {} return; }
+      const btn = target.closest("[data-reroll-module]");
       if (!btn) return;
       try { moduleHistoryRerollHandler?.(btn); } catch {}
     });
+  }
+  // Stocks (tickets relance/tirage, quota, crédits) toujours frais dans la
+  // fenêtre Modules, même si le compte bouge depuis un autre panneau.
+  moduleCostsRefreshHandler = () => {
+    try {
+      if (!moduleWindowVisible() && H.name !== "modules") return;
+      const fresh = getCurrentUserFull();
+      if (!fresh) return;
+      user = fresh;
+      const costEl2 = document.getElementById("extrasRouletteCost");
+      if (costEl2) costEl2.innerHTML = moduleRouletteCostHtml(fresh);
+      const headEl = document.getElementById("moduleHistoryHeadRight");
+      if (headEl) headEl.innerHTML = moduleHistoryHeadHtml(fresh);
+      const balanceEl = H.credits || shopCredits;
+      if (balanceEl) balanceEl.textContent = formatNumber(fresh.credits || 0);
+      // Bouton Lancer : libellé + état (ex : ticket de tirage acheté à 0/20).
+      const rollBtn = document.getElementById("btnRoll");
+      if (rollBtn) {
+        const mode = moduleBaseRollMode(fresh);
+        rollBtn.innerHTML = mode === "ticket"
+          ? `Lancer (1 ticket de tirage)`
+          : `Lancer (${formatNumber(MODULE_ROLL_COST)} crédits)`;
+        rollBtn.disabled = mode === null;
+      }
+      // Card en cours (hors spin) : réarme relance/revente après achat de tickets.
+      if (!rolling && moduleReroll?.currentId && moduleReroll?._lastMod) {
+        try { renderRollResultCard(moduleReroll._lastMod); } catch {}
+      }
+      updateModuleHistory(fresh);
+    } catch {}
+  };
+  if (!moduleCostsRefreshWired && typeof document !== "undefined") {
+    moduleCostsRefreshWired = true;
+    const kickCosts = () => { try { moduleCostsRefreshHandler?.(); } catch {} };
+    window.addEventListener("orbit:user-updated", kickCosts);
+    window.addEventListener("orbit:profile-progress", kickCosts);
   }
   const railEl = document.getElementById("rouletteRail");
   const btn = document.getElementById("btnRoll");
 
   let rolling = false;
-  // Tirage de base = crédits uniquement : le bouton et le coût sont en crédits.
+  // Tirage de base = crédits si quota restant, sinon ticket de tirage.
+  // L'auto ne consomme jamais de tickets : à quota épuisé il s'arrête.
   const refreshModulePaymentControls = (currentUser) => {
     // Quota épuisé : la case auto ne peut pas rester cochée.
     if (moduleAutoRoll && moduleDailyRollInfo(currentUser).left <= 0) {
@@ -2639,8 +3193,11 @@ function renderExtrasRoulette(user) {
     if (costEl) costEl.innerHTML = moduleRouletteCostHtml(currentUser);
     refreshHistoryHead(currentUser);
     if (btn) {
-      btn.innerHTML = `Lancer (${formatNumber(MODULE_ROLL_COST)} crédits)`;
-      btn.disabled = !moduleCanBaseRoll(currentUser);
+      const mode = moduleBaseRollMode(currentUser);
+      btn.innerHTML = mode === "ticket"
+        ? `Lancer (1 ticket de tirage)`
+        : `Lancer (${formatNumber(MODULE_ROLL_COST)} crédits)`;
+      btn.disabled = mode === null;
     }
     // L'historique affiche le stock de tickets : on le rafraîchit aussi.
     updateModuleHistory(currentUser);
@@ -2651,13 +3208,15 @@ function renderExtrasRoulette(user) {
     const bonusesText = mod.bonuses
       .map((b) => {
         const color = Number(b.pct) < 0 ? "#ff5566" : "#00ff88";
-        return `<strong style="color: ${color};">${b.pct}%</strong> ${formatStatLabel(b.stat)}`;
+        const statIcon = moduleStatIconSrc(b.stat);
+        return `<span class="moduleResultStat">${statIcon ? `<img class="moduleResultStatIcon" src="${statIcon}" alt="" />` : ""}<strong style="color:${color};">${b.pct}%</strong> ${escapeHtml(formatStatLabel(b.stat))}</span>`;
       })
-      .join(" • ");
+      .join("");
 
     const rarityMeta = moduleRarityMeta(mod);
     const familyId = moduleFamilyId(mod);
     const shipImg = shipPreviewSrc(familyBaseShipId(familyId));
+    const shipLabel = String(mod.shipId || "").replace(/_/g, " ").trim().toUpperCase();
     const liveUser = getCurrentUserFull() || user;
 
     // Bouton relance collé sous "Lancer", carte du module collée sous la relance.
@@ -2671,11 +3230,24 @@ function renderExtrasRoulette(user) {
         rollBtn.insertAdjacentElement("afterend", rerollRow);
       }
       rerollRow.style.display = "";
-      const canPayReroll = moduleCanPay(liveUser, moduleReroll.cost);
-      rerollRow.innerHTML = `
+      // Choix explicite quand des tickets sont dispos : crédits OU ticket
+      // (un ticket vaut mieux sur un gros module relancé 5/6 fois).
+      const rerollTickets = moduleRerollTicketCount(liveUser);
+      const canPayCredits = Number(liveUser?.credits || 0) >= Number(moduleReroll.cost || 0);
+      rerollRow.innerHTML = rerollTickets > 0 ? `
+        <div style="display:flex;gap:8px;">
+          <button id="btnRerollCredits" class="secondary" style="flex:1;padding:12px 14px;"
+            ${canPayCredits ? "" : "disabled"}>
+            Relancer (${formatNumber(moduleReroll.cost)} crédits)
+          </button>
+          <button id="btnRerollTicket" class="secondary" style="flex:1;padding:12px 14px;">
+            Relancer (1 ticket)
+          </button>
+        </div>
+      ` : `
         <button id="btnRerollModule" class="secondary" style="width:100%;padding:12px 14px;"
-          ${canPayReroll ? "" : "disabled"}>
-          Relancer ce module (${moduleRollCostText(liveUser, moduleReroll.cost)})
+          ${canPayCredits ? "" : "disabled"}>
+          Relancer ce module (${formatNumber(moduleReroll.cost)} crédits)
         </button>
       `;
     } else if (rerollRow) {
@@ -2687,25 +3259,63 @@ function renderExtrasRoulette(user) {
     if (resFinal) {
       resFinal.style.marginTop = "8px";
       resFinal.innerHTML = `
-      <div style="padding: 12px; background: rgba(0,217,255,0.1); border: 1px solid rgba(0,217,255,0.3); border-radius: 12px;">
-        <div style="display:flex; gap:14px; align-items:center; text-align:left;">
-          <div style="flex:1; min-width:0;">
-            <div style="font-size: 16px; font-weight: 900; color: #00ff88; margin-bottom: 8px;">Module obtenu</div>
-            <div style="color: var(--text);"><strong>${mod.type.toUpperCase()}-${mod.tier.toUpperCase()}</strong>
-              <span style="margin-left:8px; color:${rarityMeta.color}; font-weight:700;">${rarityMeta.name}</span>
+      <div style="padding:12px;position:relative;text-align:left;background:rgba(0,217,255,0.1);border:1px solid rgba(0,217,255,0.3);border-radius:12px;">
+        <div style="position:sticky;top:0;z-index:1;width:max-content;font-size:16px;font-weight:900;color:#00ff88;text-align:left;margin:0 0 10px;">Module obtenu</div>
+        <div style="display:flex;align-items:center;gap:14px;color:#ffffff;font-size:13px;">
+          <div style="flex:1;min-width:0;display:grid;align-content:center;justify-items:start;gap:5px;text-align:left;">
+            <div><strong style="color:${moduleTypeColor(mod.type)};">${mod.type.toUpperCase()}-${mod.tier.toUpperCase()}</strong> - <strong style="color:${rarityMeta.color};">${escapeHtml(String(rarityMeta.name || ""))}</strong></div>
+            <div>Vaisseau : <strong>${escapeHtml(shipLabel)}</strong></div>
+            <div class="moduleResultStatsLine">
+              <span>Stats obtenues :</span>
+              <div class="moduleResultStatsList">${bonusesText}</div>
             </div>
-            <div style="color: var(--muted); font-size: 13px;">Vaisseau: <strong>${mod.shipId}</strong></div>
-            <div style="color: var(--muted); font-size: 13px;">Famille: ${escapeHtml(getShipFamilyName(familyId))}</div>
-            <div style="color: var(--muted); font-size: 13px; margin-top: 4px;">Stats: ${bonusesText}</div>
           </div>
-          <img src="${shipImg}" alt="" style="width:120px;height:120px;object-fit:contain;image-rendering:pixelated;background:rgba(0,0,0,0.25);border-radius:12px;border:1px solid rgba(255,215,0,0.25);" />
+          <img src="${shipImg}" alt="" style="flex:0 0 auto;width:120px;height:120px;object-fit:contain;image-rendering:pixelated;background:rgba(0,0,0,0.25);border-radius:12px;border:1px solid rgba(255,215,0,0.25);" />
         </div>
       </div>
       `;
     }
 
     const rerollBtnEl = document.getElementById("btnRerollModule");
-    if (rerollBtnEl) rerollBtnEl.addEventListener("click", handleReroll);
+    if (rerollBtnEl) rerollBtnEl.addEventListener("click", () => handleReroll("auto"));
+    const rerollCreditsEl = document.getElementById("btnRerollCredits");
+    if (rerollCreditsEl) rerollCreditsEl.addEventListener("click", () => handleReroll("credits"));
+    const rerollTicketEl = document.getElementById("btnRerollTicket");
+    if (rerollTicketEl) rerollTicketEl.addEventListener("click", () => handleReroll("ticket"));
+
+    // Bouton Revendre sous la card : même gabarit que Lancer (primary,
+    // pleine largeur) mais rouge. Vente classique : le module disparaît
+    // de l'inventaire ET de l'historique, la card + la relance sont effacées.
+    const resEl = document.getElementById("rollResult");
+    let sellRow = document.getElementById("sellRolledRow");
+    if (moduleReroll?.currentId && mod?.id && resEl) {
+      if (!sellRow) {
+        sellRow = document.createElement("div");
+        sellRow.id = "sellRolledRow";
+        sellRow.style.marginTop = "8px";
+        resEl.insertAdjacentElement("afterend", sellRow);
+      }
+      sellRow.style.display = "";
+      let liveMod = null;
+      try {
+        const freshSell = getCurrentUserFull() || liveUser;
+        liveMod = (freshSell?.inventory?.shipModules || []).find((m) => String(m?.id) === String(moduleReroll.currentId)) || mod;
+      } catch { liveMod = mod; }
+      let sellPrice = 0;
+      try { sellPrice = Number(moduleSellUnitPrice(liveMod)) || 0; } catch { sellPrice = 0; }
+      sellRow.innerHTML = `
+        <button id="btnSellRolledModule" class="primary" style="width:100%;padding:12px 14px;"
+          ${sellPrice > 0 ? "" : "disabled"}>
+          Revendre (+${escapeHtml(formatNumber(sellPrice))} crédits)
+        </button>
+      `;
+    } else if (sellRow) {
+      sellRow.innerHTML = "";
+      sellRow.style.display = "none";
+    }
+
+    const sellBtnEl = document.getElementById("btnSellRolledModule");
+    if (sellBtnEl) sellBtnEl.addEventListener("click", handleSellRolledModule);
   };
 
   const refreshAfterModule = (user2, message = "Tirage réussi.") => {
@@ -2724,7 +3334,8 @@ function renderExtrasRoulette(user) {
     renderHeader(user2);
     renderStats(user2);
     renderHangars(user2);
-    if (shopCredits) shopCredits.textContent = formatNumber(user2.credits || 0);
+    const balanceEl = H.credits || shopCredits;
+    if (balanceEl) balanceEl.textContent = formatNumber(user2.credits || 0);
     refreshModulePaymentControls(user2);
     syncGameCredits();
   };
@@ -2787,33 +3398,88 @@ function renderExtrasRoulette(user) {
     requestAnimationFrame(frame);
   };
 
-  // 🎰 TIRAGE DE BASE — sauvegarde ATOMIQUE avant l'animation : si l'onglet
-  // se ferme / la boutique se réduit pendant les 900 ms de la roue, le module
-  // est déjà persisté (inventaire + historique). L'arrêt ne fait qu'afficher.
+  // Roulette d'attente : défilement continu à vitesse constante (motif
+  // périodique => boucle sans couture). Tourne tant que le serveur n'a pas
+  // répondu, puis le spin final (spinWheel) atterrit sur le vrai module.
+  // Animée via Web Animations API (thread compositeur) : aucun freeze même
+  // si le thread principal est chargé. makeCell impose le contenu : en
+  // relance, on ne montre QUE le même type/tier (pas de modules étrangers).
+  // Rail court (24 cellules) : construction instantanée.
+  let idleStopPrev = null;
+  const startIdleSpin = (makeCell) => {
+    try { idleStopPrev?.(); } catch {}
+    if (!railEl) return () => {};
+    const pick = (typeof makeCell === "function" ? makeCell : randomCell);
+    const pattern = Array.from({ length: 12 }, () => ({ ...pick() }));
+    const rail = [];
+    for (let i = 0; i < 2; i++) rail.push(...pattern.map((cell) => ({ ...cell })));
+    railEl.innerHTML = railHtml(rail);
+    railEl.style.transition = "none";
+    railEl.style.transform = "translateX(0px)";
+    const loopLen = pattern.length * STEP;
+    const SPEED = 2600; // px/s
+    let anim = null;
+    try {
+      anim = railEl.animate(
+        [{ transform: "translateX(0px)" }, { transform: `translateX(${-loopLen}px)` }],
+        { duration: (loopLen / SPEED) * 1000, iterations: Infinity }
+      );
+    } catch {
+      anim = null;
+    }
+    const stop = () => {
+      idleStopPrev = null;
+      try { anim?.cancel(); } catch {}
+      try { railEl.style.transition = "none"; } catch {}
+    };
+    idleStopPrev = stop;
+    return stop;
+  };
+
+  // 🎰 TIRAGE DE BASE — la roulette part IMMÉDIATEMENT et tourne tant que le
+  // serveur n'a pas répondu (plus d'attente figée). Si l'onglet se ferme
+  // pendant le spin, la requête peut être perdue : compromis assumé.
   const handleBaseRoll = async () => {
     if (rolling) return;
     moduleReroll = null; // un nouveau tirage de base "casse" la possibilité de reroll
 
     const u2 = getCurrentUserFull();
     if (!u2) { setMsg("Non connecté.", false); return; }
-    const saved = await buyAndAddShipModuleOnline();
+    // Départ immédiat : verrou + UI nettoyée + roulette en attente, la
+    // requête serveur part en parallèle.
+    rolling = true;
+    user = u2;
+    resetHistoryFilters(user);
+    const resOut = document.getElementById("rollResult");
+    if (resOut) resOut.textContent = "";
+    const rerollRowOut = document.getElementById("rerollRow");
+    if (rerollRowOut) { rerollRowOut.innerHTML = ""; rerollRowOut.style.display = "none"; }
+    const sellRowOut = document.getElementById("sellRolledRow");
+    if (sellRowOut) { sellRowOut.innerHTML = ""; sellRowOut.style.display = "none"; }
+    const stopIdle = startIdleSpin();
+    let saved = null;
+    try {
+      saved = await buyAndAddShipModuleOnline();
+    } catch (e) {
+      saved = { ok: false, error: String(e?.message || e) };
+    }
     if (!saved?.ok) {
-      if (saved?.silent) return;
-      setMsg(saved?.error || "Achat impossible.", false);
+      stopIdle();
+      rolling = false;
+      user = getCurrentUserFull() || user;
+      if (!saved?.silent) setMsg(saved?.error || "Achat impossible.", false);
+      try { refreshModulePaymentControls(user); } catch {}
       return;
     }
     const mod = saved.module;
-    if (!mod) { setMsg("Resultat du tirage invalide.", false); return; }
+    if (!mod) {
+      stopIdle();
+      rolling = false;
+      setMsg("Resultat du tirage invalide.", false);
+      return;
+    }
     user = getCurrentUserFull() || saved.user;
 
-    // Le nouveau tirage doit toujours être visible : on lève le filtre
-    // de recherche qui pouvait le masquer ("Aucun module pour cette recherche").
-    historyShipQuery = "";
-    moduleHistoryShipQuery = "";
-    const searchInput = document.getElementById("moduleHistorySearchInput");
-    if (searchInput) searchInput.value = "";
-
-    rolling = true;
     moduleReroll = {
       shipId: mod.shipId,
       familyId: moduleFamilyId(mod),
@@ -2825,23 +3491,18 @@ function renderExtrasRoulette(user) {
       rerolls: 0,
     };
 
-    const resOut = document.getElementById("rollResult");
-    if (resOut) resOut.textContent = "";
-    const rerollRowOut = document.getElementById("rerollRow");
-    if (rerollRowOut) { rerollRowOut.innerHTML = ""; rerollRowOut.style.display = "none"; }
-
     const finishRoll = () => {
       // Relecture fraîche : la sauvegarde a déjà eu lieu avant le spin.
       user = getCurrentUserFull() || user;
       renderRollResultCard(mod);
-      refreshAfterModule(user);
+      refreshAfterModule(user, saved?.payment?.type === "ticket" ? "Tirage réussi (1 ticket de tirage utilisé)." : "Tirage réussi.");
       rolling = false;
       // Tirage auto : enchaîne un nouveau tirage si la case est toujours
       // cochée, la roulette visible, les crédits suffisants et le quota
       // du jour non atteint (les relances restent illimitées).
       if (moduleAutoRoll) {
         const fresh = getCurrentUserFull() || user;
-        const rouletteOpen = rouletteView && rouletteView.style.display !== "none" && shopIsVisible();
+        const rouletteOpen = rouletteView && rouletteView.style.display !== "none" && H.visible();
         const dailyLeft = moduleDailyRollInfo(fresh).left;
         if (rouletteOpen && Number(fresh?.credits || 0) >= MODULE_ROLL_COST && dailyLeft > 0) {
           setTimeout(() => { if (moduleAutoRoll) handleBaseRoll(); }, 500);
@@ -2854,6 +3515,8 @@ function renderExtrasRoulette(user) {
       }
     };
 
+    // Réponse reçue : stoppe l'attente, atterrissage de 900 ms sur le vrai module.
+    stopIdle();
     spinWheel(
       (railLen) => {
         rouletteRailCells = cells.slice();
@@ -2867,10 +3530,11 @@ function renderExtrasRoulette(user) {
 
   // 🔁 REROLL du module courant : même type/tier/rareté/vaisseau/famille,
   // seuls les % changent. Prix multiplié par 5 à chaque relance.
-  // Sauvegarde ATOMIQUE avant l'animation (même raison que le tirage).
-  const handleReroll = async () => {
+  // Départ immédiat : la roulette tourne en attente pendant la requête.
+  const handleReroll = async (payMode = "auto") => {
     if (!moduleReroll) return;
     if (rolling) { setMsg("Tirage en cours, patiente…", false); return; }
+    const mode = ["credits", "ticket"].includes(String(payMode).toLowerCase()) ? String(payMode).toLowerCase() : "auto";
 
     const cost = moduleReroll.cost;
     const oldId = moduleReroll.currentId;
@@ -2890,7 +3554,26 @@ function renderExtrasRoulette(user) {
     // rerolls sert à la progression du coût, rerollCredits aux crédits
     // réellement dépensés (tickets exclus de la revente).
     const liveRerolls = Number(oldModule?.rerolls ?? oldRerolls) || 0;
-
+    const payLabel = (mode === "ticket" || (mode === "auto" && modulePayChoice(user) === "ticket")) ? "1 ticket de relance" : `${formatNumber(cost)} crédits`;
+    const rerollLabel = `${String(snap.type || "module").toUpperCase()}-${String(snap.tier || "x1").toUpperCase()}`;
+    showModuleConfirm(
+      "Relancer ce module ?",
+      `${rerollLabel} : tirage de nouvelles stats pour ${payLabel}.`,
+      async () => {
+    // Bascule sur la roulette seulement une fois confirmé (l'animation s'y joue).
+    try { showRoulette(); } catch {}
+    // Verrouille de suite : un 2e clic pendant l'attente serveur reçoit
+    // "Tirage en cours" au lieu d'ouvrir un 2e dialogue (= double relance).
+    // La roulette tourne en attente, la requête part en parallèle.
+    rolling = true;
+    const rerollRowWait = document.getElementById("rerollRow");
+    if (rerollRowWait) { rerollRowWait.innerHTML = ""; rerollRowWait.style.display = "none"; }
+    const sellRowWait = document.getElementById("sellRolledRow");
+    if (sellRowWait) { sellRowWait.innerHTML = ""; sellRowWait.style.display = "none"; }
+    const resWait = document.getElementById("rollResult");
+    if (resWait) resWait.innerHTML = "";
+    // En relance : que des modules identiques (même type/tier) pendant l'attente.
+    const stopIdle = startIdleSpin(() => ({ type: snap.type, tier: snap.tier }));
     const newMod = generateShipModule(user, {
       shipId: snap.shipId,
       familyId: snap.familyId,
@@ -2903,43 +3586,48 @@ function renderExtrasRoulette(user) {
     // buyAndReplaceShipModule recalcule rerollCredits (ticket = +0,
     // crédits = +cost) à partir de l'ancien module : on ne pré-remplit pas.
 
-    // Relance : ticket automatique si dispo, sinon crédits (pas de choix).
-    const repl = await buyAndReplaceShipModuleOnline(oldId);
+    // Relance : mode explicite (crédits / ticket) ou auto (ticket d'abord).
+    let repl = null;
+    try {
+      repl = await buyAndReplaceShipModuleOnline(oldId, { payWith: mode });
+    } catch (e) {
+      repl = { ok: false, error: String(e?.message || e) };
+    }
     if (!repl?.ok) {
-      if (repl?.silent) return;
-      setMsg(repl?.error || "Achat impossible.", false);
+      stopIdle();
+      rolling = false;
+      if (!repl?.silent) setMsg(repl?.error || "Achat impossible.", false);
+      // Restaure l'ancienne card (boutons relance/revente réarmés).
+      try { renderRollResultCard(oldModule); } catch {}
       return;
     }
     const serverModule = repl.module;
-    if (!serverModule) { setMsg("Resultat de la relance invalide.", false); return; }
+    if (!serverModule) {
+      stopIdle();
+      rolling = false;
+      setMsg("Resultat de la relance invalide.", false);
+      try { renderRollResultCard(oldModule); } catch {}
+      return;
+    }
     Object.assign(newMod, serverModule);
     user = getCurrentUserFull() || repl.user;
     moduleReroll.currentId = newMod.id;
     moduleReroll.rerolls = newMod.rerolls;
     moduleReroll.cost = nextModuleRerollCost(newMod.rerolls);
 
-    historyShipQuery = "";
-    moduleHistoryShipQuery = "";
-    const searchInput2 = document.getElementById("moduleHistorySearchInput");
-    if (searchInput2) searchInput2.value = "";
-
-    rolling = true;
-
-    // On referme la carte pendant la relance : elle se rouvre avec les
-    // nouveaux éléments à l'arrêt (pas d'affichage prématuré de l'ancien).
-    const resClear = document.getElementById("rollResult");
-    if (resClear) resClear.innerHTML = "";
-    const rerollRowClear = document.getElementById("rerollRow");
-    if (rerollRowClear) { rerollRowClear.innerHTML = ""; rerollRowClear.style.display = "none"; }
-
     const onStop = () => {
       user = getCurrentUserFull() || user;
+      // Filtres levés + historique reconstruit ICI (pas à la réponse serveur)
+      // pour ne pas charger la frame de l'atterrissage.
+      resetHistoryFilters(user);
       // La CARD ne se ferme pas : elle attend le nouveau tirage puis se met à jour.
       renderRollResultCard(newMod);
-      refreshAfterModule(user, repl.ticket ? "Relance réussie (1 ticket utilisé)." : `Relance réussie (${formatNumber(cost)} crédits).`);
+      refreshAfterModule(user, repl?.payment?.type === "ticket" ? "Relance réussie (1 ticket utilisé)." : `Relance réussie (${formatNumber(cost)} crédits).`);
       rolling = false;
     };
 
+    // Réponse reçue : stoppe l'attente, atterrissage de 900 ms sur le nouveau module.
+    stopIdle();
     spinWheel(
       (railLen) => {
         const uniform = { type: snap.type, tier: snap.tier };
@@ -2948,6 +3636,57 @@ function renderExtrasRoulette(user) {
       },
       { type: snap.type, tier: snap.tier },
       onStop
+    );
+      }
+    );
+  };
+
+  // 💰 REVENTE du module tiré / relancé : confirmation puis vente classique
+  // (inventaire + historique purgés), puis la relance + la card + le bouton
+  // disparaissent.
+  const handleSellRolledModule = async () => {
+    if (!moduleReroll?.currentId) return;
+    if (rolling) { setMsg("Tirage en cours, patiente…", false); return; }
+    const sellId = String(moduleReroll.currentId);
+    user = getCurrentUserFull();
+    if (!user) { setMsg("Non connecté.", false); return; }
+    const live = (user?.inventory?.shipModules || []).find((m) => String(m?.id) === sellId);
+    if (!live?.id) { setMsg("Module plus en inventaire : revente impossible.", false); return; }
+    let groupKey = "";
+    try { groupKey = shipModuleGroupKey(live); } catch { groupKey = ""; }
+    if (!groupKey) { setMsg("Revente impossible.", false); return; }
+    let estimate = 0;
+    try { estimate = Number(moduleSellUnitPrice(live)) || 0; } catch { estimate = 0; }
+    const label = `${String(live?.type || "module").toUpperCase()}-${String(live?.tier || "x1").toUpperCase()}`;
+    showModuleConfirm(
+      "Revendre ce module ?",
+      `${label} sera définitivement vendu pour +${formatNumber(estimate)} crédits.`,
+      async () => {
+        let res = null;
+        try {
+          // Vente classique : force:true retire aussi les copies montées,
+          // comme dans l'inventaire.
+          res = await sellShipModulesOnline(groupKey, 1, { force: true });
+        } catch (e) {
+          res = { ok: false, error: String(e?.message || e) };
+        }
+        if (!res?.ok) {
+          if (res?.silent) return;
+          setMsg(res?.error || "Vente impossible.", false);
+          return;
+        }
+        const gain = Number(res?.gain) || 0;
+        user = getCurrentUserFull() || res.user || user;
+        // Le module vendu n'est plus relançable ni affichable : on casse tout.
+        moduleReroll = null;
+    const rerollRowEl = document.getElementById("rerollRow");
+    if (rerollRowEl) { rerollRowEl.innerHTML = ""; rerollRowEl.style.display = "none"; }
+    const resEl2 = document.getElementById("rollResult");
+    if (resEl2) resEl2.innerHTML = "";
+    const sellRowEl = document.getElementById("sellRolledRow");
+    if (sellRowEl) { sellRowEl.innerHTML = ""; sellRowEl.style.display = "none"; }
+    refreshAfterModule(user, `Module revendu (+${formatNumber(gain)} crédits).`);
+      }
     );
   };
 
@@ -2966,6 +3705,7 @@ function renderExtrasRoulette(user) {
     if (moduleAutoRoll) handleBaseRoll();
   });
   refreshHistoryHead(user);
+  preloadModuleIcons();
 }
 
 function renderShopPreview(user, it, cat) {
@@ -6766,16 +7506,25 @@ window.addEventListener("orbit:net-adopted", () => {
 // avec le compte frais (sinon fermeture/rouverture nécessaire).
 window.addEventListener("orbit:pass-module-rolled", () => {
   try {
-    if (!shopIsVisible()) return;
+    if (!shopIsVisible() && !moduleWindowVisible()) return;
     const rv = document.getElementById("rouletteView");
     const hv = document.getElementById("moduleHistoryView");
-    const extrasVisible = (rv && rv.style.display !== "none") || (hv && hv.style.display !== "none");
+    const pv = document.getElementById("moduleProbaView");
+    const extrasVisible = (rv && rv.style.display !== "none") || (hv && hv.style.display !== "none") || (pv && pv.style.display !== "none");
     if (!extrasVisible) return;
     const fresh = getCurrentUserFull();
     if (!fresh) return;
     user = fresh;
     renderExtrasRoulette(fresh);
   } catch {}
+});
+
+// Fenêtre Modules dédiée : construire le contenu pendant la phase de
+// restauration, y compris quand son état ouvert est repris après un refresh.
+// Le gestionnaire peut ainsi mesurer et afficher directement sa taille finale.
+window.addEventListener("orbit:window-restoring", (event) => {
+  if (event?.detail?.id !== "moduleWindow") return;
+  try { renderModuleWindow(); } catch {}
 });
 
 // Onglet Compte déplacé dans Paramètres (voir switchSettingsTab moteur).
@@ -6804,15 +7553,19 @@ window.addEventListener("orbit:window-restored", (event) => {
   }
 });
 
-// Boutique restaurée (dé-minimize) : re-rend l'onglet courant.
-// Sans ça, restore() async laisse parfois le panneau vide alors que
-// l'onglet Munitions lasers semble sélectionné.
-window.addEventListener("orbit:window-restored", (event) => {
+// Boutique restaurée : chaque ouverture repart réellement sur les munitions
+// laser et construit le panneau avant son affichage. Cela couvre aussi la
+// restauration automatique après un refresh.
+window.addEventListener("orbit:window-restoring", (event) => {
   if (event?.detail?.id !== "shopWindow") return;
   if (!shopIsVisible()) return;
   try {
     const fresh = getCurrentUserFull() || user;
-    if (fresh) { user = fresh; lastShopListSignature = null; renderShop(fresh); }
+    if (!fresh) return;
+    user = fresh;
+    selectedShopItemId = null;
+    lastShopListSignature = null;
+    setShopTab("ammo");
   } catch {}
 });
 

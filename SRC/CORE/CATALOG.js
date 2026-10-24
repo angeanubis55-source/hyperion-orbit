@@ -236,6 +236,7 @@ export const CATALOG = {
   // Tickets : relance gratuite à la roulette des modules (image fournie plus tard).
   tickets: [
     { id: "ticket_module_reroll", name: "Ticket relance module", price: 125000000, icon: "/ASSETS/ITEMS/TICKET_MODULE_REROLL.png", ticket: { kind: "module_reroll" }, desc: "Une relance gratuite à la roulette des modules." },
+    { id: "ticket_module_roll", name: "Ticket tirage module", price: 3000000000, icon: "/ASSETS/ITEMS/TICKET_MODULE_TIRAGE.png", ticket: { kind: "module_roll" }, desc: "Un tirage supplémentaire à la roulette des modules, même quand le quota du jour est épuisé." },
   ],
 
   // Gears P.E.T officiels (darkorbitwiki.com/p-e-t). Prix uridium → crédits (×1000).

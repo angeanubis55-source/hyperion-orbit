@@ -821,7 +821,7 @@ export async function apiModuleOperation(action, options = {}) {
     if (!netActive() || memToken !== token || memUser.id !== userId) return { ok: false, ignored: true };
     clearTimeout(saveTimer); saveTimer = null;
     const out = await api("/api/modules", {
-      method: "POST", body: { action, moduleId: options?.moduleId, offerId: options?.offerId }, token,
+      method: "POST", body: { action, moduleId: options?.moduleId, offerId: options?.offerId, payWith: options?.payWith }, token,
     });
     if (!netActive() || memToken !== token || memUser.id !== userId) return { ok: false, ignored: true };
     if (out?.ok && out.user) {

@@ -3903,9 +3903,10 @@ export function buyAndReplaceShipModule(cost, oldId, newModule, options = {}) {
   };
 }
 
-export async function buyAndReplaceShipModuleOnline(oldId) {
+export async function buyAndReplaceShipModuleOnline(oldId, options = {}) {
   if (!netActive()) return { ok: false, error: "Session serveur inactive." };
-  return apiModuleOperation("reroll", { moduleId: oldId });
+  const payWith = String(options?.payWith || "auto").toLowerCase();
+  return apiModuleOperation("reroll", { moduleId: oldId, payWith: ["credits", "ticket"].includes(payWith) ? payWith : "auto" });
 }
 
 // ✅ Hangar ID (verrou de session)
