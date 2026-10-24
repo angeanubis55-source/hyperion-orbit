@@ -9323,6 +9323,7 @@ function initializeCustomActionBar() {
     cancelAnimationFrame(phoneActionLayoutResizeFrame);
     phoneActionLayoutResizeFrame = requestAnimationFrame(() => {
       try { applySavedPhoneActionLayout(); } catch {}
+      try { for (const button of phoneCategoryButtons) positionPhoneActionDelete(button); } catch {}
     });
   });
   const paintPhoneAmmoButton = () => {

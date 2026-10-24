@@ -163,7 +163,9 @@ body:not(.phoneDockEditorOpen):has(> #phoneControls:not([hidden])) #ammoBar {
   background:linear-gradient(#174b64,#092a3c);
   box-shadow:0 3px 12px rgba(0,0,0,.65);
   font:900 8px/1.05 ui-sans-serif,system-ui;
-  touch-action:manipulation;
+  /* none : le drag d'édition ne doit pas être volé par le scroll du navigateur
+     (sinon pointercancel coupe le déplacement au bout de quelques px). */
+  touch-action:none;
 }
 .phoneActionLauncher button.active {
   border-color:#fff178;
@@ -228,7 +230,9 @@ body.phoneActionMenuOpen .phoneActionLauncher button:not(.active) {
 .phoneActionDeleteBtn {
   display:none;
   position:fixed;
-  z-index:10;
+  /* Au-dessus du voile d'édition (100000) et des contrôles (100100),
+     sinon la croix est assombrie et ses taps sont avalés par le voile. */
+  z-index:100150;
   width:24px;
   height:24px;
   padding:0;
@@ -239,6 +243,7 @@ body.phoneActionMenuOpen .phoneActionLauncher button:not(.active) {
   box-shadow:0 2px 8px rgba(0,0,0,.75);
   font:900 18px/20px ui-sans-serif,system-ui;
   pointer-events:auto;
+  touch-action:none;
 }
 body.phoneJoystickLayoutOpen .phoneActionDeleteBtn { display:block; }
 .phoneActionTray {
@@ -266,7 +271,8 @@ body.phoneJoystickLayoutOpen .phoneActionDeleteBtn { display:block; }
   box-shadow:0 3px 14px rgba(0,0,0,.8) !important;
   overflow:visible !important;
   pointer-events:auto;
-  touch-action:manipulation;
+  /* none : un doigt qui glisse un peu ne doit pas annuler le tap. */
+  touch-action:none;
   display:flex !important;
   align-items:center !important;
   justify-content:center !important;
