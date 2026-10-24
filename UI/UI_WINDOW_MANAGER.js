@@ -612,7 +612,15 @@ function makeMinimapResizable(id, card) {
     starIcon.addEventListener("pointerdown", (e) => { e.stopPropagation(); });
     starIcon.addEventListener("click", (event) => {
       event.stopPropagation();
-      try { window.GameWindowManager?.restore("starMapWindow"); } catch {}
+      try {
+        const w = windows.get("starMapWindow");
+        const open = !!w
+          && !w.card.classList.contains("gameWinMinimized")
+          && w.card.style.display !== "none"
+          && w.root.style.display !== "none";
+        if (open) window.GameWindowManager.minimize("starMapWindow");
+        else window.GameWindowManager.restore("starMapWindow");
+      } catch {}
     });
     windowBar.insertBefore(starIcon, zoomActions || minimizeButton || null);
   }

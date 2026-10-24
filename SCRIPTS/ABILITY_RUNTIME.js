@@ -102,6 +102,28 @@ export function abilityDamage(state, amount, penetration, now, context, secondar
   return result;
 }
 
+// Un pulse de NPC Bomb (100k dégâts aux NPC dans 700 autour du lanceur,
+// ni joueurs ni JPC, max 30). Utilisé à l'activation ET par les 6 pulses.
+export function fireNpcBombPulse(state, sim, now, emit) {
+  let n = 0;
+  try {
+    if (!sim || typeof sim.applyHit !== "function") return n;
+    for (const [uid, npc] of sim.entries || []) {
+      if (n >= 30) break;
+      if (!npc || npc.dead === true || !(Number(npc.hp) > 0)) continue;
+      if (npc.jpc === true) continue;
+      const dx = Number(npc.x) - Number(state.x), dy = Number(npc.y) - Number(state.y);
+      if (dx * dx + dy * dy > 700 * 700) continue;
+      n++;
+      try {
+        const damage = sim.applyHit(String(state.id), { uid: String(uid), dmg: 100000, pen: 0, critChance: 0, critMult: 1, variance: 0 });
+        applyEnergyLeech(state, damage, now, emit, npc);
+      } catch {}
+    }
+  } catch {}
+  return n;
+}
+
 export function tickAbilityStates(room, sim, now, emit, groupOf) {
   const alive = s => s && !s.dead && !s.pvpDead && s.hp > 0;
   const heal = (state, key, amount, shield = false) => {
@@ -180,29 +202,14 @@ export function tickAbilityStates(room, sim, now, emit, groupOf) {
           heal(state, key, perSec * (fx.selfHealTick - last), false);
         }
       }
-      // Tech NPC Bomb : toutes les 10 s pendant 60 s, 100k dégâts aux NPC
-      // dans 700 autour du lanceur (ni joueurs ni JPC). 6 x 100k = 600k.
+      // Tech NPC Bomb : 1 coup immédiat à l'activation + 6 pulses (toutes les
+      // 10 s pendant 60 s), 100k dégâts aux NPC dans 700 autour du lanceur
+      // (ni joueurs ni JPC).
       if (!(now < Number(state._jamUntil)) && key === "ability_tech_npc_bomb") {
         const due = Math.min(6, Math.floor((now - fx.from) / 10000));
         while ((Number(fx.bombTicks) || 0) < due) {
           fx.bombTicks = (Number(fx.bombTicks) || 0) + 1;
-          if (sim && typeof sim.applyHit === "function") {
-            let n = 0;
-            try {
-              for (const [uid, npc] of sim.entries || []) {
-                if (n >= 30) break;
-                if (!npc || npc.dead === true || !(Number(npc.hp) > 0)) continue;
-                if (npc.jpc === true) continue;
-                const dx = Number(npc.x) - Number(state.x), dy = Number(npc.y) - Number(state.y);
-                if (dx * dx + dy * dy > 700 * 700) continue;
-                n++;
-                try {
-                  const damage = sim.applyHit(String(state.id), { uid: String(uid), dmg: 100000, pen: 0, critChance: 0, critMult: 1, variance: 0 });
-                  applyEnergyLeech(state, damage, now, emit, npc);
-                } catch {}
-              }
-            } catch {}
-          }
+          try { fireNpcBombPulse(state, sim, now, emit); } catch {}
           // 6e et dernier pulse (t=60 s) : le CD de 300 s démarre ici, pas au tir.
           if (fx.bombTicks >= 6) {
             const cds = (state._techCds && typeof state._techCds === "object") ? state._techCds : (state._techCds = {});

@@ -2013,6 +2013,17 @@ function triggerFrostField() {
 // qu'après le 6e et dernier pulse.
 let techNpcBombFrom = 0;
 let techNpcBombPulse = 0;
+// Pulse NPC Bomb (100k dégâts aux NPC dans 700, ni joueurs ni JPC) :
+// même boucle que les 6 pulses périodiques, rejouée à l'activation.
+function fireNpcBombPulse() {
+  try {
+    for (const e of enemies) {
+      if (!e || !(Number(e.hp) > 0) || e.isJpcBot === true) continue;
+      if (dist2(player.x, player.y, Number(e.x), Number(e.y)) > NPC_BOMB_RADIUS * NPC_BOMB_RADIUS) continue;
+      damageEnemy(e, NPC_BOMB_TICK_DMG, undefined, { chance: 0, mult: 1 }, { ability: NPC_BOMB_ID, fixedDamage: true });
+    }
+  } catch {}
+}
 function triggerNpcBomb() {
   try {
     if (player.dead) return;
@@ -2027,6 +2038,8 @@ function triggerNpcBomb() {
     }
     techNpcBombFrom = performance.now();
     techNpcBombPulse = 0;
+    // Coup immédiat à l'activation (en plus des 6 pulses périodiques).
+    if (techInLocalInstance()) fireNpcBombPulse();
     if (!netActive() || techInLocalInstance()) player.npcBombFx = { startedAt: techNpcBombFrom };
     try { persistCdUntil("techAura:npc-bomb", NPC_BOMB_DURATION_MS / 1000, "global"); } catch {}
     if (!techInLocalInstance()) { try { sendSkillUse(NPC_BOMB_ID, { phase: "fire" }); } catch {} }
@@ -5767,11 +5780,18 @@ function stockShieldBonusFor(n) {
 }
 function stockUpdateRange() {
   try {
+    // Base de portée : 700 classique, ou valeur fixée par la formation
+    // (Polygone => 600). MMT double cette base, l'effet Stockpile la réinitialise.
+    let base = BASE_RUN.range;
+    try {
+      const override = formationRangeOverride();
+      if (override > 0) base = override;
+    } catch {}
     // Zephyr MMT : portée x2 pendant l'effet (prioritaire sur tout).
-    if ((player.mmtT || 0) > 0) { playerRange = BASE_RUN.range * 2; return; }
-    if ((player.stockT || 0) > 0) { playerRange = BASE_RUN.range; return; }
+    if ((player.mmtT || 0) > 0) { playerRange = base * 2; return; }
+    if ((player.stockT || 0) > 0) { playerRange = base; return; }
     const bonus = isHecatePlusBase() && !(Number(player.jamT) > 0) ? stockCharges() * STOCKPILE_RANGE_PER : 0;
-    playerRange = BASE_RUN.range + bonus;
+    playerRange = base + bonus;
   } catch {}
 }
 function onStockpileNpcKill() {
@@ -7967,6 +7987,11 @@ function formationTip(f) {
   for (const [k, v] of Object.entries(f.effects || {})) {
     const n = Number(v);
     if (!(n > 0) && !(n < 0)) continue;
+    // Portée fixée (Polygone) : valeur absolue, pas un pourcentage.
+    if (k === "rangeOverride") {
+      nerfs.push(`portée ${formatInteger(n)} (au lieu de 700)`);
+      continue;
+    }
     // Drain bouclier : valeur positive mais malus (pompe ton bouclier).
     if (k === "shieldDrainPct") {
       nerfs.push(`-${String(n).replace(".", ",")} % bouclier/s`);
@@ -19055,6 +19080,9 @@ function applyCurrentConfigStats(keepRatios = true, restoreShieldConfigNo = null
 
   player.accel = BASE_RUN.accel;
   player.friction = BASE_RUN.friction;
+
+  // Recalcule la portée (ex : formation Polygone => 600).
+  try { stockUpdateRange(); } catch {}
 
   return true;
 }
@@ -32676,6 +32704,12 @@ function formationFireRateMult() {
 // Vitesse visuelle des tirs laser (Polygone : -50 % => 2000 au lieu de 4000).
 function formationBulletSpeedMult() {
   return Math.max(0.05, 1 + Number(activeFormationEffects().bulletSpeedPct || 0) / 100);
+}
+
+// Portée d'attaque (Polygone : portée fixée à 600 au lieu de 700).
+function formationRangeOverride() {
+  const v = Number(activeFormationEffects().rangeOverride || 0);
+  return v > 0 ? v : 0;
 }
 
 // Nombre d'éclairs affichés par salve (le 1er = vrai tir, les suivants =

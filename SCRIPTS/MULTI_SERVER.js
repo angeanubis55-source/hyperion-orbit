@@ -35,7 +35,7 @@ import { getAbilityInfo, HYPERION_QA_DAMAGE } from "../SHIP/SHIP_ABILITIES.js";
 import { ROCKET_TYPES } from "../COMBAT/ROCKET_TYPES.js";
 import { syncDisarrayShield, syncDisruptorEffects, laserDisrupted, redirectedPlayer } from "./DISRUPTOR_RULES.js";
 import { tempestBackupActive, tempestBackupReady, triggerTempestBackup, expireTempestBackup, validateVoltChain } from "./TEMPEST_RULES.js";
-import { abilityDamage, activeAbility, fortifyActive, triggerPaladin, tickAbilityStates, recordAbilityDamageDealt, recordAbilityNpcKill, applyEnergyLeech } from "./ABILITY_RUNTIME.js";
+import { abilityDamage, activeAbility, fortifyActive, triggerPaladin, tickAbilityStates, recordAbilityDamageDealt, recordAbilityNpcKill, applyEnergyLeech, fireNpcBombPulse } from "./ABILITY_RUNTIME.js";
 
 // --- Auras d'aptitudes visibles par les autres (Phase 2) ---
 // Le serveur reste autoritaire : chaque cast ability_* est validé
@@ -2907,6 +2907,8 @@ wss.on("connection", (ws) => {
           if (!state._abilityFx || typeof state._abilityFx !== "object") state._abilityFx = {};
           // +999 ms pour couvrir le tick de la 60e seconde (sinon 5 ticks).
           state._abilityFx[skill] = { from: now, until: now + 60000 + 999, x: 0, y: 0, target: "" };
+          // Coup immédiat à l'activation (en plus des 6 pulses périodiques).
+          try { fireNpcBombPulse(state, sim, now, event => emitAbilityEvent(room, event)); } catch {}
           try {
             broadcastRoom(room, JSON.stringify({ t: "skillFx", skill, by: id,
               at: now, until: now + 60000 }));
