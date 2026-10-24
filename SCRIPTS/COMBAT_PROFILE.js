@@ -58,6 +58,7 @@ export function combatProfile(user, mapId, configNo = null, groupBoosters = {}) 
   const abilities = getAbilitiesForShip(abilityShipKeyFor(ship.id));
   return {
     shipId: ship.id, baseId, hangarId: String(hangar.id), config: Number(cfg),
+    formationId: String(user?.drones?.activeFormation || "standard"),
     hpMax: clamp(hpMax, 1, 1e9), shMax: clamp(shMax, 0, 1e9),
     speed: clamp((ship.speed + stats.bonusSpeed) * upgrade("speed") * stats.speedMult, 50, 1500),
     range: 1400, // couvre le doublement de portée des aptitudes existantes

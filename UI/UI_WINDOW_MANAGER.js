@@ -83,10 +83,16 @@ function loadWindowPosition(id) {
     const data = JSON.parse(raw);
     if (!data || typeof data !== "object") return null;
 
+    const rx = Number(data.rx);
+    const ry = Number(data.ry);
     return {
       left: Number(data.left),
       top: Number(data.top),
       width: Number(data.width),
+      // Position relative (fraction du viewport au moment de la sauvegarde).
+      // Absente des sauvegardes anciennes : on retombe sur left/top absolus.
+      rx: Number.isFinite(rx) ? rx : null,
+      ry: Number.isFinite(ry) ? ry : null,
     };
   } catch {
     return null;
@@ -111,6 +117,10 @@ function saveWindowPosition(id, card) {
         left: Math.round(r.left),
         top: Math.round(r.top),
         width: Math.round(r.width),
+        // Fraction du viewport : permet de suivre le redimensionnement
+        // (une fenêtre en bas à droite y reste, proportionnellement).
+        rx: r.left / Math.max(1, window.innerWidth),
+        ry: r.top / Math.max(1, window.innerHeight),
         savedAt: Date.now(),
       })
     );
@@ -141,9 +151,16 @@ function applySavedWindowPosition(id, card) {
 
   // Le viewport est borne apres application de la largeur sauvegardee.
   // Mesurer ici forcerait une mise en page avec l'ancienne geometrie.
+  // Résolution proportionnelle : la position sauvegardée (fraction du
+  // viewport de l'époque) est reconvertie dans le viewport actuel, pour
+  // que la fenêtre suive le redimensionnement (ex : bas-droite conservé).
+  const vw = Math.max(1, window.innerWidth);
+  const vh = Math.max(1, window.innerHeight);
   const p = {
-    left: Number.isFinite(saved.left) ? saved.left : 14,
-    top: Number.isFinite(saved.top) ? saved.top : 14,
+    left: Number.isFinite(saved.rx) ? saved.rx * vw
+      : Number.isFinite(saved.left) ? saved.left : 14,
+    top: Number.isFinite(saved.ry) ? saved.ry * vh
+      : Number.isFinite(saved.top) ? saved.top : 14,
   };
 
   card.classList.add("floating");
@@ -473,7 +490,7 @@ function prepareFloating(card, r = card.getBoundingClientRect()) {
     };
   }
 
-  function keepWindowInsideViewport(card, { centerIfUnpositioned = false } = {}) {
+  function keepWindowInsideViewport(card, { centerIfUnpositioned = false, anchor = null } = {}) {
     if (!card) return null;
     const margin = 8;
     // Regrouper les contraintes avant la mesure ; reutiliser ensuite cette
@@ -489,8 +506,18 @@ function prepareFloating(card, r = card.getBoundingClientRect()) {
       card.style.width = `${Math.max(140, window.innerWidth - margin * 2)}px`;
       rect = card.getBoundingClientRect();
     }
-    const requestedLeft = centerIfUnpositioned && !hasPosition ? (window.innerWidth - rect.width) / 2 : rect.left;
-    const requestedTop = centerIfUnpositioned && !hasPosition ? (window.innerHeight - rect.height) / 2 : rect.top;
+    // Ancrage relatif (redimensionnement) prioritaire : la position
+    // sauvegardée en fraction de viewport est reconvertie ici, la fenêtre
+    // suit le redimensionnement au lieu de rester à ses pixels absolus.
+    let requestedLeft = rect.left;
+    let requestedTop = rect.top;
+    if (anchor && Number.isFinite(anchor.rx) && Number.isFinite(anchor.ry)) {
+      requestedLeft = anchor.rx * window.innerWidth;
+      requestedTop = anchor.ry * window.innerHeight;
+    } else if (centerIfUnpositioned && !hasPosition) {
+      requestedLeft = (window.innerWidth - rect.width) / 2;
+      requestedTop = (window.innerHeight - rect.height) / 2;
+    }
     const p = clampToScreen(card, requestedLeft, requestedTop, rect);
     const left = Math.round(p.left), top = Math.round(p.top);
     card.style.left = `${left}px`;
@@ -1237,7 +1264,11 @@ restore(id) {
   window.addEventListener("resize", () => {
     for (const w of windows.values()) {
       if (!w?.card || w.card.style.display === "none") continue;
-      keepWindowInsideViewport(w.card);
+      // Re-résout depuis la position relative sauvegardée : la fenêtre
+      // suit le redimensionnement (ex : reste en bas à droite) au lieu
+      // de rester figée à ses anciens pixels. On re-sauvegarde ensuite
+      // pour figer la fraction (inchangée si suivi parfait).
+      keepWindowInsideViewport(w.card, { anchor: loadWindowPosition(w.id) });
       saveWindowPosition(w.id, w.card);
     }
   });

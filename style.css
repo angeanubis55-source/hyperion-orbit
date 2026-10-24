@@ -181,6 +181,39 @@ body.phoneActionMenuOpen .phoneActionLauncher button:not(.active) {
 .phoneActionLauncher button.holding {
   animation:phoneActionHoldGrow .48s linear both;
 }
+/* Recharge (roquettes / lance-roquettes / aptitudes) : même voile
+   circulaire que le dock (classe cdVeil + --cd + --cd-edge). */
+.phoneActionLauncher button.cdVeil {
+  position:relative;
+  overflow:hidden;
+}
+.phoneActionLauncher button.cdVeil::after {
+  content:"";
+  position:absolute;
+  inset:0;
+  z-index:1;
+  pointer-events:none;
+  border-radius:50%;
+  background:conic-gradient(from 0deg at 50% 50%,
+    rgba(3,7,16,.8) 0deg calc(var(--cd,0) * 360deg),
+    var(--cd-edge,rgba(175,185,195,.9)) calc(var(--cd,0) * 360deg) calc(var(--cd,0) * 360deg + 3deg),
+    transparent calc(var(--cd,0) * 360deg + 3deg));
+}
+/* Aptitude actuellement utilisée : voile distinct de la recharge violette. */
+.phoneActionLauncher button.useVeil {
+  position:relative;
+  overflow:hidden;
+}
+.phoneActionLauncher button.useVeil::after {
+  content:"";
+  position:absolute;
+  inset:0;
+  z-index:1;
+  pointer-events:none;
+  border-radius:50%;
+  background:rgba(30,190,220,.28);
+  box-shadow:inset 0 0 0 3px rgba(80,245,255,.9),inset 0 0 18px rgba(25,210,240,.55);
+}
 @keyframes phoneActionHoldGrow {
   from { scale:1; }
   to { scale:1.24; box-shadow:0 0 0 4px rgba(255,241,120,.48),0 0 22px rgba(255,241,120,.7); }
@@ -192,6 +225,22 @@ body.phoneActionMenuOpen .phoneActionLauncher button:not(.active) {
   border-radius:50%;
   pointer-events:none;
 }
+.phoneActionDeleteBtn {
+  display:none;
+  position:fixed;
+  z-index:10;
+  width:24px;
+  height:24px;
+  padding:0;
+  border:1px solid rgba(255,120,120,.9);
+  border-radius:50%;
+  color:#fff;
+  background:#a81824;
+  box-shadow:0 2px 8px rgba(0,0,0,.75);
+  font:900 18px/20px ui-sans-serif,system-ui;
+  pointer-events:auto;
+}
+body.phoneJoystickLayoutOpen .phoneActionDeleteBtn { display:block; }
 .phoneActionTray {
   position:fixed;
   inset:0;
@@ -399,20 +448,121 @@ body.phoneActionMenuOpen .phoneActionLauncher button:not(.active) {
   pointer-events:auto;
   touch-action:manipulation;
 }
-.phoneJoystickLayoutBtn {
+/* Rangée bas-droite : "Déplacer" + "+" (même hauteur via stretch). */
+.phoneLayoutActions {
   position:absolute;
   right:calc(10px + env(safe-area-inset-right, 0px));
   bottom:calc(8px + env(safe-area-inset-bottom, 0px));
   z-index:5;
+  display:flex;
+  gap:10px;
+  align-items:stretch;
+  pointer-events:none;
+}
+.phoneLayoutActions > button {
+  position:static;
+  right:auto;
+  bottom:auto;
+  pointer-events:auto;
+}
+.phoneJoystickLayoutBtn {
+  position:absolute;
+  right:calc(52px + env(safe-area-inset-right, 0px));
+  bottom:calc(8px + env(safe-area-inset-bottom, 0px));
+  z-index:5;
   padding:8px 12px;
-  border:1px solid rgba(124,240,255,.75);
-  border-radius:999px;
+  border:1px solid rgba(124,240,255,.38);
+  border-radius:8px;
   color:#eaffff;
-  background:linear-gradient(#174b64,#092a3c);
-  box-shadow:0 3px 12px rgba(0,0,0,.65);
+  background:linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34));
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.03);
   font-weight:900;
   pointer-events:auto;
   touch-action:manipulation;
+  cursor:pointer;
+}
+.phoneJoystickLayoutBtn:hover {
+  border-color:rgba(124,240,255,.62);
+  background:rgba(0,140,185,.3);
+  box-shadow:0 0 16px rgba(0,217,255,.12);
+}
+/* Bouton "+" : ajoute un bouton d'action (à droite de la disposition). */
+.phoneActionAddBtn {
+  position:absolute;
+  right:calc(10px + env(safe-area-inset-right, 0px));
+  bottom:calc(8px + env(safe-area-inset-bottom, 0px));
+  z-index:5;
+  width:32px;
+  align-self:stretch;
+  display:grid;
+  place-items:center;
+  padding:0;
+  border:1px solid rgba(124,240,255,.38);
+  border-radius:8px;
+  color:#eaffff;
+  background:linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34));
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.03);
+  pointer-events:auto;
+  touch-action:manipulation;
+  cursor:pointer;
+}
+.phoneActionAddBtn:hover {
+  border-color:rgba(124,240,255,.62);
+  background:rgba(0,140,185,.3);
+  box-shadow:0 0 16px rgba(0,217,255,.12);
+}
+.phoneActionAddBtn svg { width:16px; height:16px; display:block; }
+/* Fenêtre temporaire d'ajout (icône paramètre + catégorie). */
+.phoneActionAddOverlay {
+  position:fixed;
+  inset:0;
+  z-index:150000;
+  display:grid;
+  place-items:center;
+  background:rgba(0,0,0,.6);
+}
+.phoneActionAddOverlay[hidden] { display:none; }
+.phoneActionAddModal {
+  width:min(320px,calc(100vw - 48px));
+  padding:14px;
+  border:1px solid rgba(124,240,255,.38);
+  border-radius:12px;
+  color:#eaffff;
+  background:rgba(8,18,28,.97);
+  box-shadow:0 12px 40px rgba(0,0,0,.6);
+  font:500 13px/1.5 ui-sans-serif,system-ui;
+}
+.phoneActionAddHead {
+  display:flex;
+  align-items:center;
+  gap:8px;
+  margin-bottom:6px;
+  font-weight:900;
+}
+.phoneActionAddHead img { width:22px; height:22px; }
+.phoneActionAddModal p { margin:0 0 10px; color:rgba(234,255,255,.85); }
+.phoneActionAddField { display:grid; gap:4px; margin-bottom:12px; }
+.phoneActionAddField select {
+  padding:8px;
+  border:1px solid rgba(124,240,255,.38);
+  border-radius:8px;
+  color:#eaffff;
+  background:#0d2233;
+  font:inherit;
+}
+.phoneActionAddActions { display:flex; gap:8px; justify-content:flex-end; }
+.phoneActionAddActions button {
+  padding:8px 14px;
+  border:1px solid rgba(124,240,255,.38);
+  border-radius:8px;
+  color:#eaffff;
+  background:linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34));
+  font-weight:900;
+  cursor:pointer;
+}
+.phoneActionAddActions button:hover {
+  border-color:rgba(124,240,255,.62);
+  background:rgba(0,140,185,.3);
 }
 .phoneJoystickSizeControl {
   display:none;
@@ -440,14 +590,20 @@ body.phoneActionMenuOpen .phoneActionLauncher button:not(.active) {
   z-index:7;
   padding:8px 14px;
   transform:translateX(-50%);
-  border:1px solid rgba(255,137,137,.8);
-  border-radius:999px;
-  color:#fff;
-  background:linear-gradient(#71303a,#39151d);
-  box-shadow:0 3px 12px rgba(0,0,0,.65);
+  border:1px solid rgba(255,90,110,.7);
+  border-radius:8px;
+  color:#ffffff;
+  background:linear-gradient(135deg,rgba(220,30,50,.55),rgba(130,10,25,.55));
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.06), 0 0 16px rgba(255,60,80,.25);
   font-weight:900;
   pointer-events:auto;
   touch-action:manipulation;
+  cursor:pointer;
+}
+.phoneJoystickResetBtn:hover {
+  border-color:rgba(255,120,135,.9);
+  background:linear-gradient(135deg,rgba(255,60,80,.65),rgba(160,15,30,.65));
+  box-shadow:0 0 18px rgba(255,60,80,.35);
 }
 body.phoneJoystickLayoutOpen::before {
   content:"";
@@ -10795,6 +10951,77 @@ body.orbitNoFade #gameWindowDock, body.orbitNoFade #ammoBar, body.orbitNoFade .g
   background:#10526b;
   transform:rotate(45deg);
 }
+/* 3e barre : ligne complète sous les 20 slots (10 cases repliables).
+   La barre parente passe en `display:block` (juste sous ce bloc) : les
+   deux grilles s'empilent avec la MÊME largeur, la largeur du conteneur
+   ne bouge jamais — le bouton du dock ne se décale plus.
+   Le bouton a sa PROPRE classe (pas .actionPaletteToggle) mais reprend
+   EXACTEMENT son visuel : flottant à droite de la barre, pile sous le
+   bouton du dock, double-chevron SVG (haut = fermée, bas = ouverte).
+   Enfant direct de la barre (position fixe) : il ne bouge jamais. */
+#ammoBar.compactAmmoBar {
+  display:block;
+  /* Espace réservé en permanence (= hauteur barre ouverte) : ouvrir ou
+     fermer la 3e barre ne déplace plus jamais les 20 slots vers le haut. */
+  min-height:152px;
+}
+#ammoBar .tertiaryBar {
+  margin-top:4px;
+}
+#ammoBar .tertiaryToggle {
+  position:absolute;
+  right:-42px;
+  /* Épinglé sur l'interstice entre les rangées 2 et 3 (sous le bouton du
+     dock qui est sur l'interstice 1-2) : ne bouge plus, ouvert comme fermé. */
+  top:83px;
+  width:32px;
+  min-width:32px;
+  height:32px;
+  padding:0;
+  border:1px solid rgba(124,240,255,.38);
+  border-radius:8px;
+  background-color:#092333;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'%3E%3Cg fill='none' stroke='%23eaffff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 4 L8 9 L13 4'/%3E%3Cpath d='M3 9 L8 14 L13 9'/%3E%3C/g%3E%3C/svg%3E"), linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34));
+  background-position:center, 0 0;
+  background-repeat:no-repeat;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.03);
+  font-size:0;
+  cursor:pointer;
+  flex:0 0 auto;
+}
+#ammoBar .tertiaryToggle:hover {
+  border-color:rgba(124,240,255,.62);
+  background-color:rgba(0,140,185,.3);
+  box-shadow:0 0 16px rgba(0,217,255,.12);
+}
+#ammoBar .tertiaryToggle.active {
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'%3E%3Cg fill='none' stroke='%23eaffff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 7 L8 2 L13 7'/%3E%3Cpath d='M3 12 L8 7 L13 12'/%3E%3C/g%3E%3C/svg%3E"), linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34));
+  background-position:center, 0 0;
+  background-repeat:no-repeat;
+}
+/* Bouton du dock : épinglé sur l'interstice entre les rangées 1 et 2
+   (comme avant la 3e barre). La hauteur de la barre étant désormais
+   constante, il ne bouge plus jamais, ni à l'ouverture ni à la fermeture. */
+body #ammoBar .actionPaletteToggle {
+  top:35px !important;
+  transform:none !important;
+}
+body #ammoBar .actionPaletteToggle.active {
+  transform:none !important;
+}
+#ammoBar .tertiarySlots {
+  display:grid;
+  grid-template-columns:repeat(10,46px);
+  gap:4px;
+}
+#ammoBar .tertiarySlots[hidden] {
+  display:none;
+}
+/* 3e barre ouverte : les touches 1..0 pilotent ses cases, on masque les
+   pastilles de la 1re rangée principale pour éviter toute ambiguïté. */
+#ammoBar.tertiaryOpen .actionSlots > .actionSlot:nth-child(-n+10) .slotKeyHint {
+  display:none;
+}
 #ammoBar .actionPalette {
   position:absolute;
   right:0;
@@ -11326,6 +11553,7 @@ body.orbitNoFade #gameWindowDock, body.orbitNoFade #ammoBar, body.orbitNoFade .g
 @media (max-width: 680px) {
   #ammoBar.compactAmmoBar { max-width: calc(100vw - 20px); overflow: visible; }
   #ammoBar .actionSlots { grid-template-columns:repeat(10,40px); overflow-x:auto; }
+  #ammoBar .tertiarySlots { grid-template-columns:repeat(10,40px); }
   #ammoBar.compactAmmoBar .actionSlot { width: 40px; }
   #ammoBar.compactAmmoBar .actionSlot .ammoBtn { width: 36px; min-width: 36px; }
 }
@@ -12022,6 +12250,10 @@ body #profileOverlay #panel_shop .shopLayout {
   grid-template-columns:repeat(10,46px) !important;
   grid-template-rows:repeat(2,44px);
   gap:4px !important;
+}
+#ammoBar .tertiarySlots {
+  grid-template-columns:repeat(10,46px);
+  gap:4px;
 }
 #ammoBar.compactAmmoBar .actionSlot, #ammoBar.compactAmmoBar .actionSlot .ammoBtn, #ammoBar.compactAmmoBar .actionSlot .skillBtn, #ammoBar .actionPaletteToggle, #ammoBar .actionPalette, #ammoBar .actionPalette nav button, #ammoBar .actionPaletteItems>.ammoBtn, #ammoBar .formationQuickAction {
   border-radius:0 !important;

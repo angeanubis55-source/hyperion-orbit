@@ -1240,11 +1240,12 @@ const ui = {
 };
 
 const ACTION_BAR_LAYOUT_KEY = "orbit_action_bar_layout_v2";
+const TERTIARY_BAR_LAYOUT_KEY = "orbit_action_bar_layout_tertiary_v1";
 
 function syncPhoneQuickWheelItems() {
   const wheel = document.querySelector(".phoneJoystickQuick .phoneQuickItems");
   if (!wheel) return;
-  const slots = [...document.querySelectorAll("#ammoBar .actionSlot")].slice(0, 20);
+  const slots = [...document.querySelectorAll("#ammoBar .actionSlots > .actionSlot")].slice(0, 20);
   const quantityText = action => String(action?.querySelector(".ammoCount, .rocketCount, .launcherCount, small")?.textContent || "").trim();
   const signature = slots.map(slot => slot.querySelector("[data-action-id]")?.dataset.actionId || "").join("|");
   if (wheel.dataset.signature === signature && wheel.querySelectorAll(".phoneQuickItem").length === 20) {
@@ -1366,6 +1367,11 @@ function techDockVisual(id) {
 }
 // Bascule du menu du dock rapide (palette), accessible au clavier (TAB par défaut).
 let toggleActionDockMenu = null;
+// 3e barre : ouverte = les touches des slots pilotent ses 20 cases, puis elle
+// se referme automatiquement. Fermée = touches et clics inopérants sur elle.
+let isTertiaryActionBarOpen = () => false;
+let collapseTertiaryActionBar = () => {};
+let toggleTertiaryActionBar = null;
 // Re-rend l'onglet actif de la palette (ex : Aptitudes après changement de vaisseau).
 let refreshActiveActionPalette = null;
 // Dernier vaisseau vu par l'onglet Aptitudes. Suivi indépendant car
@@ -8027,8 +8033,13 @@ function initializeCustomActionBar() {
   bar.replaceChildren();
   const persist = () => {
     localStorage.setItem(ACTION_BAR_LAYOUT_KEY, JSON.stringify(
-      [...bar.querySelectorAll(".actionSlot")].map(slot => slot.querySelector(".ammoBtn, .rocketQuickAction")?.dataset.actionId || null)
+      [...bar.querySelectorAll(".actionSlots > .actionSlot")].map(slot => slot.querySelector(".ammoBtn, .rocketQuickAction")?.dataset.actionId || null)
     ));
+    try {
+      localStorage.setItem(TERTIARY_BAR_LAYOUT_KEY, JSON.stringify(
+        [...bar.querySelectorAll(".tertiarySlots > .actionSlot")].map(slot => slot.querySelector(".ammoBtn, .rocketQuickAction")?.dataset.actionId || null)
+      ));
+    } catch {}
     queueMicrotask(syncPhoneQuickWheelItems);
   };
   const slots = document.createElement("div"); slots.className = "actionSlots"; bar.appendChild(slots);
@@ -8043,6 +8054,10 @@ function initializeCustomActionBar() {
       const result = setCurrentUserDroneFormation(formation.id);
       if (!result.ok) return showNotification(result.error, 2.5, "error");
       account.user = result.user;
+      // Une formation change uniquement la capacité : la quantité courante
+      // reste absolue et est écrêtée si le nouveau maximum est plus faible.
+      // Foreuse -> Cœur conserve donc le bouclier restant, puis la recharge
+      // normale remplit progressivement la nouvelle capacité.
       applyCurrentConfigStats(false, null, true);
       syncActionDockState();
       try { window.__SYNC_PHONE_ACTION_GOLD__?.(); } catch {}
@@ -8693,9 +8708,9 @@ function initializeCustomActionBar() {
   // slots vides (anciens layouts sauvegardés + découverte immédiate).
   // L'utilisateur peut toujours les déplacer via la palette (⌃).
   {
-    const placedIds = new Set([...bar.querySelectorAll(".actionSlot [data-action-id]")].map((el) => el.dataset.actionId));
+    const placedIds = new Set([...bar.querySelectorAll(".actionSlots > .actionSlot [data-action-id]")].map((el) => el.dataset.actionId));
     const missingAmmo = actions.filter((button) => button.dataset.ammo && !placedIds.has(`ammo:${button.dataset.ammo}`));
-    const emptySlots = [...bar.querySelectorAll(".actionSlot")].filter((slot) => !slot.querySelector("[data-action-id]"));
+    const emptySlots = [...bar.querySelectorAll(".actionSlots > .actionSlot")].filter((slot) => !slot.querySelector("[data-action-id]"));
     missingAmmo.forEach((original, index) => {
       const slot = emptySlots[index];
       if (!slot) return;
@@ -8743,6 +8758,12 @@ function initializeCustomActionBar() {
         autoBtn.title = "Roquettes automatiques : ON = tir dès que possible";
         autoBtn.innerHTML = `<strong>AUTO</strong><small>${player.rocketAuto ? "ON" : "OFF"}</small>`;
         autoBtn.onclick = () => {
+          if (GAME_SETTINGS.phoneMode === true) {
+            player.rocketAuto = true;
+            updateAmmoUI();
+            showNotification("Mode téléphone : roquettes automatiques activées", 1.8, "info");
+            return;
+          }
           player.rocketAuto = !player.rocketAuto;
           markProgressDirty();
           // Écriture immédiate (comme setAmmo) : sinon l'autosave
@@ -8777,6 +8798,12 @@ function initializeCustomActionBar() {
         toggleBtn.title = "Lance-roquettes automatique";
         toggleBtn.innerHTML = `<strong>AUTO</strong><small>${player.launcherAuto ? "ON" : "OFF"}</small>`;
         toggleBtn.onclick = () => {
+          if (GAME_SETTINGS.phoneMode === true) {
+            player.launcherAuto = true;
+            updateAmmoUI();
+            showNotification("Mode téléphone : lance-roquettes automatique activé", 1.8, "info");
+            return;
+          }
           player.launcherAuto = !player.launcherAuto;
           markProgressDirty();
           // Écriture immédiate (comme setAmmo) : voir ci-dessus.
@@ -8975,24 +9002,22 @@ function initializeCustomActionBar() {
   const phoneActionLauncher = document.querySelector(".phoneActionLauncher");
   const phoneCategoryButtons = [...document.querySelectorAll("[data-phone-action-category]")];
   let phoneActionCategory = "";
-  const phonePaletteCategory = phoneCat => (
-    phoneCat === "skills2" || phoneCat === "skills3" ? "skills"
-    : phoneCat === "ammo2" ? "ammo"
-    : phoneCat === "rockets2" ? "rockets"
-    : phoneCat === "launchers2" ? "launchers"
-    : phoneCat === "formations2" ? "formations"
-    : phoneCat === "tech2" ? "tech"
-    : phoneCat
-  );
-  const phoneSlotFamily = phoneCat => (
-    phoneCat === "ammo" || phoneCat === "ammo2" ? "ammo"
-    : phoneCat === "skills" || phoneCat === "skills2" || phoneCat === "skills3" ? "skills"
-    : phoneCat === "rockets" || phoneCat === "rockets2" ? "rockets"
-    : phoneCat === "launchers" || phoneCat === "launchers2" ? "launchers"
-    : phoneCat === "formations" || phoneCat === "formations2" ? "formations"
-    : phoneCat === "tech" || phoneCat === "tech2" ? "tech"
-    : phoneCat
-  );
+  // Familles de boutons d'action téléphone (le soleil + les menus suivent).
+  // "abilities" = aptitudes du vaisseau actif.
+  const PHONE_ACTION_FAMILIES = ["ammo", "skills", "rockets", "launchers", "formations", "tech", "abilities"];
+  const PHONE_ACTION_FAMILY_NAMES = {
+    ammo: "Munitions", skills: "Extras", rockets: "Roquettes", launchers: "Lance-roquettes",
+    formations: "Formations", tech: "Techs", abilities: "Aptitudes de vaisseau",
+  };
+  const phonePaletteCategory = phoneCat => {
+    const fam = phoneSlotFamily(phoneCat);
+    return fam !== phoneCat ? fam : phoneCat;
+  };
+  const phoneSlotFamily = phoneCat => {
+    const m = /^([a-z]+)(\d+)$/.exec(String(phoneCat || ""));
+    if (m && PHONE_ACTION_FAMILIES.includes(m[1])) return m[1];
+    return phoneCat;
+  };
   const PHONE_ACTION_SELECTION_KEY = "orbit_phone_action_selection_v1";
   const persistPhoneActionSelection = () => {
     try {
@@ -9038,65 +9063,198 @@ function initializeCustomActionBar() {
   // Disposition de base en soleil : arc au-dessus et à gauche du joystick
   // de visée (bas-droite), rien en dessous. Anneau 0 = proches.
   const PHONE_ACTION_DEFAULT_ARC = {
-    skills: { ring: 0, angle: -86 },
-    skills2: { ring: 1, angle: -86 },
-    skills3: { ring: 2, angle: -86 },
-    rockets: { ring: 0, angle: -109 },
-    rockets2: { ring: 1, angle: -109 },
-    launchers: { ring: 0, angle: -132 },
-    launchers2: { ring: 1, angle: -132 },
-    ammo: { ring: 0, angle: -155 },
-    ammo2: { ring: 1, angle: -155 },
-    formations: { ring: 0, angle: -178 },
-    formations2: { ring: 1, angle: -178 },
-    tech: { ring: 0, angle: -201 },
-    tech2: { ring: 1, angle: -201 },
+    skills: { ring: 0, angle: -92 },
+    skills2: { ring: 1, angle: -92 },
+    skills3: { ring: 2, angle: -92 },
+    abilities: { ring: 0, angle: -110 },
+    rockets: { ring: 0, angle: -128 },
+    rockets2: { ring: 1, angle: -128 },
+    launchers: { ring: 0, angle: -146 },
+    launchers2: { ring: 1, angle: -146 },
+    ammo: { ring: 0, angle: -164 },
+    ammo2: { ring: 1, angle: -164 },
+    formations: { ring: 0, angle: -182 },
+    formations2: { ring: 1, angle: -182 },
+    tech: { ring: 0, angle: -200 },
+    tech2: { ring: 1, angle: -200 },
   };
+  // Boutons ajoutés via "+" (ammo3, tech3, abilities2...) : même angle que
+  // leur famille, anneaux suivants comme avant (+78 px par niveau).
+  // 7 branches (une par famille), jamais de chevauchement.
+  const phoneActionArc = cat => {
+    const direct = PHONE_ACTION_DEFAULT_ARC[cat];
+    if (direct) return direct;
+    const fam = phoneSlotFamily(cat);
+    const base = PHONE_ACTION_DEFAULT_ARC[fam];
+    if (!base || fam === cat) return null;
+    const m = /(\d+)$/.exec(String(cat || ""));
+    const n = m ? Number(m[1]) : 1;
+    // Système d'origine : anneau = base + (N-1), espacé de 78 px.
+    return { ring: base.ring + Math.max(0, (Number.isFinite(n) ? n : 1) - 1), angle: base.angle };
+  };
+  // Décalage horizontal commun des branches du soleil (vers la droite).
+  const PHONE_SUN_DX = 40;
   const applyPhoneActionDefault = button => {
-    const entry = PHONE_ACTION_DEFAULT_ARC[button.dataset.phoneActionCategory];
+    const entry = phoneActionArc(button.dataset.phoneActionCategory);
     if (!entry) return;
     const stickSize = Math.max(104, Math.min(144, innerWidth * 0.26));
     const cx = innerWidth - 18 - stickSize / 2;
     const cy = innerHeight - 76 - stickSize / 2;
-    const radius = stickSize / 2 + 29 + 72 + (entry.ring * 78);
+    const radius = stickSize / 2 + 29 + 120 + (entry.ring * 72);
     const rad = entry.angle * Math.PI / 180;
     const size = 58;
-    const left = Math.max(0, Math.min(innerWidth - size, cx + Math.cos(rad) * radius - size / 2));
+    const left = Math.max(0, Math.min(innerWidth - size, cx + Math.cos(rad) * radius - size / 2 + PHONE_SUN_DX));
     const top = Math.max(0, Math.min(innerHeight - size, cy + Math.sin(rad) * radius - size / 2));
     phoneActionScales[button.dataset.phoneActionCategory] = 1;
     Object.assign(button.style, { position: "fixed", left: `${left}px`, top: `${top}px`, width: `${size}px`, height: `${size}px` });
+  };
+  const PHONE_EXTRA_BUTTONS_KEY = "orbit_phone_extra_action_buttons_v1";
+  const PHONE_ACTION_SHORT_LABELS = {
+    ammo: "Mun", skills: "Extra", rockets: "Roq", launchers: "L-R",
+    formations: "Form", tech: "Tech", abilities: "Apti",
+  };
+  const phoneActionButtonLabel = cat => {
+    const fam = phoneSlotFamily(cat);
+    if (!PHONE_ACTION_FAMILIES.includes(fam)) return String(cat);
+    if (fam === cat) return PHONE_ACTION_FAMILY_NAMES[fam];
+    const m = /(\d+)$/.exec(String(cat || ""));
+    const n = m ? Number(m[1]) : 0;
+    return `${PHONE_ACTION_SHORT_LABELS[fam] || fam} ${n}`;
+  };
+  const validExtraPhoneButton = cat => {
+    const fam = phoneSlotFamily(cat);
+    if (!PHONE_ACTION_FAMILIES.includes(fam)) return false;
+    const m = /(\d+)$/.exec(String(cat || ""));
+    const n = cat === fam ? 1 : (m ? Number(m[1]) : 0);
+    if (!(n >= 2)) return false;
+    try {
+      if (phoneActionLauncher.querySelector(`[data-phone-action-category="${cat}"]`)) return false;
+    } catch {}
+    return true;
+  };
+  const loadPhoneExtraButtons = () => {
+    try {
+      const arr = JSON.parse(localStorage.getItem(PHONE_EXTRA_BUTTONS_KEY) || "[]");
+      if (!Array.isArray(arr)) return [];
+      return [...new Set(arr.map(String))].filter(validExtraPhoneButton);
+    } catch { return []; }
+  };
+  // Boutons créés dynamiquement (init + bouton "+") : persistés par nom.
+  const phoneExtraButtonCats = new Set(loadPhoneExtraButtons());
+  const persistPhoneExtraButtons = () => {
+    try {
+      localStorage.setItem(PHONE_EXTRA_BUTTONS_KEY, JSON.stringify([...phoneExtraButtonCats]));
+    } catch {}
+  };
+  const phoneActionDeleteButtons = new Map();
+  const positionPhoneActionDelete = button => {
+    const remove = phoneActionDeleteButtons.get(button);
+    if (!remove?.isConnected || !button?.isConnected) return;
+    const rect = button.getBoundingClientRect();
+    Object.assign(remove.style, {
+      left: `${Math.max(2, Math.min(innerWidth - 24, rect.right - 19))}px`,
+      top: `${Math.max(2, rect.top - 18)}px`,
+    });
+  };
+  const removePhoneActionButton = button => {
+    const cat = String(button?.dataset?.phoneActionCategory || "");
+    if (!cat || !phoneExtraButtonCats.has(cat)) return;
+    if (phoneActionCategory === cat) closePhoneActionTray();
+    phoneActionDeleteButtons.get(button)?.remove();
+    phoneActionDeleteButtons.delete(button);
+    button.remove();
+    const index = phoneCategoryButtons.indexOf(button);
+    if (index >= 0) phoneCategoryButtons.splice(index, 1);
+    phoneExtraButtonCats.delete(cat);
+    delete phoneActionScales[cat];
+    persistPhoneExtraButtons();
+    persistPhoneActionSelection();
+    try {
+      const saved = JSON.parse(localStorage.getItem(PHONE_ACTION_LAYOUT_KEY) || "{}");
+      if (saved && typeof saved === "object") {
+        delete saved[cat];
+        localStorage.setItem(PHONE_ACTION_LAYOUT_KEY, JSON.stringify(saved));
+      }
+    } catch {}
+    try { showToast(`Bouton supprimé : ${phoneActionButtonLabel(cat)}`, 1.5); } catch {}
+  };
+  const createPhoneActionDelete = button => {
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = "phoneActionDeleteBtn";
+    remove.textContent = "×";
+    remove.title = "Supprimer ce bouton";
+    remove.setAttribute("aria-label", `Supprimer ${phoneActionButtonLabel(button.dataset.phoneActionCategory)}`);
+    remove.addEventListener("pointerdown", event => { event.preventDefault(); event.stopPropagation(); });
+    remove.addEventListener("click", event => {
+      event.preventDefault();
+      event.stopPropagation();
+      removePhoneActionButton(button);
+    });
+    document.body.appendChild(remove);
+    phoneActionDeleteButtons.set(button, remove);
+    positionPhoneActionDelete(button);
+  };
+  const buildPhoneActionButton = cat => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.dataset.phoneActionCategory = cat;
+    button.textContent = phoneActionButtonLabel(cat);
+    return button;
+  };
+  const createPhoneActionButton = cat => {
+    if (!validExtraPhoneButton(cat)) return null;
+    if (phoneCategoryButtons.some(b => String(b.dataset.phoneActionCategory || "") === String(cat))) return null;
+    const button = buildPhoneActionButton(cat);
+    phoneActionLauncher.appendChild(button);
+    phoneCategoryButtons.push(button);
+    phoneActionScales[cat] = 1;
+    wirePhoneActionLayoutButton(button);
+    wirePhoneActionHold(button);
+    try { applyPhoneActionDefault(button); } catch {}
+    createPhoneActionDelete(button);
+    return button;
+  };
+  // Prochain bouton libre d'une famille, sans limite artificielle.
+  const addPhoneActionButton = family => {
+    family = String(family || "");
+    if (!PHONE_ACTION_FAMILIES.includes(family)) return null;
+    let max = 0;
+    for (const b of phoneCategoryButtons) {
+      if (phoneSlotFamily(b.dataset.phoneActionCategory) !== family) continue;
+      const m = /(\d+)$/.exec(String(b.dataset.phoneActionCategory || ""));
+      max = Math.max(max, m ? Number(m[1]) : 1);
+    }
+    const next = max + 1;
+    const cat = next === 1 ? family : `${family}${next}`;
+    const button = createPhoneActionButton(cat);
+    if (!button) return null;
+    phoneExtraButtonCats.add(cat);
+    persistPhoneExtraButtons();
+    try { paintPhoneLauncherDefaults(); } catch {}
+    try { syncPhoneActionGold(); } catch {}
+    try { showToast(`Bouton ajouté : ${PHONE_ACTION_FAMILY_NAMES[family] || family} (${phoneActionButtonLabel(cat)})`, 2); } catch {}
+    return button;
   };
   const applySavedPhoneActionLayout = () => {
     try {
       const saved = JSON.parse(localStorage.getItem(PHONE_ACTION_LAYOUT_KEY) || "null");
       phoneCategoryButtons.forEach(button => {
         const entry = saved?.[button.dataset.phoneActionCategory];
-        if (!entry) return applyPhoneActionDefault(button);
+        if (!entry) {
+          applyPhoneActionDefault(button);
+          positionPhoneActionDelete(button);
+          return;
+        }
         const size = Math.max(36, Number(entry.size) || 58);
         const left = Math.max(0, Math.min(innerWidth - size, Number(entry.x) * innerWidth));
         const top = Math.max(0, Math.min(innerHeight - size, Number(entry.y) * innerHeight));
         phoneActionScales[button.dataset.phoneActionCategory] = Math.max(.6, Math.min(1.6, Number(entry.scale) || 1));
         Object.assign(button.style, { position: "fixed", left: `${left}px`, top: `${top}px`, width: `${size}px`, height: `${size}px` });
+        positionPhoneActionDelete(button);
       });
     } catch {}
   };
-  phoneCategoryButtons.forEach(button => button.addEventListener("pointerdown", event => {
-    if (!document.body.classList.contains("phoneJoystickLayoutOpen") || event.button !== 0) return;
-    event.preventDefault();
-    event.stopPropagation();
-    const rect = button.getBoundingClientRect();
-    phoneActionDrag = { button, id: event.pointerId, dx: event.clientX - rect.left, dy: event.clientY - rect.top };
-    button.classList.add("layoutDragging");
-    try { button.setPointerCapture(event.pointerId); } catch {}
-  }));
-  phoneCategoryButtons.forEach(button => button.addEventListener("pointermove", event => {
-    if (!phoneActionDrag || phoneActionDrag.button !== button || event.pointerId !== phoneActionDrag.id) return;
-    event.preventDefault();
-    const rect = button.getBoundingClientRect();
-    const left = Math.max(0, Math.min(innerWidth - rect.width, event.clientX - phoneActionDrag.dx));
-    const top = Math.max(0, Math.min(innerHeight - rect.height, event.clientY - phoneActionDrag.dy));
-    Object.assign(button.style, { position: "fixed", left: `${left}px`, top: `${top}px` });
-  }));
   const endPhoneActionDrag = event => {
     if (!phoneActionDrag || event.pointerId !== phoneActionDrag.id) return;
     const button = phoneActionDrag.button;
@@ -9104,13 +9262,38 @@ function initializeCustomActionBar() {
     button.classList.remove("layoutDragging");
     try { button.releasePointerCapture(event.pointerId); } catch {}
   };
-  phoneCategoryButtons.forEach(button => {
+  // Câblage d'un bouton d'action (statique ou ajouté via "+") : drag
+  // d'édition de disposition. Les appuis tactiles (menu / tir) sont câblés
+  // plus bas avec les holds, via wirePhoneActionHold.
+  const wirePhoneActionLayoutButton = button => {
+    button.addEventListener("pointerdown", event => {
+      if (!document.body.classList.contains("phoneJoystickLayoutOpen") || event.button !== 0) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const rect = button.getBoundingClientRect();
+      phoneActionDrag = { button, id: event.pointerId, dx: event.clientX - rect.left, dy: event.clientY - rect.top };
+      button.classList.add("layoutDragging");
+      try { button.setPointerCapture(event.pointerId); } catch {}
+    });
+    button.addEventListener("pointermove", event => {
+      if (!phoneActionDrag || phoneActionDrag.button !== button || event.pointerId !== phoneActionDrag.id) return;
+      event.preventDefault();
+      const rect = button.getBoundingClientRect();
+      const left = Math.max(0, Math.min(innerWidth - rect.width, event.clientX - phoneActionDrag.dx));
+      const top = Math.max(0, Math.min(innerHeight - rect.height, event.clientY - phoneActionDrag.dy));
+      Object.assign(button.style, { position: "fixed", left: `${left}px`, top: `${top}px` });
+      positionPhoneActionDelete(button);
+    });
     button.addEventListener("pointerup", endPhoneActionDrag);
     button.addEventListener("pointercancel", endPhoneActionDrag);
-  });
+  };
+  phoneCategoryButtons.forEach(wirePhoneActionLayoutButton);
   window.__SET_PHONE_ACTION_LAYOUT_EDITING__ = on => {
     if (on) {
-      phoneCategoryButtons.forEach(button => { if (getComputedStyle(button).position !== "fixed") freezePhoneActionButton(button); });
+      phoneCategoryButtons.forEach(button => {
+        if (getComputedStyle(button).position !== "fixed") freezePhoneActionButton(button);
+        positionPhoneActionDelete(button);
+      });
       return;
     }
     const saved = Object.fromEntries(phoneCategoryButtons.map(button => {
@@ -9124,9 +9307,24 @@ function initializeCustomActionBar() {
     phoneCategoryButtons.forEach(button => {
       for (const property of ["position", "left", "right", "top", "bottom", "width", "height"]) button.style.removeProperty(property);
       applyPhoneActionDefault(button);
+      positionPhoneActionDelete(button);
     });
   };
   requestAnimationFrame(applySavedPhoneActionLayout);
+  // Suit le redimensionnement : les boutons sont stockés en fraction du
+  // viewport, on les reconvertit (sauf pendant un drag d'édition). Même
+  // pattern que les joysticks (resize -> queueLayout) et que les fenêtres.
+  let phoneActionLayoutResizeFrame = 0;
+  window.addEventListener("resize", () => {
+    if (phoneActionDrag) return;
+    try {
+      if (document.body.classList.contains("phoneJoystickLayoutOpen")) return;
+    } catch {}
+    cancelAnimationFrame(phoneActionLayoutResizeFrame);
+    phoneActionLayoutResizeFrame = requestAnimationFrame(() => {
+      try { applySavedPhoneActionLayout(); } catch {}
+    });
+  });
   const paintPhoneAmmoButton = () => {
     const button = phoneCategoryButtons.find(candidate => candidate.dataset.phoneActionCategory === "ammo");
     if (!button) return;
@@ -9169,6 +9367,26 @@ function initializeCustomActionBar() {
       tech: "ASSETS/CONTROL_MENU/tech_battle-repair-bot.png",
       tech2: "ASSETS/CONTROL_MENU/tech_speed-burst.png",
     };
+    // Aptitudes de vaisseau : icône de la 1re aptitude du vaisseau actif.
+    // Boutons "+" (ammo3, tech3...) : reprennent l'icône de leur famille.
+    try {
+      const match = typeof currentAbilityShipMatch === "function" ? currentAbilityShipMatch() : null;
+      const firstAbility = match?.ids?.[0];
+      if (firstAbility && typeof abilityIconSrc === "function") {
+        const src = abilityIconSrc(firstAbility);
+        for (const button of phoneCategoryButtons) {
+          const cat = button.dataset.phoneActionCategory;
+          if (phoneSlotFamily(cat) === "abilities" && !defaults[cat]) defaults[cat] = src;
+        }
+      }
+    } catch {}
+    for (const button of phoneCategoryButtons) {
+      const cat = button.dataset.phoneActionCategory;
+      if (!defaults[cat]) {
+        const fam = phoneSlotFamily(cat);
+        if (fam !== cat && defaults[fam]) defaults[cat] = defaults[fam];
+      }
+    }
     phoneCategoryButtons.forEach(button => {
       const cat = button.dataset.phoneActionCategory;
       if (button.dataset.phoneSelectedAction || button.querySelector("img") || !defaults[cat]) return;
@@ -9285,6 +9503,28 @@ function initializeCustomActionBar() {
         if (label && !image.alt) image.alt = label;
       });
     }
+    // Aptitudes de vaisseau : pas de quantité → comme les formations,
+    // image seule (le titre reste en infobulle via alt).
+    if (category === "abilities") {
+      // Aplatit les sections (grilles + message vide) : seuls les boutons
+      // rejoignent la grille du bas, comme les autres catégories (sinon
+      // les sections restent collées en haut du menu).
+      const flat = [...paletteItems.querySelectorAll("[data-action-id]")];
+      paletteItems.replaceChildren();
+      flat.forEach(item => paletteItems.appendChild(item));
+      paletteItems.querySelectorAll("button:not([data-action-id])").forEach(item => item.remove());
+      paletteItems.querySelectorAll('[data-action-id^="ability:"]').forEach(item => {
+        const image = item.querySelector("img");
+        if (image && !image.alt) image.alt = item.title || "";
+        [...item.children].forEach(node => { if (node.tagName !== "IMG") node.remove(); });
+        [...item.childNodes].filter(node => node.nodeType === Node.TEXT_NODE).forEach(node => node.remove());
+        image?.classList.add("phoneActionIcon");
+        // Choisir ≠ déclencher : le tap dans le menu ne fait que sélectionner
+        // (le tir passe ensuite par le tap sur le bouton, comme les autres).
+        // Sans ça, le onclick hérité du clone tirerait l'aptitude.
+        item.onclick = null;
+      });
+    }
     if (category === "rockets" || category === "launchers") {
       paletteItems.querySelectorAll("button:not([data-action-id])").forEach(item => item.remove());
       paletteItems.querySelectorAll('[data-action-id^="rocket:"]').forEach(item => {
@@ -9345,6 +9585,15 @@ function initializeCustomActionBar() {
         } catch {}
         return "";
       }
+      // Aptitudes de vaisseau : 1re aptitude du vaisseau actif.
+      if (base === "abilities") {
+        try {
+          const match = typeof currentAbilityShipMatch === "function" ? currentAbilityShipMatch() : null;
+          const first = match?.ids?.[0];
+          if (first) return `ability:${first}`;
+        } catch {}
+        return "";
+      }
     } catch {}
     if (category === "skills2") return "skill:ish";
     if (category === "skills3") return "skill:smb";
@@ -9352,14 +9601,33 @@ function initializeCustomActionBar() {
   };
   const usePhonePrimaryAction = button => {
     const category = String(button.dataset.phoneActionCategory || "");
-    // Tap court = tire (sélection ou défaut). Seul l'appui long ouvre le menu.
-    const actionId = String(button.dataset.phoneSelectedAction || defaultPhoneActionId(category));
+    const base = phonePaletteCategory(category);
+    // Les boutons ajoutés sont totalement indépendants : sans sélection
+    // propre, ils ne reprennent jamais l'action du bouton principal.
+    const actionId = String(button.dataset.phoneSelectedAction
+      || (category === base ? defaultPhoneActionId(category) : ""));
+    if (actionId.startsWith("ammo:")) {
+      const ammo = actionId.slice("ammo:".length).toLowerCase();
+      if (!AMMO[ammo]) return;
+      playDockSelectSound(player.ammo.active !== ammo);
+      startAttack(ammo);
+      try { syncPhoneActionGold(); } catch {}
+      return;
+    }
+    if (actionId.startsWith("formation:")) {
+      const formationId = actionId.slice("formation:".length);
+      const formationButton = formationButtons.find(candidate => candidate.dataset.actionId === `formation:${formationId}`);
+      if (!formationButton) return;
+      formationButton.click();
+      try { syncPhoneActionGold(); } catch {}
+      return;
+    }
     const action = byId.get(actionId);
     if (action) action.click();
   };
   // Doré = contenu actif : munition/roquette/formation active, roquette
   // chargée dans le lance-roquettes, camouflage engagé. Extras exclus sauf
-  // camouflage activé. Slots "2" vides et bouton USE : jamais dorés.
+  // camouflage activé. Boutons non configurés et bouton USE : jamais dorés.
   const syncPhoneActionGold = () => {
     let activeAmmo = "x1", activeRocket = "r310", activeLauncher = "", activeFormation = "";
     let cloaked = false;
@@ -9372,7 +9640,7 @@ function initializeCustomActionBar() {
       const cat = String(button.dataset.phoneActionCategory || "");
       const base = phonePaletteCategory(cat);
       const explicit = String(button.dataset.phoneSelectedAction || "");
-      const isSecond = phoneSlotFamily(cat) !== cat;
+      const isExtra = phoneSlotFamily(cat) !== cat;
       let actionId = "";
       try { actionId = String(explicit || defaultPhoneActionId(cat)).toLowerCase(); } catch {}
       let gold = false;
@@ -9381,13 +9649,145 @@ function initializeCustomActionBar() {
       else if (base === "formations") gold = !!activeFormation && actionId === `formation:${activeFormation}`;
       else if (base === "launchers") gold = !!explicit && actionId !== "skill:launcheruse" && activeLauncher !== "" && actionId === `rocket:${activeLauncher}`;
       else if (base === "skills") gold = actionId === "skill:cloak" && cloaked;
-      if (isSecond && !explicit) gold = false;
+      if (isExtra && !explicit) gold = false;
       if (button.classList.contains("phoneGold") !== gold) button.classList.toggle("phoneGold", gold);
     });
   };
   window.__SYNC_PHONE_ACTION_GOLD__ = syncPhoneActionGold;
+  // Même voile de recharge que le dock, sur les boutons ronds (roquettes
+  // avec leur CD partagé, pause du lance-roquettes après salve, aptitudes
+  // avec leur recharge). Branché sur syncActionDockState (chaque passe).
+  const syncPhoneActionCooldowns = () => {
+    for (const button of phoneCategoryButtons) {
+      try {
+        const cat = String(button?.dataset?.phoneActionCategory || "");
+        const fam = phoneSlotFamily(cat);
+        let actionId = "";
+        try { actionId = String(button.dataset.phoneSelectedAction || defaultPhoneActionId(cat) || "").toLowerCase(); } catch {}
+        let cooling = false, using = false, progress = 0, edge = "";
+        if (fam === "launchers" && actionId === "skill:launcheruse") {
+          let mult = 1;
+          try { mult = formationRocketCooldownMult(); } catch {}
+          if (launcherPhase === "cooldown") {
+            cooling = true;
+            progress = clamp(1 - launcherPhaseT / Math.max(0.05, 2 * mult), 0, 1);
+          } else {
+            const full = launcherThreshold();
+            const loaded = launcherLitNow();
+            cooling = full > 0 && loaded < full;
+            progress = cooling ? clamp(launcherReloadT / Math.max(1, full), 0, 1) : 0;
+          }
+          edge = "rgba(255,170,80,.9)";
+        } else if ((fam === "rockets" || fam === "launchers") && actionId.startsWith("rocket:")) {
+          const rid = actionId.slice("rocket:".length);
+          let manual = true;
+          try { manual = getRocketType(rid)?.manual !== false; } catch {}
+          if (manual) {
+            const left = rocketCooldownLeft(rid);
+            const max = rocketCooldownMaxFor(rid);
+            cooling = left > 0;
+            progress = cooling ? clamp(left / Math.max(0.05, max), 0, 1) : 0;
+          } else {
+            // Lance-roquettes : pause après la salve, puis un voile cumulatif
+            // qui grandit jusqu'au chargement complet (pas un cycle par tir).
+            let mult = 1;
+            try { mult = formationRocketCooldownMult(); } catch {}
+            if (launcherPhase === "cooldown") {
+              cooling = true;
+              progress = clamp(1 - launcherPhaseT / Math.max(0.05, 2 * mult), 0, 1);
+            } else {
+              const full = launcherThreshold();
+              const loaded = launcherLitNow();
+              cooling = full > 0 && loaded < full;
+              progress = cooling ? clamp(launcherReloadT / Math.max(1, full), 0, 1) : 0;
+            }
+          }
+          edge = "rgba(255,170,80,.9)";
+        } else if (fam === "abilities" && actionId.startsWith("ability:")) {
+          // Comme le dock (ensureActionDockCache) : getAbilityCooldown
+          // attend l'ID nu, sans le préfixe "ability:".
+          let cd = null;
+          const abilityId = actionId.slice("ability:".length);
+          try { cd = getAbilityCooldown(abilityId); } catch {}
+          const left = Number(cd?.left || 0), max = Number(cd?.max || 0);
+          let normalCooldown = 0, duration = 0;
+          try {
+            const info = getAbilityInfo(abilityId);
+            normalCooldown = droneAbilityCooldown(Number(info?.cooldownSec) || 0);
+            duration = Number(info?.durationSec) || 0;
+          } catch {}
+          // Les aptitudes temporaires renvoient actuellement un total
+          // durée + recharge, figé au maximum tant que l'effet est actif.
+          // On distingue cet état de la recharge qui suit.
+          using = left > 0 && max > 0 && Math.abs(left - max) < 0.001
+            && (max > normalCooldown + 0.01 || (duration <= 0 && normalCooldown <= 0));
+          cooling = !using && left > 0 && max > 0;
+          progress = cooling ? clamp(Number(cd.left) / Number(cd.max), 0, 1) : 0;
+          edge = "rgba(180,120,255,.9)";
+        } else if (fam === "tech" && actionId.startsWith("tech:")) {
+          let entry = null;
+          try { entry = TECH_DOCK_ITEMS.find(t => `tech:${t.id}` === actionId); } catch {}
+          if (entry) {
+            let vis = null;
+            try { vis = techDockVisual(entry.id); } catch {}
+            // Une tech active emploie le voile cyan d'utilisation. Son voile
+            // de recharge n'apparaît qu'une fois son effet terminé.
+            using = vis?.active === true;
+            cooling = !using && Number(vis?.cd || 0) > 0;
+            progress = cooling ? clamp(Number(vis.cd) / Math.max(0.05, Number(vis.cdMax)), 0, 1) : 0;
+            edge = "rgba(124,240,255,.9)";
+          }
+        } else if (fam === "skills" && actionId.startsWith("skill:")) {
+          const sk = actionId.slice("skill:".length);
+          if (sk === "pulse") {
+            cooling = pulseCd > 0;
+            progress = cooling ? clamp(pulseCd / PULSE_COOLDOWN, 0, 1) : 0;
+          } else if (sk === "ish") {
+            cooling = ishCd > 0;
+            progress = cooling ? clamp(ishCd / ISH_COOLDOWN, 0, 1) : 0;
+          } else if (sk === "smb") {
+            cooling = smbCd > 0;
+            progress = cooling ? clamp(smbCd / SMB_COOLDOWN, 0, 1) : 0;
+          } else if (sk === "cloak") {
+            let cloaked = false;
+            try { cloaked = isPlayerCpuCloaked(); } catch {}
+            cooling = cloakCd > 0 || cloaked;
+            progress = cloakCd > 0 ? clamp(cloakCd / CPU_CLOAK_COOLDOWN, 0, 1) : (cloaked ? 1 : 0);
+          } else if (sk === "repair") {
+            const pct = REPAIR.cooldown <= 0 ? 1 : clamp(player.repairT / REPAIR.cooldown, 0, 1);
+            cooling = !player.dead && pct < 1;
+            progress = cooling ? 1 - pct : 0;
+            edge = "rgba(57,255,20,.9)";
+          }
+        } else if (fam === "ammo" && (actionId === "ammo:x6" || actionId === "ammo:rcb")) {
+          const ammo = actionId.slice("ammo:".length);
+          const cd = rsbLikeCooldown(ammo);
+          const max = ammo === "rcb" ? RCB_COOLDOWN : RSB_COOLDOWN;
+          cooling = cd > 0;
+          progress = cooling ? clamp(cd / max, 0, 1) : 0;
+        } else if (fam === "formations" && actionId.startsWith("formation:")) {
+          let last = 0;
+          try { last = account?.user?.drones?.lastFormationChangeAt || 0; } catch {}
+          const left = Math.max(0, FORMATION_SWITCH_MS - (Date.now() - last));
+          cooling = left > 0;
+          progress = cooling ? clamp(left / FORMATION_SWITCH_MS, 0, 1) : 0;
+          edge = "rgba(232,196,106,.9)";
+        }
+        const wasCooling = button.classList.contains("cdVeil");
+        const wasUsing = button.classList.contains("useVeil");
+        if (!cooling && !using && !wasCooling && !wasUsing) continue;
+        button.classList.toggle("cdVeil", cooling);
+        button.classList.toggle("useVeil", using);
+        button.style.setProperty("--cd", cooling ? progress.toFixed(3) : "0");
+        if (cooling && edge) button.style.setProperty("--cd-edge", edge);
+      } catch {}
+    }
+  };
+  window.__SYNC_PHONE_ACTION_CD__ = syncPhoneActionCooldowns;
   const phoneActionHolds = new WeakMap();
-  phoneCategoryButtons.forEach(button => {
+  // Câblage des appuis tactiles (tap = tir, appui long = menu), aussi
+  // utilisé pour les boutons ajoutés via "+".
+  const wirePhoneActionHold = button => {
     button.addEventListener("pointerdown", event => {
       if (document.body.classList.contains("phoneJoystickLayoutOpen") || event.button !== 0) return;
       event.preventDefault();
@@ -9422,13 +9822,23 @@ function initializeCustomActionBar() {
       try { button.releasePointerCapture(event.pointerId); } catch {}
     });
     button.addEventListener("click", event => { event.preventDefault(); event.stopPropagation(); });
-  });
+  };
+  phoneCategoryButtons.forEach(wirePhoneActionHold);
+  // Boutons supplémentaires sauvegardés ("+") : recréés avant la
+  // restauration des sélections et les peintures initiales.
+  for (const cat of phoneExtraButtonCats) {
+    try { createPhoneActionButton(cat); } catch {}
+  }
   phoneActionTray?.addEventListener("click", event => {
     const item = event.target.closest("button, [data-action-id]");
     if (item) {
       const categoryButton = phoneCategoryButtons.find(button => button.dataset.phoneActionCategory === phoneActionCategory);
       const actionId = String(item.dataset.actionId || "");
       if (categoryButton && actionId) {
+        // Enregistre d'abord le choix sur CE bouton, puis déclenche une seule
+        // fois l'action après fermeture. Aucun autre bouton n'est modifié.
+        event.preventDefault();
+        event.stopPropagation();
         categoryButton.dataset.phoneSelectedAction = actionId;
         const image = item.querySelector("img");
         if (image) {
@@ -9437,37 +9847,64 @@ function initializeCustomActionBar() {
           preview.className = "phoneActionPrimaryIcon";
           categoryButton.replaceChildren(preview);
         }
-        // Fige le slot 1 de la même famille sur ce qu'il affiche déjà :
-        // sans ça, régler le slot 2 change l'active et repeint le slot 1.
-        const mainCat = phoneSlotFamily(phoneActionCategory);
-        if (mainCat && mainCat !== String(categoryButton.dataset.phoneActionCategory || "")) {
-          const mainButton = phoneCategoryButtons.find(button => button.dataset.phoneActionCategory === mainCat);
-          if (mainButton && !mainButton.dataset.phoneSelectedAction) {
-            // Figer sur ce que le slot 1 AFFICHE (pas l'active du moment :
-            // le choix du slot 2 vient déjà de changer l'active via son tir).
-            let currentId = "";
-            if (mainCat === "ammo") {
-              const shown = String(mainButton.dataset.ammo || "").toLowerCase();
-              currentId = shown ? `ammo:${shown}` : String(defaultPhoneActionId(mainCat));
-            } else {
-              currentId = String(defaultPhoneActionId(mainCat));
-            }
-            if (currentId) mainButton.dataset.phoneSelectedAction = currentId;
-          }
-        }
         persistPhoneActionSelection();
+        closePhoneActionTray();
+        queueMicrotask(() => {
+          usePhonePrimaryAction(categoryButton);
+          paintPhoneAmmoButton();
+          try { syncPhoneActionGold(); } catch {}
+        });
+        return;
       }
-      queueMicrotask(() => {
-      paintPhoneAmmoButton();
-      try { syncPhoneActionGold(); } catch {}
-      closePhoneActionTray();
-      });
     }
-  });
+  }, { capture: true });
   document.addEventListener("pointerdown", event => {
     if (!phoneActionCategory || event.target.closest(".phoneActionLauncher, .phoneActionTray")) return;
     closePhoneActionTray();
   }, { capture: true });
+  // Fenêtre temporaire d'ajout (bouton "+") : icône paramètre, choix de
+  // la catégorie, le bouton rejoint les autres au soleil et dans le menu.
+  const phoneActionAddOverlay = document.createElement("div");
+  phoneActionAddOverlay.className = "phoneActionAddOverlay";
+  phoneActionAddOverlay.hidden = true;
+  phoneActionAddOverlay.innerHTML = `
+    <div class="phoneActionAddModal" role="dialog" aria-modal="true" aria-label="Ajouter un bouton d'action">
+      <div class="phoneActionAddHead"><img src="ASSETS/UI/MENU/settings.png" alt=""><span>Ajouter un bouton</span></div>
+      <p>Rajouter un bouton ? Pour quelle catégorie ?</p>
+      <label class="phoneActionAddField">Catégorie <select></select></label>
+      <div class="phoneActionAddActions">
+        <button type="button" data-add-confirm>Ajouter</button>
+        <button type="button" data-add-cancel>Annuler</button>
+      </div>
+    </div>`;
+  document.body.appendChild(phoneActionAddOverlay);
+  const phoneActionAddSelect = phoneActionAddOverlay.querySelector("select");
+  const closePhoneActionAdd = () => { phoneActionAddOverlay.hidden = true; };
+  phoneActionAddOverlay.addEventListener("pointerdown", event => {
+    if (event.target === phoneActionAddOverlay) closePhoneActionAdd();
+  });
+  phoneActionAddOverlay.querySelector("[data-add-cancel]")?.addEventListener("click", closePhoneActionAdd);
+  phoneActionAddOverlay.querySelector("[data-add-confirm]")?.addEventListener("click", () => {
+    const family = String(phoneActionAddSelect?.value || "");
+    const button = addPhoneActionButton(family);
+    if (!button) return;
+    closePhoneActionAdd();
+    // Indépendant dès le départ : on ouvre son menu pour qu'il reçoive
+    // sa propre sélection (sinon il suit le global comme le slot 1).
+    try { openPhoneActionCategory(button); } catch {}
+  });
+  document.getElementById("phoneActionAddBtn")?.addEventListener("click", event => {
+    event.preventDefault();
+    event.stopPropagation();
+    phoneActionAddSelect.replaceChildren();
+    for (const family of PHONE_ACTION_FAMILIES) {
+      const option = document.createElement("option");
+      option.value = family;
+      option.textContent = PHONE_ACTION_FAMILY_NAMES[family] || family;
+      phoneActionAddSelect.appendChild(option);
+    }
+    phoneActionAddOverlay.hidden = false;
+  });
   restorePhoneActionSelection();
   paintPhoneLauncherDefaults();
   paintPhoneAmmoButton();
@@ -9633,6 +10070,97 @@ function initializeCustomActionBar() {
     persist();
     updateHudKeyHints();
   });
+  // ✅ 3e barre (sous les 20 slots) : 10 cases, repliable via son propre
+  // bouton (comme le dock rapide). Fermée : cases masquées, touches et
+  // clics inopérants. Ouverte : les touches 1..0 pilotent ses 10 cases,
+  // puis elle se referme automatiquement après chaque activation (touche ou clic).
+  const TERTIARY_OPEN_KEY = "orbit_tertiary_open";
+  let tertiaryIds = [];
+  try { tertiaryIds = JSON.parse(localStorage.getItem(TERTIARY_BAR_LAYOUT_KEY) || "[]"); } catch {}
+  const tertiaryLayout = Array.from({ length: 10 }, (_, index) => tertiaryIds[index] || null);
+  const tertiaryBar = document.createElement("div");
+  tertiaryBar.className = "tertiaryBar";
+  const tertiaryToggle = document.createElement("button");
+  tertiaryToggle.type = "button";
+  tertiaryToggle.className = "tertiaryToggle";
+  tertiaryToggle.title = "Ouvrir / fermer la 3e barre";
+  tertiaryToggle.textContent = "⌄";
+  const tertiarySlots = document.createElement("div");
+  tertiarySlots.className = "tertiarySlots";
+  tertiarySlots.hidden = true;
+  // Le bouton est un enfant DIRECT de la barre (pas de la rangée) : ancré
+  // à la barre comme le bouton du dock, il ne bouge plus jamais (ni ouvert
+  // ni fermé) et s'aligne pile sous lui.
+  tertiaryBar.append(tertiarySlots);
+  const setTertiaryOpen = (open) => {
+    tertiarySlots.hidden = !open;
+    bar.classList.toggle("tertiaryOpen", open);
+    tertiaryToggle.classList.toggle("active", open);
+    tertiaryToggle.textContent = open ? "⌃" : "⌄";
+    try { localStorage.setItem(TERTIARY_OPEN_KEY, open ? "1" : "0"); } catch {}
+    updateHudKeyHints();
+  };
+  const collapseTertiary = () => { if (!tertiarySlots.hidden) setTertiaryOpen(false); };
+  isTertiaryActionBarOpen = () => !tertiarySlots.hidden;
+  collapseTertiaryActionBar = collapseTertiary;
+  toggleTertiaryActionBar = () => setTertiaryOpen(tertiarySlots.hidden);
+  tertiaryToggle.onclick = () => setTertiaryOpen(tertiarySlots.hidden);
+  tertiaryLayout.forEach((id, index) => {
+    const slot = document.createElement("div");
+    slot.className = "actionSlot tertiarySlot";
+    slot.dataset.index = String(index);
+    if (id && byId.has(id)) {
+      const original = byId.get(id);
+      const instance = original.cloneNode(true);
+      instance.removeAttribute("id");
+      instance.classList.remove("ready");
+      instance.dataset.actionId = id;
+      instance.onclick = () => { original.click(); collapseTertiary(); };
+      instance.addEventListener("dragstart", event => {
+        if (palette.hidden || tertiarySlots.hidden) return event.preventDefault();
+        event.dataTransfer.setData("application/x-orbit-action", id);
+        event.dataTransfer.effectAllowed = "move";
+      });
+      slot.appendChild(instance);
+    }
+    slot.addEventListener("dragover", event => { event.preventDefault(); slot.classList.add("dragTarget"); });
+    slot.addEventListener("dragleave", () => slot.classList.remove("dragTarget"));
+    slot.addEventListener("drop", event => {
+      event.preventDefault();
+      slot.classList.remove("dragTarget");
+      const actionId = event.dataTransfer.getData("application/x-orbit-action");
+      const original = byId.get(actionId);
+      if (!original || palette.hidden || tertiarySlots.hidden) return;
+      const draggedElement = bar.querySelector(`.actionSlot .ammoBtn[data-action-id="${CSS.escape(actionId)}"].isDragging, .actionSlot .rocketQuickAction[data-action-id="${CSS.escape(actionId)}"].isDragging, .actionSlot .launcherAutoBtn[data-action-id="${CSS.escape(actionId)}"].isDragging`);
+      const source = draggedElement?.closest(".actionSlot");
+      // Drop sur le même slot : rien à faire.
+      if (source && source === slot) return;
+      const displaced = slot.querySelector("[data-action-id]");
+      if (source) {
+        // Déplacement inter-barres : échange (swap) comme la barre principale.
+        const button = draggedElement;
+        if (displaced && displaced !== button) source.appendChild(displaced);
+        slot.appendChild(button);
+      } else {
+        // Copie depuis la palette : remplacement direct en 1 coup.
+        const button = original.cloneNode(true);
+        button.removeAttribute("id");
+        button.classList.remove("ready");
+        button.dataset.actionId = actionId;
+        button.draggable = true;
+        button.onclick = () => { original.click(); collapseTertiary(); };
+        if (displaced && displaced !== button) displaced.remove();
+        slot.appendChild(button);
+      }
+      persist();
+      updateHudKeyHints();
+    });
+    tertiarySlots.appendChild(slot);
+  });
+  bar.append(tertiaryBar);
+  bar.appendChild(tertiaryToggle);
+  // Restauration : fermée par défaut (les touches pilotent la barre principale).
+  try { if (localStorage.getItem(TERTIARY_OPEN_KEY) === "1") setTertiaryOpen(true); } catch {}
   // Fermeture au clic ailleurs désactivée : seul le toggle ouvre/ferme.
   bar.append(toggle, palette, phoneSave);
   paletteItems.addEventListener("wheel", event => {
@@ -9694,6 +10222,7 @@ const DEFAULT_KEYBINDS = {
   slot16: "F6", slot17: "F7", slot18: "F8", slot19: "F9", slot20: "F10",
   toggleWindows: "KeyH",
   toggleDock: "Tab",
+  tertiaryToggle: "KeyW",
   petToggle: "KeyE",
   petCombat: "KeyR",
   botToggle: "KeyX",
@@ -10009,6 +10538,16 @@ function setGameSetting(key, value) {
   saveGameSettings();
   renderSettingsWindow();
 
+  if (key === "phoneMode" && GAME_SETTINGS.phoneMode === true) {
+    try {
+      player.rocketAuto = true;
+      player.launcherAuto = true;
+      const out = updateCurrentUserProgress({ rocketAuto: true, launcherAuto: true });
+      if (out?.ok && out.user && account) account.user = out.user;
+      updateAmmoUI();
+    } catch {}
+  }
+
   if (key === "sound") {
     try {
       if (typeof updateMusicPlayback === "function") updateMusicPlayback();
@@ -10175,6 +10714,7 @@ const KEYBIND_LABELS = {
   slot16: "Slot 16", slot17: "Slot 17", slot18: "Slot 18", slot19: "Slot 19", slot20: "Slot 20",
   toggleWindows: "Masquer / restaurer les fenêtres",
   toggleDock: "Ouvrir / fermer le menu du dock rapide",
+  tertiaryToggle: "Ouvrir / fermer la barre d'action rapide",
   petToggle: "Activation / Désactivation du P.E.T",
   petCombat: "Activation du P.E.T + combat",
   botToggle: "Start / Stop Bot",
@@ -10405,7 +10945,19 @@ function renderMusicRow() {
 }
 
 function updateHudKeyHints() {
-  document.querySelectorAll("#ammoBar .actionSlot").forEach((slot, index) => {
+  document.querySelectorAll("#ammoBar .actionSlots > .actionSlot").forEach((slot, index) => {
+    const action = slot.querySelector(".ammoBtn, .rocketQuickAction");
+    if (!action) return;
+    let hint = action.querySelector(".slotKeyHint");
+    if (!hint) {
+      hint = document.createElement("span");
+      hint.className = "slotKeyHint";
+      action.appendChild(hint);
+    }
+    hint.textContent = codeLabel(getKeybind(`slot${index + 1}`));
+  });
+  // 3e barre ouverte : mêmes touches que la barre principale.
+  document.querySelectorAll("#ammoBar .tertiarySlots > .actionSlot").forEach((slot, index) => {
     const action = slot.querySelector(".ammoBtn, .rocketQuickAction");
     if (!action) return;
     let hint = action.querySelector(".slotKeyHint");
@@ -18256,6 +18808,9 @@ const CONFIG_SHIELDS = {
   "1": null,
   "2": null,
 };
+// Dernière config VRAIMENT vue (anti-aliasing) : previous/next peuvent
+// partager les mêmes objets via le cache de lecture et masquer un switch.
+let lastSeenConfigNo = 0;
 
 function normalizeConfigNo(configNo) {
   return Number(configNo) === 2 ? "2" : "1";
@@ -18619,9 +19174,9 @@ function syncPlayerStocksFromAccount(fresh) {
   if (ROCKET_TYPES[String(fresh.rocketActive || "").toLowerCase()]) {
     player.rocketActive = String(fresh.rocketActive).toLowerCase();
   }
-  player.rocketAuto = fresh.rocketAuto === true;
+  player.rocketAuto = GAME_SETTINGS.phoneMode === true || fresh.rocketAuto === true;
   player.launcherActive = ROCKET_TYPES[String(fresh.launcherActive || "").toLowerCase()] ? String(fresh.launcherActive).toLowerCase() : "eco10";
-  player.launcherAuto = fresh.launcherAuto === true;
+  player.launcherAuto = GAME_SETTINGS.phoneMode === true || fresh.launcherAuto === true;
 
   if (player.ammo.active !== "x1" && ammoCount(player.ammo.active) <= 0) {
     player.ammo.active = "x1";
@@ -21711,9 +22266,9 @@ function restorePlayerStockFromUser(u) {
   const rk0 = (u.rockets && typeof u.rockets === "object") ? u.rockets : {};
   player.rockets = Object.fromEntries(ROCKET_IDS.map((id) => [id, Math.max(0, Math.floor(Number(rk0[id] || 0)))]));
   player.rocketActive = ROCKET_TYPES[String(u.rocketActive || "").toLowerCase()] ? String(u.rocketActive).toLowerCase() : "r310";
-  player.rocketAuto = u.rocketAuto === true;
+  player.rocketAuto = GAME_SETTINGS.phoneMode === true || u.rocketAuto === true;
   player.launcherActive = ROCKET_TYPES[String(u.launcherActive || "").toLowerCase()] ? String(u.launcherActive).toLowerCase() : "eco10";
-  player.launcherAuto = u.launcherAuto === true;
+  player.launcherAuto = GAME_SETTINGS.phoneMode === true || u.launcherAuto === true;
   rocketCooldown = 0;
   launcherReloadT = 0;
   launcherFullT = 0;
@@ -22493,6 +23048,8 @@ function syncActionDockState() {
       }
     } catch {}
   }
+  // Téléphone : même voile de recharge sur les boutons ronds (même rythme).
+  try { window.__SYNC_PHONE_ACTION_CD__?.(); } catch {}
 }
 
 // Son de sélection du dock rapide : nouveau choix vs choix déjà actif.
@@ -22744,6 +23301,11 @@ function triggerBoundCommand(code, repeat = false) {
       return;
     }
 
+    if (isKeybind("tertiaryToggle", code)) {
+      toggleTertiaryActionBar?.();
+      return;
+    }
+
     if (isKeybind("petToggle", code)) {
       togglePetByKey();
       return;
@@ -22761,7 +23323,19 @@ function triggerBoundCommand(code, repeat = false) {
 
     for (let slotIndex = 0; slotIndex < 20; slotIndex++) {
       if (!isKeybind(`slot${slotIndex + 1}`, code)) continue;
-      document.querySelectorAll("#ammoBar .actionSlot")[slotIndex]?.querySelector(".ammoBtn, .rocketQuickAction")?.click();
+      // 3e barre ouverte : elle reprend les touches 1..0 (slots 1..10),
+      // puis se referme automatiquement après l'activation. F1..F10
+      // continuent de piloter la barre principale.
+      if (isTertiaryActionBarOpen()) {
+        if (slotIndex < 10) {
+          document.querySelectorAll("#ammoBar .tertiarySlots > .actionSlot")[slotIndex]?.querySelector(".ammoBtn, .rocketQuickAction, .launcherAutoBtn")?.click();
+        } else {
+          document.querySelectorAll("#ammoBar .actionSlots > .actionSlot")[slotIndex]?.querySelector(".ammoBtn, .rocketQuickAction")?.click();
+        }
+        collapseTertiaryActionBar();
+        return;
+      }
+      document.querySelectorAll("#ammoBar .actionSlots > .actionSlot")[slotIndex]?.querySelector(".ammoBtn, .rocketQuickAction")?.click();
       return;
     }
 }
@@ -23215,7 +23789,7 @@ function releasePhoneAim(angle, ring = 0) {
 
 function releasePhoneQuickSlot(index) {
   if (GAME_SETTINGS.phoneMode !== true || !started || player.dead || isPlayerMovementLocked()) return;
-  const slot = document.querySelectorAll("#ammoBar .actionSlot")[Number(index)];
+  const slot = document.querySelectorAll("#ammoBar .actionSlots > .actionSlot")[Number(index)];
   const action = slot?.querySelector(".ammoBtn, .rocketQuickAction, .launcherAutoBtn");
   if (action) action.click();
 }
@@ -23297,7 +23871,7 @@ if (phoneControlsRoot) {
       if (input) input.value = value;
       if (output) output.textContent = `${value} %`;
     });
-    layoutButton.textContent = opening ? "Sauvegarder" : "Déplacer les joysticks";
+    layoutButton.textContent = opening ? "Sauvegarder" : "Déplacer";
     syncPhoneControls();
   });
 }
@@ -48595,6 +49169,14 @@ window.addEventListener("orbit:user-updated", event => {
   const nextHangar = getActiveHangarFromUser(refreshed);
   const switched = previousHangar?.id === nextHangar?.id
     && Number(previousHangar?.activeConfig) !== Number(nextHangar?.activeConfig);
+  // Même switch détecté sans se fier aux objets (potentiellement aliasés) :
+  // la sauvegarde va toujours dans l'ANCIENNE config, jamais l'actuelle.
+  const nowCfg = Number(nextHangar?.activeConfig) === 2 ? 2 : 1;
+  const realSwitch = started && (lastSeenConfigNo === 1 || lastSeenConfigNo === 2)
+    && lastSeenConfigNo !== nowCfg
+    && String(previousHangar?.id || "") === String(nextHangar?.id || "");
+  if (realSwitch) saveShieldForConfig(lastSeenConfigNo);
+  if (nowCfg === 1 || nowCfg === 2) lastSeenConfigNo = nowCfg;
   if (started && switched) saveShieldForConfig(previousHangar.activeConfig);
   // ✅ Changement de vaisseau sans refresh (overlay intégré) : resynchronise
   // le hangar verrouillé de l'onglet et vide le cache de boucliers par config
@@ -48620,6 +49202,7 @@ window.addEventListener("orbit:user-updated", event => {
       SESSION_HANGAR_ID = nextHangarId;
       CONFIG_SHIELDS["1"] = null;
       CONFIG_SHIELDS["2"] = null;
+      lastSeenConfigNo = 0;
     }
   } catch {}
   // ACTIVE_SHIP est la source de vérité du moteur pendant une partie. Elle
@@ -48648,7 +49231,7 @@ window.addEventListener("orbit:user-updated", event => {
   if (started) {
     // Met d'abord à jour la coque et les stats. La palette, le sprite et les
     // aptitudes sont ensuite reconstruits depuis le même vaisseau actif.
-    applyCurrentConfigStats(false, switched ? nextHangar.activeConfig : null, true);
+    applyCurrentConfigStats(false, (switched || realSwitch) ? nextHangar.activeConfig : null, true);
     if (shipChanged) {
       const nextPack = ACTIVE_SHIP;
       playerImgsReady = false;

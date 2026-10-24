@@ -4006,7 +4006,14 @@ wss.on("connection", (ws) => {
             // Plafonné au budget (voir ci-dessus).
             state.hp = healTake(state.hp, cHp, hm, "healBudHp");
           }
-          const shieldStateCurrent = Number(msg.disarraySeq || 0) === Number(state._disarraySeq || 0)
+          // Pendant un changement rapide de formation, le client peut déjà
+          // exprimer shPct avec son nouveau maximum alors que le profil compte
+          // du serveur utilise encore l'ancien. Ne jamais convertir ce ratio
+          // avec le mauvais maximum (Cœur -> Foreuse -> Cœur donnait ~4 000).
+          const formationStateCurrent = typeof msg.dform !== "string"
+            || String(msg.dform) === String(profile.formationId || "standard");
+          const shieldStateCurrent = formationStateCurrent
+            && Number(msg.disarraySeq || 0) === Number(state._disarraySeq || 0)
             && Number(msg.shieldBuffSeq || 0) === Number(state._shieldBuffSeq || 0);
           if (shieldStateCurrent && abilityHealCurrent && cSh < state.sh) state.sh = cSh;
           else if (shieldStateCurrent && cSh > state.sh && !blocked) {
