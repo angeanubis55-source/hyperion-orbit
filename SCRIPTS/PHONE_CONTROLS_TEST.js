@@ -218,11 +218,12 @@ test('cone : NPC le plus aligne puis le plus proche, independamment de l ordre',
   const aligned = npc('aligned', 500, 0), near = npc('near', 200, 0), off = npc('off', 100, 15);
   for (const list of [[off, aligned, near], [near, off, aligned]]) assert.equal(pickPhoneAimTarget(player, list, 0, 700), near);
 });
-test('cone : aucune selection hors angle/portee, invisible, mort, joueur ou PET', () => {
+test('cone : aucune selection hors angle/portee, invisible ou mort ; joueur/PET réseau valides', () => {
   const invalid = [npc('angle', 50, 50), npc('far', 701, 0), npc('dead', 100, 0, { hp: 0 }),
     npc('player', 100, 0, { _netPlayer: true }), npc('pet', 100, 0, { _netPet: true }),
     npc('local-pet', 100, 0, { isPetTarget: true }), npc('hidden', 100, 0)];
-  assert.equal(pickPhoneAimTarget(player, invalid, 0, 700, e => e.id !== 'hidden'), null);
+  assert.equal(pickPhoneAimTarget(player, invalid, 0, 700, e => e.id !== 'hidden').id, 'player');
+  assert.equal(pickPhoneAimTarget(player, invalid.filter(e => e.id !== 'player'), 0, 700, e => e.id !== 'hidden').id, 'pet');
   const edge = npc('edge', 700 * Math.cos(PHONE_AIM_HALF_ANGLE - 1e-8), 700 * Math.sin(PHONE_AIM_HALF_ANGLE - 1e-8));
   assert.equal(pickPhoneAimTarget(player, [edge], 0, 701), edge);
   assert.equal(pickPhoneAimTarget(player, [edge], NaN, 700), null);
@@ -251,7 +252,7 @@ test('relachement moteur : couronne 1 sélectionne, couronne 2 attaque', () => {
   context.isPlayerMovementLocked = () => true; context.releasePhoneAim(0, 2);
   context.isPlayerMovementLocked = () => false; context.player.dead = true; context.releasePhoneAim(0, 2);
   context.player.dead = false; context.GAME_SETTINGS.phoneMode = false; context.releasePhoneAim(0, 2);
-  assert.equal(commands.length, 3);
+  assert.deepEqual(commands, ['npc', 'npc', 'toggle', 'player', 'toggle', 'pet', 'toggle']);
 });
 
 const moveStart = source.indexOf('  refreshHoldMoveTarget();\n');

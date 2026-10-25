@@ -587,6 +587,10 @@ export function drainNetSkillDenied() {
 }
 // Chat global : { from, text, at } recus ou rejoues (historique).
 const netChatInbox = [];
+// Un même message peut arriver une première fois en direct puis une seconde
+// fois dans chatHistory lors d'une reconnexion/changement de carte. Le serveur
+// conserve son timestamp (et son auteur) : on déduplique ici avant l'UI.
+const netChatSeen = new Map();
 export function drainNetChatInbox() {
   if (!netChatInbox.length) return [];
   return netChatInbox.splice(0, netChatInbox.length);
@@ -606,8 +610,16 @@ function pushChatMessage(m) {
   const from = String(m.from || "Pilote").slice(0, 20);
   const text = String(m.text || "").slice(0, 200);
   if (!text) return;
+  const at = Number(m.at) || Date.now();
+  const by = m.by != null ? String(m.by) : "";
+  const key = `${by}\u0000${from}\u0000${at}\u0000${text}`;
+  if (netChatSeen.has(key)) return;
+  netChatSeen.set(key, at);
+  // Limite mémoire : conserver assez d'entrées pour couvrir les historiques
+  // rejoués, sans laisser la session grandir indéfiniment.
+  while (netChatSeen.size > 500) netChatSeen.delete(netChatSeen.keys().next().value);
   if (netChatInbox.length > 100) netChatInbox.shift();
-  netChatInbox.push({ from, text, at: Number(m.at) || Date.now(), by: m.by != null ? String(m.by) : "", adminBlast: m.adminBlast === true });
+  netChatInbox.push({ from, text, at, by, adminBlast: m.adminBlast === true });
 }
 // Groupes + murmures + amis : canaux globaux comme le tchat
 // (vivants même en Galaxy Gate, coupés seulement en suspend).

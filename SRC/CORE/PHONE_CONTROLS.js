@@ -42,7 +42,9 @@ export function pickPhoneAimTarget(player, enemies, angle, range, isVisible = ()
   const ux = Math.cos(angle), uy = Math.sin(angle), limit = Math.cos(PHONE_AIM_HALF_ANGLE);
   let best = null, bestAlignment = -1, bestDistance = Infinity;
   for (const enemy of enemies || []) {
-    if (!enemy || !(enemy.hp > 0) || enemy._netPlayer || enemy._netPet || enemy.isPetTarget) continue;
+    // Les joueurs et PET réseau sont des cibles valides. Le PET local garde
+    // son verrouillage dédié et ne doit pas être sélectionné comme ennemi.
+    if (!enemy || !(enemy.hp > 0) || enemy.isPetTarget) continue;
     const dx = enemy.x - player.x, dy = enemy.y - player.y, d2 = dx * dx + dy * dy;
     if (!(d2 > 0 && d2 <= range * range) || !isVisible(enemy)) continue;
     const alignment = (dx * ux + dy * uy) / Math.sqrt(d2);

@@ -2054,11 +2054,17 @@ function drawNpcBombFx(ox, oy) {
 // LIFE_STEAL en boucle sur notre vaisseau, PAR-DESSUS (appelée dans le
 // bloc joueur, déjà translaté au centre du vaisseau). Taille native du sprite.
 const LIFE_STEAL_FRAMES = 30;
-const LIFE_STEAL_FPS = 24;
+// Lecture visuelle accélérée uniquement : la durée/puissance du siphon ne
+// change pas, seule la boucle des sprites est plus rapide.
+const LIFE_STEAL_FPS = 30;
 function drawEnergyLeechFx() {
   if (!techEnergyLeechActive() || player.dead) return;
   try {
-    const frame = Math.floor((typeof netGameTimeMs === "function" ? netGameTimeMs() : Date.now()) / 1000 * LIFE_STEAL_FPS) % LIFE_STEAL_FRAMES + 1;
+    // Le temps serveur avance par snapshots (~20 Hz), ce qui faisait sauter
+    // des images à 30 FPS. L'animation est purement visuelle : utiliser
+    // l'horloge locale de rendu garde une lecture fluide et synchronisée avec
+    // la boucle requestAnimationFrame.
+    const frame = Math.floor(performance.now() / 1000 * LIFE_STEAL_FPS) % LIFE_STEAL_FRAMES + 1;
     const img = getCachedImage(`ASSETS/LIFE_STEAL/${frame}.png`);
     if (!isImgReady(img)) { try { loadImage(`ASSETS/LIFE_STEAL/${frame}.png`, { priority: true }); } catch {} return; }
     const w = Number(img.naturalWidth || img.width) || 0, h = Number(img.naturalHeight || img.height) || 0;
@@ -2077,7 +2083,7 @@ function drawRemoteEnergyLeech(r, ox, oy) {
   if (!fx) return;
   if (performance.now() - Number(fx.startedAt || 0) > ENERGY_LEECH_DURATION_MS) return;
   try {
-    const frame = Math.floor((typeof netGameTimeMs === "function" ? netGameTimeMs() : Date.now()) / 1000 * LIFE_STEAL_FPS) % LIFE_STEAL_FRAMES + 1;
+    const frame = Math.floor(performance.now() / 1000 * LIFE_STEAL_FPS) % LIFE_STEAL_FRAMES + 1;
     const img = getCachedImage(`ASSETS/LIFE_STEAL/${frame}.png`);
     if (!isImgReady(img)) { try { loadImage(`ASSETS/LIFE_STEAL/${frame}.png`, { priority: true }); } catch {} return; }
     const w = Number(img.naturalWidth || img.width) || 0, h = Number(img.naturalHeight || img.height) || 0;
@@ -23805,8 +23811,21 @@ function syncPhoneControls() {
 
 function phoneAimTarget(angle) {
   const locked = Target.get();
-  return pickPhoneAimTarget(player, spatialNpcsNear(player.x, player.y, playerRange), angle, playerRange,
-    enemy => shouldDetectNpc(player, enemy, NPC_SENSOR_RANGES.visibility, locked));
+  const candidates = spatialNpcsNear(player.x, player.y, playerRange);
+  // Le joystick utilisait uniquement l'index spatial des NPC : les vaisseaux
+  // réseau n'y figurent pas, contrairement au clic manuel.
+  if (isSharedZone()) {
+    try { candidates.push(...netPlayerProxies.values()); } catch {}
+    try { candidates.push(...netPetProxies.values()); } catch {}
+  }
+  return pickPhoneAimTarget(player, candidates, angle, playerRange, enemy => {
+    if (enemy?._netPlayer != null || enemy?._netPet != null) {
+      // Même règle que le verrouillage manuel : un camouflage d'aptitude ou
+      // une cible temporairement masquée par IEM ne peut pas être verrouillée.
+      return enemy._netCloaked !== true && Number(enemy._netIemT || 0) <= 0;
+    }
+    return shouldDetectNpc(player, enemy, NPC_SENSOR_RANGES.visibility, locked);
+  });
 }
 
 function releasePhoneAim(angle, ring = 0) {
@@ -23814,7 +23833,7 @@ function releasePhoneAim(angle, ring = 0) {
   // Centre = annulation ; couronne 1 = sélection ; couronne 2 = attaque.
   if (!(ring > 0) || !Number.isFinite(angle)) return;
   const target = phoneAimTarget(angle);
-  if (!target || !(target.hp > 0) || target._netPlayer || target._netPet || target.isPetTarget) return;
+  if (!target || !(target.hp > 0) || target.isPetTarget) return;
   Target.set(target);
   try { botNotifyManual(); } catch {}
   if (ring >= 2) toggleAttack();
