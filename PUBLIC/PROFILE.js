@@ -2802,9 +2802,9 @@ function renderExtrasRoulette(user, host = null) {
   }
   // Liste infinie par paquets : 20 lignes par rendu, la suite au scroll.
   // (Un rendu complet des 500+ lignes à chaque tirage = le freeze au clic.)
-  const HISTORY_CHUNK = 20;
   let historyCurrentList = [];
   let historyRenderedCount = 0;
+  let historyRenderKey = "";
   function historyRowHtml(module, number, currentUser) {
       const bonuses = Array.isArray(module?.bonuses)
         ? module.bonuses.map(bonus => {
@@ -2845,19 +2845,6 @@ function renderExtrasRoulette(user, host = null) {
         </div>
       `;
   }
-  function appendHistoryMore() {
-    const listEl = document.getElementById("moduleRollHistory");
-    if (!listEl) return;
-    if (historyRenderedCount >= historyCurrentList.length) return;
-    const currentUser = historyUser;
-    const next = Math.min(historyCurrentList.length, historyRenderedCount + HISTORY_CHUNK);
-    let html = "";
-    for (let i = historyRenderedCount; i < next; i++) {
-      html += historyRowHtml(historyCurrentList[i], historyCurrentList.length - i, currentUser);
-    }
-    historyRenderedCount = next;
-    listEl.insertAdjacentHTML("beforeend", html);
-  }
   function renderModuleHistory(currentUser) {
     historyUser = currentUser;
     const history = filteredModuleHistory(currentUser);
@@ -2875,28 +2862,34 @@ function renderExtrasRoulette(user, host = null) {
       return `<div class="moduleHistoryEmpty">Aucun module possédé pour le moment.</div>`;
     }
     const list = history.slice().reverse();
-    const previousList = historyCurrentList;
-    const previousRenderedCount = historyRenderedCount;
-    const sameList = Array.isArray(previousList)
-      && previousList.length === list.length
-      && previousList.every((entry, index) => String(entry?.id || "") === String(list[index]?.id || ""));
     historyCurrentList = list;
     // Les rafraîchissements réseau ne doivent pas réduire une liste déjà
     // déroulée de 40/60 lignes à son premier paquet de 20 lignes.
-    historyRenderedCount = sameList
-      ? Math.min(Math.max(HISTORY_CHUNK, previousRenderedCount), list.length)
-      : Math.min(HISTORY_CHUNK, list.length);
-    return list.slice(0, historyRenderedCount).map((module, index) => historyRowHtml(module, list.length - index, currentUser)).join("");
+    historyRenderedCount = list.length;
+    return list.map((module, index) => historyRowHtml(module, list.length - index, currentUser)).join("");
   }
-  function updateModuleHistory(currentUser) {
+  function moduleHistoryContentKey(currentUser) {
+    const history = Array.isArray(currentUser?.inventory?.moduleRollHistory) ? currentUser.inventory.moduleRollHistory : [];
+    const owned = Array.isArray(currentUser?.inventory?.shipModules) ? currentUser.inventory.shipModules : [];
+    const encode = module => `${String(module?.id || "")}:${Number(module?.rerolls || 0)}`;
+    return `${historyShipQuery}|${historyShipFilter}|${historyTypeFilter}|${history.map(encode).join(",")}|${owned.map(encode).join(",")}`;
+  }
+  function updateModuleHistory(currentUser, force = false) {
     const historyEl = document.getElementById("moduleRollHistory");
     if (historyEl) {
+      const nextKey = moduleHistoryContentKey(currentUser);
+      if (!force && nextKey === historyRenderKey) {
+        historyUser = currentUser;
+        refreshHistoryShipFilter(currentUser);
+        return;
+      }
       // Les mises à jour compte/réseau peuvent arriver pendant le scroll.
       // Recréer le HTML sans conserver la position renvoyait la liste en haut
       // et pouvait déclencher une nouvelle mise à jour avant le prochain scroll.
       const previousTop = historyEl.scrollTop;
       const wasAtBottom = historyEl.scrollTop + historyEl.clientHeight >= historyEl.scrollHeight - 8;
       historyEl.innerHTML = renderModuleHistory(currentUser);
+      historyRenderKey = nextKey;
       const restoreScroll = () => {
         if (!historyEl.isConnected) return;
         const maxTop = Math.max(0, historyEl.scrollHeight - historyEl.clientHeight);
@@ -3029,12 +3022,6 @@ function renderExtrasRoulette(user, host = null) {
   });
   refreshHistoryShipFilter(user);
   refreshHistoryTypeFilter();
-  // Liste infinie : charge 20 lignes de plus en approchant du bas.
-  document.getElementById("moduleRollHistory")?.addEventListener("scroll", () => {
-    const listEl = document.getElementById("moduleRollHistory");
-    if (!listEl) return;
-    if (listEl.scrollTop + listEl.clientHeight > listEl.scrollHeight - 400) appendHistoryMore();
-  }, { passive: true });
   document.getElementById("moduleHistoryShipBtn")?.addEventListener("click", () => {
     setHistoryTypePopupOpen(false);
     setHistoryShipPopupOpen(!isHistoryShipPopupOpen());
