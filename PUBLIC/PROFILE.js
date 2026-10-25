@@ -2971,6 +2971,7 @@ function renderExtrasRoulette(user, host = null) {
     } catch {}
   };
   const showRoulette = () => {
+    H.list?.classList.remove("moduleHistoryMode");
     if (rouletteView) rouletteView.style.display = "flex";
     if (historyView) historyView.style.display = "none";
     if (probaView) probaView.style.display = "none";
@@ -2980,6 +2981,8 @@ function renderExtrasRoulette(user, host = null) {
     setModuleNav("extras");
   };
   const showHistory = () => {
+    // Le scroll doit appartenir à la liste, jamais au layout parent.
+    H.list?.classList.add("moduleHistoryMode");
     historyPage = 0;
     updateModuleHistory(user);
     refreshHistoryHead(user);
@@ -2992,6 +2995,7 @@ function renderExtrasRoulette(user, host = null) {
     setModuleNav("history");
   };
   const showProba = () => {
+    H.list?.classList.remove("moduleHistoryMode");
     if (rouletteView) rouletteView.style.display = "none";
     if (historyView) historyView.style.display = "none";
     if (probaView) probaView.style.display = "flex";

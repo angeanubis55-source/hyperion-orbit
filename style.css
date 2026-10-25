@@ -25900,6 +25900,14 @@ html body #moduleWindow .shopLayout.extrasMode .shopPreview {
   min-height: 100% !important;
   overflow: visible !important;
 }
+/* En historique, un seul conteneur possède le scroll. Le layout extérieur
+   ne doit pas reprendre le wheel ni se repositionner pendant les updates. */
+html body #moduleWindow .shopLayout.extrasMode:has(.moduleHistoryMode) {
+  overflow: hidden !important;
+}
+html body #moduleWindow .shopLayout.extrasMode:has(.moduleHistoryMode) .shopPreview {
+  overflow: hidden !important;
+}
 html body #moduleWindow .shopPreview > .tile {
   min-height: 100% !important;
   padding: 4px !important;
