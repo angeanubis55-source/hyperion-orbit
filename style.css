@@ -25902,11 +25902,38 @@ html body #moduleWindow .shopLayout.extrasMode .shopPreview {
 }
 /* En historique, un seul conteneur possède le scroll. Le layout extérieur
    ne doit pas reprendre le wheel ni se repositionner pendant les updates. */
-html body #moduleWindow .shopLayout.extrasMode:has(.moduleHistoryMode) {
+html body #moduleWindow .shopLayout.extrasMode.moduleHistoryMode {
+  display:flex !important;
+  flex-direction:column !important;
+  height:100% !important;
+  min-height:0 !important;
   overflow: hidden !important;
 }
-html body #moduleWindow .shopLayout.extrasMode:has(.moduleHistoryMode) .shopPreview {
+html body #moduleWindow .shopLayout.extrasMode.moduleHistoryMode .shopPreview {
+  flex:1 1 0 !important;
+  height:100% !important;
+  min-height:0 !important;
   overflow: hidden !important;
+}
+html body #moduleWindow .shopLayout.extrasMode.moduleHistoryMode .shopPreview > .tile {
+  flex:1 1 0 !important;
+  height:100% !important;
+  min-height:0 !important;
+  overflow:hidden !important;
+  justify-content:flex-start !important;
+}
+html body #moduleWindow .shopLayout.extrasMode.moduleHistoryMode #moduleHistoryView {
+  flex:1 1 0 !important;
+  height:100% !important;
+  max-height:none !important;
+  min-height:0 !important;
+  overflow:hidden !important;
+}
+html body #moduleWindow .shopLayout.extrasMode.moduleHistoryMode #moduleRollHistory {
+  flex:1 1 0 !important;
+  height:0 !important;
+  min-height:0 !important;
+  overflow-y:scroll !important;
 }
 html body #moduleWindow .shopPreview > .tile {
   min-height: 100% !important;
