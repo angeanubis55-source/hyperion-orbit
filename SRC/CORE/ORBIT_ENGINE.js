@@ -34425,7 +34425,22 @@ function syncNetPlayers(dt = 0.016) {
       // Mort d'un joueur distant : explosion comme les NPC (une fois),
       // puis purge du proxy. Disparition sans mort (deco/changement
       // de map) : suppression silencieuse, sans explosion.
-      if (r.dead) {
+      const hasAuthoritativePools = Number.isFinite(Number(r.pvpHp)) && Number.isFinite(Number(r.pvpSh));
+      const confirmedRemoteDeath = r.dead === true
+        && (!hasAuthoritativePools || (Number(r.pvpHp) <= 0 && Number(r.pvpSh) <= 0));
+      if (r.dead && !confirmedRemoteDeath) {
+        remoteDeathPending.delete(rid);
+        continue;
+      }
+      if (confirmedRemoteDeath) {
+        const nowDeath = performance.now();
+        const pending = remoteDeathPending.get(rid);
+        if (!pending) {
+          remoteDeathPending.set(rid, { at: nowDeath, pvpAt: Number(r.pvpAt) || 0 });
+          continue;
+        }
+        if (nowDeath - pending.at < 150) continue;
+        remoteDeathPending.delete(rid);
         const gone = netPlayerProxies.get(rid);
         if (gone && !gone._netDeadBoom) {
           gone._netDeadBoom = true;
@@ -34437,6 +34452,7 @@ function syncNetPlayers(dt = 0.016) {
         }
         continue;
       }
+      remoteDeathPending.delete(rid);
       seen.add(rid);
       let e = netPlayerProxies.get(rid);
       if (!e) {
@@ -36646,6 +36662,7 @@ const remoteDroneFormationMotions = new Map();
 // Etats moteurs (reacteurs) des PET distants, par id joueur.
 // Cle stable (holder) pour petEngine (WeakMap) + vitesse estimee pour les flames/trails.
 const netplayPetEngines = new Map();
+const remoteDeathPending = new Map();
 let netplayLastOx = 0, netplayLastOy = 0;
 let netplayCacheCleanupAt = 0;
 try {

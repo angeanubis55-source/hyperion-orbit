@@ -1887,6 +1887,8 @@ export function ensureNetplayConnection() {
           // PvP : max pour la cible + portee + dernier coup recu (anneau Ship_damage).
           hpMax: Math.max(1, Math.round(Number(p.hpMax) || 1)),
           shMax: Math.max(0, Math.round(Number(p.shMax) || 0)),
+          pvpHp: Number.isFinite(Number(p.pvpHp)) ? Math.max(0, Number(p.pvpHp)) : null,
+          pvpSh: Number.isFinite(Number(p.pvpSh)) ? Math.max(0, Number(p.pvpSh)) : null,
           voltBackupReady: p.vbReady === true,
           lastStandReady: p.lastStandReady === true,
           lastStandAt: Number(p.lastStandAt) || 0,
