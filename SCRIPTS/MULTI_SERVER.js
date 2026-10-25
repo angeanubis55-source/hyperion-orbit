@@ -594,6 +594,12 @@ function refreshCombatProfile(state, accountId, map, message = {}) {
     if (prior) shields[`${prior.hangarId}:${prior.config}`] = Math.max(0, Number(state.sh) || 0);
     const sentinel = activeAbility(state, "ability_sentinel", now);
     const shieldMax = sentinel?.config === profile.config ? Math.floor(sentinel.baseShield * 1.1 ** Math.min(10, Math.floor((now - sentinel.from) / 1000))) : profile.shMax;
+    const profileChanged = !prior
+      || Number(prior.hpMax) !== Number(profile.hpMax)
+      || Number(prior.shMax) !== Number(shieldMax)
+      || Number(prior.config) !== Number(profile.config)
+      || String(prior.formationId || "standard") !== String(profile.formationId || "standard");
+    if (profileChanged) state._combatProfileSeq = (Number(state._combatProfileSeq) || 0) + 1;
     if (state._abilityShieldMax !== shieldMax) state._shieldBuffSeq = (Number(state._shieldBuffSeq) || 0) + 1;
     state._abilityShieldMax = shieldMax;
     const disarrayRemoved = Number(state._disarrayRemoved) || 0;
@@ -627,6 +633,20 @@ function refreshCombatProfile(state, accountId, map, message = {}) {
   }
   state.hswap = swapFxRemaining(state, now);
   return state._combat;
+}
+
+// Un ancien paquet de position peut arriver après un changement de config.
+// Son shPct est exprimé avec l'ancien maximum : le convertir avec le nouveau
+// profil ferait perdre (ou gagner) du bouclier quelques ticks plus tard.
+function shieldTelemetryIsCurrent(state, profile, message = {}) {
+  const configStateCurrent = typeof message.config === "undefined"
+    || Number(message.config) === Number(profile.config);
+  const formationStateCurrent = typeof message.dform !== "string"
+    || String(message.dform) === String(profile.formationId || "standard");
+  return configStateCurrent
+    && formationStateCurrent
+    && Number(message.disarraySeq || 0) === Number(state._disarraySeq || 0)
+    && Number(message.shieldBuffSeq || 0) === Number(state._shieldBuffSeq || 0);
 }
 
 const root = resolve(process.cwd());
@@ -3439,6 +3459,10 @@ wss.on("connection", (ws) => {
             authed = true;
             if (previousState) {
               mapId = String(state.serverMap || mapId);
+              // Retour de refresh : le rattachement annule la grâce (le joueur
+              // est de nouveau en ligne : NPC et snapshots le reprennent
+              // aussitôt au lieu de l'ignorer jusqu'à la fin des 12 s).
+              state._graceUntil = 0;
             } else {
               state._account = getAccountGameplayData(accountId);
               state._accountAt = Date.now();
@@ -3457,7 +3481,12 @@ wss.on("connection", (ws) => {
               state.hp = state.hpMax * Math.max(0, Math.min(1, Number(saved.lastHpPct ?? 1)));
               state.sh = state.shMax * Math.max(0, Math.min(1, Number(saved.lastShPct ?? 1)));
               state.pvpDead = !(state.hp > 0);
-              state._posOk = true;
+              // Anti-fantôme : la position restaurée (sauvegarde / base) n'est
+              // pas diffusée aux autres tant que le client n'a pas envoyé son
+              // premier {t:"pos"} (DÉPART effectif). Sans ça, le vaisseau
+              // apparaissait sur les écrans alliés pendant l'écran
+              // "Connexion… / Apparition…", avant même le spawn local.
+              state._posOk = false;
             }
             state.serverMap = mapId;
             removeFromAllRooms(id);
@@ -3880,7 +3909,14 @@ wss.on("connection", (ws) => {
         }
       }
       if (!movementAccepted) { stopRejectedMotion(state); correctState(); }
-      else state.motionBlocked = false;
+      else {
+        state.motionBlocked = false;
+        // Première position valide reçue (DÉPART effectif) : le vaisseau
+        // devient visible aux autres. Couvre aussi le cas nominal (petit
+        // déplacement depuis le spawn, sans téléport) qui ne passait pas
+        // par la branche legitJump.
+        state._posOk = true;
+      }
       if (Number.isFinite(Number(msg.angle))) state.angle = Number(msg.angle);
       // B02 actifs (bonus de groupe) : ids validés, diffusés au groupe.
       if (!authed && typeof msg.pseudo === "string" && msg.pseudo.trim()) state.pseudo = String(msg.pseudo).slice(0, 20);
@@ -4013,11 +4049,7 @@ wss.on("connection", (ws) => {
           // exprimer shPct avec son nouveau maximum alors que le profil compte
           // du serveur utilise encore l'ancien. Ne jamais convertir ce ratio
           // avec le mauvais maximum (Cœur -> Foreuse -> Cœur donnait ~4 000).
-          const formationStateCurrent = typeof msg.dform !== "string"
-            || String(msg.dform) === String(profile.formationId || "standard");
-          const shieldStateCurrent = formationStateCurrent
-            && Number(msg.disarraySeq || 0) === Number(state._disarraySeq || 0)
-            && Number(msg.shieldBuffSeq || 0) === Number(state._shieldBuffSeq || 0);
+          const shieldStateCurrent = shieldTelemetryIsCurrent(state, profile, msg);
           if (shieldStateCurrent && abilityHealCurrent && cSh < state.sh) state.sh = cSh;
           else if (shieldStateCurrent && cSh > state.sh && !blocked) {
             if (sm > 0 && cSh - state.sh > sm * 0.5) {
@@ -4694,6 +4726,9 @@ setInterval(() => {
           - Math.max(0, Number(s._tempestBackupUntil) - now)) / 1000 || 0,
         voltLink: s._voltLinkFx?.until > now ? s._voltLinkFx : null,
         hpMax: Math.max(1, Math.round(Number(s.hpMax) || 1)), shMax: Math.max(0, Math.round(Number(s.shMax) || 0)),
+        combatSeq: Math.max(0, Math.floor(Number(s._combatProfileSeq) || 0)),
+        combatConfig: Number(s._combat?.config) === 2 ? 2 : 1,
+        combatFormation: String(s._combat?.formationId || s.dform || "standard").slice(0, 32),
         range: Math.max(200, Math.min(5000, Number(s.range) || 800)),
         peta: s.peta === 1 ? 1 : 0, petl: Math.max(1, Math.min(32, Math.round(Number(s.petl) || 1))),
         petx: Math.round(Number(s.petx) || 0), pety: Math.round(Number(s.pety) || 0),

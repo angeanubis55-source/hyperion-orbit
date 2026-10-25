@@ -4306,7 +4306,7 @@ function tbrCloneFire(c) {
       miss: missRolls.some(Boolean), v: volleyId });
   } catch {}
   playEscortShot(ammoKey);
-  const salvoShots = salvoShotCount(ammoKey);
+  const salvoShots = typeof salvoShotCount === "function" ? salvoShotCount(ammoKey) : (isRsbLike(ammoKey) ? 12 : 6);
   const salvoInterval = isRsbLike(ammoKey) ? 1 / 12 : 0.2;
   for (let i = 1; i < salvoShots; i++) {
     const items = stage >= 4 && i % 2 === 0 ? [[-SIDE_OFFSET, 0], [SIDE_OFFSET, 0]] : [[0, 0]];
@@ -18826,6 +18826,7 @@ const CONFIG_SWITCH = {
   cooldownMs: 5000,
   until: 0,
 };
+let configSwitchApplyPending = false;
 
 // ✅ Bouclier séparé par configuration
 // HP = partagé entre les configs
@@ -19133,18 +19134,21 @@ saveProgressNow();
 // après un changement de vaisseau sans refresh (overlay Espace pilote intégré).
 // Écrire la config sur l'ancien hangar mettait le CD mais restait sur la config.
 const hangarId = getActiveHangarId() || SESSION_HANGAR_ID;
+configSwitchApplyPending = true;
 const out = setActiveHangarConfig(hangarId, nextConfig);
 
   if (!out?.ok) {
+    configSwitchApplyPending = false;
     showToast(out?.error || "Impossible de changer de configuration", 1.5);
     return;
   }
 
-  // setActiveHangarConfig publishes the complete update synchronously.
-  // The account listener applies the destination configuration exactly once.
-
-  // Recalcul explicite (ne depend pas de l'ecouteur) : absolu + bouclier restaure.
-  applyCurrentConfigStats(false, nextConfig, true);
+  // L'événement compte est normalement synchrone et applique déjà le profil.
+  // Ce repli ne s'exécute que si aucun événement de switch n'a été observé.
+  if (configSwitchApplyPending) {
+    configSwitchApplyPending = false;
+    applyCurrentConfigStats(false, nextConfig, true);
+  }
 
   CONFIG_SWITCH.until = Date.now() + CONFIG_SWITCH.cooldownMs;
 
@@ -19203,9 +19207,9 @@ function syncPlayerStocksFromAccount(fresh) {
   if (ROCKET_TYPES[String(fresh.rocketActive || "").toLowerCase()]) {
     player.rocketActive = String(fresh.rocketActive).toLowerCase();
   }
-  player.rocketAuto = GAME_SETTINGS.phoneMode === true || fresh.rocketAuto === true;
+  player.rocketAuto = (typeof GAME_SETTINGS !== "undefined" && GAME_SETTINGS.phoneMode === true) || fresh.rocketAuto === true;
   player.launcherActive = ROCKET_TYPES[String(fresh.launcherActive || "").toLowerCase()] ? String(fresh.launcherActive).toLowerCase() : "eco10";
-  player.launcherAuto = GAME_SETTINGS.phoneMode === true || fresh.launcherAuto === true;
+  player.launcherAuto = (typeof GAME_SETTINGS !== "undefined" && GAME_SETTINGS.phoneMode === true) || fresh.launcherAuto === true;
 
   if (player.ammo.active !== "x1" && ammoCount(player.ammo.active) <= 0) {
     player.ammo.active = "x1";
@@ -22295,9 +22299,9 @@ function restorePlayerStockFromUser(u) {
   const rk0 = (u.rockets && typeof u.rockets === "object") ? u.rockets : {};
   player.rockets = Object.fromEntries(ROCKET_IDS.map((id) => [id, Math.max(0, Math.floor(Number(rk0[id] || 0)))]));
   player.rocketActive = ROCKET_TYPES[String(u.rocketActive || "").toLowerCase()] ? String(u.rocketActive).toLowerCase() : "r310";
-  player.rocketAuto = GAME_SETTINGS.phoneMode === true || u.rocketAuto === true;
+  player.rocketAuto = (typeof GAME_SETTINGS !== "undefined" && GAME_SETTINGS.phoneMode === true) || u.rocketAuto === true;
   player.launcherActive = ROCKET_TYPES[String(u.launcherActive || "").toLowerCase()] ? String(u.launcherActive).toLowerCase() : "eco10";
-  player.launcherAuto = GAME_SETTINGS.phoneMode === true || u.launcherAuto === true;
+  player.launcherAuto = (typeof GAME_SETTINGS !== "undefined" && GAME_SETTINGS.phoneMode === true) || u.launcherAuto === true;
   rocketCooldown = 0;
   launcherReloadT = 0;
   launcherFullT = 0;
@@ -23355,7 +23359,7 @@ function triggerBoundCommand(code, repeat = false) {
       // 3e barre ouverte : elle reprend les touches 1..0 (slots 1..10),
       // puis se referme automatiquement après l'activation. F1..F10
       // continuent de piloter la barre principale.
-      if (isTertiaryActionBarOpen()) {
+      if (typeof isTertiaryActionBarOpen === "function" && isTertiaryActionBarOpen()) {
         if (slotIndex < 10) {
           document.querySelectorAll("#ammoBar .tertiarySlots > .actionSlot")[slotIndex]?.querySelector(".ammoBtn, .rocketQuickAction, .launcherAutoBtn")?.click();
         } else {
@@ -24877,7 +24881,7 @@ const isSab = ammoKey === "sab";
   // par le joueur. Le X1 reste naturellement illimité.
   consumeAmmo(count);
   playEscortShot(ammoKey);
-  const salvoShots = salvoShotCount(ammoKey);
+  const salvoShots = typeof salvoShotCount === "function" ? salvoShotCount(ammoKey) : (isRsbLike(ammoKey) ? 12 : 6);
   const salvoInterval = isRsbLike(ammoKey) ? 1 / 12 : 0.2;
   for (let i = 1; i < salvoShots; i++) {
     const fakeIsPair = canFirePair && (isRealPair ? i % 2 === 0 : i % 2 === 1);
@@ -33768,7 +33772,7 @@ const shotBoosterMults = playerBoosterMults();
 const shotHitBonusPct = Number(player.laserHitBonusPct || 0) + Number(shotBoosterMults.hit || 0);
   const dmgShot = isSab
     ? laserBaseForTarget * SAB50.drainMult * shotBoosterMults.dmg
-    : (laserBase + overdrive) * mult * formationNpcDamageMult(t) * formationPlayerLaserDamageMult(t) * moduleNpcDamageMult(t) * modulePvpDamageMult(t) * shotBoosterMults.dmg * playerPilotMults().alienDmg * (t?._netPlayer ? (Number(playerPilotMults()?.pvpDmg) || 1) : 1) * playerUpgradeMults().laser * buoyDamageMult() * valourDamageMult() * berserkDamageMult() * holoDamageMult() * scrambleDamageMult() * specDamageMult() * tempestDischargeMult() * shipPassiveDamageMult();
+    : (laserBase + overdrive) * mult * formationNpcDamageMult(t) * formationPlayerLaserDamageMult(t) * (typeof moduleNpcDamageMult === "function" ? moduleNpcDamageMult(t) : 1) * (typeof modulePvpDamageMult === "function" ? modulePvpDamageMult(t) : 1) * shotBoosterMults.dmg * playerPilotMults().alienDmg * (t?._netPlayer ? (Number(playerPilotMults()?.pvpDmg) || 1) : 1) * playerUpgradeMults().laser * buoyDamageMult() * valourDamageMult() * berserkDamageMult() * holoDamageMult() * scrambleDamageMult() * specDamageMult() * tempestDischargeMult() * shipPassiveDamageMult();
 
   const shotMiss = Math.random() < Math.max(0, PLAYER_SHOTS.missChance - ((shotHitBonusPct + playerPilotMults().laserHit) / 100));
   // Multi : evenement de tir exact pour les allies (vrais tirs, MISS inclus).
@@ -33895,7 +33899,7 @@ addCappedProjectile(bullets, {
   // les éclairs suivants sont des doublons esthétiques (dmg 0) qui convergent sur la cible.
   // X6/RCB → 12 tirs affichés par seconde ; autres munitions → 6 tirs (1 toutes les 200 ms).
   // Nombre ajusté à la cadence (salvoShotCount) : les faux tirs restent standards par seconde.
-  const salvoShots = salvoShotCount(ammoKey);
+  const salvoShots = typeof salvoShotCount === "function" ? salvoShotCount(ammoKey) : (isRsbLike(ammoKey) ? 12 : 6);
   const salvoInterval = isRsbLike(ammoKey) ? 1 / 12 : 0.2;
 
   // ðŸ”« salve : le vrai tir compte pour le premier éclair affiché (t=0).
@@ -43315,11 +43319,14 @@ if (movementLocked) {
     syncLocalTempestBackup(self);
     let netHealAdopted = false;
     if (self) {
-      if (self.shieldBuffSeq !== player._netShieldBuffSeq) {
-        player._netShieldBuffSeq = self.shieldBuffSeq;
-        player.shMax = self.shMax;
-        player.sh = Math.min(player.shMax, Number(self.sh) || 0);
-      }
+      const localCombatConfig = getActiveConfigNo();
+      const localCombatFormation = String(getActiveDroneFormation(account.user)?.id || "standard");
+      const serverProfileMatchesLocal = self.combatConfig === localCombatConfig
+        && self.combatFormation === localCombatFormation;
+      // Mode hybride : config/formation et maxima restent locaux pour éviter
+      // les rollbacks de profil retardés. Le serveur conserve l'autorité sur
+      // les événements (dégâts, morts, soins) adoptés ci-dessous.
+      if (serverProfileMatchesLocal) player._netCombatProfileSeq = self.combatSeq;
       const stockCharges = Number(self.stockCharges) || 0;
       if (player.stockCharges !== stockCharges) { player.stockCharges = stockCharges; stockUpdateRange(); }
       // Soin serveur adopté en absolu (PV/bouclier finaux, dégâts déjà
@@ -43525,6 +43532,13 @@ if (movementLocked) {
       }
     }
   } catch {}
+  // Le bouclier peut évoluer sans changement de configuration (régénération,
+  // drain de formation, dégâts/soins réseau). Le cache par configuration doit
+  // suivre cette valeur, sinon un switch ultérieur restaure un ancien tick et
+  // provoque un rollback visible.
+  if (started && !player.dead) {
+    try { saveShieldForConfig(getActiveConfigNo()); } catch {}
+  }
   updateBossEncounters();
   if (typeof tickStrokelightBarrage === "function") {
     try { tickStrokelightBarrage(dt); } catch (error) { console.warn("Strokelight barrage tick:", error); }
@@ -49266,6 +49280,7 @@ window.addEventListener("orbit:user-updated", event => {
   if (started) {
     // Met d'abord à jour la coque et les stats. La palette, le sprite et les
     // aptitudes sont ensuite reconstruits depuis le même vaisseau actif.
+    if (switched || realSwitch) configSwitchApplyPending = false;
     applyCurrentConfigStats(false, (switched || realSwitch) ? nextHangar.activeConfig : null, true);
     if (shipChanged) {
       const nextPack = ACTIVE_SHIP;

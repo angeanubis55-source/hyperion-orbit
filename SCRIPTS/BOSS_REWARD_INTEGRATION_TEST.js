@@ -117,6 +117,12 @@ ZoneNpcSim.create = async function(mapId, saved) {
   const secondAccount = await account("boss-later");
   const first = await connect(firstAccount);
   const second = await connect(secondAccount);
+  // Le serveur n'ajoute un joueur à la simulation qu'après sa première
+  // position valide. Cela évite les joueurs fantômes pendant le chargement.
+  // Le test doit donc reproduire l'entrée réelle en jeu avant d'attendre les
+  // récompenses NPC.
+  first.send({ t: "pos", x: 1500, y: 1500, moving: false });
+  second.send({ t: "pos", x: 1550, y: 1500, moving: false });
   if (grouped) {
     first.send({ t: "groupInvite", to: "boss-later" });
     await second.wait(m => m.t === "groupInvite");

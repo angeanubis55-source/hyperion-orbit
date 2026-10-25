@@ -254,11 +254,13 @@ test("le changement de configuration serveur conserve les PV et les boucliers d�
     swapFxRemaining: () => 0 });
   vm.runInContext(source.slice(start, end + 2), context);
   vm.runInContext('refreshCombatProfile(state, "test", "1-1", message)', context);
+  const firstCombatSeq = context.state._combatProfileSeq;
   context.state.hp = 100; context.state.sh = 0;
   now = 10001; context.message = { config: 2, hpMax: 1e9 };
   vm.runInContext('refreshCombatProfile(state, "test", "1-1", message)', context);
   assert.equal(context.state.hp, 100);
   assert.equal(context.state._combat.config, 2);
+  assert.ok(context.state._combatProfileSeq > firstCombatSeq, "un changement de configuration publie un nouveau profil");
   now = 10002; context.message = { config: 1 };
   vm.runInContext('refreshCombatProfile(state, "test", "1-1", message)', context);
   assert.equal(context.state._combat.config, 2, "le cooldown ne dépend pas du nombre de paquets");
@@ -267,6 +269,18 @@ test("le changement de configuration serveur conserve les PV et les boucliers d�
   assert.equal(context.state._combat.config, 1);
   assert.equal(context.state.hp, 100);
   assert.equal(context.state.sh, 0);
+});
+
+test("un paquet de position de l'ancienne config ne peut pas écraser le bouclier après le switch", () => {
+  const source = readFileSync(new URL("./MULTI_SERVER.js", import.meta.url), "utf8").replace(/\r\n/g, "\n");
+  const start = source.indexOf("function shieldTelemetryIsCurrent(");
+  const end = source.indexOf("\n}", start);
+  assert.ok(start >= 0 && end > start);
+  const context = vm.createContext({ state: { _disarraySeq: 0, _shieldBuffSeq: 0 }, profile: { config: 2, formationId: "standard" } });
+  vm.runInContext(source.slice(start, end + 2), context);
+  assert.equal(vm.runInContext('shieldTelemetryIsCurrent(state, profile, { config: 1, shPct: 0, dform: "standard" })', context), false);
+  assert.equal(vm.runInContext('shieldTelemetryIsCurrent(state, profile, { config: 2, shPct: 0, dform: "standard" })', context), true);
+  assert.equal(vm.runInContext('shieldTelemetryIsCurrent(state, profile, { config: 2, dform: "ring" })', context), false);
 });
 
 test("les coefficients forgés sont remplacés avant application et débit du budget", () => {

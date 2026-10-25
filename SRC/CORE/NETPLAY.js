@@ -1632,7 +1632,11 @@ export function ensureNetplayConnection() {
           selfServ = {
             dead: p.dead === true,
             hp: Number(p.pvpHp), sh: Number(p.pvpSh), pvpAt: Number(p.pvpAt) || 0,
+            hpMax: Math.max(1, Number(p.hpMax) || 1),
             shMax: Math.max(0, Number(p.shMax) || 0),
+            combatSeq: Math.max(0, Math.floor(Number(p.combatSeq) || 0)),
+            combatConfig: Number(p.combatConfig) === 2 ? 2 : 1,
+            combatFormation: String(p.combatFormation || "standard"),
             disarrayT: Math.max(0, Number(p.disarrayT) || 0),
             disarraySeq: Number(p.disarraySeq) || 0,
             redirectSilenceT: Math.max(0, Number(p.redirectSilenceT) || 0),
