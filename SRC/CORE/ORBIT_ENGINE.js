@@ -8221,7 +8221,7 @@ function initializeCustomActionBar() {
     { ship: "Retiarus Plus", ships: ["retiarus_plus"], ids: ["ability_retiarus-plus_chsp", "ability_retiarus-plus_spcp"] },
     { ship: "Retiarus", ships: ["retiarus"], ids: ["ability_retiarus_chs", "ability_retiarus_spc"] },
     { ship: "Sentinel", ships: ["sentinel"], ids: ["ability_sentinel"] },
-    { ship: "Solace Plus", ships: ["solace_plus"], ids: ["ability_solace-plus_nano-cluster-repairer-plus"] },
+    { ship: "Solace Plus", ships: ["solace_plus", "solace_plus_3d_test"], ids: ["ability_solace-plus_nano-cluster-repairer-plus"] },
     { ship: "Solace", ships: ["solace"], ids: ["ability_solace"] },
     { ship: "Solaris Plus", ships: ["solaris_plus"], ids: ["ability_solaris-plus_incinerate-plus"] },
     { ship: "Solaris", ships: ["solaris"], ids: ["ability_solaris_inc"] },

@@ -602,7 +602,7 @@ function applyServerModuleOperation(data, body) {
       // Quota du jour épuisé : seul un ticket de tirage permet un tirage
       // supplémentaire (hors quota, le compteur n'avance pas).
       const tickets = Math.max(0, Math.floor(Number(data.inventory.counts.ticket_module_roll) || 0));
-      if (!(tickets > 0)) throw Object.assign(new Error(`Limite quotidienne atteinte (${MODULE_DAILY_ROLL_LIMIT} tirages/jour).`), { client: true });
+      if (!(tickets > 0)) throw Object.assign(new Error(`Limite quotidienne atteinte (${MODULE_DAILY_ROLL_LIMIT} tirages/jour).`), { client: true, quota: { used: count, limit: MODULE_DAILY_ROLL_LIMIT, left: 0, day } });
       data.inventory.counts.ticket_module_roll = tickets - 1;
       if (data.inventory.counts.ticket_module_roll <= 0) delete data.inventory.counts.ticket_module_roll;
       payment = { type: "ticket", amount: 1 };
@@ -3043,7 +3043,7 @@ export function handleAccountApi(req, res) {
         return json(res, 200, { ok: true, user: data, ...result });
       } catch (error) {
         if (inTx) { try { db.exec("ROLLBACK"); } catch {} }
-        return json(res, error?.client ? 409 : 500, { ok: false, error: error?.client ? error.message : "Erreur serveur." });
+        return json(res, error?.client ? 409 : 500, { ok: false, error: error?.client ? error.message : "Erreur serveur.", ...(error?.quota && typeof error.quota === "object" ? { quota: error.quota } : null) });
       }
     });
     return true;

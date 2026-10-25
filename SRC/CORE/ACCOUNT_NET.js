@@ -95,6 +95,33 @@ export function netCurrent() {
   return { id: memUser.id, pseudo: memUser.pseudo, email: memUser.email };
 }
 
+// Quota modules vu par le SERVEUR (arbitre du quota journalier) : jour +
+// compteur de son dernier état connu (roll, save, refresh). Sert à
+// réconcilier l'affichage local quand le navigateur et le serveur ne sont
+// pas sur le même jour calendaire (minuit, fuseaux, dérive d'horloge) :
+// sinon le compteur local repasse à 20/20 alors que le serveur refuse.
+export function netModuleQuota() {
+  try {
+    const q = serverBase?.stats?.moduleDailyRolls;
+    if (!netActive() || !q || typeof q.day !== "string") return null;
+    return { day: q.day, count: Math.max(0, Math.floor(Number(q.count) || 0)) };
+  } catch { return null; }
+}
+// Un refus serveur autoritaire (ex : quota épuisé) met à jour la référence
+// sans attendre le prochain adopt : l'affichage suit aussitôt.
+export function noteServerModuleQuota(quota) {
+  try {
+    if (!netActive() || !quota || typeof quota.day !== "string") return false;
+    if (!serverBase || typeof serverBase !== "object") return false;
+    serverBase.stats ||= {};
+    serverBase.stats.moduleDailyRolls = {
+      day: quota.day,
+      count: Math.max(0, Math.floor(Number(quota.count ?? quota.used) || 0)),
+    };
+    return true;
+  } catch { return false; }
+}
+
 export function netStore(list, { pilotDisksOnly = false, durable = false } = {}) {
   const arr = Array.isArray(list) ? list : [];
   const mine = (memUser && arr.find((u) => u && u.id === memUser.id)) || arr[0] || null;

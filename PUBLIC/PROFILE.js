@@ -35,7 +35,7 @@ import {
 } from "../SRC/CORE/ACCOUNT.js";
 
 import { measureGameTask } from "../SRC/CORE/PERFORMANCE_TIMINGS.js";
-import { apiAccountIdentity, apiPseudoFree, flushNetUser, netActive, netList } from "../SRC/CORE/ACCOUNT_NET.js";
+import { apiAccountIdentity, apiPseudoFree, flushNetUser, netActive, netList, noteServerModuleQuota } from "../SRC/CORE/ACCOUNT_NET.js";
 
 import { CATALOG, findCatalogItem } from "../SRC/CORE/CATALOG.js";
 import { SHIP_PACKS, getShipFamilyId, getShipFamilyIds, getShipFamilyMembers, getShipFamilyName, getShipDesignBaseId, getShipDesignIds, getShipPackById } from "../SHIP/SHIP_PACKS.js";
@@ -3466,6 +3466,10 @@ function renderExtrasRoulette(user, host = null) {
     if (!saved?.ok) {
       stopIdle();
       rolling = false;
+      // Refus autoritaire (ex : quota épuisé) : le serveur joint son compteur.
+      // On l'applique aussitôt pour que l'affichage (0/20, bouton ticket/grisé)
+      // suive la réalité au lieu de rester sur un 20/20 périmé.
+      try { if (saved?.quota && typeof noteServerModuleQuota === "function") noteServerModuleQuota(saved.quota); } catch {}
       user = getCurrentUserFull() || user;
       if (!saved?.silent) setMsg(saved?.error || "Achat impossible.", false);
       try { refreshModulePaymentControls(user); } catch {}

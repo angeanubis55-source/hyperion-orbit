@@ -1,7 +1,7 @@
 // SRC/CORE/ACCOUNT.js
 "use strict";
 
-import { apiGalaxyGateOperation, apiModuleOperation, apiProduction, apiRefineChain, apiShopBuyItem, apiShopSell, apiSkylabOperation, bootNetFromCache, flushNetUser, netActive, netCurrent, netHasPendingSave, netList, netSetCurrent, netStore, noteNetConsumption, noteNetCreditGain, noteNetEquipmentSold, noteNetGateEnergy, noteNetPurchase, noteNetResourceGain, noteNetSelection, noteNetSkylabMoved, noteNetUpgradeCharge } from "./ACCOUNT_NET.js";
+import { apiGalaxyGateOperation, apiModuleOperation, apiProduction, apiRefineChain, apiShopBuyItem, apiShopSell, apiSkylabOperation, bootNetFromCache, flushNetUser, netActive, netCurrent, netHasPendingSave, netList, netModuleQuota, netSetCurrent, netStore, noteNetConsumption, noteNetCreditGain, noteNetEquipmentSold, noteNetGateEnergy, noteNetPurchase, noteNetResourceGain, noteNetSelection, noteNetSkylabMoved, noteNetUpgradeCharge } from "./ACCOUNT_NET.js";
 // Multi : session serveur restauree au chargement (token + cache local),
 // puis refresh async via /api/me (revision canonique).
 try { bootNetFromCache(); } catch {}
@@ -3611,6 +3611,19 @@ function moduleDailyKey(d = new Date()) {
 
 function normalizeModuleDailyRolls(v) {
   const today = moduleDailyKey();
+  // En ligne, le serveur arbitre le quota : sa journée fait foi, pas celle
+  // du navigateur. Sinon, autour de minuit (ou en cas de décalage d'horloge),
+  // l'affichage local repasse à 20/20 alors que le serveur refuse les tirages.
+  try {
+    if (typeof netModuleQuota === "function") {
+      const server = netModuleQuota();
+      if (server && typeof server.day === "string") {
+        if (server.day !== today) return { day: server.day, count: server.count };
+        const localCount = v && v.day === today ? Math.max(0, Math.floor(Number(v.count) || 0)) : 0;
+        return { day: today, count: Math.max(localCount, server.count) };
+      }
+    }
+  } catch {}
   const count = v && v.day === today ? Math.max(0, Math.floor(Number(v.count) || 0)) : 0;
   return { day: today, count };
 }

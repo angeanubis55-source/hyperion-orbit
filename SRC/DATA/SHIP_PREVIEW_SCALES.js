@@ -426,6 +426,7 @@ export const SHIP_PREVIEW_SCALES = Object.freeze({
   "solace_nobilis": 0.788,
   "solace_ocean": 0.8,
   "solace_osiris": 0.715,
+  "solace_plus_3d_test": 0.8,
   "solace_plus_arios": 0.8,
   "solace_plus_asimov": 0.8,
   "solace_plus_atlantis": 0.775,

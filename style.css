@@ -26632,6 +26632,7 @@ html body #moduleWindow.gameWindow > .gameWinBar .gameWinMinBtn {
   background: linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34)) !important;
   color: #eaffff !important;
   font: 750 11px/1.2 ui-sans-serif,system-ui !important;
+  font-size: 0 !important;
   text-transform: none !important;
   box-shadow: inset 0 0 0 1px rgba(255,255,255,.03) !important;
   transition: none !important;
