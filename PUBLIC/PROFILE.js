@@ -2881,7 +2881,21 @@ function renderExtrasRoulette(user, host = null) {
   }
   function updateModuleHistory(currentUser) {
     const historyEl = document.getElementById("moduleRollHistory");
-    if (historyEl) historyEl.innerHTML = renderModuleHistory(currentUser);
+    if (historyEl) {
+      // Les mises à jour compte/réseau peuvent arriver pendant le scroll.
+      // Recréer le HTML sans conserver la position renvoyait la liste en haut
+      // et pouvait déclencher une nouvelle mise à jour avant le prochain scroll.
+      const previousTop = historyEl.scrollTop;
+      const wasAtBottom = historyEl.scrollTop + historyEl.clientHeight >= historyEl.scrollHeight - 8;
+      historyEl.innerHTML = renderModuleHistory(currentUser);
+      const restoreScroll = () => {
+        if (!historyEl.isConnected) return;
+        const maxTop = Math.max(0, historyEl.scrollHeight - historyEl.clientHeight);
+        historyEl.scrollTop = wasAtBottom ? maxTop : Math.min(previousTop, maxTop);
+      };
+      restoreScroll();
+      requestAnimationFrame(restoreScroll);
+    }
     refreshHistoryShipFilter(currentUser);
   }
 

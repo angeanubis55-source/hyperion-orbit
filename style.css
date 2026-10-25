@@ -26061,7 +26061,7 @@ max-height:none !important;
   min-height:0 !important;
   max-height:none !important;
   overflow-y:auto !important;
-  scroll-behavior:smooth !important;
+  scroll-behavior:auto !important;
   padding-right:4px !important;
 }
 /* (Effet de fondu retiré : liste nette en haut comme en bas.) */
