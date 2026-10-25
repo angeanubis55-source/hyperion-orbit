@@ -33,6 +33,8 @@ function roundDesignPrice(value) {
 // coque ; seuls ses effets/compétences PROPRES ajoutent une prime. Les bonus
 // hérités du vaisseau de base ne sont donc jamais facturés une seconde fois.
 function balancedDesignPrice(pack) {
+  // Prix forcé à 0 dans SHIP_PACKS (ex : vaisseau TEST) : gratuit.
+  if (Number(pack?.price) === 0) return 0;
   const baseId = getShipDesignBaseId(pack?.id);
   const basePack = getShipPackById(baseId);
   const basePrice = Number(basePack?.price) > 0
