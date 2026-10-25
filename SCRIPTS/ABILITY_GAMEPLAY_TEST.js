@@ -50,7 +50,7 @@ for (const [skill, seconds, amount] of [["ability_tech_battle_repair", 15, 10000
   });
 }
 
-test("NPC Bomb : six impacts même avec des ticks retardés, zéro impact initial et leech réel", () => {
+test("NPC Bomb : six impacts même avec des ticks retardés, zéro impact initial et aucun leech", () => {
   const state = { id: "caster", hp: 1, hpMax: 2000000, x: 5000, y: 3500,
     _abilityFx: { ability_tech_npc_bomb: { from: NOW, until: NOW + 60999 },
       ability_tech_energy_leech: { from: NOW, until: NOW + 1800000 } } };
@@ -60,8 +60,8 @@ test("NPC Bomb : six impacts même avec des ticks retardés, zéro impact initia
   tickAbilityStates(room, sim, NOW, e => events.push(e), () => null); assert.equal(hits.length, 0);
   for (const elapsed of [11000, 31000, 61000, 62000]) tickAbilityStates(room, sim, NOW + elapsed, e => events.push(e), () => null);
   assert.equal(hits.length, 6);
-  assert.equal(events.filter(e => e.skill === "ability_tech_energy_leech").length, 6);
-  assert.equal(state.hp, 60001);
+  assert.equal(events.filter(e => e.skill === "ability_tech_energy_leech").length, 0);
+  assert.equal(state.hp, 1);
   assert.equal(state._techCds.ability_tech_npc_bomb, NOW + 61000 + 300000);
 });
 

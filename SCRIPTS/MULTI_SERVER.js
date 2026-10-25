@@ -69,6 +69,23 @@ function clearAbilityFx(state) {
   state._freeRocketCast = null;
   state.holoClones = [];
 }
+// La mort ne doit pas annuler le temps restant des techs personnelles
+// persistantes (Siphon et Roquette de précision). Elles restent toutefois
+// inactives tant que le joueur est mort.
+function clearAbilityFxOnDeath(state) {
+  const saved = {};
+  try {
+    const fx = state?._abilityFx || {};
+    for (const skill of ["ability_tech_energy_leech", "ability_tech_precision_targeter"]) {
+      if (fx[skill] && Number(fx[skill].until) > Date.now()) saved[skill] = { ...fx[skill] };
+    }
+  } catch {}
+  clearAbilityFx(state);
+  if (Object.keys(saved).length) {
+    state._abilityFx ||= {};
+    Object.assign(state._abilityFx, saved);
+  }
+}
 // Techs (buffs perso : Energy Leech, Precision Targeter, etc.) : traversent
 // les changements de map tant qu'elles sont valides, contrairement aux
 // auras posées et aux aptitudes de vaisseau (toujours purgées).
@@ -259,7 +276,7 @@ function applyServerAbilityDamage(room, sim, victim, damage, pen, now, sourceId,
     if (!(target.hp > 0) && !triggerTempestBackup(target, room, now)) {
       target.dead = true;
       target.pvpDead = true;
-      clearAbilityFx(target);
+      clearAbilityFxOnDeath(target);
       if (room.has(String(by))) awardPlayerKill(room, String(by), target, now);
     }
   };
@@ -1956,7 +1973,7 @@ function ensureNpcSim(mapId) {
         if (!(caster.hp > 0) && !triggerTempestBackup(caster, room, at)) {
           caster.dead = true;
           caster.pvpDead = true;
-          clearAbilityFx(caster);
+          clearAbilityFxOnDeath(caster);
           if (String(sourceId) !== String(caster.id)) awardPlayerKill(room, String(sourceId), caster, at);
         }
         result.total -= result.sh;
@@ -2639,8 +2656,10 @@ wss.on("connection", (ws) => {
           if (laserDisrupted(shooter, msg, now)) return;
           const appliedHit = Number(sim.applyHit(id, msg)) || 0;
           if (appliedHit > 0) { recordAbilityDamageDealt(shooter, appliedHit, now); try { audOf(shooter).dmg += appliedHit; } catch {} }
-          applyEnergyLeech(shooter, appliedHit, now,
-            event => emitAbilityEvent(rooms.get(mapId), event), sim.entries?.get(String(msg.uid)));
+          if (msg.kind !== "sab" && !msg.rocket && !msg.ability && msg.pet !== true) {
+            applyEnergyLeech(shooter, appliedHit, now,
+              event => emitAbilityEvent(rooms.get(mapId), event), sim.entries?.get(String(msg.uid)));
+          }
           // Diagnostic multi (console serveur) : hits recus par map.
           hitStats.count++;
           hitStats.byMap.set(mapId, (hitStats.byMap.get(mapId) || 0) + 1);
@@ -2818,7 +2837,7 @@ wss.on("connection", (ws) => {
           const hits = [];
           const inRange = (x, y) => {
             const dx = Number(x) - Number(state.x), dy = Number(y) - Number(state.y);
-            return dx * dx + dy * dy <= 700 * 700;
+            return dx * dx + dy * dy <= 400 * 400;
           };
           if (sim && typeof sim.entries?.[Symbol.iterator] === "function") {
             for (const [uid, npc] of sim.entries) {
@@ -2829,7 +2848,6 @@ wss.on("connection", (ws) => {
               seen.add(vid);
               try {
                 const damage = sim.applyHit(String(id), { uid: vid, dmg: 30000, pen: 0, critChance: 0, critMult: 1, variance: 0 });
-                applyEnergyLeech(state, damage, now, event => emitAbilityEvent(room, event), npc);
               } catch {}
               hits.push({ id: vid, x: Math.round(Number(npc.x)), y: Math.round(Number(npc.y)) });
             }
@@ -2845,7 +2863,6 @@ wss.on("connection", (ws) => {
             seen.add(String(pid));
             try {
               const result = applyServerAbilityDamage(room, sim, s, 30000, 0, now, id, profile, 0);
-              applyEnergyLeech(state, result?.total, now, event => emitAbilityEvent(room, event), s);
             } catch {}
             hits.push({ id: String(pid), x: Math.round(Number(s.x)), y: Math.round(Number(s.y)) });
           }
@@ -3134,7 +3151,9 @@ wss.on("connection", (ws) => {
           foe.state.sh = Math.max(0, Number(foe.state.sh) || 0);
           // Energy Leech : 10 % des dégâts PvP rendus en coque (+X comme
           // les soins, visibles par le lanceur et ses verrouilleurs).
-          applyEnergyLeech(me.state, applied, now, event => emitAbilityEvent(room, event), foe.state);
+          if (msg.kind !== "sab" && !msg.rocket && !msg.ability) {
+            applyEnergyLeech(me.state, applied, now, event => emitAbilityEvent(room, event), foe.state);
+          }
         }
         foe.state.pvpAt = now;
         // Blackout remontées : un soin (pos) qui arrive juste après ce coup
@@ -3204,7 +3223,7 @@ wss.on("connection", (ws) => {
           if (Number(foe.state.hp) <= 0 && wasAlive !== false) {
             foe.state.pvpDead = true;
             // Mort : les auras du vaincu disparaissent pour tous.
-            clearAbilityFx(foe.state);
+            clearAbilityFxOnDeath(foe.state);
             awardPlayerKill(room, id, foe.state, now);
           }
         } catch {}
@@ -4407,7 +4426,7 @@ function tickStationDefense(map, room, now) {
         if (!triggerTempestBackup(best, room, hitNow)) {
           best.pvpDead = true;
           best.dead = true;
-          try { clearAbilityFx(best); } catch {}
+          try { clearAbilityFxOnDeath(best); } catch {}
         }
       }
       // Visuels pour tous : laser x1 depuis le centre du module, roquette

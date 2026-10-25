@@ -1296,7 +1296,7 @@ function getActiveHangar(u) {
   if (!hs.length) return null;
 
   // ✅ prioritaire: ship sélectionné
-  const byShip = hs.find((h) => h?.shipId === u.ship);
+  const byShip = hs.find((h) => String(h?.shipId || "") === String(u.ship || ""));
   if (byShip) return byShip;
 
   // fallback: flag active
@@ -2699,7 +2699,8 @@ export function setActiveHangar(hangarId) {
   if (!u) return { ok: false, error: "Non connecté." };
 
   const hs = Array.isArray(u.hangars) ? u.hangars : [];
-  const target = hs.find((h) => h?.id === hangarId);
+  const hid = String(hangarId ?? "");
+  const target = hs.find((h) => String(h?.id ?? "") === hid);
   if (!target) return { ok: false, error: "Hangar introuvable." };
 
   for (const h of hs) h.active = h.id === target.id;
@@ -2775,7 +2776,8 @@ export function setHangarDesign(hangarId, designId) {
 export function getHangarById(hangarId) {
   const u = getCurrentUserFull();
   if (!u) return null;
-  return (u.hangars || []).find((x) => x?.id === hangarId) || null;
+  const hid = String(hangarId ?? "");
+  return (u.hangars || []).find((x) => String(x?.id ?? "") === hid) || null;
 }
 
 /**
@@ -2785,7 +2787,8 @@ export function saveHangarFit(hangarId, fitDraft, configNo = null) {
   const u = getCurrentUserForMutation();
   if (!u) return { ok: false, error: "Non connecté." };
 
-  const h = (u.hangars || []).find((x) => x?.id === hangarId);
+  const hid = String(hangarId ?? "");
+  const h = (u.hangars || []).find((x) => String(x?.id ?? "") === hid);
   if (!h) return { ok: false, error: "Hangar introuvable." };
 
   const shipId = h.shipId || u.ship;
@@ -2883,11 +2886,12 @@ export function deleteFitPreset(hangarId, name) {
 export function saveHangarLoadout(hangarId, { ship, drones = {}, pet = null }, configNo = null) {
   const u = getCurrentUserForMutation();
   if (!u) return { ok: false, error: "Non connecté." };
-  const h = u.hangars.find(entry => entry.id === hangarId);
+  const hid = String(hangarId ?? "");
+  const h = u.hangars.find(entry => String(entry?.id ?? "") === hid);
   if (!h) return { ok: false, error: "Hangar introuvable." };
   const previousPetShieldMax = petShieldCapacity(u);
   const cfg = String(Number(configNo ?? h.activeConfig) === 2 ? 2 : 1);
-  const designError = validateDroneDesignFits(u, Object.entries(drones).map(([droneId, fit]) => ({ droneId, fit, configNo: cfg, hangarId })));
+  const designError = validateDroneDesignFits(u, Object.entries(drones).map(([droneId, fit]) => ({ droneId, fit, configNo: cfg, hangarId: hid })));
   if (designError) return { ok: false, error: designError };
   const usage = new Map();
   const count = id => { if (id) usage.set(id, (usage.get(id) || 0) + 1); };
@@ -2922,7 +2926,8 @@ export function saveHangarLoadout(hangarId, { ship, drones = {}, pet = null }, c
       }
       count(id);
     }
-    drone.fitsByHangar[h.id][cfg] = value;
+    drone.fitsByHangar[hid] ||= {};
+    drone.fitsByHangar[hid][cfg] = value;
   }
   if (pet && u.pet?.owned !== true) return { ok: false, error: "P.E.T non possédé." };
   if (u.pet?.owned === true) {
@@ -2935,7 +2940,8 @@ export function saveHangarLoadout(hangarId, { ship, drones = {}, pet = null }, c
         count(id);
       }
     }
-    u.pet.fitsByHangar[h.id][cfg] = value;
+    u.pet.fitsByHangar[hid] ||= {};
+    u.pet.fitsByHangar[hid][cfg] = value;
   }
   for (const [id, used] of usage) {
     const owned = u.inventory.shipModules.some(mod => mod.id === id) ? 1 : getOwnedCount(u, id);
@@ -2953,7 +2959,8 @@ export function setActiveHangarConfig(hangarId, configNo) {
   const u = getCurrentUserForMutation();
   if (!u) return { ok: false, error: "Non connecté." };
 
-  const h = (u.hangars || []).find((x) => x?.id === hangarId);
+  const hid = String(hangarId ?? "");
+  const h = (u.hangars || []).find((x) => String(x?.id ?? "") === hid);
   if (!h) return { ok: false, error: "Hangar introuvable." };
   const previousPetShieldMax = petShieldCapacity(u);
 

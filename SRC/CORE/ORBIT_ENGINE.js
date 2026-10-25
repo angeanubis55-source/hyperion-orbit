@@ -1478,7 +1478,7 @@ const ENERGY_LEECH_CD_S = 900; // Energy Leech : 900 s au lieu de 300
 // dans un rayon de 700 autour du lanceur : -50 % vitesse pendant 2 s.
 // Joueurs + NPC, visible par tous (snapshot slow + skillFx chain).
 const CHAIN_IMPULSE_ID = "ability_tech_chain_impulse";
-const CHAIN_IMPULSE_RADIUS = 700;
+const CHAIN_IMPULSE_RADIUS = 400;
 const CHAIN_IMPULSE_DAMAGE = 30000;
 const CHAIN_IMPULSE_BEAM_MS = 1200;
 const CHAIN_IMPULSE_MAX_TARGETS = 12;
@@ -4154,7 +4154,7 @@ function activateTempestLink() {
     n++;
     const rdmg = Math.max(1, Math.round(dmg));
     let out = null;
-    try { out = damageEnemy(current, rdmg); } catch {}
+    try { out = damageEnemy(current, rdmg, undefined, undefined, { ability: "ability_tempest_voltage-link", fixedDamage: true }); } catch {}
     if (out && (out.total || 0) > 0) {
       try { queueVolleyFloat(current, out, volleySeq++, 1); } catch {}
     }
@@ -25518,7 +25518,7 @@ function detonatePetKamikaze() {
     // Falloff linéaire : 100 % au centre → 50 % au bord du rayon.
     // Passe par damageEnemy : bouclier d'abord, puis coque (jamais direct vie).
     const fall = 1 - 0.5 * (Math.sqrt(d2) / radius);
-    const out = damageEnemy(e, dmg * fall, 0, { chance: 0, mult: 1 });
+    const out = damageEnemy(e, dmg * fall, 0, { chance: 0, mult: 1 }, { ability: "pet_kamikaze", fixedDamage: true });
     if (out?.total > 0) {
       hit++;
       try { notePetPlayerDamage(e); } catch {}
@@ -26307,6 +26307,40 @@ function petLinkBeam(x1, y1, x2, y2) {
   }
 }
 
+// Rendu groupé de Chain Impulse : même style d'éclair, mais une seule paire
+// de strokes pour toute la chaîne et sans gradient/shadowBlur par cible.
+function drawChainImpulseBeams(x1, y1, points) {
+  if (!Array.isArray(points) || !points.length) return;
+  const drawPass = (color, width, amp) => {
+    ctx.beginPath();
+    for (const [x2, y2] of points) {
+      const dx = x2 - x1, dy = y2 - y1;
+      const len = Math.hypot(dx, dy);
+      if (len < 1) continue;
+      const nx = -dy / len, ny = dx / len;
+      ctx.moveTo(x1, y1);
+      for (let i = 1; i < 9; i++) {
+        const t = i / 9;
+        const off = (Math.random() * 2 - 1) * amp * Math.sin(t * Math.PI);
+        ctx.lineTo(x1 + dx * t + nx * off, y1 + dy * t + ny * off);
+      }
+      ctx.lineTo(x2, y2);
+    }
+    ctx.strokeStyle = color;
+    ctx.lineWidth = width;
+    ctx.lineJoin = "round";
+    ctx.stroke();
+  };
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
+  ctx.shadowColor = "rgba(255,225,77,0.75)";
+  ctx.shadowBlur = 8;
+  drawPass("rgba(255,225,77,0.85)", 5, 30);
+  ctx.shadowBlur = 3;
+  drawPass("rgba(255,255,255,0.9)", 2, 30);
+  ctx.restore();
+}
+
 // JAMX / Creed : halo arc-en-ciel expansif, version simple (1 anneau fin,
 // pas de shadowBlur pour les perfs, teinte qui tourne).
 function drawJamxHalo(x, y, r, maxR) {
@@ -26455,23 +26489,10 @@ function drawRemoteChainImpulse(remote, ox, oy) {
   const fx = remote.chainImpFx;
   if (!fx?.chain?.length) return;
   if (performance.now() - Number(fx.startedAt) > CHAIN_IMPULSE_BEAM_MS) return;
-  const resolve = (point) => {
-    if (String(point.id) === String(netMyId())) return player;
-    try {
-      const peer = getNetplayRemotes()?.get(String(point.id));
-      if (peer && !peer.dead) return { x: Number(peer.rx ?? peer.x), y: Number(peer.ry ?? peer.y) };
-    } catch {}
-    try {
-      const npc = enemies.find((e) => String(e._netUid) === String(point.id) && Number(e.hp) > 0);
-      if (npc) return npc;
-    } catch {}
-    return point;
-  };
   const cx = Number(remote.rx ?? remote.x) + ox, cy = Number(remote.ry ?? remote.y) + oy;
-  for (const point of fx.chain) {
-    const current = resolve(point);
-    try { petLinkBeam(cx, cy, Number(current.x ?? current.rx) + ox, Number(current.y ?? current.ry) + oy); } catch {}
-  }
+  const points = fx.chain.map(point => [Number(point.x) + ox, Number(point.y) + oy])
+    .filter(([x, y]) => Number.isFinite(x) && Number.isFinite(y));
+  try { drawChainImpulseBeams(cx, cy, points); } catch {}
 }
 
 // Halo "soigneur" (Streuner soigneur, pod Aegis, bouées pet) : glow radial
@@ -30372,7 +30393,9 @@ function damageEnemy(e, dmg, shieldPenetration, crit, opts = {}) {
   // En Galaxy Gate il n'y a pas de serveur de combat pour confirmer le vol
   // de vie : applique exactement les 10 % sur les dégâts locaux validés.
   if (typeof techInLocalInstance === "function" && techInLocalInstance()
-    && techEnergyLeechActive() && result.total > 0 && opts.fromJpc !== true && !player.dead) {
+    && techEnergyLeechActive() && result.total > 0 && opts.fromJpc !== true
+    && opts.fromPet !== true && opts.fromRedirect !== true && opts.nonLaser !== true
+    && !opts.rocket && !opts.ability && !player.dead) {
     const before = Number(player.hp) || 0;
     player.hp = Math.min(Number(player.hpMax) || 0, before + Math.floor(result.total * ENERGY_LEECH_PCT));
     showTechLocalHeal(Math.max(0, Math.round(player.hp - before)));
@@ -30456,6 +30479,7 @@ e._pendingSpawn = Math.max(1, Math.floor(Number(e.cubikonMinions?.refill) || 20)
         freezeSec: opts.freezeSec,
         rocket: opts.rocket,
         ability: opts.ability,
+        fromPet: opts.fromPet === true,
       });
     } catch {}
   }
@@ -37211,7 +37235,9 @@ function syncTechVisualSnapshot(actor, local = false) {
   const target = local ? player : actor;
   if (actor.dead) {
     target.leechFx = target.npcBombFx = target.frostFx = target.chainImpFx = null;
-    if (local) { player.energyLeechUntil = 0; player.precisionUntil = 0; }
+    // Le Siphon et la Roquette de précision sont des techs persistantes : la
+    // mort masque leur visuel mais ne détruit pas leurs timers. Elles
+    // reprennent automatiquement au respawn.
     return;
   }
   for (const entry of actor.afx || []) {
@@ -44123,8 +44149,8 @@ for (let i = bullets.length - 1; i >= 0; i--) {
             ? b.isLauncherRocket
               ? applyRocketVolleyHit(t, b, launcherImpact?.count || b.volleySize, sabRecipient)
               : applyRocketHit(t, b, sabRecipient)
-            : damageEnemy(t, b.dmg, undefined, qaCrit || (!b.ownerEscortId ? { chance: player.critChance, mult: player.critMult } : undefined),
-              b.qaCrit ? { ability: b.ability, fixedDamage: true } : b.key === "pib" ? { slowPct: 10, slowSec: 15 } : undefined);
+        : damageEnemy(t, b.dmg, undefined, qaCrit || (!b.ownerEscortId ? { chance: player.critChance, mult: player.critMult } : undefined),
+              b.qaCrit ? { ability: b.ability, fixedDamage: true } : b.key === "pib" ? { slowPct: 10, slowSec: 15, nonLaser: true } : b.key === "cbo" ? { nonLaser: true } : b.ownerEscortId ? { fromPet: true } : undefined);
 
       // ✅ CBO-100 (joueur) : dégâts normaux + vol de bouclier ×1, comme SAB.
       // Visuels allies : aucun effet (dmg 0 de toute facon).

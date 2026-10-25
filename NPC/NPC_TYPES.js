@@ -323,7 +323,7 @@ export const NPC_TYPES = {
     r: 18, hp: 240000, shield: 200000, speed: 350, bulletDmg: 2500, bulletSpeed: 4500, shootRange: 500,
   },
   npc_Blighted_Kristallin: {
-    name: "-=[ Plagued Kristallin ]=-",
+    name: "-=[ Blighted Kristallin ]=-",
     sprite: { path: "NPC/NPC_SPRITES/BLIGHTED_KRISTALLIN/", frames: 83, firstNumber: 1, ext: ".png", w: 113, h: 113 },
     playSprite: true,
     passiveNative: true,

@@ -117,7 +117,6 @@ export function fireNpcBombPulse(state, sim, now, emit) {
       n++;
       try {
         const damage = sim.applyHit(String(state.id), { uid: String(uid), dmg: 100000, pen: 0, critChance: 0, critMult: 1, variance: 0 });
-        applyEnergyLeech(state, damage, now, emit, npc);
       } catch {}
     }
   } catch {}

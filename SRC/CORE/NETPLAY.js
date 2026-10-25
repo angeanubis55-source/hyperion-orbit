@@ -2483,6 +2483,7 @@ export function sendNetHit(hit) {
     const h = { t: "hit", uid: String(hit.uid) };
     const ability = abilityHitTag(hit.ability);
     if (ability) h.ability = ability;
+    if (hit.fromPet === true) h.pet = true;
     if (typeof hit.rocket === "string") h.rocket = hit.rocket.slice(0, 16);
     if (hit.kind === "sab") {
       h.kind = "sab";

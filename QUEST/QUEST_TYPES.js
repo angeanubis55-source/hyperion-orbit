@@ -236,7 +236,7 @@ const PIRATE_CAMPAIGNS = [
   Q("pirate_barracuda_300", "Morsure du Barracuda", "Chasse les Barracudas des routes pirates.", [K("barracuda", "npc_Barracuda", 300, "Éliminer des Barracudas")], 60000000, 30000000, 120000, "pirate_elite"),
   Q("pirate_saboteur_250", "Contre-sabotage", "Élimine les premières cellules Saboteur.", [K("saboteur", "npc_Saboteur", 250, "Éliminer des Saboteurs")], 70000000, 35000000, 140000, "pirate_elite"),
   Q("pirate_annihilator_100", "Directive Annihilator", "Détruis les unités lourdes Annihilator.", [K("annihilator", "npc_Annihilator", 100, "Éliminer des Annihilators")], 55000000, 27500000, 110000, "pirate_elite"),
-  Q("pirate_battleray_25", "Chasse au Battleray", "Affronte les prédateurs majeurs du territoire pirate.", [K("battleray", "npc_Battleray", 25, "Éliminer des Battlerays")], 50000000, 25000000, 100000, "pirate_annihilator_100"),
+  Q("pirate_battleray_25", "Chasse aux Annihilators", "Affronte les prédateurs majeurs du territoire pirate.", [K("battleray", "npc_Annihilator", 25, "Éliminer des Annihilators", "5-2")], 50000000, 25000000, 100000, "pirate_annihilator_100"),
   Q("pirate_falcon_10", "Le Faucon du siècle", "Fais tomber plusieurs Century Falcons.", [K("falcon", "npc_Century_Falcon", 10, "Éliminer des Century Falcons")], 60000000, 30000000, 120000, "pirate_battleray_25"),
   Q("pirate_armada", "Armada à couler", "Détruis toutes les classes principales d’une armada.", [K("interceptor", "npc_Interceptor", 1000, "Éliminer des Interceptors"), K("barracuda", "npc_Barracuda", 500, "Éliminer des Barracudas"), K("saboteur", "npc_Saboteur", 500, "Éliminer des Saboteurs"), K("annihilator", "npc_Annihilator", 250, "Éliminer des Annihilators")], 400000000, 200000000, 800000, "pirate_falcon_10"),
   Q("pirate_saboteur_2500", "Guerre de l’ombre", "Poursuis la campagne contre les Saboteurs.", [K("saboteur", "npc_Saboteur", 2500, "Éliminer des Saboteurs")], 500000000, 250000000, 1000000, "pirate_saboteur_250"),
@@ -246,7 +246,7 @@ const PIRATE_CAMPAIGNS = [
 ];
 
 const SPECIAL_CAMPAIGNS = [
-  Q("ancient_trio", "Triade des anciens", "Affronte Styxus, Charopos et Lanatum.", [K("styxus", "npc_Styxus", 25, "Éliminer des Styxus"), K("charopos", "npc_Charopos", 25, "Éliminer des Charopos"), K("lanatum", "npc_Lanatum", 25, "Éliminer des Lanatum")], 40000000, 20000000, 80000),
+  Q("ancient_trio", "Triade des anciens", "Affronte les variantes Uber des secteurs extérieurs.", [K("styxus", "npc_Uber_Sibelon", 25, "Éliminer des Uber Sibelons", "4-5"), K("charopos", "npc_Uber_Lordakium", 25, "Éliminer des Uber Lordakiums", "4-5"), K("lanatum", "npc_Uber_Kristallon", 25, "Éliminer des Uber Kristallons", "4-5")], 40000000, 20000000, 80000),
 ];
 
 const PERMANENT_ELITE_CONTRACTS = [
@@ -335,7 +335,7 @@ const HUNDRED_MISSION_CHAIN = [
   ["century_008", "Voies de sang", [K("uber_kristallin", "npc_Uber_Kristallin", 30, "Éliminer des Uber Kristallins", "4-5"), K("uber_kristallon", "npc_Uber_Kristallon", 30, "Éliminer des Uber Kristallons", "4-5"), K("uber_lordakium", "npc_Uber_Lordakium", 70, "Éliminer des Uber Lordakiums", "4-5")]],
   ["century_009", "Vol du faucon", [K("lordakia", "npc_Lordakia", 1500, "Éliminer des Lordakias"), K("saimon", "npc_Saimon", 2000, "Éliminer des Saimons"), K("mordon", "npc_Mordon", 1000, "Éliminer des Mordons")]],
   ["century_010", "Vermine pirate", [K("interceptor", "npc_Interceptor", 1200, "Éliminer des Interceptors"), K("saboteur", "npc_Saboteur", 500, "Éliminer des Saboteurs"), K("barracuda", "npc_Barracuda", 300, "Éliminer des Barracudas")]],
-  ["century_011", "Rayons de la mort", [K("battleray", "npc_Battleray", 100, "Éliminer des Battlerays"), K("annihilator", "npc_Annihilator", 300, "Éliminer des Annihilators")]],
+  ["century_011", "Rayons de la mort", [K("battleray", "npc_Uber_Annihilator", 100, "Éliminer des Uber Annihilators", "5-2"), K("annihilator", "npc_Annihilator", 300, "Éliminer des Annihilators", "5-2")]],
   ["century_012", "Guerre des chefs", [K("boss_sibelon", "npc_Boss_Sibelon", 200, "Éliminer des Boss Sibelons"), K("boss_lordakium", "npc_Boss_Lordakium", 150, "Éliminer des Boss Lordakiums"), K("boss_kristallon", "npc_Boss_Kristallon", 100, "Éliminer des Boss Kristallons")]],
   ["century_013", "Route des cimes", [V("1-8"), V("2-8"), V("3-8"), V("4-4")]],
   ["century_014", "Triple enfer", [G("alpha", 2), G("beta", 2), G("gamma", 2)]],
@@ -464,14 +464,14 @@ const SALVAGE_GATE_OPERATIONS = [
 ];
 
 const ANCIENT_CURSED_EXTENSION = [
-  Q("ancient_cursed_01", "Anciens — Bêtes volatiles", "Ouvre l'extension anciens et maudits.", [K("styxus", "npc_Styxus", 5, "Éliminer des Styxus"), K("charopos", "npc_Charopos", 5, "Éliminer des Charopos"), K("lanatum", "npc_Lanatum", 10, "Éliminer des Lanatums")], 15000000, 7500000, 30000, "ancient_trio"),
-  Q("ancient_cursed_02", "Braises à éteindre", "Affronte les braises de 1-9.", [K("magma", "npc_Magma_Stalker", 80, "Éliminer des Magma Stalkers"), K("pyrospire", "npc_Pyrospire", 3, "Éliminer des Pyrospires"), V("1-9")], 18000000, 9000000, 36000, "ancient_cursed_01"),
+  Q("ancient_cursed_01", "Anciens — Bêtes volatiles", "Ouvre l'extension anciens et maudits.", [K("styxus", "npc_Uber_Sibelon", 5, "Éliminer des Uber Sibelons", "4-5"), K("charopos", "npc_Uber_Lordakium", 5, "Éliminer des Uber Lordakiums", "4-5"), K("lanatum", "npc_Uber_Kristallon", 10, "Éliminer des Uber Kristallons", "4-5")], 15000000, 7500000, 30000, "ancient_trio"),
+  Q("ancient_cursed_02", "Braises à éteindre", "Affronte les unités explosives des secteurs de guerre.", [K("magma", "npc_Explosif", 80, "Éliminer des Kamikazes", ["4-1", "4-2", "4-3", "4-4"]), K("pyrospire", "npc_Uber_Kristallin", 3, "Éliminer des Uber Kristallins", "4-5")], 18000000, 9000000, 36000, "ancient_cursed_01"),
   Q("ancient_cursed_03", "4-1 — Zone de mort", "Nettoie la zone explosive 4-1.", [K("explosif", "npc_Explosif", 40, "Éliminer des Kamikazes"), V("4-1")], 12000000, 6000000, 24000, "ancient_cursed_02"),
   Q("ancient_cursed_04", "Siège du premier cœur", "Frappe les dispositifs Cubikon.", [K("cubikon", "npc_Cubikon", 5, "Détruire des Cubikons"), K("protegit", "npc_Protegit", 100, "Éliminer des Protegits")], 15000000, 7500000, 30000, "cubikon_siege"),
   Q("ancient_cursed_05", "Cœur lourd", "Mène une lourde campagne Cubikon.", [K("cubikon", "npc_Cubikon", 20, "Détruire des Cubikons"), K("protegit", "npc_Protegit", 400, "Éliminer des Protegits")], 60000000, 30000000, 120000, "ancient_cursed_04"),
   Q("ancient_cursed_06", "Au-delà du voile", "Survis au secteur maudit et récolte l'astral.", [V("MAUDITE"), K("protegit", "npc_Protegit", 50, "Éliminer des Protegits", "MAUDITE"), C("astral", "Astral_Prime_Box", 25, "Collecter des Astral Prime Boxes", "MAUDITE")], 30000000, 30000000, 150000, "cursed_first_contact"),
   Q("ancient_cursed_07", "Le suzerain tombe", "Neutralise la souche virale et ses overlords.", [K("viral_kristallon", "npc_Viral_Kristallon", 40, "Éliminer des Viral Kristallons"), K("viral_gyger", "npc_Viral_Gygerthrall", 60, "Éliminer des Viral Gygerthralls"), K("overlord", "npc_Gygerim_Overlord", 3, "Éliminer des Gygerim Overlords")], 35000000, 17500000, 70000, "viral_outbreak"),
-  Q("ancient_cursed_08", "L’épreuve finale", "Termine l'extension par une épreuve complète.", [K("styxus", "npc_Styxus", 10, "Éliminer des Styxus"), K("charopos", "npc_Charopos", 10, "Éliminer des Charopos"), K("lanatum", "npc_Lanatum", 25, "Éliminer des Lanatums"), K("cubikon", "npc_Cubikon", 10, "Détruire des Cubikons"), K("protegit", "npc_Protegit", 250, "Éliminer des Protegits")], 80000000, 40000000, 160000, "ancient_cursed_07"),
+  Q("ancient_cursed_08", "L’épreuve finale", "Termine l'extension par une épreuve complète.", [K("styxus", "npc_Uber_Sibelon", 10, "Éliminer des Uber Sibelons", "4-5"), K("charopos", "npc_Uber_Lordakium", 10, "Éliminer des Uber Lordakiums", "4-5"), K("lanatum", "npc_Uber_Kristallon", 25, "Éliminer des Uber Kristallons", "4-5"), K("cubikon", "npc_Cubikon", 10, "Détruire des Cubikons"), K("protegit", "npc_Protegit", 250, "Éliminer des Protegits")], 80000000, 40000000, 160000, "ancient_cursed_07"),
 ];
 
 // ---------------------------------------------------------------------------
@@ -518,7 +518,7 @@ const EXTERMINATION_1000_DATA = [
   ["exterm1000_blighted_gygerthrall", "Blighted Gygerthrall", "npc_Blighted_Gygerthrall"],
   ["exterm1000_streuner_recruit", "Streuner Recruit", "npc_Streuner_Recruit"],
   ["exterm1000_streuner_aider", "Streuner Aider", "npc_Streuner_Aider"],
-  ["exterm1000_boss_streuner_recruit", "Boss Streuner Recruit", "npc_Boss_Streuner_Recruit"],
+  ["exterm1000_boss_streuner_recruit", "Protecteur Streuner", "npc_Boss_Streuner_Recruit"],
   ["exterm1000_protegit", "Protegit", "npc_Protegit"],
   ["exterm1000_cubikon", "Cubikon", "npc_Cubikon"],
   ["exterm1000_emperor_sibelon", "Emperor Sibelon", "npc_Emperor_Sibelon"],
@@ -532,12 +532,12 @@ const EXTERMINATION_1000_DATA = [
   ["exterm1000_uber_barracuda", "Uber Barracuda", "npc_Uber_Barracuda"],
   ["exterm1000_uber_saboteur", "Uber Saboteur", "npc_Uber_Saboteur"],
   ["exterm1000_uber_annihilator", "Uber Annihilator", "npc_Uber_Annihilator"],
-  ["exterm1000_styxus", "Styxus", "npc_Styxus"],
-  ["exterm1000_charopos", "Charopos", "npc_Charopos"],
-  ["exterm1000_lanatum", "Lanatum", "npc_Lanatum"],
+  ["exterm1000_styxus", "Uber Sibelon", "npc_Uber_Sibelon"],
+  ["exterm1000_charopos", "Uber Lordakium", "npc_Uber_Lordakium"],
+  ["exterm1000_lanatum", "Uber Kristallon", "npc_Uber_Kristallon"],
   ["exterm1000_explosif", "Kamikaze", "npc_Explosif"],
-  ["exterm1000_magma_stalker", "Magma Stalker", "npc_Magma_Stalker"],
-  ["exterm1000_pyrospire", "Pyrospire", "npc_Pyrospire"],
+  ["exterm1000_magma_stalker", "Kamikaze", "npc_Explosif"],
+  ["exterm1000_pyrospire", "Uber Kristallin", "npc_Uber_Kristallin"],
 ];
 const extermTitleFor = (name) => {
   const raw = String(name || "").trim();
@@ -547,7 +547,7 @@ const extermTitleFor = (name) => {
   if (lower.startsWith("uber ")) return `Cauchemar Uber : ${rest("Uber ")}`;
   if (lower.startsWith("boss ")) return `Prime au commandant : ${rest("Boss ")}`;
   if (lower.includes("blighted") || lower.includes("gygerthrall") || lower.includes("viral")) return `Endiguement contagion : ${raw}`;
-  if (lower.includes("recruit") || lower.includes("aider")) return `Bizutage sanglant : ${raw}`;
+  if (lower.includes("recruit") || lower.includes("aider") || lower.includes("protecteur streuner")) return `Bizutage sanglant : ${raw}`;
   if (lower.includes("interceptor") || lower.includes("barracuda") || lower.includes("saboteur") || lower.includes("annihilator") || lower.includes("marauder") || lower.includes("vagrant") || lower.includes("outcast") || lower.includes("corsair") || lower.includes("convict") || lower.includes("hooligan") || lower.includes("ravager")) return `Nettoyage pirate : ${raw}`;
   if (lower.includes("styxus") || lower.includes("charopos") || lower.includes("lanatum")) return `Chasse ancienne : ${raw}`;
   if (lower.includes("magma") || lower.includes("pyrospire") || lower.includes("kamikaze") || lower.includes("explosif")) return `Zone à risque : ${raw}`;
