@@ -2875,8 +2875,17 @@ function renderExtrasRoulette(user, host = null) {
       return `<div class="moduleHistoryEmpty">Aucun module possédé pour le moment.</div>`;
     }
     const list = history.slice().reverse();
+    const previousList = historyCurrentList;
+    const previousRenderedCount = historyRenderedCount;
+    const sameList = Array.isArray(previousList)
+      && previousList.length === list.length
+      && previousList.every((entry, index) => String(entry?.id || "") === String(list[index]?.id || ""));
     historyCurrentList = list;
-    historyRenderedCount = Math.min(HISTORY_CHUNK, list.length);
+    // Les rafraîchissements réseau ne doivent pas réduire une liste déjà
+    // déroulée de 40/60 lignes à son premier paquet de 20 lignes.
+    historyRenderedCount = sameList
+      ? Math.min(Math.max(HISTORY_CHUNK, previousRenderedCount), list.length)
+      : Math.min(HISTORY_CHUNK, list.length);
     return list.slice(0, historyRenderedCount).map((module, index) => historyRowHtml(module, list.length - index, currentUser)).join("");
   }
   function updateModuleHistory(currentUser) {
