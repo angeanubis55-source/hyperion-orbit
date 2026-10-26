@@ -1,6 +1,7 @@
 // Vrai jeu et serveur sur compte SQLite temporaire. Le crochet de simulation
 // est injecte uniquement dans la reponse HTTP du test, jamais dans le jeu livre.
 import assert from "node:assert/strict";
+import { enterGame } from "./BROWSER_GAME_START.js";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { mkdtemp, readFile, writeFile, rm } from "node:fs/promises";
@@ -156,7 +157,7 @@ try {
     };
   }, { token: account.token, user: canonical });
   await page.goto(url + "/index.html?map=1-BL", { waitUntil: "domcontentloaded" });
-  await page.waitForSelector("#loadingStartBtn:not([disabled])", { timeout: 90000 }); await page.click("#loadingStartBtn");
+  await enterGame(page, 90000);
   await page.waitForSelector("#game", { state: "visible", timeout: 15000 });
   await page.waitForFunction(() => !document.documentElement.classList.contains("orbitBooting") &&
     getComputedStyle(document.getElementById("loadingOverlay")).display === "none");

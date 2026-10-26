@@ -8,6 +8,7 @@ import { join, resolve, dirname, basename } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createServer } from "node:net";
 import { once } from "node:events";
+import { gzipSync } from "node:zlib";
 
 test("API sauvegarde : référence périmée refusée et réponse perdue acquittée une seule fois", { timeout: 20000 }, async t => {
   const temporary = await mkdtemp(join(tmpdir(), "orbit-account-save-"));
@@ -83,4 +84,21 @@ test("API sauvegarde : référence périmée refusée et réponse perdue acquitt
   const compactStale = await save({ ...compactBody, saveId: "compact-stale" });
   assert.equal(compactStale.status, 409); assert.equal(compactStale.snapshotAccepted, undefined);
   assert.equal(compactStale.user.inventory.shipModules.length, 3000, "un conflit renvoie toujours le canon complet");
+
+  // Corps gzip (client CompressionStream) : meme traitement qu'en clair.
+  const canon = (await api("/api/me", { token })).user;
+  const gzipBody = { user: { ...canon, revision: canon.revision + 1, credits: canon.credits + 7 },
+    baseRevision: canon.revision, saveId: "gzip-save", compactSave: true };
+  const postGzip = async (bytes) => {
+    const response = await fetch(url + "/api/save", { method: "POST", body: bytes, headers: {
+      Authorization: `Bearer ${token}`, "content-type": "application/json", "content-encoding": "gzip" } });
+    return { status: response.status, ...await response.json() };
+  };
+  const gzipped = await postGzip(gzipSync(JSON.stringify(gzipBody)));
+  assert.equal(gzipped.ok, true); assert.equal(gzipped.snapshotAccepted, true);
+  assert.equal((await api("/api/me", { token })).user.credits, canon.credits + 7);
+  const gzipDuplicate = await postGzip(gzipSync(JSON.stringify(gzipBody)));
+  assert.equal(gzipDuplicate.duplicate, true, "le recu gzip est idempotent comme en clair");
+  const broken = await postGzip(Buffer.from("pas du gzip"));
+  assert.equal(broken.status, 400); assert.equal(broken.error, "JSON invalide.");
 });

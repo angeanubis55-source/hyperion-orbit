@@ -1273,11 +1273,11 @@ ZoneNpcSim.create = async function(...args) {
 });
 
 
-test("High-tech : Energy Leech partage la frame et la taille native, Chain suit les memes cibles vivantes", () => {
+test("High-tech : Energy Leech partage la frame et la taille native, Chain dessine les memes points figes", () => {
   const v = visuals(), beams = [];
   Object.assign(v.api, { netGameTimeMs: () => 50321, techEnergyLeechActive: () => true,
     getCachedImage: path => ({ complete: true, naturalWidth: 100, naturalHeight: 80, path }),
-    petLinkBeam: (...args) => beams.push(args) });
+    drawChainImpulseBeams: (...args) => beams.push(args) });
   for (const name of ["drawEnergyLeechFx", "drawRemoteEnergyLeech", "drawChainImpulseFx", "drawRemoteChainImpulse"]) {
     const from = engine.indexOf(`function ${name}(`), to = engine.indexOf("\n}", from) + 2;
     vm.runInContext(engine.slice(from, to), v.api);
@@ -1291,7 +1291,10 @@ test("High-tech : Energy Leech partage la frame et la taille native, Chain suit 
   v.api.player.chainImpFx = fx; remote.chainImpFx = fx;
   v.api.enemies.push({ _netUid: "npc", hp: 100, x: 800, y: 900 });
   v.api.drawChainImpulseFx(0, 0); v.api.drawRemoteChainImpulse(remote, 0, 0);
+  // Les eclairs partent du lanceur vers les positions figees au tir
+  // (fx.chain), pas vers la position vivante du NPC.
+  assert.equal(beams.length, 2);
   assert.deepEqual(beams[0], beams[1]);
-  assert.deepEqual(beams[0], [100, 100, 800, 900]);
+  assert.deepEqual(JSON.parse(JSON.stringify(beams[0])), [100, 100, [[1, 2]]]); // tableaux du contexte vm
   assert.deepEqual(v.renderErrors, []);
 });

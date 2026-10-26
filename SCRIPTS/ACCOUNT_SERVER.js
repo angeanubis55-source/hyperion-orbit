@@ -4,7 +4,9 @@
 // snapshot revisionne (anti-ecrasement silencieux).
 // Le client local continue de sanitizer (plafond historique, sentinelle Infinity).
 
-import { createHash, randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
+import { createHash, randomBytes, scrypt, timingSafeEqual } from "node:crypto";
+import { promisify } from "node:util";
+import { gunzip } from "node:zlib";
 import { mkdirSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -64,18 +66,22 @@ setInterval(() => {
   const now = Date.now();
   for (const [key, entry] of rateLimits) if (!entry || now > Number(entry.reset || 0) + 60_000) rateLimits.delete(key);
 }, 60_000).unref?.();
-function hashPassword(plain) {
+// scrypt ASYNC : la version sync bloquait la boucle du processus (qui heberge
+// aussi la simu multi) ~40-100 ms par login -> freeze pour tous les joueurs.
+// Meme parametres/sortie que scryptSync, format v2$ inchange.
+const scryptAsync = promisify(scrypt);
+async function hashPassword(plain) {
   const salt = randomBytes(16).toString("hex");
-  const derived = scryptSync(String(plain ?? ""), salt, 64).toString("hex");
+  const derived = (await scryptAsync(String(plain ?? ""), salt, 64)).toString("hex");
   return `v2$${salt}$${derived}`;
 }
-function verifyPassword(stored, candidate) {
+async function verifyPassword(stored, candidate) {
   const c = String(candidate ?? "");
   if (typeof stored === "string" && stored.startsWith("v2$")) {
     const parts = String(stored).split("$");
     if (parts.length !== 3 || !parts[1] || !parts[2]) return false;
     try {
-      const actual = scryptSync(c, parts[1], 64);
+      const actual = await scryptAsync(c, parts[1], 64);
       const expected = Buffer.from(parts[2], "hex");
       return actual.length === expected.length && timingSafeEqual(actual, expected);
     } catch { return false; }
@@ -576,6 +582,16 @@ function ensureServerModuleInventory(data) {
   data.stats ||= {};
 }
 
+// Journal des tirages : tenu par le serveur (tirages /api/modules, dimanche),
+// le client ne l'envoie plus. Borne comme cote client (plafond historique 500).
+function capServerHistory(data) {
+  try {
+    if (Array.isArray(data?.inventory?.moduleRollHistory) && data.inventory.moduleRollHistory.length > 500) {
+      data.inventory.moduleRollHistory = data.inventory.moduleRollHistory.slice(-500);
+    }
+  } catch {}
+}
+
 function payServerModuleRoll(data, cost, payWith = "auto") {
   const tickets = Math.max(0, Math.floor(Number(data.inventory.counts.ticket_module_reroll) || 0));
   if (payWith !== "credits" && tickets > 0) {
@@ -614,6 +630,7 @@ function applyServerModuleOperation(data, body) {
     module.rerolls = 0; module.rerollCredits = 0;
     data.inventory.shipModules.push(module);
     data.inventory.moduleRollHistory.push({ ...module, rollPayment: payment });
+    capServerHistory(data);
     return { module, payment };
   }
   if (action === "reroll") {
@@ -646,6 +663,7 @@ function applyServerModuleOperation(data, body) {
     module.rerollCredits = moduleRerollCredits(old) + (payment.type === "credits" ? cost : 0);
     data.inventory.shipModules.splice(index, 1, module);
     data.inventory.moduleRollHistory.push({ ...module, rollPayment: payment });
+    capServerHistory(data);
     return { module, payment };
   }
   if (action === "pass") {
@@ -662,6 +680,7 @@ function applyServerModuleOperation(data, body) {
       module.rerolls = 0; module.rerollCredits = 0;
       data.inventory.shipModules.push(module);
       data.inventory.moduleRollHistory.push({ ...module, rollPayment: { type: "keys", amount: offer.cost } });
+      capServerHistory(data);
     } else if (offer.kind === "resources") {
       for (const [id, amount] of Object.entries(offer.resources)) data.inventory.resources[id] = Math.max(0, Math.floor(Number(data.inventory.resources[id]) || 0)) + amount;
     } else if (offer.kind === "item") {
@@ -2227,16 +2246,30 @@ function readBody(req, res, onDone) {
     chunks.push(c);
   });
   req.on("end", () => {
-    try {
-      onDone(JSON.parse(Buffer.concat(chunks).toString("utf8") || "{}"));
-    } catch {
-      json(res, 400, { ok: false, error: "JSON invalide." });
+    if (res.writableEnded) return;
+    // Meme contrat qu'avant : toute exception (parse OU onDone) -> 400.
+    const parse = (buf) => {
+      try {
+        onDone(JSON.parse(buf.toString("utf8") || "{}"));
+      } catch {
+        try { json(res, 400, { ok: false, error: "JSON invalide." }); } catch {}
+      }
+    };
+    // Sauvegardes compressees par le client (CompressionStream) : ~10x moins
+    // d'octets. Decompression asynchrone (pool libuv), bornee comme le corps.
+    if (String(req.headers["content-encoding"] || "").toLowerCase() === "gzip") {
+      gunzip(Buffer.concat(chunks), { maxOutputLength: BODY_LIMIT }, (err, buf) => {
+        if (err) return json(res, err.code === "ERR_BUFFER_TOO_LARGE" ? 413 : 400, { ok: false, error: "JSON invalide." });
+        parse(buf);
+      });
+      return;
     }
+    parse(Buffer.concat(chunks));
   });
 }
 
 // POST /api/register { pseudo, email, password, faction, migrate? }
-function handleRegister(body, res) {
+async function handleRegister(body, res) {
   const pseudo = String(body?.pseudo || "").trim();
   const email = String(body?.email || "").trim().toLowerCase();
   const password = String(body?.password || "");
@@ -2261,7 +2294,7 @@ function handleRegister(body, res) {
     if (norm(migrate.pseudo) !== keyP || norm(migrate.email) !== keyE) {
       return json(res, 400, { ok: false, error: "Migration incoherente (pseudo/email)." });
     }
-    if (!verifyPassword(migrate.password, password)) {
+    if (!await verifyPassword(migrate.password, password)) {
       return json(res, 403, { ok: false, error: "Migration refusee (mot de passe)." });
     }
     try { data = JSON.parse(JSON.stringify(migrate)); } catch { data = {}; }
@@ -2277,7 +2310,7 @@ function handleRegister(body, res) {
   data.pseudo = pseudo;
   data.email = email;
   data.faction = faction;
-  data.password = hashPassword(password);
+  data.password = await hashPassword(password);
   data.createdAt = data.createdAt || now;
   data.updatedAt = now;
   data.revision = revision;
@@ -2293,15 +2326,15 @@ function handleRegister(body, res) {
 }
 
 // POST /api/login { pseudoOrEmail, password }
-function handleLogin(body, res) {
+async function handleLogin(body, res) {
   const key = norm(body?.pseudoOrEmail);
   const pass = String(body?.password || "");
   if (!key || !pass) return json(res, 400, { ok: false, error: "Champs manquants." });
   const u = db.prepare("SELECT * FROM users WHERE pseudo_norm = ? OR email = ?").get(key, key);
-  if (!u || !verifyPassword(u.password_hash, pass)) return json(res, 401, { ok: false, error: "Identifiants incorrects." });
+  if (!u || !await verifyPassword(u.password_hash, pass)) return json(res, 401, { ok: false, error: "Identifiants incorrects." });
   // Migration clair -> hash.
   if (!String(u.password_hash || "").startsWith("v2$")) {
-    const h = hashPassword(pass);
+    const h = await hashPassword(pass);
     try {
       const data = JSON.parse(u.data || "{}");
       data.password = h;
@@ -2548,6 +2581,7 @@ export function grantSundayModule(accountId, rarity) {
     if (!Array.isArray(data.inventory.moduleRollHistory)) data.inventory.moduleRollHistory = [];
     data.inventory.shipModules.push(mod);
     data.inventory.moduleRollHistory.push({ ...mod, rollPayment: { type: "event", amount: 0 } });
+    capServerHistory(data);
     const newRev = Math.max(Math.floor(Number(data.revision) || 0), Number(row.revision) || 0) + 1;
     data.revision = newRev;
     data.updatedAt = Date.now();
@@ -2646,11 +2680,11 @@ export function adminGiveTitle(pseudo, name, color) {
   } catch { return { ok: false, error: "Erreur serveur." }; }
 }
 
-function handleAccountIdentity(req, body, res, kind) {
+async function handleAccountIdentity(req, body, res, kind) {
   const me = authUser(req);
   if (!me) return json(res, 401, { ok: false, error: "Session invalide." });
   const currentPassword = String(body?.currentPassword || "");
-  if (!verifyPassword(me.password_hash, currentPassword)) {
+  if (!await verifyPassword(me.password_hash, currentPassword)) {
     return json(res, 403, { ok: false, error: "Mot de passe actuel incorrect." });
   }
   let data = {};
@@ -2675,8 +2709,8 @@ function handleAccountIdentity(req, body, res, kind) {
   } else if (kind === "password") {
     const next = String(body?.value || "");
     if (next.length < 10) return json(res, 400, { ok: false, error: "Le nouveau mot de passe doit contenir au moins 10 caractères." });
-    if (verifyPassword(passwordHash, next)) return json(res, 400, { ok: false, error: "Choisis un mot de passe différent de l'ancien." });
-    passwordHash = hashPassword(next);
+    if (await verifyPassword(passwordHash, next)) return json(res, 400, { ok: false, error: "Choisis un mot de passe différent de l'ancien." });
+    passwordHash = await hashPassword(next);
     // Un changement de mot de passe invalide toutes les autres sessions.
     db.prepare("DELETE FROM sessions WHERE user_id = ?").run(me.id);
     const bearer = bearerToken(req);
@@ -2721,7 +2755,13 @@ function protectServerModuleDailyRolls(serverData, incomingData) {
 }
 
 // POST /api/save { user } — plein blob, revision strictement croissante.
-function handleSave(req, body, res) {
+async function handleSave(req, body, res) {
+  // Hash d'un mot de passe en clair calcule AVANT toute lecture : aucun
+  // await ne doit separer le controle de revision de l'UPDATE (sinon deux
+  // sauvegardes concurrentes pourraient s'ecraser).
+  const rawPassword = body?.user?.password;
+  const prehashedPassword = typeof rawPassword === "string" && rawPassword.length >= 10 && !isHash(rawPassword)
+    ? await hashPassword(rawPassword) : null;
   const me = authUser(req);
   if (!me) return json(res, 401, { ok: false, error: "Session invalide." });
   const blob = body?.user;
@@ -2790,10 +2830,12 @@ function handleSave(req, body, res) {
     conflict = true;
   }
   const faction = FACTIONS.has(norm(blob.faction)) ? norm(blob.faction) : norm(me.faction);
-  let data;
-  try { data = JSON.parse(JSON.stringify(blob)); } catch {
-    return json(res, 400, { ok: false, error: "Utilisateur invalide." });
-  }
+  // blob sort tout juste de JSON.parse (readBody) et n'est utilise que par
+  // cette requete : le re-cloner (stringify+parse) coutait ~6 ms sur un gros
+  // compte, boucle bloquee pour toute la simu. Le hash du recu est deja fait.
+  const blobHasHistory = !!blob.inventory && typeof blob.inventory === "object"
+    && Object.hasOwn(blob.inventory, "moduleRollHistory");
+  const data = blob;
   data.id = me.id;
   data.pseudo = finalPseudo;
   data.email = finalEmail;
@@ -2803,12 +2845,25 @@ function handleSave(req, body, res) {
   // Les tirages sont validés par /api/modules. Une sauvegarde de jeu créée
   // juste avant un tirage ne doit jamais pouvoir remettre un ancien compteur.
   const moduleRollsCorrected = protectServerModuleDailyRolls(serverData, data);
+  // Journal des tirages : le client ne l'envoie plus (le serveur l'écrit).
+  // Clé absente = on garde le journal serveur tel quel (borné). Reçu d'un
+  // ancien client qui le porte encore : remplacement comme avant.
+  try {
+    data.inventory ||= {};
+    if (!blobHasHistory) {
+      const kept = serverData.inventory?.moduleRollHistory;
+      if (Array.isArray(kept)) data.inventory.moduleRollHistory = kept.slice(-500);
+      else delete data.inventory.moduleRollHistory;
+    } else if (Array.isArray(data.inventory.moduleRollHistory)) {
+      capServerHistory(data);
+    }
+  } catch {}
   // Mot de passe : le hash colonne fait foi. Un clair entrant = changement
   // volontaire -> on le re-hache. Un hash entrant est ignore.
   let pwHash = me.password_hash;
   if (typeof data.password === "string" && data.password && !isHash(data.password)) {
     if (data.password.length < 10) return json(res, 400, { ok: false, error: "Mot de passe trop court (10 caractères minimum)." });
-    pwHash = hashPassword(data.password);
+    pwHash = prehashedPassword || await hashPassword(data.password);
   }
   data.password = pwHash;
   try {
@@ -2849,8 +2904,8 @@ export function handleAccountApi(req, res) {
     if (rateLimited(`${ip}:${pathname}`)) return json(res, 429, { ok: false, error: "Trop de tentatives, reessaie dans une minute." });
     readBody(req, res, (body) => {
       try {
-        if (pathname === "/api/register") handleRegister(body, res);
-        else handleLogin(body, res);
+        if (pathname === "/api/register") handleRegister(body, res).catch(() => { try { json(res, 500, { ok: false, error: "Erreur serveur." }); } catch {} });
+        else handleLogin(body, res).catch(() => { try { json(res, 500, { ok: false, error: "Erreur serveur." }); } catch {} });
       } catch {
         json(res, 500, { ok: false, error: "Erreur serveur." });
       }
@@ -3285,7 +3340,7 @@ export function handleAccountApi(req, res) {
   if (pathname === "/api/save" && req.method === "POST") {
     if (rateLimited(`${ip}:/api/save`, 120)) return json(res, 429, { ok: false, error: "Trop de sauvegardes, reessaie dans un instant." });
     readBody(req, res, (body) => {
-      try { handleSave(req, body, res); } catch {
+      try { handleSave(req, body, res).catch(() => { try { json(res, 500, { ok: false, error: "Erreur serveur." }); } catch {} }); } catch {
         json(res, 500, { ok: false, error: "Erreur serveur." });
       }
     });
@@ -3295,7 +3350,7 @@ export function handleAccountApi(req, res) {
   if (identityMatch && req.method === "POST") {
     if (rateLimited(`${ip}:${pathname}`, 10)) return json(res, 429, { ok: false, error: "Trop de tentatives, reessaie dans une minute." });
     readBody(req, res, (body) => {
-      try { handleAccountIdentity(req, body, res, identityMatch[1]); }
+      try { handleAccountIdentity(req, body, res, identityMatch[1]).catch(() => { try { json(res, 500, { ok: false, error: "Erreur serveur." }); } catch {} }); }
       catch { json(res, 500, { ok: false, error: "Erreur serveur." }); }
     });
     return true;

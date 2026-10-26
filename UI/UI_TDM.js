@@ -1,5 +1,5 @@
 "use strict";
-import { shouldRefreshWindow } from "../SRC/CORE/BACKGROUND_REFRESH.js";
+import { isWindowShown } from "../SRC/CORE/BACKGROUND_REFRESH.js";
 
 // UI/UI_TDM.js — Fenêtre Inventaire : rend le même inventaire que l'Espace
 // pilote (mêmes sections, icônes, quantités, tooltips — builders partagés de
@@ -370,8 +370,11 @@ function entryMatchesShip(entry) {
   return false;
 }
 
+// Fenetre fermee : aucun rebuild (avec des milliers de modules, chaque
+// sauvegarde reconstruisait tout l inventaire en arriere-plan). L ouverture
+// declenche orbit:window-restoring -> rendu complet a ce moment-la.
 async function render() {
-  if (!shouldRefreshWindow("tdmWindow")) return;
+  if (!isWindowShown("tdmWindow")) return;
   const dst = $("tdmInventorySections");
   if (!dst) return;
 
@@ -390,7 +393,7 @@ async function render() {
   try {
     b = await loadBuilders();
   } catch {}
-  if (!shouldRefreshWindow("tdmWindow")) return;
+  if (!isWindowShown("tdmWindow")) return;
   if (!b?.buildInventorySections) {
     hideTooltip();
     dst.innerHTML = emptyHtml("Inventaire indisponible pour le moment.");
@@ -609,8 +612,15 @@ export function initTdmUI() {
       void render();
     } catch {}
   };
-  window.addEventListener("orbit:profile-progress", resync);
-  window.addEventListener("orbit:user-updated", resync);
+  // Une sauvegarde émet profile-progress ET user-updated : un seul rendu
+  // par frame (et aucun tant que la fenêtre est fermée).
+  let progressFrame = 0;
+  const resyncSoon = event => {
+    if (event?.detail?.source === "pilot-disks" || progressFrame || !isWindowShown("tdmWindow")) return;
+    progressFrame = requestAnimationFrame(() => { progressFrame = 0; resync(); });
+  };
+  window.addEventListener("orbit:profile-progress", resyncSoon);
+  window.addEventListener("orbit:user-updated", resyncSoon);
   window.addEventListener("orbit:window-restoring", (e) => {
     if (e?.detail?.id === "tdmWindow") resync();
   });

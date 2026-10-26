@@ -6,6 +6,7 @@ import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
 import { chromium } from "playwright-core";
 import { resolve, sep } from "node:path";
+import { gunzipSync } from "node:zlib";
 
 const current = await readFile(new URL("../SRC/CORE/ACCOUNT_NET.js", import.meta.url), "utf8");
 const sources = { current };
@@ -32,8 +33,11 @@ const server = createServer(async (req, res) => {
       const token = req.headers.authorization?.slice(7);
       let user = stored.get(token), saved;
       if (path === "/api/save") {
-        let body = ""; for await (const chunk of req) body += chunk;
-        saved = JSON.parse(body); user = saved.user; stored.set(token, user);
+        // Comme le vrai serveur : corps gzip (CompressionStream) accepte.
+        const chunks = []; for await (const chunk of req) chunks.push(chunk);
+        let raw = Buffer.concat(chunks);
+        if (req.headers["content-encoding"] === "gzip") raw = gunzipSync(raw);
+        saved = JSON.parse(raw.toString("utf8")); user = saved.user; stored.set(token, user);
       }
       res.writeHead(200, { "content-type": "application/json" });
       const response = saved?.compactSave ? { ok: true, snapshotAccepted: true, saveId: saved.saveId,

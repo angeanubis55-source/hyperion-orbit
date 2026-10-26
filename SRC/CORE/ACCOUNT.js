@@ -1566,7 +1566,18 @@ export function getCurrentUserFull() {
   // quêtes...). La migration n'est persistée que lorsqu'elle est réellement
   // nécessaire.
   const needsMigration = Number(u0.schemaVersion || 0) !== STORAGE_SCHEMA_VERSION;
-  const u = ensureUserShape(u0);
+  // ensureUserShape coute ~2 ms sur un gros compte (hangars x drones x fits)
+  // et cette lecture est appelee par l'UI a chaque frame : meme objet, meme
+  // revision -> deja normalise. Toute sauvegarde/adoption change la revision.
+  // Renormalisation complete au moins 1x/s pour les regles liees au temps
+  // (boosters expires, titres) et les mutations directes sans sauvegarde.
+  // (Cache porte par la fonction : disponible meme pendant l'import du module.)
+  const shapedUser = (getCurrentUserFull.shaped ||= { ref: null, revision: NaN, at: 0 });
+  const now = Date.now();
+  const fresh = !needsMigration && shapedUser.ref === u0 && shapedUser.revision === u0.revision
+    && now - shapedUser.at < 1000;
+  const u = fresh ? u0 : ensureUserShape(u0);
+  if (!fresh) { shapedUser.ref = u; shapedUser.revision = u.revision; shapedUser.at = now; }
   if (needsMigration) saveUser(u);
 
   if (cur.pseudo !== u.pseudo || cur.email !== u.email) {
@@ -1635,7 +1646,7 @@ export function refreshCurrentUserTitles() {
   return { ok: true, user: u };
 }
 
-export function updateCurrentUserProgress(patch = {}) {
+export function updateCurrentUserProgress(patch = {}, options = {}) {
   // Les sauvegardes complètes du moteur portent les crédits. Les changements
   // ponctuels (sélection du dock, par exemple) doivent d'abord conserver ses
   // stocks et son P.E.T, sans faire réentrer la sauvegarde complète.
@@ -1699,9 +1710,18 @@ export function updateCurrentUserProgress(patch = {}) {
 
   if (patch.inventory?.resources && typeof patch.inventory.resources === "object" && !Array.isArray(patch.inventory.resources)) {
     u.inventory ||= {};
-    u.inventory.resources = Object.fromEntries(Object.entries(patch.inventory.resources)
+    const nextResources = Object.fromEntries(Object.entries(patch.inventory.resources)
       .map(([resourceId, quantity]) => [String(resourceId), Math.max(0, Math.floor(Number(quantity) || 0))])
       .filter(([, quantity]) => quantity > 0));
+    // En place : le moteur et le cache réseau gardent une référence à cet
+    // objet ; le remplacer à chaque autosave les détachait (stocks figés).
+    const current = u.inventory.resources;
+    if (current && typeof current === "object" && !Array.isArray(current)) {
+      for (const key of Object.keys(current)) if (!Object.hasOwn(nextResources, key)) delete current[key];
+      Object.assign(current, nextResources);
+    } else {
+      u.inventory.resources = nextResources;
+    }
   }
   if (patch.drones && typeof patch.drones === "object") {
     // La sélection de formation (+ son horodatage de cooldown) vient du
@@ -1768,7 +1788,10 @@ export function updateCurrentUserProgress(patch = {}) {
     if (!incomingEmpty || !existingHasData) u.quests = incoming;
   }
 
-  ensureUserShape(u);
+  // Autosave chaud (kills/XP/pos) : light:true saute la renormalisation
+  // complete — la forme est garantie par le chargement + les ecrivains
+  // structurants (qui normalisent eux-memes). Jamais light sur structure.
+  if (options.light !== true) ensureUserShape(u);
   // Sélections portées par le patch : notées avec leurs valeurs FINALES
   // (post repli stock) pour survivre à un 409 (replay sur le canon).
   // L'autosave périodique ne porte plus ces clés (write-through direct),
@@ -3086,8 +3109,11 @@ function stageLiveHangarState(user, hangar) {
   try {
     if (!user?.id || !hangar?.id || typeof sessionStorage === "undefined") return;
     const all = safeParse(sessionStorage.getItem(LIVE_HANGAR_STATE_KEY), {});
+    // rev : revision du compte au moment du snapshot. Toute sauvegarde ou
+    // adoption serveur posterieure la change -> le snapshot devient caduc.
+    // (Plus fiable que comparer Date.now() local a un updatedAt serveur.)
     all[`${user.id}:${hangar.id}`] = {
-      at: Date.now(), pos: hangar.lastPos || null, map: hangar.lastMap || null,
+      at: Date.now(), rev: Math.floor(Number(user.revision) || 0), pos: hangar.lastPos || null, map: hangar.lastMap || null,
       hpPct: Number.isFinite(Number(hangar.lastHpPct)) ? Number(hangar.lastHpPct) : null,
       shPct: Number.isFinite(Number(hangar.lastShPct)) ? Number(hangar.lastShPct) : null,
     };
@@ -3100,7 +3126,10 @@ function hangarStateView(user, hangar) {
   try {
     const all = safeParse(sessionStorage.getItem(LIVE_HANGAR_STATE_KEY), {});
     const candidate = all[`${user?.id}:${hangar?.id}`];
-    if (candidate && Number(candidate.at) > Number(user?.updatedAt || 0)) staged = candidate;
+    const fresh = candidate?.rev != null
+      ? Number(candidate.rev) === Math.floor(Number(user?.revision) || 0)
+      : Number(candidate?.at) > Number(user?.updatedAt || 0); // ancien format
+    if (candidate && fresh) staged = candidate;
   } catch {}
   return {
     pos: staged?.pos || hangar?.lastPos || null,

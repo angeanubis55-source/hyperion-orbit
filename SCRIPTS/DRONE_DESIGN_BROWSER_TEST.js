@@ -1,5 +1,6 @@
 // Hangar reel, compte et serveur temporaires : equipement des CPU et visuels reseau.
 import assert from 'node:assert/strict';
+import { enterGame } from "./BROWSER_GAME_START.js";
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
 import { mkdtemp, readFile, writeFile, rm } from 'node:fs/promises';
@@ -94,7 +95,7 @@ try {
     sessionStorage.setItem('orbit_assets_preloaded_v1', 'ready'); sessionStorage.setItem('spawnMapId', '1-1');
   }, { token: account.token, user: canonical });
   await page.goto(url + '/index.html?map=1-1', { waitUntil: 'domcontentloaded' });
-  await page.waitForSelector('#loadingStartBtn:not([disabled])', { timeout: 90000 }); await page.click('#loadingStartBtn');
+  await enterGame(page, 90000);
   await page.waitForFunction(() => window.__droneProfileAudit && window.__droneEngineAudit
     && getComputedStyle(document.getElementById('loadingOverlay')).display === 'none');
   const access = await page.evaluate(() => window.__droneEngineAudit.base()); assert.ok(access.canEquip);

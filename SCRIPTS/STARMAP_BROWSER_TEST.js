@@ -1,6 +1,7 @@
 // Smoke test Carte Stellaire : boot réel, ouvre la fenêtre, vérifie l'arbre,
 // sélectionne 1-2 et fait un vrai star jump (10 s + switch).
 import assert from "node:assert/strict";
+import { enterGame } from "./BROWSER_GAME_START.js";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { mkdtemp, readFile, writeFile, rm } from "node:fs/promises";
@@ -110,8 +111,7 @@ window.__ORBIT_ENGINE__ = {`));
     sessionStorage.setItem("spawnMapId", "1-1");
   }, { token: account.token, user: account.user });
   await page.goto(url + "/index.html?map=1-1", { waitUntil: "domcontentloaded" });
-  await page.waitForSelector("#loadingStartBtn:not([disabled])", { timeout: 90000 });
-  await page.click("#loadingStartBtn");
+  await enterGame(page, 90000);
   await page.waitForSelector("#game", { state: "visible", timeout: 15000 });
   await page.waitForFunction(() => !document.documentElement.classList.contains("orbitBooting") &&
     getComputedStyle(document.getElementById("loadingOverlay")).display === "none", null, { timeout: 60000 });
@@ -693,8 +693,7 @@ window.__ORBIT_ENGINE__ = {`));
     return Math.hypot(current.x - start.x, current.y - start.y) > 150;
   }, refreshDeparture, { timeout: 10000 });
   await page.reload({ waitUntil: 'domcontentloaded' });
-  await page.waitForSelector('#loadingStartBtn:not([disabled])', { timeout: 90000 });
-  await page.click('#loadingStartBtn');
+  await enterGame(page, 90000);
   await page.waitForFunction(() => getComputedStyle(document.getElementById('loadingOverlay')).display === 'none', null, { timeout: 60000 });
   const refreshedPosition = await page.evaluate(() => ({
     ...window.__STARMAP_MOVEMENT_TEST__.state(), expected: window.__REFRESH_POSITION_EXPECTED__, map: window.__CURRENT_MAP_ID__,

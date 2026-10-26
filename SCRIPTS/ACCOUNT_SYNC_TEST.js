@@ -8,6 +8,7 @@ import { planAutoUpgradeCharges, UPGRADE_SLOT_ORES, upgradeOreCapacity } from '.
 import { CRAFTING_ENABLED, getCraftingRecipe } from '../SRC/DATA/CRAFTING.js';
 import { isOreResource } from '../SRC/DATA/RESOURCES.js';
 import { mergeBattlepassProgress, normalizeBattlepassState } from '../QUEST/BATTLEPASS.js';
+import { gunzipSync } from "node:zlib";
 
 const source = readFileSync(new URL("../SRC/CORE/ACCOUNT_NET.js", import.meta.url), "utf8").replace(/^import .*;\r?\n/gm, "").replace(/^export /gm, "");
 const account = readFileSync(new URL("../SRC/CORE/ACCOUNT.js", import.meta.url), "utf8");
@@ -219,14 +220,17 @@ test("modules : purger les anciens items conserve une liste valide en place", ()
   assert.deepEqual(current.inventory.shipModules, [{ id: "valid" }]);
 });
 
-function client(storage = new Map()) {
+function client(storage = new Map(), extra = {}) {
   const requests = [], timers = new Map(), listeners = new Map(); let timerId = 0;
-  const api = vm.createContext({ structuredClone, AbortController, performance, mergeBattlepassProgress,
+  const readBody = body => body == null ? body
+    : JSON.parse(typeof body === "string" ? body : gunzipSync(Buffer.from(body)).toString("utf8"));
+  const api = vm.createContext({ ...extra, structuredClone, AbortController, performance, mergeBattlepassProgress,
     localStorage: { getItem: k => storage.get(k) ?? null, setItem: (k, v) => storage.set(k, v), removeItem: k => storage.delete(k) },
     window: { addEventListener: (type, fn) => listeners.set(type, fn), dispatchEvent: event => listeners.get(event.type)?.(event) },
     CustomEvent: class { constructor(type, options = {}) { this.type = type; this.detail = options.detail; } },
     setTimeout: (fn, ms) => { const id = ++timerId; timers.set(id, { fn, ms }); return id; }, clearTimeout: id => timers.delete(id),
-    fetch: (path, options) => new Promise((resolve, reject) => requests.push({ path, body: options.body && JSON.parse(options.body),
+    fetch: (path, options) => new Promise((resolve, reject) => requests.push({ path, body: options.body && readBody(options.body),
+      headers: options.headers || {}, keepalive: options.keepalive === true,
       reply: (status, value) => resolve({ status, json: async () => value }), reject })),
   });
   vm.runInContext(source, api);
@@ -245,6 +249,65 @@ function client(storage = new Map()) {
   };
   return { api, requests, storage, timers, mutate, conflict, accept, refresh, current: () => api.netList()[0] };
 }
+
+const settle = async (requests, count) => {
+  for (let i = 0; i < 200 && requests.length < count; i++) await new Promise(resolve => setImmediate(resolve));
+  assert.equal(requests.length, count);
+};
+
+test("gzip : un gros compte part compresse, un serveur qui refuse recoit le meme recu en clair", async () => {
+  const c = client(new Map(), { CompressionStream, Blob, Response });
+  c.api.enterNetMode("token", largeUser());
+  c.mutate(u => { u.credits -= 1; });
+  const flight = c.api.flushNetUser();
+  await settle(c.requests, 1);
+  const packed = c.requests[0];
+  assert.equal(packed.headers["content-encoding"], "gzip");
+  assert.equal(packed.body.user.inventory.shipModules.length, 1200);
+  packed.reply(400, { ok: false, error: "JSON invalide." });
+  await settle(c.requests, 2);
+  const plainRetry = c.requests[1];
+  assert.equal(plainRetry.headers["content-encoding"], undefined);
+  assert.equal(plainRetry.body.saveId, packed.body.saveId, "meme operation renvoyee");
+  assert.deepEqual(plainRetry.body, packed.body);
+  plainRetry.reply(200, { ok: true, user: structuredClone(plainRetry.body.user) });
+  assert.equal((await flight).ok, true);
+});
+
+test("journal des tirages : jamais envoye (serveur autorite), garde en local, renvoi identique", async () => {
+  const c = client(), initial = user();
+  initial.inventory.moduleRollHistory = [{ id: "m1" }];
+  c.api.enterNetMode("token", initial);
+  c.mutate(u => { u.credits -= 1; u.inventory.moduleRollHistory.push({ id: "m2" }); });
+  const lost = c.api.flushNetUser(), first = c.requests.at(-1);
+  assert.equal(Object.hasOwn(first.body.user.inventory, "moduleRollHistory"), false);
+  first.reject(new Error("coupure"));
+  await lost;
+  const retried = await c.accept();
+  assert.deepEqual(retried, first.body, "meme saveId = meme contenu (sinon 409 serveur)");
+  // Le recu compact acquitte sans toucher au journal local.
+  assert.equal(c.current().inventory.moduleRollHistory.length, 2);
+});
+
+test("journal des tirages : un recu d'une ancienne version est renvoye tel quel", async () => {
+  const storage = new Map(), first = client(storage), initial = user();
+  initial.inventory.moduleRollHistory = [{ id: "m1" }];
+  first.api.enterNetMode("token", initial);
+  first.mutate(u => { u.credits -= 1; });
+  const lost = first.api.flushNetUser();
+  first.requests.at(-1).reject(new Error("coupure"));
+  await lost;
+  // Reçu écrit par l'ancienne version : sans omitHistory, envoyé avec le journal.
+  const manifest = JSON.parse(storage.get("orbit_user_cache"));
+  assert.equal(manifest.retrySave.omitHistory, true);
+  delete manifest.retrySave.omitHistory;
+  storage.set("orbit_user_cache", JSON.stringify(manifest));
+  const reloaded = client(storage);
+  assert.equal(reloaded.api.bootNetFromCache(), true);
+  const resent = await reloaded.accept();
+  assert.equal(resent.saveId, manifest.retrySave.saveId);
+  assert.ok(Array.isArray(resent.user.inventory.moduleRollHistory), "meme contenu que le premier envoi");
+});
 
 test("le passe et les objectifs réclamés survivent aux conflits puis au rechargement", async () => {
   const c = client(), initial = user();

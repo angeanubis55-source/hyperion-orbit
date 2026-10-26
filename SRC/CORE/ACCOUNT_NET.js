@@ -140,15 +140,18 @@ export function netStore(list, { pilotDisksOnly = false, durable = false } = {})
         mine.inventory.moduleRollHistory = mine.inventory.moduleRollHistory.slice(-500);
       }
     } catch {}
-    if (JSON.stringify(mine.galaxyGates) !== JSON.stringify(serverBase?.galaxyGates)) {
+    // Comparaison structurelle (pas de double JSON.stringify a chaque save).
+    if (!same(mine.galaxyGates, serverBase?.galaxyGates)) {
       pendingGalaxyGates = mine.galaxyGates ? structuredClone(mine.galaxyGates) : null;
     }
     // Le moteur conserve des références à ce compte et à son P.E.T. Les
     // détacher à chaque save perdrait les mutations de la frame suivante.
     // Seuls la référence serveur et le snapshot envoyé sont des copies.
-    // Les modules sont normalises dans leur snapshot, au moment de l'E/S.
-    // Une consommation de carburant ne doit pas parcourir leurs bonus.
-    sanitizeInfiniteValues(mine, new WeakSet(), true);
+    // Seule source d'Infinity du compte : ammo.x1 (sentinelle -1 stockee,
+    // relue comme Infinity par ensureUserShape). Plus de parcours complet
+    // du compte ici : les serialiseurs ont leur replacer et same() gere
+    // les deux cotes. Le live reste mutable, les snapshots sont des copies.
+    if (mine.ammo && mine.ammo.x1 === Infinity) mine.ammo.x1 = -1;
     memUser = retainPendingSelections(mine);
     cachePendingGalaxyGates();
     writeCache(memUser, durable);
@@ -300,12 +303,40 @@ function withModuleScope(fn) {
   moduleScope = new WeakMap();
   try { return fn(); } finally { moduleScope = null; }
 }
+// Chemin rapide : vrai uniquement si snapshotModuleValue(value, previous)
+// rendrait `previous` tel quel (mêmes règles : Infinity -> -1, non fini ->
+// null, clés undefined ignorées, trous de tableau -> null). Sans closure ni
+// allocation : la quasi-totalité des modules est inchangée à chaque envoi.
+function snapshotUnchanged(value, previous) {
+  if (value === Infinity) return previous === -1;
+  if (typeof value === "number" && !Number.isFinite(value)) return previous === null;
+  if (!value || typeof value !== "object") return value === previous;
+  if (immutableModules.has(value)) return value === previous;
+  if (!previous || typeof previous !== "object" || !immutableModules.has(previous)) return false;
+  if (Array.isArray(value)) {
+    if (!Array.isArray(previous) || previous.length !== value.length) return false;
+    for (let i = 0; i < value.length; i++) if (!snapshotUnchanged(value[i] ?? null, previous[i])) return false;
+    return true;
+  }
+  if (Array.isArray(previous)) return false;
+  let defined = 0;
+  for (const key in value) {
+    if (!Object.hasOwn(value, key) || value[key] === undefined) continue;
+    defined++;
+    if (!Object.hasOwn(previous, key) || !snapshotUnchanged(value[key], previous[key])) return false;
+  }
+  return defined === Object.keys(previous).length;
+}
 function snapshotModuleValue(value, previous, memoize = false) {
   if (value === Infinity) return -1;
   if (typeof value === "number" && !Number.isFinite(value)) return null;
   if (!value || typeof value !== "object") return value;
   if (immutableModules.has(value)) return value;
   if (memoize) previous = moduleCopies.get(value) || previous;
+  if (snapshotUnchanged(value, previous)) {
+    if (memoize) moduleCopies.set(value, previous);
+    return previous;
+  }
   const array = Array.isArray(value);
   const keys = array ? null : Object.keys(value);
   const definedKeys = array ? 0 : keys.reduce((count, key) => count + (value[key] !== undefined ? 1 : 0), 0);
@@ -379,8 +410,18 @@ function accountJson(snapshot) {
   const userFields = cacheJson(user).slice(1, -1);
   return `{${userFields}${userFields ? "," : ""}"inventory":${inventoryJson(snapshot.inventory)}}`;
 }
+// Journal des tirages : jamais envoyé. En multi, le serveur l'écrit lui-même
+// (tirage/relance/passe/dimanche via /api/modules) et garde le sien quand la
+// clé est absente ; l'affichage ne montre que les modules encore possédés.
+// Seul un reçu créé par une ancienne version (omitHistory absent) le porte
+// encore : il doit être renvoyé à l'identique (même saveId = même contenu).
 function accountSaveJson(sent) {
-  return `{"user":${accountJson(sent.user)},"baseRevision":${cacheJson(sent.baseRevision)},"saveId":${cacheJson(sent.saveId)},"compactSave":true}`;
+  let user = sent.user;
+  if (sent.omitHistory === true && user?.inventory && Array.isArray(user.inventory.moduleRollHistory)) {
+    user = { ...user, inventory: { ...user.inventory } };
+    delete user.inventory.moduleRollHistory;
+  }
+  return `{"user":${accountJson(user)},"baseRevision":${cacheJson(sent.baseRevision)},"saveId":${cacheJson(sent.saveId)},"compactSave":true}`;
 }
 function inlineCacheJson(state) {
   const retry = state.retrySave;
@@ -520,6 +561,9 @@ function writeCache(user, immediate = false) {
   cacheWriteScheduled = true;
   // Regroupe les sauvegardes rapproches, puis utilise un temps libre du
   // navigateur. La serialisation/localStorage reste hors de l'action.
+  // NOTE: l'ecriture immediate reste SYNCHRONE (contrat reprise crash :
+  // retrySave/saveId doivent etre sur disque avant la reponse reseau).
+  // Le cout est maitrise par le format decoupe (petits blocs < 32 Ko).
   setTimeout(() => {
     if (typeof requestIdleCallback === "function") requestIdleCallback(flushAccountCache, { timeout: 1500 });
     else setTimeout(flushAccountCache, 0);
@@ -561,11 +605,34 @@ export function bootNetFromCache() {
       refreshStarted = true;
       setTimeout(() => { refreshNetUser().catch(() => {}); }, 0);
     }
-    window.addEventListener("pagehide", () => { flushNetUser().catch(() => {}); });
+    installPageLeaveFlush();
     return true;
   } catch {
     return false;
   }
+}
+
+// Depart de page : pagehide ne part pas toujours sur mobile (appli mise en
+// arriere-plan puis tuee) -> visibilitychange "hidden" sauve aussi. Installe
+// une seule fois (boot + login ne doublent plus les ecouteurs).
+let pageLeaving = false;
+let pageLeaveInstalled = false;
+function installPageLeaveFlush() {
+  if (pageLeaveInstalled) return;
+  pageLeaveInstalled = true;
+  const leave = () => {
+    pageLeaving = true;
+    try { flushAccountCache(); } catch {}
+    if (netActive()) flushNetUser().catch(() => {});
+  };
+  window.addEventListener("pagehide", leave);
+  try {
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "hidden") leave();
+      else pageLeaving = false;
+    });
+  } catch {}
+  window.addEventListener("pageshow", () => { pageLeaving = false; });
 }
 
 export function enterNetMode(token, user) {
@@ -589,28 +656,63 @@ export function enterNetMode(token, user) {
     refreshStarted = true;
     setTimeout(() => { refreshNetUser().catch(() => {}); }, 0);
   }
-  window.addEventListener("pagehide", () => { flushNetUser().catch(() => {}); });
+  installPageLeaveFlush();
   return true;
 }
 
-async function api(path, { method = "GET", body, bodyJson, token, timeout = 15000 } = {}) {
+// Corps gzip (CompressionStream natif, hors JS) : un compte complet passe
+// de ~160 Ko a ~15-20 Ko. Desactive pour la session si le serveur refuse.
+const GZIP_MIN_BYTES = 8192;
+const KEEPALIVE_MAX_BYTES = 60000; // limite navigateur ~64 Ko
+let gzipRefused = false;
+// Test synchrone : sans gzip possible, aucun await n'est ajoute avant fetch.
+const canGzip = () => !gzipRefused && typeof CompressionStream === "function"
+  && typeof Blob === "function" && typeof Response === "function";
+async function gzipText(text) {
+  try {
+    const stream = new Blob([text]).stream().pipeThrough(new CompressionStream("gzip"));
+    return new Uint8Array(await new Response(stream).arrayBuffer());
+  } catch { return null; }
+}
+
+async function api(path, { method = "GET", body, bodyJson, token, timeout = 15000, gzip = false, leaving = false } = {}) {
+  let payload = bodyJson !== undefined ? bodyJson : body !== undefined ? JSON.stringify(body) : undefined;
+  let compressed = false;
+  // Page qui part avec un petit corps : envoi immediat, sans etape async.
+  if (gzip && canGzip() && typeof payload === "string" && payload.length >= GZIP_MIN_BYTES
+    && !(leaving && payload.length < KEEPALIVE_MAX_BYTES)) {
+    const packed = await gzipText(payload);
+    if (packed && packed.byteLength < payload.length) { payload = packed; compressed = true; }
+  }
+  const size = typeof payload === "string" ? payload.length : payload?.byteLength || 0;
   const ctrl = new AbortController();
   const timer = setTimeout(() => { try { ctrl.abort(); } catch {} }, Math.max(500, timeout));
+  let out;
   try {
     const headers = {};
-    if (body !== undefined || bodyJson !== undefined) headers["content-type"] = "application/json; charset=utf-8";
+    if (payload !== undefined) headers["content-type"] = "application/json; charset=utf-8";
+    if (compressed) headers["content-encoding"] = "gzip";
     if (token) headers.Authorization = `Bearer ${token}`;
     const res = await fetch(path, {
       method,
       headers,
-      body: bodyJson !== undefined ? bodyJson : body !== undefined ? JSON.stringify(body) : undefined,
+      body: payload,
       signal: ctrl.signal,
+      // keepalive : la requete survit a la fermeture de la page.
+      ...(leaving && size < KEEPALIVE_MAX_BYTES ? { keepalive: true } : {}),
     });
     const data = await res.json().catch(() => ({}));
-    return { status: res.status, ...(data && typeof data === "object" ? data : {}) };
+    out = { status: res.status, ...(data && typeof data === "object" ? data : {}) };
   } finally {
     clearTimeout(timer);
   }
+  // Serveur sans gzip : il n'a rien pu lire, donc rien enregistre -> on
+  // renvoie la meme requete en clair une fois et on n'insiste plus.
+  if (compressed && out.status === 400 && out.error === "JSON invalide.") {
+    gzipRefused = true;
+    return api(path, { method, body, bodyJson, token, timeout, gzip: false, leaving });
+  }
+  return out;
 }
 
 export async function serverOnline(timeout = 2000) {
@@ -975,21 +1077,13 @@ function same(a, b) {
   }
   // Les champs JSON n'ont pas d'ordre. Une réponse serveur qui les réordonne
   // confirme le même état, sans relancer une écriture ou bloquer le logout.
-  const keys = Object.keys(a).filter(key => a[key] !== undefined);
-  return keys.length === Object.keys(b).filter(key => b[key] !== undefined).length
+  // Journal des tirages : display-only, jamais bloquant pour la synchro
+  // (il voyage uniquement quand il vient de changer).
+  const keys = Object.keys(a).filter(key => key !== "moduleRollHistory" && a[key] !== undefined);
+  return keys.length === Object.keys(b).filter(key => key !== "moduleRollHistory" && b[key] !== undefined).length
     && keys.every(key => Object.hasOwn(b, key) && same(a[key], b[key]));
 }
 const object = value => value !== null && typeof value === "object" && !Array.isArray(value);
-
-function sanitizeInfiniteValues(value, seen = new WeakSet(), skipModules = false) {
-  if (!value || typeof value !== "object" || seen.has(value)) return;
-  seen.add(value);
-  for (const key of Object.keys(value)) {
-    if (skipModules && MODULE_LISTS.includes(key) && Array.isArray(value[key])) continue;
-    if (value[key] === Infinity) value[key] = -1;
-    else sanitizeInfiniteValues(value[key], seen, skipModules);
-  }
-}
 
 function replaceAccountObject(target, source) {
   // Egalite verifiee pendant cette operation : garder les listes live et
@@ -1224,6 +1318,9 @@ async function pushSnapshotScoped() {
       user: withModuleScope(() => copyAccount(memUser, serverBase, true)), baseRevision: Number(serverBase?.revision) || 0,
       saveId: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}-${++nextSaveId}`,
       selections: { ...pendingSelectionVersions },
+      // Figé dans le reçu : un renvoi du même saveId porte exactement le
+      // même contenu (sinon hash différent -> 409 serveur).
+      omitHistory: true,
     };
     retrySave.user.revision = Math.max(Number(retrySave.user.revision) || 0, retrySave.baseRevision + 1);
   }
@@ -1231,7 +1328,10 @@ async function pushSnapshotScoped() {
   writeCache(memUser, true);
   let out;
   try {
-    out = await api("/api/save", { method: "POST", bodyJson: accountSaveJson(sent), token });
+    const bodyJson = accountSaveJson(sent);
+    // gzip : ~10x moins d'octets. Page en train de partir : keepalive (si le
+    // corps final tient sous ~60 Ko) laisse la requete finir apres fermeture.
+    out = await api("/api/save", { method: "POST", bodyJson, token, gzip: true, leaving: pageLeaving });
   } catch {
     if (netActive() && memToken === token) schedulePush();
     return { ok: false, error: "Reseau." };

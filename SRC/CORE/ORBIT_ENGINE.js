@@ -2,7 +2,7 @@ import { protegitPatrol } from "../../NPC/PROTEGIT_MOVEMENT.js";
 import { npcFleeDirection } from "../../NPC/NPC_FLEE.js";
 import { pickSpacedSpawnPosition } from "../../NPC/NPC_SPAWN_POSITION.js";
 import { petEscortTarget, stepPetMotion, petCombatVelocity, orientPet } from "../../PET/PET_MOTION.js";
-import { normalizeBackgroundRefresh, setBackgroundRefresh, shouldRefreshWindow } from "./BACKGROUND_REFRESH.js";
+import { isWindowShown, normalizeBackgroundRefresh, setBackgroundRefresh, shouldRefreshWindow } from "./BACKGROUND_REFRESH.js";
 import { measureGameTask, recordGameTask } from "./PERFORMANCE_TIMINGS.js";
 import { createDeferredPersistence } from "./DEFERRED_PERSISTENCE.js";
 import { drawCombatFloatTexts } from "./COMBAT_TEXT_RENDERER.js";
@@ -12625,7 +12625,10 @@ function botFormationOptions(selected) {
 // (Re)construit la liste NPC : triés par nom, filtrés par map + recherche,
 // avec distance de combat par NPC.
 function botRenderNpcList() {
-  if (!shouldRefreshWindow("botWindow")) return;
+  // Centaines de lignes HTML : construites à l'ouverture (orbit:window-restoring),
+  // jamais dans la fenêtre fermée (gros blocage au chargement sinon). Le bot
+  // lit ses choix dans Bot.npcAllow / botNpcPrio, pas dans ce DOM.
+  if (!shouldRefreshWindow("botWindow") || !isWindowShown("botWindow")) return;
   const list = document.getElementById("botNpcList");
   if (!list) return;
   const q = String(document.getElementById("botNpcSearch")?.value || "").toLowerCase();
@@ -18779,7 +18782,9 @@ hangarState: !player.dead && started && !hangarLocationTransferPending() ? {
   // dock roquettes/lanceurs, toggles AUTO) : l'autosave périodique avec
   // une mémoire périmée (2e onglet) réécraserait sinon le dernier choix.
   rockets: sanitizeRocketsForSave(),
-});
+  // Autosave chaud : que des nombres (credits/stats/stocks/pos). La forme
+  // est garantie par ailleurs -> light:true saute ensureUserShape complet.
+}, { light: true });
   if (result?.ok && result.user) account.user = result.user;
   account.dirty = false;
   window.dispatchEvent(new CustomEvent("orbit:profile-progress"));
@@ -18918,10 +18923,11 @@ function getSpeedBreakdown() {
     ? u.inventory.shipModules
     : [];
 
+  const modulesById = shipModuleIndex(shipModules);
   for (const modId of fit.shipMods || []) {
     if (!modId) continue;
 
-    const mod = shipModules.find((m) => m?.id === modId);
+    const mod = modulesById.get(modId);
     if (!mod) continue;
 
     for (const b of mod.bonuses || []) {
@@ -19299,7 +19305,8 @@ function isZonePortalAvailable(ptl) {
   const gateId = String(ptl?.toMap || "").toLowerCase();
   // ✅ Gate Eternal : visible sur la map mère uniquement si posée via CPU (pas de stock).
   if (gateId === "eternal") {
-    const eternalUser = getCurrentUserFull();
+    // Appelé par portail et par frame : pas de relecture complète du compte.
+    const eternalUser = account.user || getCurrentUserFull();
     if (String(window.__CURRENT_MAP_ID__ || "").toLowerCase() !== getFactionHomeMap(eternalUser?.faction)) return false;
     return isEternalGateDeployed(eternalUser);
   }
@@ -24361,10 +24368,12 @@ try {
     setInterval(() => {
       try {
         // Multi : les zones partagees sont entierement simulees par le
-        // serveur (npcSims + npc_respawns.json). Le tick/sauvegarde monde
-        // local ne sert plus : supprime en mode net (solo local conserve).
-        if (netActive()) return;
-        tickBackground(universe, worldClock.now(), { skipMapId: String(window.__CURRENT_MAP_ID__ || "") });
+        // serveur (npcSims + npc_respawns.json). Le tick monde de fond
+        // (cartes hors ecran) ne sert plus en mode net. En instance privee
+        // la persistance continue (elle saute d'elle-meme en zone partagee).
+        const net = netActive();
+        if (net && isSharedZone()) return;
+        if (!net) tickBackground(universe, worldClock.now(), { skipMapId: String(window.__CURRENT_MAP_ID__ || "") });
         // Ne jamais sérialiser le monde et les collectables dans le même
         // passage : deux gros JSON/localStorage consécutifs créent un pic
         // visible sur mobile. Chaque store reste sauvegardé toutes les 10 s.
@@ -27393,11 +27402,18 @@ function formatPlaytime(totalSeconds) {
 }
 
 // Date d'inscription : "20/09/2026" (vide = "—").
+// Appelée à chaque frame par le HUD : un seul formateur, dernier résultat gardé.
+let regDateFormatter = null;
+const regDateMemo = { t: NaN, text: "—" };
 function formatRegDate(createdAt) {
   try {
     const t = Number(createdAt) || 0;
     if (!(t > 0)) return "—";
-    return new Intl.DateTimeFormat("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric" }).format(new Date(t));
+    if (t === regDateMemo.t) return regDateMemo.text;
+    regDateFormatter ||= new Intl.DateTimeFormat("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric" });
+    regDateMemo.text = regDateFormatter.format(new Date(t));
+    regDateMemo.t = t;
+    return regDateMemo.text;
   } catch { return "—"; }
 }
 
@@ -41485,6 +41501,45 @@ function drawLaserBeam(L, ox, oy) {
   ctx.globalAlpha = 1;
 }
 
+// Pastilles des modules équipés. Avant : chaque frame filtrait TOUTE la liste
+// des modules possédés (6000 x emplacements). Même liste/longueur/emplacements
+// = même résultat ; recalcul au plus 1x/s (relance d'un module en place).
+// Caches portés par les fonctions (hoistées) : utilisables avant que le
+// moteur ait évalué cette ligne. Toute sauvegarde du compte les invalide.
+// Index id -> module (premier gagnant, comme Array.find), reconstruit si la
+// liste change de référence/longueur, et au plus tard après 1 s.
+function shipModuleIndex(modules) {
+  const list = Array.isArray(modules) ? modules : [];
+  const memo = (shipModuleIndex.memo ||= { list: null, length: -1, at: -Infinity, map: new Map() });
+  const now = performance.now();
+  if (memo.list === list && memo.length === list.length && now - memo.at < 1000) return memo.map;
+  const map = new Map();
+  for (const module of list) if (module?.id != null && !map.has(module.id)) map.set(module.id, module);
+  memo.list = list; memo.length = list.length; memo.at = now; memo.map = map;
+  return map;
+}
+function playerModuleIndicators(modules, slots) {
+  const list = Array.isArray(modules) ? modules : [];
+  const ids = Array.isArray(slots) ? slots : [];
+  const key = ids.join("\u0000");
+  const memo = (playerModuleIndicators.memo ||= { list: null, length: -1, slots: "", at: -Infinity, value: [] });
+  const now = performance.now();
+  if (memo.list === list && memo.length === list.length && memo.slots === key && now - memo.at < 1000) return memo.value;
+  const colors = { hp: "rgb(70,210,105)", shd: "rgb(45,150,255)", dmg: "rgb(255,70,70)", spc: "rgb(255,215,70)" };
+  const wanted = new Set(ids);
+  memo.value = wanted.size
+    ? list.filter(module => wanted.has(module?.id)).map(module => colors[module.type]).filter(Boolean)
+    : [];
+  memo.list = list; memo.length = list.length; memo.slots = key; memo.at = now;
+  return memo.value;
+}
+try {
+  window.addEventListener("orbit:user-updated", () => {
+    if (shipModuleIndex.memo) shipModuleIndex.memo.at = -Infinity;
+    if (playerModuleIndicators.memo) playerModuleIndicators.memo.at = -Infinity;
+  });
+} catch {}
+
 function drawPlayerBars(px, py) {
   const stats = account.user?.stats || {};
   // Vaisseau Police : grade admin automatique.
@@ -41513,14 +41568,7 @@ function drawPlayerBars(px, py) {
   }
   const activeHangar = getActiveHangarFromUser(account.user);
   const activeFit = activeHangar?.fits?.[String(Number(activeHangar.activeConfig) === 2 ? 2 : 1)] || activeHangar?.fit || {};
-  const equippedModules = (account.user?.inventory?.shipModules || []).filter(module => (activeFit.shipMods || []).includes(module?.id));
-  const moduleColorByType = {
-    hp: "rgb(70,210,105)",
-    shd: "rgb(45,150,255)",
-    dmg: "rgb(255,70,70)",
-    spc: "rgb(255,215,70)",
-  };
-  const moduleIndicators = equippedModules.map(module => moduleColorByType[module.type]).filter(Boolean);
+  const moduleIndicators = playerModuleIndicators(account.user?.inventory?.shipModules, activeFit.shipMods);
   const myClanTag = (() => { try { return String(getMyClanTag() || ""); } catch { return ""; } })();
   const myTitle = (() => { try { const v = visibleTitleOf(account.user); return v ? { text: v.name, color: v.color } : null; } catch { return null; } })();
   drawPlayerStatus(
@@ -47427,9 +47475,7 @@ function frame(t) {
       try {
         const activeHangar = getActiveHangarFromUser(account.user);
         const activeFit = activeHangar?.fits?.[String(Number(activeHangar.activeConfig) === 2 ? 2 : 1)] || activeHangar?.fit || {};
-        const equippedModules = (account.user?.inventory?.shipModules || []).filter(module => (activeFit.shipMods || []).includes(module?.id));
-        const moduleColorByType = { hp: "rgb(70,210,105)", shd: "rgb(45,150,255)", dmg: "rgb(255,70,70)", spc: "rgb(255,215,70)" };
-        mindNow = equippedModules.map(module => moduleColorByType[module.type]).filter(Boolean).join("|");
+        mindNow = playerModuleIndicators(account.user?.inventory?.shipModules, activeFit.shipMods).join("|");
       } catch {}
       // PET allie : actif, niveau, position + direction (rendu miroir).
       // + pseudo et firme pour l'etiquette distante (comme sur notre ecran).

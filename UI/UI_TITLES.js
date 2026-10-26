@@ -2,6 +2,7 @@
 import { getCurrentUserFull, setCurrentUserTitle, setCurrentUserTitleVisible, refreshCurrentUserTitles } from "../SRC/CORE/ACCOUNT.js";
 import { isTitleUnlocked, getAllTitlesSorted } from "../SRC/DATA/TITLES.js";
 import { escapeHtml } from "./UI_DOM.js";
+import { isWindowShown } from "../SRC/CORE/BACKGROUND_REFRESH.js";
 
 let started = false;
 
@@ -13,7 +14,18 @@ export function initTitlesUI() {
   const toggle = document.getElementById("titleShowToggle");
   if (!list) return;
 
+  // Fenêtre fermée : le déblocage des titres continue (visible par tous en
+  // multi), au plus 1x/2 s, sans reconstruire la liste. Chaque sauvegarde
+  // relançait sinon déblocage + renormalisation + DOM complet en arrière-plan.
+  let lastHiddenRefresh = 0;
   function render() {
+    if (!isWindowShown("titleWindow")) {
+      const now = Date.now();
+      if (now - lastHiddenRefresh < 2000) return;
+      lastHiddenRefresh = now;
+      try { refreshCurrentUserTitles(); } catch {}
+      return;
+    }
     try { refreshCurrentUserTitles(); } catch {}
     const user = getCurrentUserFull();
     const unlocked = new Set(Array.isArray(user?.titles?.unlocked) ? user.titles.unlocked.map(String) : []);
@@ -68,9 +80,18 @@ export function initTitlesUI() {
     render();
   });
 
+  // Jamais PENDANT la diffusion d'une autre mutation : refreshCurrentUserTitles
+  // fait sauver la progression du moteur, qui n'a pas encore adopté le solde
+  // de cette mutation (ex : achat de disques -> débit écrasé par l'ancien
+  // solde = crédits dupliqués). Juste après, regroupé.
+  let deferredRender = 0;
+  const renderSoon = () => {
+    if (deferredRender) return;
+    deferredRender = window.setTimeout(() => { deferredRender = 0; render(); }, 0);
+  };
   try {
-    window.addEventListener("orbit:user-updated", render);
-    window.addEventListener("orbit:titles-updated", render);
+    window.addEventListener("orbit:user-updated", renderSoon);
+    window.addEventListener("orbit:titles-updated", renderSoon);
     window.addEventListener("orbit:window-restoring", (e) => { if (e?.detail?.id === "titleWindow") render(); });
   } catch {}
   render();

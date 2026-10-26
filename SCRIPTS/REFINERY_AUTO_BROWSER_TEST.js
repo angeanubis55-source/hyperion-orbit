@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { enterGame } from "./BROWSER_GAME_START.js";
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
 import { mkdtemp, readFile, writeFile, rm } from 'node:fs/promises';
@@ -75,7 +76,7 @@ window.__ORBIT_ENGINE__ = {`));
     sessionStorage.setItem('orbit_assets_preloaded_v1', 'ready'); sessionStorage.setItem('spawnMapId', '1-1');
   }, { token: account.token, user: canonical });
   const start = async () => {
-    await page.waitForSelector('#loadingStartBtn:not([disabled])', { timeout: 90000 }); await page.click('#loadingStartBtn');
+    await enterGame(page, 90000);
     await page.waitForFunction(() => !document.documentElement.classList.contains('orbitBooting') &&
       getComputedStyle(document.getElementById('loadingOverlay')).display === 'none');
   };

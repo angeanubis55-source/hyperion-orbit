@@ -5,6 +5,7 @@ import { ITEM_RARITIES } from "../SRC/DATA/ITEM_RARITIES.js";
 import { halloweenCountdown, isHalloweenEventActive } from "../NPC/NPC_HALLOWEEN.js";
 import { escapeHtml } from "./UI_DOM.js";
 import { refreshTdmWindow } from "./UI_TDM.js";
+import { isWindowShown } from "../SRC/CORE/BACKGROUND_REFRESH.js";
 
 let started = false;
 let countdownTimer = null;
@@ -157,6 +158,9 @@ export function initBattlepassUI() {
     if (tab === "shop") renderShop();
     else renderObjectives();
   }
+  // Sauvegardes du compte : rien à reconstruire tant que la fenêtre est
+  // fermée (orbit:window-restoring la redessine à l'ouverture).
+  const renderIfShown = () => { if (isWindowShown("passWindow")) render(); };
 
   tabObjectives?.addEventListener("click", () => setTab("objectives"));
   tabShop?.addEventListener("click", () => setTab("shop"));
@@ -182,8 +186,8 @@ export function initBattlepassUI() {
   }
 
   try {
-    window.addEventListener("orbit:user-updated", render);
-    window.addEventListener("orbit:battlepass-updated", render);
+    window.addEventListener("orbit:user-updated", renderIfShown);
+    window.addEventListener("orbit:battlepass-updated", renderIfShown);
     window.addEventListener("orbit:window-restoring", (e) => { if (e?.detail?.id === "passWindow") render(); });
     setInterval(syncPassVisibility, 10000);
     if (!countdownTimer) countdownTimer = setInterval(tickPassCountdown, 1000);

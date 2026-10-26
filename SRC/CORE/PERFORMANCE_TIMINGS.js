@@ -28,3 +28,22 @@ export const gamePerformanceTimings = {
 };
 
 if (typeof window !== "undefined") window.HyperionPerformance = gamePerformanceTimings;
+
+// Micro-freeze : le navigateur signale toute tache > 50 ms du thread
+// principal (Chromium). Agrege sous "longtask" ; les plus recentes restent
+// lisibles via HyperionPerformance.longTasks() pour les recouper avec les
+// timings ci-dessus. Passif et borne, sans effet si l'API est absente.
+const recentLongTasks = [];
+gamePerformanceTimings.longTasks = () => recentLongTasks.slice();
+try {
+  if (typeof PerformanceObserver === "function"
+    && (PerformanceObserver.supportedEntryTypes || []).includes("longtask")) {
+    new PerformanceObserver((list) => {
+      for (const entry of list.getEntries()) {
+        recordGameTask("longtask", entry.duration);
+        recentLongTasks.push({ at: Math.round(entry.startTime), ms: Math.round(entry.duration) });
+        if (recentLongTasks.length > 50) recentLongTasks.shift();
+      }
+    }).observe({ type: "longtask", buffered: true });
+  }
+} catch {}

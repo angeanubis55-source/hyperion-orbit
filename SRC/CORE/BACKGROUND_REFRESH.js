@@ -13,6 +13,13 @@ export function setBackgroundRefresh(value) {
 
 export function shouldRefreshWindow(target) {
   if (backgroundRefresh === "enabled") return true;
+  return isWindowShown(target);
+}
+
+// Fenetre reellement affichee, quel que soit le reglage. Pour les panneaux
+// tres lourds (inventaire de milliers de modules) qui se reconstruisent de
+// toute facon a l'ouverture (orbit:window-restoring).
+export function isWindowShown(target) {
   const root = typeof target === "string" ? document.getElementById(target) : target;
   if (!root) return false;
   // Lire les marqueurs DOM, sans provoquer de calcul de style ou de layout.
