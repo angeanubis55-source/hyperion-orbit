@@ -3080,7 +3080,39 @@ export function saveActiveHangarMap(mapId) {
   return { ok: true };
 }
 
-export function saveActiveHangarState(x, y, mapId, hpPct, shPct) {
+const LIVE_HANGAR_STATE_KEY = "orbit_live_hangar_state_v1";
+
+function stageLiveHangarState(user, hangar) {
+  try {
+    if (!user?.id || !hangar?.id || typeof sessionStorage === "undefined") return;
+    const all = safeParse(sessionStorage.getItem(LIVE_HANGAR_STATE_KEY), {});
+    all[`${user.id}:${hangar.id}`] = {
+      at: Date.now(), pos: hangar.lastPos || null, map: hangar.lastMap || null,
+      hpPct: Number.isFinite(Number(hangar.lastHpPct)) ? Number(hangar.lastHpPct) : null,
+      shPct: Number.isFinite(Number(hangar.lastShPct)) ? Number(hangar.lastShPct) : null,
+    };
+    sessionStorage.setItem(LIVE_HANGAR_STATE_KEY, JSON.stringify(all));
+  } catch {}
+}
+
+function hangarStateView(user, hangar) {
+  let staged = null;
+  try {
+    const all = safeParse(sessionStorage.getItem(LIVE_HANGAR_STATE_KEY), {});
+    const candidate = all[`${user?.id}:${hangar?.id}`];
+    if (candidate && Number(candidate.at) > Number(user?.updatedAt || 0)) staged = candidate;
+  } catch {}
+  return {
+    pos: staged?.pos || hangar?.lastPos || null,
+    map: staged?.map || hangar?.lastMap || null,
+    hpPct: staged && Number.isFinite(Number(staged.hpPct)) ? Number(staged.hpPct)
+      : (Number.isFinite(Number(hangar?.lastHpPct)) ? Number(hangar.lastHpPct) : null),
+    shPct: staged && Number.isFinite(Number(staged.shPct)) ? Number(staged.shPct)
+      : (Number.isFinite(Number(hangar?.lastShPct)) ? Number(hangar.lastShPct) : null),
+  };
+}
+
+export function saveActiveHangarState(x, y, mapId, hpPct, shPct, options = {}) {
   const u = getCurrentUserFull();
   if (!u) return { ok: false, error: "Non connecté." };
 
@@ -3102,6 +3134,10 @@ export function saveActiveHangarState(x, y, mapId, hpPct, shPct) {
   if (Number.isFinite(Number(shPct))) h.lastShPct = Math.max(0, Math.min(1, Number(shPct)));
 
   // La position est sauvegardée périodiquement et ne modifie aucune vue UI.
+  if (options.deferred === true) {
+    stageLiveHangarState(u, h);
+    return { ok: true, deferred: true };
+  }
   saveUser(u, { notify: false });
   return { ok: true };
 }
@@ -3113,12 +3149,7 @@ export function getActiveHangarState() {
   const h = getActiveHangar(u);
   if (!h) return { pos: null, map: null };
 
-  return {
-    pos: h.lastPos || null,
-    map: h.lastMap || null,
-    hpPct: Number.isFinite(Number(h.lastHpPct)) ? Number(h.lastHpPct) : null,
-    shPct: Number.isFinite(Number(h.lastShPct)) ? Number(h.lastShPct) : null,
-  };
+  return hangarStateView(u, h);
 }
 
 // ---------------------------
@@ -3947,16 +3978,11 @@ export function getHangarStateById(hangarId) {
   const h = (u.hangars || []).find(x => x?.id === hangarId) || null;
   if (!h) return { pos: null, map: null };
 
-  return {
-    pos: h.lastPos || null,
-    map: h.lastMap || null,
-    hpPct: Number.isFinite(Number(h.lastHpPct)) ? Number(h.lastHpPct) : null,
-    shPct: Number.isFinite(Number(h.lastShPct)) ? Number(h.lastShPct) : null,
-  };
+  return hangarStateView(u, h);
 }
 
 // ✅ save état dans un hangar précis (IMPORTANT)
-export function saveHangarStateById(hangarId, x, y, mapId, hpPct, shPct) {
+export function saveHangarStateById(hangarId, x, y, mapId, hpPct, shPct, options = {}) {
   const u = getCurrentUserFull();
   if (!u) return { ok: false, error: "Non connecté." };
 
@@ -3974,6 +4000,10 @@ export function saveHangarStateById(hangarId, x, y, mapId, hpPct, shPct) {
   if (Number.isFinite(Number(shPct))) h.lastShPct = Math.max(0, Math.min(1, Number(shPct)));
 
   // Évite un recalcul complet de l'équipement à chaque sauvegarde de position.
+  if (options.deferred === true) {
+    stageLiveHangarState(u, h);
+    return { ok: true, deferred: true };
+  }
   saveUser(u, { notify: false });
   return { ok: true };
 }

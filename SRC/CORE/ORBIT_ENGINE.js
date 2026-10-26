@@ -18070,10 +18070,8 @@ function scheduleProgressSave() {
   }
 }
 
-// ✅ Sauvegarde rapprochée de la position : toutes les 3 s quand le joueur
-// a bougé (ou changé de map), pour retrouver sa place exacte après un refresh.
-// Réutilise savePositionNow() : ne persiste que position/map/vitalité,
-// sans toucher au reste de la progression.
+// Snapshot léger de position toutes les 3 s. Il met à jour le hangar en
+// mémoire + sessionStorage, puis la sauvegarde complète l'absorbe plus tard.
 let positionSaveCd = 0;
 const lastPositionSave = { x: NaN, y: NaN, map: "" };
 
@@ -18819,10 +18817,11 @@ function savePositionNow() {
 
   const currentMap = window.__CURRENT_MAP_ID__ || "1-1";
   if (SESSION_HANGAR_ID) {
-    saveHangarStateById(SESSION_HANGAR_ID, player.x, player.y, currentMap, savedHpPct(), savedShPct());
+    saveHangarStateById(SESSION_HANGAR_ID, player.x, player.y, currentMap, savedHpPct(), savedShPct(), { deferred: true });
   } else {
-    saveActiveHangarState(player.x, player.y, currentMap, savedHpPct(), savedShPct());
+    saveActiveHangarState(player.x, player.y, currentMap, savedHpPct(), savedShPct(), { deferred: true });
   }
+  markProgressDirty();
 }
 
 // ============================================================
