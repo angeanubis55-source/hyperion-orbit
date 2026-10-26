@@ -24358,11 +24358,16 @@ try {
 try {
   if (typeof window !== "undefined" && !window.__UNIVERSE_BG_TICK__) {
     window.__UNIVERSE_BG_TICK__ = true;
+    let persistBackgroundCollectables = false;
     setInterval(() => {
       try {
         tickBackground(universe, worldClock.now(), { skipMapId: String(window.__CURRENT_MAP_ID__ || "") });
-        persistUniverse();
-        persistCollectables();
+        // Ne jamais sérialiser le monde et les collectables dans le même
+        // passage : deux gros JSON/localStorage consécutifs créent un pic
+        // visible sur mobile. Chaque store reste sauvegardé toutes les 10 s.
+        if (persistBackgroundCollectables) persistCollectables();
+        else persistUniverse();
+        persistBackgroundCollectables = !persistBackgroundCollectables;
       } catch {}
     }, 5000);
   }
