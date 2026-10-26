@@ -940,8 +940,11 @@ export async function apiGalaxyGateOperation(action, options = {}) {
 
 function schedulePush() {
   // Les kills suivants ne repoussent pas une sauvegarde deja programmee.
+  // Envoi groupe toutes les ~10 s : chaque tick fuel/balle ne declenche
+  // plus un gros JSON compte+modules toutes les 2 s. Les actions urgentes
+  // (tirage/achat/quete/mort/portail) utilisent flushNetUser() direct.
   if (saveTimer != null) return;
-  saveTimer = setTimeout(() => { pushNow().catch(() => {}); }, 2000);
+  saveTimer = setTimeout(() => { pushNow().catch(() => {}); }, 10000);
 }
 
 // Conflits d'écriture (409) : normaux isolément (give admin...), mais en

@@ -18740,11 +18740,10 @@ function saveProgressNowMeasured() {
   battlepass: account.user.battlepass,
   stats: { ...(account.user.stats || {}) },
   inventory: { resources: { ...(account.user.inventory?.resources || {}) } },
-  drones: account.user.drones,
-  pet: account.user.pet,
-  upgrades: account.user.upgrades,
-  skylab: account.user.skylab,
-  auction: account.user.auction,
+  // Sauvegarde legere : drones/pet/upgrades/skylab/auction vivent deja dans
+  // account.user (mute en direct). Les re-cloner ici a chaque autosave
+  // coutait cher sans rien changer. Les changements de structure ecrivent
+  // en direct + saveUser immediat sur leur propre chemin.
 hangarState: !player.dead && started && !hangarLocationTransferPending() ? {
     id: SESSION_HANGAR_ID || null,
     x: player.x,
@@ -24361,6 +24360,10 @@ try {
     let persistBackgroundCollectables = false;
     setInterval(() => {
       try {
+        // Multi : les zones partagees sont entierement simulees par le
+        // serveur (npcSims + npc_respawns.json). Le tick/sauvegarde monde
+        // local ne sert plus : supprime en mode net (solo local conserve).
+        if (netActive()) return;
         tickBackground(universe, worldClock.now(), { skipMapId: String(window.__CURRENT_MAP_ID__ || "") });
         // Ne jamais sérialiser le monde et les collectables dans le même
         // passage : deux gros JSON/localStorage consécutifs créent un pic
@@ -24373,6 +24376,8 @@ try {
   }
 } catch {}
 const persistUniverse = createDeferredPersistence(force => {
+  // Multi : serveur autorite sur les zones partagees, rien a persister ici.
+  try { if (netActive() && isSharedZone()) return; } catch {}
   worldClock.markTick({ force });
   try {
     measureGameTask("persistUniverse", () => universeStorage?.setItem?.(UNIVERSE_KEY, serializeUniverse(universe)));
@@ -24386,6 +24391,8 @@ try {
   collectableStore = createCollectableStore();
 }
 const persistCollectables = createDeferredPersistence(() => {
+  // Multi : les boites partagees viennent du serveur (syncNetBoxes).
+  try { if (netActive() && isSharedZone()) return; } catch {}
   try {
     measureGameTask("persistCollectables", () => universeStorage?.setItem?.(COLLECTABLE_STORE_KEY, serializeCollectableStore(collectableStore)));
   } catch {}
@@ -25906,7 +25913,17 @@ function tickPetFuel(dt) {
   pet.fuel = Math.max(0, Math.floor(Number(pet.fuel) || 0) - take);
   // Mode multi : sinon un 409 remplit le réservoir depuis le canon.
   try { noteNetPetFuelConsumed(take); } catch {}
-  markProgressDirty();
+  // Le fuel bouge toutes les 2 s : inutile de re-sauvegarder tout le compte
+  // a chaque tick (ensureUserShape + JSON). On groupe : le push serveur lit
+  // memUser en direct (donc rien n'est perdu), la sauvegarde complete suit
+  // au rythme normal (15 s) ou sur evenement important.
+  try {
+    const now = Date.now();
+    if (now - Number(petState.lastFuelDirtyAt || 0) > 30000) {
+      petState.lastFuelDirtyAt = now;
+      markProgressDirty();
+    }
+  } catch { try { markProgressDirty(); } catch {} }
   if (pet.fuel <= 0) {
     pet.fuel = 0;
     petState.fuelTickT = 0;
