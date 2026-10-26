@@ -15327,10 +15327,10 @@ function wirePetWindow() {
       window.dispatchEvent(new CustomEvent("orbit:profile-progress"));
       return showToast("REX réparé (coque 10 %, bouclier 0).", 1.8);
     }
-    // Panne sèche : la goutte achète +100 essence (10 000 crédits débités),
+    // Panne sèche : la goutte achète +1000 essence (100 000 crédits débités),
     // sans activer le REX — le bouton repasse en play, à toi de l'allumer.
     if (!(Math.max(0, Math.floor(Number(pet.fuel) || 0)) > 0)) {
-      const out = buyItem("pet_fuel", 100);
+      const out = buyItem("pet_fuel", 1000);
       if (!out?.ok) return showToast(out?.error || "Impossible.", 1.5);
       account.user = out.user;
       player.credits = out.user.credits;
@@ -15349,7 +15349,7 @@ function wirePetWindow() {
   ui.petFuelBuyBtn?.addEventListener("click", () => {
     const pet = account.user?.pet?.owned === true ? account.user.pet : null;
     if (!pet) return showToast("P.E.T non possédé.", 1.5);
-    const out = buyItem("pet_fuel", 100);
+    const out = buyItem("pet_fuel", 1000);
     if (!out?.ok) return showToast(out?.error || "Impossible.", 1.5);
     account.user = out.user;
     player.credits = out.user.credits;
@@ -15726,7 +15726,7 @@ function updatePetHud() {
     setHudDisabled(ui.petFuelBuyBtn, !has || fuel >= fuelMax);
     setHudAttr(ui.petFuelBuyBtn, "title", fuel >= fuelMax
       ? "Réservoir plein"
-      : "+100 essence — 10 000 crédits");
+      : "+1000 essence — 100 000 crédits");
   }
 
   if (ui.petPlayBtn) {
@@ -15754,7 +15754,7 @@ function updatePetHud() {
     setHudAttr(ui.petPlayBtn, "title", destroyed
       ? "Réparer le REX — 10 000 crédits"
       : outOfFuel
-        ? "+100 essence — 10 000 crédits (sans activer le REX)"
+        ? "+1000 essence — 100 000 crédits (sans activer le REX)"
         : shownActive ? "Désactiver le P.E.T" : "Activer le P.E.T");
     setHudClass(ui.petPlayBtn, "isOn", shownActive);
     // Jauges (coque, bouclier, carburant, niveau) masquées quand le bouton
@@ -36368,7 +36368,7 @@ function isSameFirm(firm) {
     return myFirm !== "" && String(normalizeFactionId(firm) || "").toLowerCase() === myFirm;
   } catch { return false; }
 }
-// Clé relationnelle unique : own > war > nap > ally > même firme / sans clan (blue) > ennemi (red).
+// Clé relationnelle unique : own > war > nap > ally > même firme (blue) > autre firme (red).
 function relationKey(tag, firm) {
   const clean = String(tag || "").toUpperCase().slice(0, 5);
   let myClan = "";
@@ -36381,7 +36381,9 @@ function relationKey(tag, firm) {
   if (rel === "war") return "war";
   if (rel === "nap") return "nap";
   if (rel === "ally") return "ally";
-  if (isSameFirm(firm) || !clean) return "blue";
+  // Sans clan : la firme seule décide (autre firme = rouge). Firme inconnue
+  // (donnée réseau pas encore reçue) : bleu par défaut.
+  if (isSameFirm(firm) || !normalizeFactionId(firm, "")) return "blue";
   return "red";
 }
 function isPlayerGrouped(id) {

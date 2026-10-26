@@ -57,6 +57,7 @@ import { getDroneDesign, getDroneDesignBonuses, droneDesignBonusLabel } from "..
 import { emptyPetFit, getPetHullPrice, getPetLevel, getPetLevelBonus, getPetLevelXp, getPetNextLevelXp, getPetSlots, getPetSpritePath, PET_FUEL_MAX, PET_HULL_MAX_BUYS } from "../PET/PET_TYPES.js";
 import { MODULE_ALL_STATS, MODULE_DAILY_ROLL_LIMIT, MODULE_DMG_STATS, MODULE_PCT_BAN, MODULE_RARITY_BY_STAT_COUNT, MODULE_ROLL_COST, MODULE_SELL_PRICES, MODULE_SPC_STATS, MODULE_STAT_COUNT_WEIGHTS, MODULE_STAT_COUNT_WEIGHTS_BY_TIER, MODULE_STAT_MAX_ANY, MODULE_STAT_MAX_BY_COLOR, MODULE_STAT_MAX_OFF_COLOR, MODULE_TIER_MALUS, MODULE_TIER_WEIGHTS, MODULE_TYPE_WEIGHTS, getModuleRarity, getModuleStatCountWeights, getStatMaxPct } from "../SRC/DATA/MODULE_DROPS.js";
 import { generateShipModule } from "../SRC/DATA/MODULE_GEN.js";
+import { ADVISOR_FOCUSES, ADVISOR_MODES, ADVISOR_MODULE_SLOTS, adviseModules } from "../SRC/DATA/MODULE_ADVISOR.js";
 import { appendToFitSlots, compactDroneEquipment, compactFitArray, compactFitDraft, compactPetFit, moveEquipmentSlots } from "../SRC/CORE/FIT_LAYOUT.js";
 import { pruneUnavailableLoadout } from "../SRC/CORE/FIT_INVENTORY.js";
 import { rarityForCatalogItem } from "../SRC/DATA/CRAFTING.js";
@@ -395,6 +396,183 @@ function moduleProbaHtml() {
     <p class="moduleProbaNote">Ticket de relance utilisable à la place des crédits (1 par relance).</p>
   </div>`;
 }
+// Onglet Conseiller : vaisseau + style de jeu + objectif -> quels modules
+// monter, avec explications et comparaisons (calcul dans MODULE_ADVISOR).
+const moduleAdvisorState = { hangarId: null, mode: "pve", focus: "balanced" };
+
+function advisorFmt(value) {
+  const n = Math.round(Number(value || 0) * 10) / 10;
+  return String(n).replace(".", ",");
+}
+
+function advisorStatChips(module, hullMult = 1) {
+  return (module?.bonuses || []).map((bonus) => {
+    const pct = Number(bonus?.pct || 0) * hullMult;
+    const cls = pct > 0 ? "advisorChip pos" : pct < 0 ? "advisorChip neg" : "advisorChip";
+    const icon = moduleStatIconSrc(bonus?.stat);
+    return `<span class="${cls}">${icon ? `<img src="${escapeHtml(icon)}" alt="" />` : ""}${escapeHtml(`${pct > 0 ? "+" : ""}${advisorFmt(pct)} % ${formatStatLabel(bonus?.stat)}`)}</span>`;
+  }).join("");
+}
+
+function advisorModuleName(module) {
+  const rarity = moduleRarityMeta(module);
+  return `<img class="advisorModIcon" src="${escapeHtml(moduleIconSrc(module?.type, module?.tier))}" alt="" />`
+    + `<span class="advisorModName"><strong style="color:${moduleTypeColor(module?.type)};">${escapeHtml(`${String(module?.type || "").toUpperCase()} ${String(module?.tier || "").toUpperCase()}`)}</strong>`
+    + ` <small style="color:${escapeHtml(rarity.color)};">${escapeHtml(rarity.name)}</small></span>`;
+}
+
+// Une phrase « pourquoi » : la stat qui rapporte le plus (+ malus éventuel).
+function advisorWhy(pick, weights) {
+  const parts = [...pick.parts].sort((a, b) => b.points - a.points);
+  const main = parts[0];
+  let text = main && main.points > 0
+    ? `<strong>${escapeHtml(formatStatLabel(main.stat))}</strong> : ${escapeHtml(weights[main.stat]?.why || "")}`
+    : "";
+  const malus = parts.find((p) => p.points < 0);
+  if (malus) text += ` <span class="advisorNeg">Malus ${escapeHtml(formatStatLabel(malus.stat))} compensé.</span>`;
+  return text;
+}
+
+// Une ligne de comparaison avec le meilleur module NON choisi.
+function advisorVersus(pick, hullMult = 1) {
+  const other = pick.runnerUp;
+  if (!other) return "";
+  return `<div class="advisorVs"><span>Mieux que</span> ${advisorModuleName(other.module)}`
+    + ` <span class="advisorVsChips">${advisorStatChips(other.module, hullMult)}</span>`
+    + ` <span class="advisorVsScore">${advisorFmt(other.score)} pts · <strong>+${advisorFmt(pick.score - other.score)}</strong></span></div>`;
+}
+
+function moduleAdvisorHtml(currentUser) {
+  const hangars = Array.isArray(currentUser?.hangars) ? currentUser.hangars.filter((h) => h?.id && h?.shipId) : [];
+  if (!hangars.length) {
+    return `<div class="moduleProba"><h3 class="moduleProbaTitle">Comparateur de modules</h3><p class="moduleProbaNote">Aucun vaisseau au hangar.</p></div>`;
+  }
+  if (!hangars.some((h) => h.id === moduleAdvisorState.hangarId)) {
+    moduleAdvisorState.hangarId = (hangars.find((h) => h.active) || hangars[0]).id;
+  }
+  const hangar = hangars.find((h) => h.id === moduleAdvisorState.hangarId);
+  const family = getShipFamilyId(hangar.shipId);
+  const allModules = Array.isArray(currentUser?.inventory?.shipModules) ? currentUser.inventory.shipModules : [];
+  const modules = allModules.filter((m) => moduleFamilyId(m) === family);
+  const cfg = Number(hangar.activeConfig) === 2 ? "2" : "1";
+  const equippedIds = hangar.fits?.[cfg]?.shipMods || hangar.fit?.shipMods || [];
+  const advice = adviseModules({ modules, equippedIds, shipId: hangar.shipId, mode: moduleAdvisorState.mode, focus: moduleAdvisorState.focus });
+  const { weights, hullMult } = advice;
+
+  const shipOptions = hangars.map((h) => {
+    const name = getShipFamilyName(getShipFamilyId(h.shipId));
+    const count = allModules.filter((m) => moduleFamilyId(m) === getShipFamilyId(h.shipId)).length;
+    return `<option value="${escapeHtml(h.id)}"${h.id === hangar.id ? " selected" : ""}>${escapeHtml(`${name}${h.active ? " (actif)" : ""} · ${count} module${count > 1 ? "s" : ""}`)}</option>`;
+  }).join("");
+  const seg = (group, entries, current) => `<div class="advisorSeg" role="group">${Object.entries(entries).map(([id, label]) =>
+    `<button type="button" class="advisorSegBtn${id === current ? " active" : ""}" data-advisor-${group}="${escapeHtml(id)}">${escapeHtml(label)}</button>`).join("")}</div>`;
+
+  const controls = `
+    <div class="advisorControls">
+      <label class="advisorField"><span>Vaisseau</span>
+        <span class="advisorShip"><img src="${escapeHtml(shipPreviewSrc(hangar.shipId))}" alt="" /><select id="moduleAdvisorShip">${shipOptions}</select></span>
+      </label>
+      <div class="advisorField"><span>Style de jeu</span>${seg("mode", ADVISOR_MODES, moduleAdvisorState.mode)}</div>
+      <div class="advisorField"><span>Objectif</span>${seg("focus", ADVISOR_FOCUSES, moduleAdvisorState.focus)}</div>
+    </div>`;
+
+  const hullNote = hullMult !== 1
+    ? `<p class="moduleProbaNote">Coque ${escapeHtml(getShipFamilyName(family))} : tous les % des modules sont multipliés par ${advisorFmt(hullMult)} (déjà inclus dans les calculs).</p>`
+    : "";
+
+  if (!modules.length) {
+    return `<div class="moduleProba advisor">${controls}<h3 class="moduleProbaTitle">Aucun module pour ce vaisseau</h3>`
+      + `<p class="moduleProbaNote">Les modules sont liés à une famille de vaisseau. Tire des modules dans l'onglet MODULES : ceux de ${escapeHtml(getShipFamilyName(family))} apparaîtront ici.</p></div>`;
+  }
+
+  const gain = advice.recommendedScore - advice.currentScore;
+  const summary = `
+    <div class="advisorSummary">
+      <div><span>Montage actuel</span><strong>${advisorFmt(advice.currentScore)} pts</strong><small>${advice.equippedCount}/${ADVISOR_MODULE_SLOTS} module${advice.equippedCount > 1 ? "s" : ""}</small></div>
+      <div><span>Montage conseillé</span><strong>${advisorFmt(advice.recommendedScore)} pts</strong><small>${advice.picks.length}/${ADVISOR_MODULE_SLOTS} module${advice.picks.length > 1 ? "s" : ""}</small></div>
+      <div class="${gain > 0.05 ? "up" : ""}"><span>Gain</span><strong>${gain > 0.05 ? `+${advisorFmt(gain)} pts` : "Déjà optimal"}</strong><small>1 pt ≈ 1 % de dégâts</small></div>
+    </div>`;
+
+  const picksHtml = advice.picks.map((pick) => `
+    <div class="advisorPick">
+      <div class="advisorPickHead">
+        <span class="advisorSlot">${pick.slot}</span>
+        ${advisorModuleName(pick.module)}
+        <span class="advisorPickChips">${advisorStatChips(pick.module, hullMult)}</span>
+        <span class="advisorScore">${advisorFmt(pick.score)} pts</span>
+        ${advice.ranking.find((r) => r.module === pick.module)?.equipped ? `<span class="advisorTag ok">Déjà monté</span>` : `<span class="advisorTag todo">À monter</span>`}
+      </div>
+      <p class="advisorWhy">${advisorWhy(pick, weights)}</p>
+      ${advisorVersus(pick, hullMult)}
+    </div>`).join("");
+  const emptySlots = ADVISOR_MODULE_SLOTS - advice.picks.length;
+  const emptyNote = emptySlots > 0
+    ? `<p class="moduleProbaNote">${emptySlots} emplacement${emptySlots > 1 ? "s" : ""} sans conseil : pas assez de modules utiles pour ce style. Ici, un emplacement vide vaut mieux qu'un module qui fait perdre des points.</p>`
+    : "";
+
+  const toRemove = advice.ranking.filter((r) => r.equipped && !r.recommended);
+  const removeHtml = toRemove.length
+    ? `<h3 class="moduleProbaTitle">À démonter</h3><table class="moduleProbaTable"><tbody>${toRemove.map((r) =>
+      `<tr><td>${advisorModuleName(r.module)}</td><td>${advisorStatChips(r.module, hullMult)}</td><td>${advisorFmt(r.score)} pts</td></tr>`).join("")}</tbody></table>`
+    : "";
+
+  const rankingRows = advice.ranking.map((r, i) => {
+    const tag = r.recommended ? `<span class="advisorTag ok">Conseillé</span>` : r.equipped ? `<span class="advisorTag warn">Monté</span>` : "";
+    return `<tr class="${r.recommended ? "advisorRowPick" : ""}"><td>${i + 1}</td><td>${advisorModuleName(r.module)}</td>`
+      + `<td class="advisorChipsCell">${advisorStatChips(r.module, hullMult)}</td><td><strong>${advisorFmt(r.score)}</strong></td><td>${tag}</td></tr>`;
+  }).join("");
+
+  const weightRows = Object.entries(weights)
+    .sort((a, b) => b[1].weight - a[1].weight)
+    .map(([stat, w]) => {
+      const icon = moduleStatIconSrc(stat);
+      return `<tr><td class="advisorStatCell">${icon ? `<img src="${escapeHtml(icon)}" alt="" />` : ""}${escapeHtml(formatStatLabel(stat))}</td>`
+        + `<td><strong>${advisorFmt(w.weight)}</strong></td><td>${escapeHtml(w.why)}</td></tr>`;
+    }).join("");
+
+  return `
+  <div class="moduleProba advisor">
+    ${controls}
+    ${hullNote}
+    ${summary}
+    <h3 class="moduleProbaTitle">Modules à monter</h3>
+    ${picksHtml}
+    ${emptyNote}
+    ${removeHtml}
+    <div class="advisorMore">
+      <h3 class="advisorMoreTitle">Tous mes modules (${modules.length})</h3>
+      <table class="moduleProbaTable advisorRanking"><thead><tr><th>#</th><th>Module</th><th>Stats</th><th>Pts</th><th></th></tr></thead><tbody>${rankingRows}</tbody></table>
+    </div>
+    <div class="advisorMore">
+      <h3 class="advisorMoreTitle">Comment c'est calculé</h3>
+      <p class="moduleProbaNote">Score = somme de (% de la stat × sa valeur). 1 pt ≈ 1 % de dégâts. Les malus retirent des points.</p>
+      <table class="moduleProbaTable"><thead><tr><th>Stat</th><th>Pts / %</th><th>Pourquoi</th></tr></thead><tbody>${weightRows}</tbody></table>
+    </div>
+  </div>`;
+}
+
+function wireModuleAdvisor(view) {
+  if (!view) return;
+  const rerender = () => {
+    const fresh = getCurrentUserFull() || user;
+    const top = view.scrollTop;
+    view.innerHTML = moduleAdvisorHtml(fresh);
+    view.scrollTop = top;
+  };
+  view.onchange = (event) => {
+    if (event.target?.id !== "moduleAdvisorShip") return;
+    moduleAdvisorState.hangarId = String(event.target.value || "");
+    rerender();
+  };
+  view.onclick = (event) => {
+    const btn = event.target instanceof Element ? event.target.closest(".advisorSegBtn") : null;
+    if (!btn) return;
+    if (btn.dataset.advisorMode) moduleAdvisorState.mode = btn.dataset.advisorMode;
+    if (btn.dataset.advisorFocus) moduleAdvisorState.focus = btn.dataset.advisorFocus;
+    rerender();
+  };
+}
+
 let inventoryQuery = "";
 
 // -------------------- UI helpers --------------------
@@ -2101,10 +2279,7 @@ function renderHangarsMeasured(u) {
         <button class="secondary" data-fit="${h.id}">Équiper</button>
         ${isActive ? '' : `
           <button class="secondary" data-travel="${h.id}">Activer</button>
-          <label class="hangarSwipe" title="Échanger avec ce hangar">
-            <input type="checkbox" data-act="${h.id}" aria-label="Échanger avec ce hangar">
-            <span class="swipeTrack"></span>
-          </label>
+          <button class="secondary" data-act="${h.id}" title="Échanger avec ce hangar">Switch</button>
         `}
       </div>
     `;
@@ -2116,14 +2291,12 @@ function renderHangarsMeasured(u) {
     };
     el.addEventListener("click", selectHangar);
 
-   const swipeInput = el.querySelector(`[data-act="${h.id}"]`);
-   swipeInput?.addEventListener("click", () => {
+   const swipeButton = el.querySelector(`[data-act="${h.id}"]`);
+   swipeButton?.addEventListener("click", (event) => {
+  event.stopPropagation();
   if (isActive) return;
 
-  // Une checkbox change visuellement avant que nos règles métier soient
-  // vérifiées. Toute activation refusée doit donc remettre le swipe sur OFF.
   const rejectSwipe = (message) => {
-    swipeInput.checked = false;
     if (message) setMsg(message, false);
   };
 
@@ -2940,12 +3113,14 @@ function renderExtrasRoulette(user, host = null) {
         <div id="moduleRollHistory" class="moduleHistoryList" style="border:0;">${renderModuleHistory(user)}</div>
       </div>
       <div id="moduleProbaView" style="display:none;flex-direction:column;flex:1 1 auto;overflow-y:auto;">${moduleProbaHtml()}</div>
+      <div id="moduleAdvisorView" style="display:none;flex-direction:column;flex:1 1 auto;overflow-y:auto;"></div>
     </div>
   `;
 
   const rouletteView = document.getElementById("rouletteView");
   const historyView = document.getElementById("moduleHistoryView");
   const probaView = document.getElementById("moduleProbaView");
+  const advisorView = document.getElementById("moduleAdvisorView");
   const moduleLayout = previewEl.closest(".shopLayout");
   const costEl = document.getElementById("extrasRouletteCost");
   const toolbarEl = costEl ? costEl.closest(".shopToolbar") : null;
@@ -2969,6 +3144,7 @@ function renderExtrasRoulette(user, host = null) {
     if (rouletteView) rouletteView.style.display = "flex";
     if (historyView) historyView.style.display = "none";
     if (probaView) probaView.style.display = "none";
+    if (advisorView) advisorView.style.display = "none";
     showToolbar(true);
     if (costEl) costEl.style.display = "";
     if (historyHeadEl) historyHeadEl.style.display = "none";
@@ -2983,6 +3159,7 @@ function renderExtrasRoulette(user, host = null) {
     if (rouletteView) rouletteView.style.display = "none";
     if (historyView) historyView.style.display = "flex";
     if (probaView) probaView.style.display = "none";
+    if (advisorView) advisorView.style.display = "none";
     showToolbar(true);
     if (costEl) costEl.style.display = "none";
     if (historyHeadEl) historyHeadEl.style.display = "";
@@ -2993,10 +3170,27 @@ function renderExtrasRoulette(user, host = null) {
     if (rouletteView) rouletteView.style.display = "none";
     if (historyView) historyView.style.display = "none";
     if (probaView) probaView.style.display = "flex";
+    if (advisorView) advisorView.style.display = "none";
     showToolbar(false);
     if (costEl) costEl.style.display = "none";
     if (historyHeadEl) historyHeadEl.style.display = "none";
     setModuleNav("proba");
+  };
+  const showAdvisor = () => {
+    moduleLayout?.classList.remove("moduleHistoryMode");
+    if (rouletteView) rouletteView.style.display = "none";
+    if (historyView) historyView.style.display = "none";
+    if (probaView) probaView.style.display = "none";
+    if (advisorView) {
+      // Recalculé à chaque ouverture : modules tirés / montés entre-temps.
+      advisorView.innerHTML = moduleAdvisorHtml(getCurrentUserFull() || user);
+      wireModuleAdvisor(advisorView);
+      advisorView.style.display = "flex";
+    }
+    showToolbar(false);
+    if (costEl) costEl.style.display = "none";
+    if (historyHeadEl) historyHeadEl.style.display = "none";
+    setModuleNav("advisor");
   };
   // Tickets de relance collés à droite, en face du titre "Historique des modules".
   // Pas de prix ici : chaque ligne a déjà son propre "Prochaine".
@@ -3010,6 +3204,8 @@ function renderExtrasRoulette(user, host = null) {
     if (moduleTab) moduleTab.onclick = showRoulette;
     if (historyTab) historyTab.onclick = showHistory;
     if (probaTab) probaTab.onclick = showProba;
+    const advisorTab = document.querySelector('#moduleWindowTabs [data-module-tab="advisor"]');
+    if (advisorTab) advisorTab.onclick = showAdvisor;
     showRoulette();
   }
   // Filtres historique : recherche texte + dropdown vaisseaux + filtre type
@@ -7529,7 +7725,8 @@ window.addEventListener("orbit:pass-module-rolled", () => {
     const rv = document.getElementById("rouletteView");
     const hv = document.getElementById("moduleHistoryView");
     const pv = document.getElementById("moduleProbaView");
-    const extrasVisible = (rv && rv.style.display !== "none") || (hv && hv.style.display !== "none") || (pv && pv.style.display !== "none");
+    const av = document.getElementById("moduleAdvisorView");
+    const extrasVisible = (rv && rv.style.display !== "none") || (hv && hv.style.display !== "none") || (pv && pv.style.display !== "none") || (av && av.style.display !== "none");
     if (!extrasVisible) return;
     const fresh = getCurrentUserFull();
     if (!fresh) return;

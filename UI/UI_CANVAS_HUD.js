@@ -150,7 +150,6 @@ export function drawPlayerStatus(context, player, playerName, x, y, rankImage = 
     context.strokeRect(barX - 0.5, shieldY - 0.5, width + 1, height + 1);
   }
   }
-  context.font = "900 16px ui-sans-serif, system-ui";
   context.textAlign = "center";
   context.textBaseline = "top";
   const displayName = playerName || "Pilote";
@@ -166,7 +165,7 @@ export function drawPlayerStatus(context, player, playerName, x, y, rankImage = 
   // (balayage animé de gauche à droite) + grade admin, centrés.
   if (adminTag === true) {
     const adminText = "[ADMIN]";
-    context.font = "900 16px ui-sans-serif, system-ui";
+    context.font = "900 13px ui-sans-serif, system-ui";
     const tagW = context.measureText(adminText).width;
     const startX = x - tagW / 2;
     const sweep = (performance.now() / 1000 * 180) % 360;
@@ -194,6 +193,8 @@ export function drawPlayerStatus(context, player, playerName, x, y, rankImage = 
     context.restore();
     return;
   }
+  // Même police que le nom du P.E.T (ORBIT_ENGINE : drawPet).
+  context.font = "900 13px ui-sans-serif, system-ui";
   const textWidth = context.measureText(displayName).width;
   // Tag de clan [TAG] en blanc (ou couleur diplo : rouge guerre, jaune
   // foncé NAP, vert alliance), pseudo dans la couleur relationnelle
