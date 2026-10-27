@@ -12009,7 +12009,7 @@ function botLoadConfig() {
     if (typeof data.grabInFight === "boolean") Bot.grabInFight = data.grabInFight;
     if (typeof data.cargo === "boolean") Bot.cargo = data.cargo;
     Bot.cargoPct = intIn(data.cargoPct, 1, 100, Bot.cargoPct);
-    if (["auto", "low", "high"].includes(data.sellBase)) Bot.sellBase = data.sellBase;
+    if (["auto", "low", "high", "pirate"].includes(data.sellBase)) Bot.sellBase = data.sellBase;
     try {
       if (data.sellOres && typeof data.sellOres === "object") {
         for (const id of ["palladium", ...Object.keys(ORE_SELL_PRICES)]) if (data.sellOres[id] === false) Bot.sellOres[id] = false;
@@ -12531,25 +12531,28 @@ function botRefineUpgrades() {
 
 // Base de vente la plus proche (en sauts) : X-1 (low) ou X-8 (high).
 // Respecte la préférence (auto / low / high), fallback sur l'autre base.
+const BOT_PIRATE_TRADE_MAP = "5-2";
 function botPickSellBase(curMap) {
   const faction = (account.user || getCurrentUserFull())?.faction;
   const low = String(getFactionHomeMap(faction) || "").toLowerCase();
   const high = String(getFactionUpperBaseMap(faction) || "").toLowerCase();
+  // Comptoir pirate 5-2 : ouvert à toutes les firmes.
+  const pirate = BOT_PIRATE_TRADE_MAP;
   const cands = [];
   if (Bot.sellBase === "low") { if (low) cands.push(low); if (high) cands.push(high); }
   else if (Bot.sellBase === "high") { if (high) cands.push(high); if (low) cands.push(low); }
+  else if (Bot.sellBase === "pirate") { cands.push(pirate); if (low) cands.push(low); if (high) cands.push(high); }
   else {
-    const rl = low ? botFindRoute(curMap, low) : null;
-    const rh = high ? botFindRoute(curMap, high) : null;
-    const ranked = [
-      rl ? { map: low, hops: rl.length } : null,
-      rh ? { map: high, hops: rh.length } : null,
-    ].filter(Boolean).sort((a, b) => a.hops - b.hops);
+    // La plus proche (en sauts de portail) parmi les deux bases et 5-2.
+    const ranked = [low, high, pirate]
+      .filter(Boolean)
+      .map((map) => { const route = botFindRoute(curMap, map); return route ? { map, hops: route.length } : null; })
+      .filter(Boolean)
+      .sort((a, b) => a.hops - b.hops);
     for (const r of ranked) cands.push(r.map);
-    if (low && !cands.includes(low)) cands.push(low);
-    if (high && !cands.includes(high)) cands.push(high);
+    for (const map of [low, high, pirate]) if (map && !cands.includes(map)) cands.push(map);
   }
-  return cands.filter(Boolean);
+  return [...new Set(cands.filter(Boolean))];
 }
 function botNearestTradeModule() {
   let best = null;
@@ -13812,7 +13815,7 @@ function wireBotWindow() {
       sellBaseSel.dataset.wired = "1";
       sellBaseSel.addEventListener("change", () => {
         const v = String(sellBaseSel.value || "auto");
-        Bot.sellBase = ["auto", "low", "high"].includes(v) ? v : "auto";
+        Bot.sellBase = ["auto", "low", "high", "pirate"].includes(v) ? v : "auto";
         sellBaseSel.value = Bot.sellBase;
         botSaveConfig();
       });
@@ -15287,7 +15290,9 @@ function tickBot(dt) {
       // Pas de comptoir ici : base la plus proche (X-1 / X-8, préférence
       // respectée), fallback sur l'autre base si besoin.
       const cur = String(window.__CURRENT_MAP_ID__ || "").toLowerCase();
-      const next = botPickSellBase(cur).find((m) => m !== cur);
+      // Premier comptoir atteignable (sinon le premier de la liste).
+      const sellMaps = botPickSellBase(cur).filter((m) => m !== cur);
+      const next = sellMaps.find((m) => { try { return !!botFindRoute(cur, m); } catch { return false; } }) || sellMaps[0];
       if (next) {
         if (Bot.travelOverride !== next) botLog(`Direction base ${next.toUpperCase()} (vente)`);
         Bot.travelOverride = next;
