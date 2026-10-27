@@ -48,11 +48,16 @@ function isEventType(type) {
 
 const SECTOR_RE = /^[123]-([1-8]|bl)$/;
 
-// Groupe de filtre d'une map : "x-1".."x-8", "x-bl", "gg" (gates spéciales),
+// Ordre officiel des Galaxy Gates (filtre "Galaxy Gates Alpha"...).
+const GATE_ORDER = ["alpha", "beta", "gamma", "delta", "epsilon", "zeta", "kappa", "lambda", "kronos", "awakened", "eternal", "qz"];
+const GATE_NAMES = { qz: "QZ" };
+
+// Groupe de filtre d'une map : "x-1".."x-8", "x-bl", "gg:<gate>",
 // sinon la map elle-même ("4-1", "5-2", "maudite"...).
 export function botMapGroupKey(mapId) {
   const id = String(mapId || "").trim();
-  if (/^gate\s/i.test(id)) return "gg";
+  const gate = id.match(/^gate\s+(.+)$/i);
+  if (gate) return `gg:${gate[1].trim().toLowerCase()}`;
   const m = id.toLowerCase().match(SECTOR_RE);
   if (m) return `x-${m[1]}`;
   return id.toLowerCase();
@@ -60,12 +65,15 @@ export function botMapGroupKey(mapId) {
 
 export function botMapGroupLabel(key) {
   const k = String(key || "");
-  if (k === "gg") return "Galaxy Gates";
+  if (k.startsWith("gg:")) {
+    const id = k.slice(3);
+    return `Galaxy Gates ${GATE_NAMES[id] || id.charAt(0).toUpperCase() + id.slice(1)}`;
+  }
   if (k === "event") return "Événement en cours";
   return k.toUpperCase();
 }
 
-// Ordre d'affichage : X-1..X-8, X-BL, puis 4-x, 5-x, autres, Galaxy Gates.
+// Ordre d'affichage : X-1..X-8, X-BL, puis 4-x, 5-x, autres, Galaxy Gates (Alpha..QZ).
 function groupRank(key) {
   const k = String(key);
   if (k === "event") return [0, 0, ""];
@@ -74,7 +82,10 @@ function groupRank(key) {
   if (k === "x-bl") return [2, 0, ""];
   m = k.match(/^(\d)-(\d)$/);
   if (m) return [3, Number(m[1]) * 10 + Number(m[2]), ""];
-  if (k === "gg") return [9, 0, ""];
+  if (k.startsWith("gg:")) {
+    const i = GATE_ORDER.indexOf(k.slice(3));
+    return [9, i < 0 ? GATE_ORDER.length : i, k];
+  }
   return [5, 0, k];
 }
 export function compareBotMapGroups(a, b) {

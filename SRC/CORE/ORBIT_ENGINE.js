@@ -11379,7 +11379,7 @@ function registerHudWindows() {
     });
   } catch {}
   wireSettingsWindow();
-wireWikiWindow();
+wireWikiWindow({ keybinds: () => ({ ...DEFAULT_KEYBINDS, ...(GAME_SETTINGS.keybinds || {}) }), labels: KEYBIND_LABELS });
 initChatUI();
 initGroupUI();
 initFriendsUI();
@@ -13246,7 +13246,7 @@ function wireBotWindow() {
     }
   });
   botSwitchTab(Bot.tab || "dash");
-  // Map de travail (liste habillée par watchSelects : 7 maps visibles).
+  // Map de travail (liste habillée par watchSelects : 12 maps visibles).
   const mapSelect = document.getElementById("botMapSelect");
   if (mapSelect && !mapSelect.options.length) {
     mapSelect.innerHTML = [`<option value="">— Rester sur la map —</option>`,
@@ -13916,7 +13916,7 @@ function wireBotWindow() {
     window.addEventListener(evt, () => { try { botRefreshPetOptions(); botRenderSellList(); } catch {} });
   }
   // Toutes les listes du bot au style « Tous les vaisseaux » (historique modules).
-  watchSelects(document.getElementById("botWindow"), { maxHeight: 180 });
+  watchSelects(document.getElementById("botWindow"), { maxHeight: 308 });
   botRefreshHud();
   // Reprise auto après un changement de map avec rechargement : le bot
   // était actif, il repart seul (vrai farm background inter-maps).
