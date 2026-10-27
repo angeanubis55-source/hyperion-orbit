@@ -26,6 +26,7 @@ import {
   PET_GEAR_PICK_DELAY,
   PET_GEAR_TRADE_WINDOW_SEC,
   PET_SHIELD_REGEN_PCT_PER_SEC,
+  PET_PASSIVE_GEAR_KEYS,
   listEquippedGearOptions,
   getPetEquippedGearLevels,
   getPetGearRange,
@@ -116,7 +117,7 @@ import {
 } from "./GALAXY_GATES.js";
 import { computeHangarStats } from "../../SHIP/SHIP_HANGARS.js";
 import { resizeShield } from "./EQUIPMENT_SYNC.js";
-import { findCatalogItem } from "./CATALOG.js";
+import { CATALOG, findCatalogItem } from "./CATALOG.js";
 import { activeBoosterMults, boosterTimeLeftMs, formatBoosterCountdown, formatBoosterDuration, BOOSTERS, getBooster, normalizeBoostersState, GROUP_BOOSTER_IDS, GROUP_BOOSTER_BONUS } from "../DATA/BOOSTERS.js";
 import { pilotSkillMults } from "../DATA/PILOT_SKILLS.js";
 import { CRAFTING_RECIPES, CRAFTING_ENABLED } from "../DATA/CRAFTING.js";
@@ -11746,20 +11747,29 @@ const Bot = {
   npcAllow: new Set(),
   boxAllow: new Set(),
   npcMapFilter: "",
-  formMove: "",
+  formMove: "standard",
   // Attaque : configuration / formation de combat quand le NPC est « par défaut ».
-  formAttack: "",
+  formAttack: "standard",
   cfgAttack: "",
   cfgFly: "",
-  formFlee: "",
+  formFlee: "standard",
   cfgFlee: "",
-  formTravel: "",
+  formTravel: "standard",
   cfgTravel: "",
   cfgPrev: 0,
   ammoPrev: "",
   petMode: "",
+  // Comportement secondaire : tourne pendant la recharge du principal.
+  petMode2: "",
+  // Localisateur d'ennemi : ligne de NPC suivie ("" = au hasard).
+  petLocNpc: "",
+  // Priorité -1 posée sur le NPC du localisateur (et ce qu'il faut rendre).
+  locOverride: null,
   petEnabled: false,
   petAutoFuel: false,
+  petAutoRepair: false,
+  petAutoKk: false,
+  petRepairT: 0,
   petFuelT: 0,
   petPrev: null,
   petPrevGear: null,
@@ -11821,12 +11831,6 @@ const Bot = {
   sellBase: "auto",
   selling: false,
   travelOverride: "",
-  refine: {
-    laser: { ore: "", qty: 20 },
-    shield: { ore: "", qty: 20 },
-    rocket: { ore: "", qty: 20 },
-    speed: { ore: "", qty: 20 },
-  },
   skillIem: false,
   iemFoes: 3,
   skillIsh: false,
@@ -11882,8 +11886,13 @@ function botSaveConfig() {
       formTravel: Bot.formTravel,
       cfgTravel: Bot.cfgTravel,
       petMode: Bot.petMode,
+      petMode2: Bot.petMode2,
+      petLocNpc: Bot.petLocNpc,
+      locOverride: Bot.locOverride,
       petEnabled: Bot.petEnabled,
       petAutoFuel: Bot.petAutoFuel,
+      petAutoRepair: Bot.petAutoRepair,
+      petAutoKk: Bot.petAutoKk,
       formCollect: Bot.formCollect,
       cfgCollect: Bot.cfgCollect,
       npcPrio: Bot.npcPrio,
@@ -11892,7 +11901,6 @@ function botSaveConfig() {
       npcAmmo: Bot.npcAmmo,
       npcSab: Bot.npcSab,
       npcBurst: Bot.npcBurst,
-      npcInstant: Bot.npcInstant,
       npcForm: Bot.npcForm,
       npcCfg: Bot.npcCfg,
       npcRowsKnown: [...Bot.npcRowsKnown],
@@ -11903,7 +11911,6 @@ function botSaveConfig() {
       cargo: Bot.cargo,
       cargoPct: Bot.cargoPct,
       sellBase: Bot.sellBase,
-      refine: Bot.refine,
       skillIem: Bot.skillIem,
       iemFoes: Bot.iemFoes,
       skillIsh: Bot.skillIsh,
@@ -11939,14 +11946,15 @@ function botLoadConfig() {
       Bot.boxSelectionLoaded = true;
     }
     if (typeof data.npcMapFilter === "string") Bot.npcMapFilter = data.npcMapFilter ? botMapGroupKey(data.npcMapFilter) : "";
-    if (typeof data.formMove === "string") Bot.formMove = data.formMove;
-    if (typeof data.formAttack === "string") Bot.formAttack = data.formAttack;
+    // Formations de Configuration et formation : Standard de base (plus de « ne pas changer »).
+    Bot.formMove = (typeof data.formMove === "string" && data.formMove) || "standard";
+    Bot.formAttack = (typeof data.formAttack === "string" && data.formAttack) || "standard";
     Bot.cfgAttack = data.cfgAttack === "1" || data.cfgAttack === "2" ? data.cfgAttack : "";
     if (data.cfgFly === "1" || data.cfgFly === "2") Bot.cfgFly = data.cfgFly;
     // Les anciens profils partageaient exploration, fuite et voyage.
     // Migrer les champs absents, mais conserver un choix explicite « — ».
     for (const [formKey, cfgKey] of [["formFlee", "cfgFlee"], ["formTravel", "cfgTravel"]]) {
-      Bot[formKey] = typeof data[formKey] === "string" ? data[formKey] : Bot.formMove;
+      Bot[formKey] = (typeof data[formKey] === "string" ? data[formKey] : Bot.formMove) || "standard";
       const savedCfg = data[cfgKey] === undefined ? Bot.cfgFly : data[cfgKey];
       Bot[cfgKey] = savedCfg === "1" || savedCfg === "2" ? savedCfg : "";
     }
@@ -11954,16 +11962,35 @@ function botLoadConfig() {
     Bot.formTravel = Bot.formMove;
     Bot.cfgTravel = Bot.cfgFly;
     if (typeof data.petMode === "string") Bot.petMode = data.petMode;
+    if (typeof data.petMode2 === "string") Bot.petMode2 = data.petMode2;
+    if (typeof data.petLocNpc === "string") Bot.petLocNpc = data.petLocNpc;
     if (typeof data.petEnabled === "boolean") Bot.petEnabled = data.petEnabled;
     if (typeof data.petAutoFuel === "boolean") Bot.petAutoFuel = data.petAutoFuel;
+    if (typeof data.petAutoRepair === "boolean") Bot.petAutoRepair = data.petAutoRepair;
+    if (typeof data.petAutoKk === "boolean") Bot.petAutoKk = data.petAutoKk;
+    // Ancien choix « kamikaze » en comportement : devient l'interrupteur.
+    if (Bot.petMode === "gear:kk") { Bot.petAutoKk = true; Bot.petMode = Bot.petMode2 && Bot.petMode2 !== "gear:kk" ? Bot.petMode2 : "passive"; Bot.petMode2 = ""; }
+    if (Bot.petMode2 === "gear:kk") { Bot.petAutoKk = true; Bot.petMode2 = ""; }
     if (typeof data.formCollect === "string") Bot.formCollect = data.formCollect;
     if (data.cfgCollect === "1" || data.cfgCollect === "2") Bot.cfgCollect = data.cfgCollect;
     if (data.npcPrio && typeof data.npcPrio === "object") {
       for (const [k, v] of Object.entries(data.npcPrio)) {
         const p = Math.floor(Number(v));
-        if (Number.isFinite(p) && p > 0) Bot.npcPrio[String(k)] = Math.min(99, p);
+        // Négatif = immédiat (-100 à -1), positif = priorité normale.
+        if (Number.isFinite(p) && p !== 0) Bot.npcPrio[String(k)] = Math.max(-100, Math.min(100, p));
       }
     }
+    // Priorité -1 posée par le localisateur et pas rendue (page fermée en
+    // cours de route) : on remet tout de suite la priorité et la case d'avant.
+    if (data.locOverride && Array.isArray(data.locOverride.types)) {
+      for (const t of data.locOverride.types.map(String)) {
+        const prev = data.locOverride.prev?.[t] || {};
+        if (prev.prio == null) delete Bot.npcPrio[t];
+        else Bot.npcPrio[t] = Math.max(-100, Math.min(100, Math.floor(Number(prev.prio)) || 0));
+        if (!prev.allow) Bot.npcAllow.delete(t);
+      }
+    }
+    Bot.locOverride = null;
     const fr = Math.floor(Number(data.fleeResume));
     if (Number.isFinite(fr)) Bot.fleeResume = Math.max(10, Math.min(100, fr));
     const rw = Math.floor(Number(data.reviveWait));
@@ -11980,19 +12007,6 @@ function botLoadConfig() {
     if (typeof data.cargo === "boolean") Bot.cargo = data.cargo;
     Bot.cargoPct = intIn(data.cargoPct, 50, 100, Bot.cargoPct);
     if (["auto", "low", "high"].includes(data.sellBase)) Bot.sellBase = data.sellBase;
-    // Isolé : un réglage de raffinage illisible ne doit pas faire perdre
-    // tout le reste du profil.
-    try {
-      for (const slot of Object.keys(Bot.refine)) {
-        const saved = data.refine?.[slot];
-        if (!saved || typeof saved !== "object") continue;
-        const ore = String(saved.ore || "").toLowerCase();
-        Bot.refine[slot] = {
-          ore: (UPGRADE_SLOT_ORES[slot] || []).includes(ore) ? ore : "",
-          qty: intIn(saved.qty, 1, 999, 20),
-        };
-      }
-    } catch {}
     if (typeof data.skillIem === "boolean") Bot.skillIem = data.skillIem;
     const foes = Math.floor(Number(data.iemFoes));
     if (Number.isFinite(foes)) Bot.iemFoes = Math.max(1, Math.min(10, foes));
@@ -12014,6 +12028,12 @@ function botLoadConfig() {
       if (on === true && !Bot.npcBurst[t]) Bot.npcBurst[t] = "x6";
     }
     Bot.npcX6 = Object.create(null);
+    // Ancienne case « Immédiat » cochée = priorité -1 (la priorité négative
+    // la remplace).
+    for (const [t, on] of Object.entries(Bot.npcInstant)) {
+      if (on === true && !(Number(Bot.npcPrio[t]) < 0)) Bot.npcPrio[t] = -1;
+    }
+    Bot.npcInstant = Object.create(null);
     // Lignes de la liste fixe déjà proposées (une ligne nouvelle est cochée
     // d'office). Absent = ancien profil : voir botSyncNpcCatalog.
     if (Array.isArray(data.npcRowsKnown)) {
@@ -12049,6 +12069,22 @@ function botLog(text) {
 // Onglets de la fenêtre : n'affiche que les sections de l'onglet actif.
 const BOT_TABS = ["dash", "farm", "npc", "collect", "gear", "cargo"];
 const BOT_TAB_LEGACY = Object.freeze({ general: "farm", combat: "npc", boxes: "collect", rex: "gear", survival: "farm" });
+// Soute : listes du bot reliées aux minerais de la fenêtre Raffinerie.
+const BOT_REFINE_SELECTS = Object.freeze({ laser: "botRefineLaser", shield: "botRefineShield", rocket: "botRefineRocket", speed: "botRefineSpeed" });
+function botSyncRefineryUi() {
+  try {
+    for (const [slot, id] of Object.entries(BOT_REFINE_SELECTS)) {
+      const sel = document.getElementById(id);
+      const value = String(refineryEquipmentPrefs.ores[slot] || "");
+      if (sel && sel.value !== value) sel.value = value;
+    }
+    const auto = document.getElementById("botRefineryAuto");
+    if (auto) auto.checked = ui.refineryAuto?.checked === true;
+    const upgrades = document.getElementById("botRefineryAutoUpgrades");
+    if (upgrades) upgrades.checked = ui.refineryAutoUpgrades?.checked === true;
+  } catch {}
+}
+
 function botSwitchTab(name) {
   name = BOT_TAB_LEGACY[name] || name;
   if (!BOT_TABS.includes(name)) name = "dash";
@@ -12060,6 +12096,9 @@ function botSwitchTab(name) {
     const show = String(sec.dataset.botSection) === name;
     sec.style.display = show ? "" : "none";
   });
+  // Onglet P.E.T : la liste des modules équipés est relue à chaque ouverture.
+  if (name === "gear") { try { botRefreshPetOptions(); } catch {} }
+  if (name === "cargo") botSyncRefineryUi();
   botSaveConfig();
 }
 
@@ -12239,6 +12278,7 @@ function botSetActive(on) {
     Bot.status = "En pause";
     Bot.target = "—";
     botRestorePetMode();
+    try { botSyncLocatorPrio(null); } catch {}
     botRestoreLoadout();
     try { botClearSpecialAmmo(); } catch {}
     // On ne coupe pas une attaque manuelle en cours : juste on arrête de piloter.
@@ -12257,9 +12297,12 @@ function botSetActive(on) {
 }
 
 // Priorité d'un type de NPC (style DarkBot : la plus haute gagne, 0 = normal).
+// Négative = IMMÉDIAT (voir botInstantNpc) : -100 passe avant -1.
+const BOT_PRIO_MIN = -100;
+const BOT_PRIO_MAX = 100;
 function botNpcPrio(type) {
   const p = Math.floor(Number(Bot.npcPrio[String(type)]));
-  return Number.isFinite(p) ? Math.max(0, Math.min(99, p)) : 0;
+  return Number.isFinite(p) ? Math.max(BOT_PRIO_MIN, Math.min(BOT_PRIO_MAX, p)) : 0;
 }
 
 // Salve par NPC (liste « Salve » : non / X6 / RCB).
@@ -12269,25 +12312,34 @@ function botNpcBurst(type) {
   return BOT_BURST_IDS.includes(burst) ? burst : "";
 }
 
-// NPC « immédiat » : dès qu'il est en vue, il passe devant tout (cible en
-// cours, box). Plusieurs en vue : le plus proche. Un NPC immédiat déjà
-// engagé est gardé jusqu'à sa mort (pas de bascule entre deux immédiats).
+// NPC « immédiat » = priorité négative : dès qu'il est en vue, il passe
+// devant tout (cible en cours, box). Le plus bas gagne (-10 avant -1) ; à
+// priorité égale, le plus proche. Un immédiat déjà engagé n'est lâché que
+// pour un immédiat strictement plus prioritaire (pas de bascule à égalité).
 function botNpcInstant(type) {
-  return Bot.npcInstant[String(type)] === true;
+  return botNpcPrio(type) < 0;
+}
+function botIsLocatorFoe(e) {
+  try { return petLocator.enemyId != null && e?.id === petLocator.enemyId; } catch { return false; }
 }
 function botInstantNpc(locked) {
   try {
-    if (locked && Number(locked.hp) > 0 && botNpcInstant(locked.type) && Bot.npcAllow.has(String(locked.type))) return locked;
     let best = null;
+    let bestPrio = 0;
     let bestD2 = Infinity;
     for (const e of enemies) {
       if (!e || Number(e.hp) <= 0 || e.isPetTarget || e.isJpcBot === true) continue;
-      if (!botNpcInstant(e.type) || !Bot.npcAllow.has(String(e.type))) continue;
-      if (!botNpcVisible(e) || botNpcInWall(e)) continue;
+      const prio = botNpcPrio(e.type);
+      if (prio >= 0 || !Bot.npcAllow.has(String(e.type))) continue;
+      // Le NPC repéré par le localisateur du P.E.T compte comme visible,
+      // même au-delà du radar : le bot va le chercher.
+      if ((!botNpcVisible(e) && !botIsLocatorFoe(e)) || botNpcInWall(e)) continue;
       if (e.id != null && botNpcWallBanActive(e.id)) continue;
       const d2 = dist2(player.x, player.y, e.x, e.y);
-      if (d2 < bestD2) { bestD2 = d2; best = e; }
+      if (!best || prio < bestPrio || (prio === bestPrio && d2 < bestD2)) { best = e; bestPrio = prio; bestD2 = d2; }
     }
+    const lockedInstant = locked && Number(locked.hp) > 0 && botNpcInstant(locked.type) && Bot.npcAllow.has(String(locked.type));
+    if (lockedInstant && (!best || botNpcPrio(locked.type) <= bestPrio)) return locked;
     return best;
   } catch { return null; }
 }
@@ -12381,44 +12433,11 @@ async function botSellOres() {
   return total;
 }
 
-// Charge les slots d'amélioration avec les minerais configurés (1 minerai
-// = 10 tirs / 10 min). Ne remplace JAMAIS un slot chargé d'un autre minerai
-// avec du stock restant. Retourne le minerai consommé (place libérée).
+// Soute pleine : charge les équipements avec les minerais choisis dans la
+// fenêtre Raffinerie (si « Raffinage automatique des équipements » est coché).
+// Retourne le minerai consommé (place libérée).
 function botRefineUpgrades() {
-  let consumed = 0;
-  try {
-    const user = account.user;
-    if (!user) return 0;
-    for (const slot of ["laser", "shield", "rocket", "speed"]) {
-      const cfg = Bot.refine?.[slot];
-      const ore = String(cfg?.ore || "").toLowerCase();
-      if (!ore || !(UPGRADE_SLOT_ORES[slot] || []).includes(ore)) continue;
-      const want = Math.max(1, Math.min(999, Math.floor(Number(cfg.qty) || 0)));
-      if (!(want > 0)) continue;
-      const loaded = user.upgrades?.[slot];
-      const loadedOre = String(loaded?.ore || "").toLowerCase();
-      const loadedStock = Math.max(0, Math.floor(Number(loaded?.stock) || 0));
-      if (loadedOre && loadedOre !== ore && loadedStock > 0) {
-        botLog(`Raffinage ${slot} : ${loadedOre} déjà chargé (${loadedStock}) — on garde`);
-        continue;
-      }
-      const owned = Math.max(0, Math.floor(Number(user.inventory?.resources?.[ore]) || 0));
-      const amount = Math.min(want, owned);
-      if (amount <= 0) continue;
-      const out = chargeShipUpgrade(slot, ore, amount);
-      if (out?.ok) {
-        consumed += out.amount;
-        botLog(`Raffinage ${slot} : +${out.amount * 10} (${ore})`);
-      }
-    }
-    if (consumed > 0) {
-      account.user = getCurrentUserFull();
-      markProgressDirty();
-      saveProgressNow();
-      window.dispatchEvent(new CustomEvent("orbit:profile-progress"));
-    }
-  } catch {}
-  return consumed;
+  try { return Math.max(0, Number(refineryChargeEquipment()) || 0); } catch { return 0; }
 }
 
 // Base de vente la plus proche (en sauts) : X-1 (low) ou X-8 (high).
@@ -12531,31 +12550,42 @@ function botApplyFormation(id) {
 // Modules REX visibles par le bot : union sur TOUS les hangars et les 2
 // configs (le fit courant n'est qu'un des cas : l'auto-loot peut être
 // équipé sur un autre hangar / une autre config), + gear actif en secours.
+// Tous les modules du P.E.T (sauf le kamikaze, interrupteur à part), avec où
+// ils sont équipés sur le vaisseau actif : configs 1 et 2.
 function botPetGearUnion() {
-  const best = new Map();
-  try {
-    const user = account.user;
-    const pet = user?.pet;
-    if (!pet) return [];
-    const hangs = Array.isArray(user?.hangars) && user.hangars.length ? user.hangars : [null];
-    for (const h of hangs) {
-      const hid = h ? String(h.id) : null;
-      for (const cfg of ["1", "2"]) {
-        let fit = null;
-        try { fit = hid ? getPetFit(pet, hid, cfg) : null; } catch { continue; }
-        let opts = [];
-        try { opts = listEquippedGearOptions(fit, findCatalogItem) || []; } catch { continue; }
-        for (const o of opts) {
-          if (!o || !o.key) continue;
-          const prev = best.get(o.key);
-          if (!prev || Number(o.level) > Number(prev.level)) best.set(o.key, o);
-        }
-      }
+  const user = account.user;
+  const pet = user?.pet;
+  if (!pet) return [];
+  const hangar = getActiveHangarFromUser(user);
+  const hid = hangar ? String(hangar.id) : null;
+  const byCfg = {};
+  for (const cfg of ["1", "2"]) {
+    byCfg[cfg] = new Map();
+    try {
+      const fit = hid ? getPetFit(pet, hid, cfg) : null;
+      for (const o of listEquippedGearOptions(fit, findCatalogItem) || []) byCfg[cfg].set(o.key, o);
+    } catch {}
+  }
+  // Nom lisible (« Auto-Loot ») : l'objet équipé, sinon le catalogue.
+  const catalogName = (key) => {
+    for (const list of Object.values(CATALOG || {})) {
+      if (!Array.isArray(list)) continue;
+      const item = list.find((it) => String(it?.petGear?.key || "").toLowerCase() === key);
+      if (item) return item.name;
     }
-    const ag = String(pet.activeGear || "").toLowerCase();
-    if (ag && !best.has(ag)) best.set(ag, { key: ag, level: 0, label: ag.toUpperCase() });
-  } catch {}
-  return [...best.values()];
+    return key.toUpperCase();
+  };
+  return PET_PASSIVE_GEAR_KEYS.filter((key) => key !== "kk").map((key) => {
+    const c1 = byCfg["1"].get(key), c2 = byCfg["2"].get(key);
+    return { key, label: (c1 || c2)?.label || catalogName(key), cfg1: !!c1, cfg2: !!c2 };
+  });
+}
+
+function botPetGearWhere(gear) {
+  if (gear.cfg1 && gear.cfg2) return "";
+  if (gear.cfg1) return " (équipé sur la configuration 1 uniquement)";
+  if (gear.cfg2) return " (équipé sur la configuration 2 uniquement)";
+  return " (non équipé sur les 2 configurations)";
 }
 
 // Options REX du bot : Passif / Combat + modules équipés (gear:key).
@@ -12564,37 +12594,102 @@ function botRefreshPetOptions() {
   if (!shouldRefreshWindow("botWindow")) return;
   const sel = document.getElementById("botPetMode");
   if (!sel) return;
-  const prev = Bot.petMode || "";
+  // Plus de « Ne pas toucher » : sans choix mémorisé, on part du
+  // comportement actuel du REX.
+  let prev = Bot.petMode || "";
+  if (!prev) {
+    try { prev = normalizePetMode(account.user?.pet?.mode) || "passive"; } catch { prev = "passive"; }
+  }
   let gears = [];
   try { gears = botPetGearUnion(); } catch { gears = []; }
   const opts = [
-    `<option value="">Ne pas toucher</option>`,
     `<option value="passive">Passif</option>`,
     `<option value="combat">Combat (assiste)</option>`,
   ];
   for (const g of gears) {
     const label = shortGearLabel(g.label) || String(g.key || "").toUpperCase();
-    opts.push(`<option value="gear:${escapeHtml(String(g.key))}">${escapeHtml(label)} (module)</option>`);
+    opts.push(`<option value="gear:${escapeHtml(String(g.key))}">${escapeHtml(label + botPetGearWhere(g))}</option>`);
   }
-  sel.innerHTML = opts.join("");
-  const valid = ["", "passive", "combat", ...gears.map((g) => `gear:${g.key}`)];
-  if (prev && !valid.includes(prev)) {
+  const valid = ["passive", "combat", ...gears.map((g) => `gear:${g.key}`)];
+  if (!valid.includes(prev)) {
     // Choix mémorisé mais gear non visible (compte pas encore chargé ou
     // module déplacé) : on le garde au lieu de l'écraser.
     const short = prev.startsWith("gear:") ? prev.slice(5).toUpperCase() : prev;
-    sel.innerHTML = `<option value="${escapeHtml(prev)}">${escapeHtml(short)} (mémorisé)</option>` + sel.innerHTML;
+    opts.unshift(`<option value="${escapeHtml(prev)}">${escapeHtml(short)} (non équipé sur cette config)</option>`);
     valid.push(prev);
   }
-  sel.value = valid.includes(prev) ? prev : "";
+  // Reconstruite seulement si la liste a changé (appel à chaque mise à jour du compte).
+  const html = opts.join("");
+  if (sel.dataset.optsHtml !== html) {
+    sel.dataset.optsHtml = html;
+    sel.innerHTML = html;
+  }
+  sel.value = prev;
   Bot.petMode = sel.value;
+  // Comportement secondaire : même liste, sans le comportement principal.
+  const sel2 = document.getElementById("botPetMode2");
+  if (sel2) {
+    const opts2 = opts.filter((o) => !o.includes(`value="${escapeHtml(Bot.petMode)}"`));
+    const valid2 = valid.filter((v) => v !== Bot.petMode);
+    if (!Bot.petMode2 || Bot.petMode2 === Bot.petMode) {
+      Bot.petMode2 = valid2.includes("passive") ? "passive" : (valid2[0] || "");
+    } else if (!valid2.includes(Bot.petMode2)) {
+      // Module non équipé sur cette config : choix gardé, pas remplacé.
+      const short2 = Bot.petMode2.startsWith("gear:") ? Bot.petMode2.slice(5).toUpperCase() : Bot.petMode2;
+      opts2.unshift(`<option value="${escapeHtml(Bot.petMode2)}">${escapeHtml(short2)} (non équipé sur cette config)</option>`);
+    }
+    const html2 = opts2.join("");
+    if (sel2.dataset.optsHtml !== html2) {
+      sel2.dataset.optsHtml = html2;
+      sel2.innerHTML = html2;
+    }
+    sel2.value = Bot.petMode2;
+  }
+  // Secondaire seulement pour un module à recharge (Combat, Auto-Loot...
+  // n'ont pas de recharge). Localisateur d'ennemi : liste de NPC à la place.
+  const primaryKey = botPetGearKey(Bot.petMode);
+  const showSecondary = !!primaryKey && BOT_PET_CD_GEARS.includes(primaryKey);
+  const showLocator = primaryKey === "el";
+  for (const [id, show] of [["botPetMode2Field", showSecondary], ["botPetMode2Note", showSecondary], ["botPetLocField", showLocator]]) {
+    const el = document.getElementById(id);
+    if (el) el.style.display = show ? "" : "none";
+  }
+  const loc = document.getElementById("botPetLocNpc");
+  if (loc && showLocator) {
+    const rows = botPetLocatorRows();
+    const htmlLoc = [`<option value="">Au hasard</option>`,
+      ...rows.map((row) => `<option value="${escapeHtml(row.key)}">${escapeHtml(row.name)}</option>`)].join("");
+    if (loc.dataset.optsHtml !== htmlLoc) {
+      loc.dataset.optsHtml = htmlLoc;
+      loc.innerHTML = htmlLoc;
+    }
+    loc.value = rows.some((row) => row.key === Bot.petLocNpc) ? Bot.petLocNpc : "";
+  }
+}
+
+// Localisateur d'ennemi : NPC de la map actuelle, liste fixe comme l'onglet
+// NPC (spawns de la map + events en cours, jamais de JPC).
+function botPetLocatorRows() {
+  const map = String(window.__CURRENT_MAP_ID__ || "").toLowerCase();
+  return (botNpcCatalog() || []).filter((row) => row.maps.some((m) => String(m).toLowerCase() === map));
+}
+
+// Type de NPC réel à suivre pour la ligne choisie (une ligne d'event regroupe
+// des variantes par map : on prend celle présente, sinon celle de la map).
+function botPetLocatorType() {
+  const row = botPetLocatorRows().find((r) => r.key === Bot.petLocNpc);
+  if (!row) return null;
+  const live = new Set(enemies.filter((e) => e && Number(e.hp) > 0).map((e) => String(e.type)));
+  const tag = String(window.__CURRENT_MAP_ID__ || "").replace("-", "_");
+  return row.types.find((t) => live.has(t)) || row.types.find((t) => t.endsWith(`_${tag}`)) || row.types[0];
 }
 
 // REX pendant le bot : applique le mode / module choisi au démarrage.
 // Les modules s'activent en passif sans ouvrir de fenêtre (pas de Trader,
 // pas de session) : vrai comportement background.
 function botApplyPetMode() {
-  Bot.petPrev = null;
-  Bot.petPrevGear = null;
+  // Le comportement d'avant le bot est mémorisé une seule fois (plus bas) et
+  // restauré à l'arrêt : un changement en cours de route ne l'écrase pas.
   const pet = account.user?.pet?.owned === true ? account.user.pet : null;
   if (!pet) { botLog("REX : non possédé — choix ignoré"); return; }
   if (!Bot.petEnabled) {
@@ -12611,33 +12706,201 @@ function botApplyPetMode() {
     try { const active = setPetActive(true); if (active?.ok) loadAccountUser(); } catch {}
   }
   if (account.user?.pet?.active !== true || !Bot.petMode) return;
-  Bot.petPrev = normalizePetMode(pet.mode);
-  Bot.petPrevGear = String(pet.activeGear || "").toLowerCase() || null;
+  // Comportement d'avant le bot, restauré à l'arrêt (botRestorePetMode).
+  if (Bot.petPrev == null && Bot.petPrevGear == null) {
+    Bot.petPrev = normalizePetMode(pet.mode);
+    Bot.petPrevGear = String(pet.activeGear || "").toLowerCase() || null;
+  }
+  Bot.petTickT = 0;
+  Bot.petFailUntil = Object.create(null);
+  botTickPet(0);
+}
+
+// ---- REX piloté par le bot : comportement principal + secondaire ----
+// Gears à usage unique / recharge : ils se DÉCLENCHENT (session ou action),
+// ils ne restent pas « actifs » comme Auto-Loot ou Combat.
+const BOT_PET_CD_GEARS = ["kk", "tra", "fs", "hpl", "bc", "bh"];
+function botPetGearKey(value) {
+  const v = String(value || "");
+  return v.startsWith("gear:") ? v.slice(5).toLowerCase() : "";
+}
+// Le comportement est-il utilisable sur la config actuelle ? (Passif et
+// Combat toujours ; un module seulement s'il y est équipé.)
+function botPetAvailable(value) {
+  const key = botPetGearKey(value);
+  if (!key) return !!value;
+  try { return Number(petGearLevels()[key]) > 0; } catch { return false; }
+}
+function botPetSessionActive(key) {
   try {
-    if (Bot.petMode.startsWith("gear:")) {
-      const key = Bot.petMode.slice("gear:".length).toLowerCase();
-      if (Bot.petPrevGear === key && Bot.petPrev === "passive") { Bot.petPrev = null; Bot.petPrevGear = null; return; }
-      const outM = setPetMode("passive");
-      if (!outM?.ok) { Bot.petPrev = null; Bot.petPrevGear = null; botLog(`REX : ${outM?.error || "impossible"}`); return; }
-      const out = setPetActiveGear(key);
-      if (!out?.ok) { Bot.petPrev = null; Bot.petPrevGear = null; botLog("REX : module indisponible"); return; }
-      petLocator.manualType = null;
-      petLocator.enemyId = null;
-      petLocator.needsPick = true;
-      loadAccountUser();
-      botLog(`REX : module ${key.toUpperCase()} actif`);
-      return;
+    if (key === "kk") return kkRunActive();
+    if (key === "tra") return traWindowActive();
+    if (key === "hpl") return hplLinkActive();
+    if (key === "bc" || key === "bh") return buoySessionActive() && petBuoy.key === key;
+  } catch {}
+  return false;
+}
+function botPetCooldownLeft(key) {
+  try {
+    if (key === "kk") return Number(kkCooldownLeftSec()) || 0;
+    if (key === "tra") return Number(traCooldownLeftSec()) || 0;
+    if (key === "fs") return Number(fsCooldownLeftSec()) || 0;
+    if (key === "hpl") return Number(hplCooldownLeftSec()) || 0;
+    if (key === "bc" || key === "bh") return Number(buoyCooldownLeftSec(key)) || 0;
+  } catch {}
+  return 0;
+}
+// Un gear à recharge est « prêt » : pas en recharge, pas en cours, pas en
+// pause après un essai raté, et (kamikaze) une cible disponible — sinon son
+// carburant serait prélevé pour rien.
+function botPetGearReady(key) {
+  if (botPetSessionActive(key) || botPetCooldownLeft(key) > 0) return false;
+  if (performance.now() < (Number(Bot.petFailUntil?.[key]) || 0)) return false;
+  if (key === "kk") { try { return !!pickKamikazeTarget(); } catch { return false; } }
+  return true;
+}
+// Le comportement continu (Passif, Combat, Auto-Loot...) est-il en place ?
+function botPetIsCurrent(value) {
+  const key = botPetGearKey(value);
+  try {
+    if (key) return petActiveGearKey() === key;
+    return !petActiveGearKey() && normalizePetMode(account.user?.pet?.mode) === value;
+  } catch { return false; }
+}
+function botPetUse(value) {
+  const key = botPetGearKey(value);
+  if (key && BOT_PET_CD_GEARS.includes(key)) {
+    // Même chemin que la fenêtre P.E.T (déclenchement réel du gear).
+    try { applyPetModeValue(value); } catch {}
+    if (botPetSessionActive(key) || botPetCooldownLeft(key) > 0) {
+      botLog(`REX : ${key.toUpperCase()} déclenché`);
+    } else {
+      // Refusé (bouclier plein, gear déséquipé...) : on réessaie dans 5 s.
+      Bot.petFailUntil[key] = performance.now() + 5000;
     }
-    if (Bot.petPrev === Bot.petMode && !Bot.petPrevGear) { Bot.petPrev = null; Bot.petPrevGear = null; return; }
-    const out = setPetMode(Bot.petMode);
-    if (!out?.ok) { Bot.petPrev = null; Bot.petPrevGear = null; botLog(`REX : ${out?.error || "impossible"}`); return; }
-    try { setPetActiveGear(null); } catch {}
+    return;
+  }
+  try {
+    if (traWindowActive()) endTraSession();
+    if (hplLinkActive()) endHplLink("gear");
+    if (buoySessionActive()) endBuoySession("gear");
+    saveProgressNow();
+    const outM = setPetMode(key ? "passive" : value);
+    if (!outM?.ok) return;
+    const out = setPetActiveGear(key || null);
+    if (key && !out?.ok) return;
     petLocator.manualType = null;
     petLocator.enemyId = null;
     petLocator.needsPick = true;
     loadAccountUser();
-    botLog(`REX : ${Bot.petMode === "combat" ? "mode combat" : "passif"}`);
-  } catch { Bot.petPrev = null; Bot.petPrevGear = null; }
+    botLog(`REX : ${key ? `module ${key.toUpperCase()}` : value === "combat" ? "mode combat" : "passif"}`);
+  } catch {}
+}
+function botTickPet(dt) {
+  Bot.petTickT = (Number(Bot.petTickT) || 0) - dt;
+  if (Bot.petTickT > 0) return;
+  Bot.petTickT = 0.5;
+  const pet = account.user?.pet;
+  // Bot arrêté ou REX désactivé : le NPC du localisateur retrouve sa priorité.
+  if (!Bot.active || !Bot.petEnabled) { botSyncLocatorPrio(null); return; }
+  if (pet?.owned !== true || pet.active !== true) return;
+  if (!(Number(pet.hp) > 0) || !(Number(pet.fuel) > 0) || player.dead) return;
+  Bot.petFailUntil ||= Object.create(null);
+  // Kamikaze en course : le REX est verrouillé jusqu'à l'explosion.
+  if (botPetSessionActive("kk")) return;
+  // Kamikaze automatique (interrupteur à part, hors comportements) : dès
+  // qu'il est équipé, prêt et qu'une cible est là, il passe devant tout.
+  if (Bot.petAutoKk) {
+    let equipped = false;
+    try { equipped = Number(petGearLevels().kk) > 0; } catch { equipped = false; }
+    if (equipped && botPetGearReady("kk")) { botPetUse("gear:kk"); return; }
+  }
+  // Choix non équipés sur la config actuelle : le principal cède au secondaire
+  // (sinon Passif), sans effacer le choix — il revient avec la bonne config.
+  let primary = Bot.petMode || "passive";
+  let secondary = Bot.petMode2 || "";
+  if (secondary && !botPetAvailable(secondary)) secondary = "";
+  if (!botPetAvailable(primary)) {
+    primary = secondary || "passive";
+    secondary = "";
+  }
+  const pk = botPetGearKey(primary);
+  // Localisateur d'ennemi : le NPC suivi passe en priorité -1 (immédiat) ;
+  // tout autre comportement rend sa priorité d'avant à ce NPC.
+  botSyncLocatorPrio(pk === "el" ? botLocatorTypes() : null);
+  if (!(pk && BOT_PET_CD_GEARS.includes(pk))) {
+    // Principal continu (Passif, Combat, Auto-Loot...) : toujours en place.
+    if (!botPetIsCurrent(primary)) botPetUse(primary);
+    return;
+  }
+  // Principal à recharge : une session lancée va jusqu'au bout (balise
+  // complète...), il se relance dès qu'il est prêt, et pendant sa recharge
+  // c'est le comportement secondaire qui tourne.
+  if (botPetSessionActive(pk)) return;
+  if (botPetGearReady(pk)) { botPetUse(primary); return; }
+  const fallback = secondary || "passive";
+  const sk = botPetGearKey(fallback);
+  if (sk && BOT_PET_CD_GEARS.includes(sk)) {
+    if (!botPetSessionActive(sk) && botPetGearReady(sk)) botPetUse(fallback);
+    return;
+  }
+  if (!botPetIsCurrent(fallback)) botPetUse(fallback);
+}
+
+// NPC suivi par le localisateur : le choix de « Liste de NPC », ou au hasard
+// (le bot tire lui-même une famille présente sur la map, comme la fenêtre).
+// Oriente aussi le localisateur du P.E.T sur ce type.
+function botLocatorTypes() {
+  try {
+    let type = null;
+    if (Bot.petLocNpc) type = botPetLocatorType();
+    else {
+      const live = new Set(enemies.filter((e) => e && Number(e.hp) > 0 && e.isJpcBot !== true).map((e) => String(e.type)));
+      if (petLocator.manualType && live.has(String(petLocator.manualType))) type = String(petLocator.manualType);
+      else {
+        const known = new Set(botPetLocatorRows().flatMap((row) => row.types));
+        const pool = [...live].filter((t) => known.has(t));
+        type = pool.length ? pool[Math.floor(Math.random() * pool.length)] : null;
+      }
+    }
+    if (!type) return null;
+    if (petLocator.manualType !== type) {
+      petLocator.manualType = type;
+      petLocator.enemyId = null;
+      petLocator.needsPick = false;
+    }
+    return [type];
+  } catch { return null; }
+}
+
+// Priorité -1 (immédiat) posée sur le NPC du localisateur, mémorisée pour
+// être rendue telle quelle : priorité d'avant et case « tuer » d'avant.
+function botSyncLocatorPrio(types) {
+  const want = Array.isArray(types) ? types.filter(Boolean).map(String) : [];
+  const cur = Bot.locOverride;
+  if (cur && want.length && want.join("|") === cur.types.join("|")) return;
+  if (!cur && !want.length) return;
+  if (cur) {
+    for (const t of cur.types) {
+      const prev = cur.prev?.[t] || {};
+      if (prev.prio == null) delete Bot.npcPrio[t];
+      else Bot.npcPrio[t] = prev.prio;
+      if (!prev.allow) Bot.npcAllow.delete(t);
+    }
+    Bot.locOverride = null;
+  }
+  if (want.length) {
+    const prev = {};
+    for (const t of want) {
+      prev[t] = { prio: Bot.npcPrio[t] ?? null, allow: Bot.npcAllow.has(t) };
+      // Un immédiat plus fort déjà réglé (ex. -10) est gardé.
+      if (!(Number(Bot.npcPrio[t]) < 0)) Bot.npcPrio[t] = -1;
+      Bot.npcAllow.add(t);
+    }
+    Bot.locOverride = { types: want, prev };
+  }
+  botSaveConfig();
+  try { botRenderNpcList(); } catch {}
 }
 
 // Restaure le mode REX (+ module) précédent à l'arrêt du bot.
@@ -12751,10 +13014,16 @@ function botAmmoOptions(selected) {
   return opts.join("");
 }
 
+// Nom court d'une formation dans les listes du bot : « Formation Tortue » → « Tortue ».
+function botFormationLabel(formation) {
+  const short = String(formation?.name || formation?.id || "").replace(/^Formation\s+/i, "");
+  return short.charAt(0).toUpperCase() + short.slice(1);
+}
+
 function botFormationOptions(selected) {
   const opts = [`<option value="">Par défaut</option>`];
   for (const formation of DRONE_FORMATIONS) {
-    opts.push(`<option value="${escapeHtml(formation.id)}"${selected === formation.id ? " selected" : ""}>${escapeHtml(formation.name)}</option>`);
+    opts.push(`<option value="${escapeHtml(formation.id)}"${selected === formation.id ? " selected" : ""}>${escapeHtml(botFormationLabel(formation))}</option>`);
   }
   return opts.join("");
 }
@@ -12857,18 +13126,16 @@ function botRenderNpcList() {
     const t = row.types[0];
     const types = escapeHtml(row.types.join(","));
     const checked = row.types.every((type) => Bot.npcAllow.has(type));
-    const mapsLabel = botMapsLabel(row.maps) || "—";
-    const badge = row.event ? `<em class="botNpcEvent">${escapeHtml(row.event)}</em>` : "";
     const burst = botNpcBurst(t);
+    const prio = botNpcPrio(t);
     rows.push(
       `<div class="botNpcRow" data-npc="${escapeHtml(row.key)}" data-types="${types}">` +
       `<input class="botNpcSel" type="checkbox"${checked ? " checked" : ""} title="Tuer ce NPC" />` +
-      `<div class="botNpcId"><span class="botNpcName" title="${escapeHtml(row.name)}">${escapeHtml(row.name)}</span><small class="botNpcMaps" title="${escapeHtml(row.maps.join(", "))}">${badge}${escapeHtml(mapsLabel)}</small></div>` +
-      `<div class="botNpcPrioCell"><input class="botNpcPrio" type="number" value="${botNpcPrio(t)}" min="0" max="99" step="1" title="Priorité (plus haute = tuée d'abord)" />` +
-      `<label class="botNpcInstantLbl" title="Dès qu'il est en vue, il passe devant tout. Plusieurs en vue : le plus proche."><input class="botNpcInstant" type="checkbox"${botNpcInstant(t) ? " checked" : ""}/>Immédiat</label></div>` +
+      `<div class="botNpcId"><span class="botNpcName${row.event ? " event" : ""}" title="${escapeHtml(`${row.name}${row.event ? ` (${row.event})` : ""} — ${botMapsLabel(row.maps) || "?"}`)}">${escapeHtml(row.name)}</span></div>` +
+      `<input class="botNpcPrio${prio < 0 ? " instant" : ""}" type="number" value="${prio}" min="${BOT_PRIO_MIN}" max="${BOT_PRIO_MAX}" step="1" title="Priorité : plus haute = tuée d'abord (10 avant 1). Négative = immédiat : dès qu'il est en vue, il passe devant tout (-10 avant -1 ; à égalité, le plus proche)." />` +
       `<div class="botNpcCombat"><select class="botNpcAmmo" title="Munition laser">${botAmmoOptions(Bot.npcAmmo[t] || "x1")}</select>` +
       `<label class="botSwitch botSwitchSm" title="SAB : vide le bouclier puis revient au laser"><input class="botNpcSab" type="checkbox"${Bot.npcSab[t] ? " checked" : ""}/><i></i><span>SAB</span></label>` +
-      `<select class="botNpcBurst" title="Salve dès que prête"><option value=""${burst ? "" : " selected"}>Salve —</option><option value="x6"${burst === "x6" ? " selected" : ""}>X6</option><option value="rcb"${burst === "rcb" ? " selected" : ""}>RCB</option></select>` +
+      `<select class="botNpcBurst" title="Salve dès que prête"><option value=""${burst ? "" : " selected"}>Aucun</option><option value="x6"${burst === "x6" ? " selected" : ""}>X6</option><option value="rcb"${burst === "rcb" ? " selected" : ""}>RCB</option></select>` +
       `<select class="botNpcCfg"><option value="">Par défaut</option><option value="1"${Bot.npcCfg[t] === "1" ? " selected" : ""}>Cfg 1</option><option value="2"${Bot.npcCfg[t] === "2" ? " selected" : ""}>Cfg 2</option></select>` +
       `<select class="botNpcForm">${botFormationOptions(Bot.npcForm[t] || "")}</select></div>` +
       `</div>`
@@ -12923,14 +13190,14 @@ function wireBotWindow() {
         }
       } else if (control.classList.contains("botNpcPrio")) {
         const p = Math.floor(Number(control.value));
-        const v = Number.isFinite(p) ? Math.max(0, Math.min(99, p)) : 0;
+        const v = Number.isFinite(p) ? Math.max(BOT_PRIO_MIN, Math.min(BOT_PRIO_MAX, p)) : 0;
         for (const t of types) {
-          if (v > 0) Bot.npcPrio[t] = v;
+          if (v !== 0) Bot.npcPrio[t] = v;
           else delete Bot.npcPrio[t];
         }
         control.value = v;
+        control.classList.toggle("instant", v < 0);
       } else if (control.classList.contains("botNpcSab")) for (const t of types) Bot.npcSab[t] = control.checked;
-      else if (control.classList.contains("botNpcInstant")) for (const t of types) Bot.npcInstant[t] = control.checked;
       else if (control.classList.contains("botNpcBurst")) {
         const burst = BOT_BURST_IDS.includes(control.value) ? control.value : "";
         for (const t of types) Bot.npcBurst[t] = burst;
@@ -13102,14 +13369,16 @@ function wireBotWindow() {
       // le bot ignorera silencieusement les formations non possédées.
       let owned = null;
       try { owned = new Set(account.user?.drones?.formations || []); } catch { owned = null; }
-      const opts = [`<option value="">— Ne pas changer —</option>`];
+      // « — Ne pas changer — » seulement pour la collecte (repli sur l'exploration) ;
+      // Attaque / Exploration & navigation / Fuite : une vraie formation, Standard de base.
+      const opts = key === "formCollect" ? [`<option value="">— Ne pas changer —</option>`] : [];
       for (const f of DRONE_FORMATIONS) {
         const tag = owned && !owned.has(f.id) ? " (non possédée)" : "";
-        opts.push(`<option value="${escapeHtml(f.id)}">${escapeHtml(f.name)}${tag}</option>`);
+        opts.push(`<option value="${escapeHtml(f.id)}">${escapeHtml(botFormationLabel(f))}${tag}</option>`);
       }
       sel.innerHTML = opts.join("");
     }
-    sel.value = Bot[key] || "";
+    sel.value = Bot[key] || (key === "formCollect" ? "" : "standard");
     if (!sel.dataset.wired) {
       sel.dataset.wired = "1";
       sel.addEventListener("change", () => {
@@ -13157,9 +13426,31 @@ function wireBotWindow() {
     petSel.dataset.wired = "1";
     petSel.addEventListener("change", () => {
       Bot.petMode = String(petSel.value || "");
+      // La liste secondaire exclut le comportement principal : on la refait.
+      botRefreshPetOptions();
       botSaveConfig();
       // Appliqué aussitôt même bot actif (avant : seulement au démarrage).
       if (Bot.active) botApplyPetMode();
+    });
+  }
+  const petLoc = document.getElementById("botPetLocNpc");
+  if (petLoc && !petLoc.dataset.wired) {
+    petLoc.dataset.wired = "1";
+    petLoc.addEventListener("change", () => {
+      Bot.petLocNpc = String(petLoc.value || "");
+      // « Au hasard » : le P.E.T choisit lui-même sa cible.
+      if (!Bot.petLocNpc) { petLocator.manualType = null; petLocator.needsPick = true; }
+      botSaveConfig();
+      Bot.petTickT = 0;
+    });
+  }
+  const petSel2 = document.getElementById("botPetMode2");
+  if (petSel2 && !petSel2.dataset.wired) {
+    petSel2.dataset.wired = "1";
+    petSel2.addEventListener("change", () => {
+      Bot.petMode2 = String(petSel2.value || "");
+      botSaveConfig();
+      Bot.petTickT = 0;
     });
   }
   // Fuite, overlays.
@@ -13390,7 +13681,7 @@ function wireBotWindow() {
     if (!ggFinishSel.options.length) {
       const opts = [`<option value="">— Ne pas changer —</option>`];
       try {
-        for (const f of DRONE_FORMATIONS) opts.push(`<option value="${escapeHtml(f.id)}">${escapeHtml(f.name)}</option>`);
+        for (const f of DRONE_FORMATIONS) opts.push(`<option value="${escapeHtml(f.id)}">${escapeHtml(botFormationLabel(f))}</option>`);
       } catch {}
       ggFinishSel.innerHTML = opts.join("");
     }
@@ -13438,46 +13729,41 @@ function wireBotWindow() {
       });
     }
   }
-  const refineDefs = [
-    ["botRefineLaser", "botRefineLaserQty", "laser"],
-    ["botRefineShield", "botRefineShieldQty", "shield"],
-    ["botRefineRocket", "botRefineRocketQty", "rocket"],
-    ["botRefineSpeed", "botRefineSpeedQty", "speed"],
-  ];
-  for (const [selId, qtyId, slot] of refineDefs) {
+  // Raffinage automatique : les MÊMES réglages que la fenêtre Raffinerie
+  // (minerai par emplacement + les deux cases), synchronisés dans les deux sens.
+  for (const [slot, selId] of Object.entries(BOT_REFINE_SELECTS)) {
     const sel = document.getElementById(selId);
-    const qty = document.getElementById(qtyId);
-    if (sel && !sel.options.length) {
-      const ores = UPGRADE_SLOT_ORES[slot] || [];
-      const opts = [`<option value="">—</option>`];
-      for (const ore of ores) {
-        const bonus = Math.round(Number(UPGRADE_ORE_BONUS[ore]?.[slot] || 0) * 100);
-        opts.push(`<option value="${escapeHtml(ore)}">${escapeHtml(getResourceName(ore))}${bonus > 0 ? ` +${bonus}%` : ""}</option>`);
-      }
-      sel.innerHTML = opts.join("");
+    if (!sel) continue;
+    if (!sel.options.length) {
+      sel.innerHTML = [`<option value="">Non défini</option>`,
+        ...(UPGRADE_SLOT_ORES[slot] || []).map((ore) =>
+          `<option value="${escapeHtml(ore)}">${escapeHtml(getResourceName(ore))} (+${Math.round(Number(UPGRADE_ORE_BONUS[ore]?.[slot] || 0) * 100)} %)</option>`)].join("");
     }
-    if (sel) sel.value = Bot.refine?.[slot]?.ore || "";
-    if (qty) qty.value = Bot.refine?.[slot]?.qty ?? 20;
-    if (sel && !sel.dataset.wired) {
-      sel.dataset.wired = "1";
-      sel.addEventListener("change", () => {
-        const ore = String(sel.value || "").toLowerCase();
-        Bot.refine[slot].ore = (UPGRADE_SLOT_ORES[slot] || []).includes(ore) ? ore : "";
-        botSaveConfig();
-      });
-    }
-    if (qty && !qty.dataset.wired) {
-      qty.dataset.wired = "1";
-      qty.addEventListener("change", () => {
-        const v = Math.floor(Number(qty.value));
-        if (Number.isFinite(v)) {
-          Bot.refine[slot].qty = Math.max(1, Math.min(999, v));
-          qty.value = Bot.refine[slot].qty;
-          botSaveConfig();
-        }
-      });
-    }
+    if (sel.dataset.wired) continue;
+    sel.dataset.wired = "1";
+    sel.addEventListener("change", async () => {
+      const ore = String(sel.value || "");
+      if (ore && !(UPGRADE_SLOT_ORES[slot] || []).includes(ore)) return;
+      refineryEquipmentPrefs.ores[slot] = ore;
+      saveRefineryEquipmentPrefs();
+      if (ui.refineryAutoUpgrades?.checked) { saveProgressNow(); await maybeRefineryAuto(); }
+      renderRefineryWindow();
+    });
   }
+  for (const [boxId, target] of [["botRefineryAuto", ui.refineryAuto], ["botRefineryAutoUpgrades", ui.refineryAutoUpgrades]]) {
+    const box = document.getElementById(boxId);
+    if (!box || !target || box.dataset.wired) continue;
+    box.dataset.wired = "1";
+    // La case du bot pilote celle de la raffinerie (même logique, même sauvegarde).
+    box.addEventListener("change", () => {
+      target.checked = box.checked;
+      target.dispatchEvent(new Event("change"));
+    });
+    target.addEventListener("change", () => botSyncRefineryUi());
+  }
+  ui.refineryUpgrades?.addEventListener("change", () => botSyncRefineryUi());
+  // Préférences restaurées après le montage du moteur : synchro juste après.
+  queueMicrotask(() => botSyncRefineryUi());
 
   // Élargissement unique de la fenêtre (l'ancienne largeur sauvegardée
   // écraserait sinon le nouveau layout large).
@@ -13505,6 +13791,11 @@ function wireBotWindow() {
   // La liste NPC dépend de l'index des maps (chargé en async) : on la
   // reconstruit dès qu'il arrive.
   window.addEventListener("orbit:npc-locations-ready", () => { botSyncNpcCatalog(); botRenderNpcList(); });
+  // Équipement du P.E.T modifié (fenêtre P.E.T, boutique, compte chargé) :
+  // la liste « Comportement » suit.
+  for (const evt of ["orbit:user-updated", "orbit:profile-progress"]) {
+    window.addEventListener(evt, () => { try { botRefreshPetOptions(); } catch {} });
+  }
   // Toutes les listes du bot au style « Tous les vaisseaux » (historique modules).
   watchSelects(document.getElementById("botWindow"), { maxHeight: 180 });
   botRefreshHud();
@@ -14137,7 +14428,7 @@ function botOrderMove(x, y, tag) {
     const remaining2 = dist2(player.x, player.y, moveTarget.x, moveTarget.y);
     if (dx * dx + dy * dy < 900 && remaining2 > 6400 && now - Bot.moveOrderedAt < 220) return;
   }
-  for (const [id, key] of [["botPetEnabled", "petEnabled"], ["botPetAutoFuel", "petAutoFuel"]]) {
+  for (const [id, key] of [["botPetEnabled", "petEnabled"], ["botPetAutoFuel", "petAutoFuel"], ["botPetAutoRepair", "petAutoRepair"], ["botPetAutoKk", "petAutoKk"]]) {
     const box = document.getElementById(id);
     if (!box) continue;
     box.checked = Bot[key] === true;
@@ -14683,6 +14974,30 @@ function tickBot(dt) {
       } catch {}
     }
   }
+  // Réparation automatique du REX détruit (10 000 crédits, comme la clé de
+  // la fenêtre P.E.T), puis relance avec le comportement choisi.
+  Bot.petRepairT = Math.max(0, (Bot.petRepairT || 0) - dt);
+  if (Bot.petEnabled && Bot.petAutoRepair && Bot.petRepairT <= 0) {
+    Bot.petRepairT = 5;
+    const pet = account.user?.pet;
+    if (pet?.owned === true && !(Number(pet.hp) > 0)) {
+      try {
+        // Même flush que la clé : la réparation lit le compte sauvegardé.
+        saveProgressNow();
+        const out = repairPet();
+        if (out?.ok) {
+          account.user = out.user;
+          player.credits = out.user.credits;
+          loadAccountUser();
+          markProgressDirty();
+          botApplyPetMode();
+          botLog("REX réparé automatiquement (10 000 crédits)");
+        }
+      } catch {}
+    }
+  }
+  // REX : comportement principal / secondaire (gears à recharge relancés).
+  try { botTickPet(dt); } catch {}
 
   // Main manuelle récente : le joueur reprend la main, le bot attend.
   // Prioritaire sur tout (fuite et voyage compris).
@@ -43670,7 +43985,18 @@ if (movementLocked) {
       // Mode hybride : config/formation et maxima restent locaux pour éviter
       // les rollbacks de profil retardés. Le serveur conserve l'autorité sur
       // les événements (dégâts, morts, soins) adoptés ci-dessous.
-      if (serverProfileMatchesLocal) player._netCombatProfileSeq = self.combatSeq;
+      if (serverProfileMatchesLocal) {
+        player._netCombatProfileSeq = self.combatSeq;
+        // Le serveur n'accepte la télémétrie du bouclier (shPct) que si le
+        // client renvoie son compteur shieldBuffSeq, incrémenté à chaque
+        // changement de capacité (config, équipement, aptitude). Sans cette
+        // adoption, le client renvoyait toujours 0 : après le 1er changement
+        // de config, le serveur ignorait le bouclier jusqu'à la fin de la
+        // session (bouclier serveur bloqué à 0 → dégâts NPC directement sur
+        // la coque, bouclier « qui disparaît » en PvP). On n'adopte que le
+        // compteur : le bouclier affiché reste celui du client (mode hybride).
+        player._netShieldBuffSeq = Number(self.shieldBuffSeq) || 0;
+      }
       const stockCharges = Number(self.stockCharges) || 0;
       if (player.stockCharges !== stockCharges) { player.stockCharges = stockCharges; stockUpdateRange(); }
       // Soin serveur adopté en absolu (PV/bouclier finaux, dégâts déjà

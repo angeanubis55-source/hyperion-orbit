@@ -808,7 +808,7 @@
           <button class="botTab" data-bot-tab="farm" type="button">Configuration</button>
           <button class="botTab" data-bot-tab="npc" type="button">NPC</button>
           <button class="botTab" data-bot-tab="collect" type="button">Bonus Box</button>
-          <button class="botTab" data-bot-tab="gear" type="button">Équipement &amp; REX</button>
+          <button class="botTab" data-bot-tab="gear" type="button">P.E.T</button>
           <button class="botTab" data-bot-tab="cargo" type="button">Soute</button>
         </nav>
         <div class="botGrid">
@@ -866,7 +866,7 @@
               <input id="botNpcSearch" class="botSearch" type="search" placeholder="Rechercher un NPC…" autocomplete="off" />
               <select id="botNpcMapFilter" aria-label="Filtrer les NPC par map"><option value="">Toutes les maps</option></select>
             </div>
-            <div class="botNpcColumns" aria-hidden="true"><span></span><span>NPC / cartes</span><span>Priorité</span><span>Munition · SAB · salve · config · formation</span></div>
+            <div class="botNpcColumns" aria-hidden="true"><span></span><span>NPC</span><span>Priorité</span><span>Munition · SAB · salve · config · formation</span></div>
             <div id="botNpcList" class="botCheckList botNpcList"></div>
           </section>
 
@@ -902,16 +902,21 @@
           <!-- ÉQUIPEMENT & REX -->
           <section class="botSection botSpan" data-bot-section="farm">
             <div class="botSectionTitle">Configuration et formation</div>
-            <div class="botCfgRow"><span>Attaque</span><div class="botSeg" id="botCfgAttackSeg" role="group" aria-label="Configuration d’attaque"><button type="button" data-v="">—</button><button type="button" data-v="1">1</button><button type="button" data-v="2">2</button></div><select id="botFormAttack" aria-label="Formation d’attaque"></select><small class="botCfgHint">Combat contre les NPC réglés « Par défaut » (onglet NPC).</small></div>
+            <div class="botCfgRow"><span>Attaque</span><div class="botSeg" id="botCfgAttackSeg" role="group" aria-label="Configuration d’attaque"><button type="button" data-v="">—</button><button type="button" data-v="1">1</button><button type="button" data-v="2">2</button></div><select id="botFormAttack" aria-label="Formation d’attaque"></select><small class="botCfgHint">Combat contre les NPC.</small></div>
             <div class="botCfgRow"><span>Exploration &amp; navigation</span><div class="botSeg" id="botCfgFlySeg" role="group" aria-label="Configuration d’exploration et de navigation"><button type="button" data-v="">—</button><button type="button" data-v="1">1</button><button type="button" data-v="2">2</button></div><select id="botFormMove" aria-label="Formation d’exploration et de navigation"></select><small class="botCfgHint">Recherche de cibles et trajet entre les maps.</small></div>
             <div class="botCfgRow"><span>Fuite</span><div class="botSeg" id="botCfgFleeSeg" role="group" aria-label="Configuration de fuite"><button type="button" data-v="">—</button><button type="button" data-v="1">1</button><button type="button" data-v="2">2</button></div><select id="botFormFlee" aria-label="Formation de fuite"></select><small class="botCfgHint">Repli vers une zone sûre pour se réparer.</small></div>
           </section>
           <section class="botSection botSpan" data-bot-section="gear">
-            <div class="botSectionTitle">REX pendant le bot</div>
+            <div class="botSectionTitle">P.E.T pendant le bot</div>
             <label class="botSwitch"><input id="botPetEnabled" type="checkbox" /><i></i><span>Activer le REX avec le bot</span></label>
             <label class="botSwitch"><input id="botPetAutoFuel" type="checkbox" /><i></i><span>Racheter du carburant automatiquement</span></label>
-            <label class="botField"><span>Comportement</span><select id="botPetMode"></select></label>
-            <small class="botNote">Le comportement et le module choisis sont appliqués au REX actif.</small>
+            <label class="botSwitch"><input id="botPetAutoRepair" type="checkbox" /><i></i><span>Réparation automatique si le REX est détruit (10 000 crédits)</span></label>
+            <label class="botSwitch" title="Le kamikaze détruit le REX : pense à la réparation automatique."><input id="botPetAutoKk" type="checkbox" /><i></i><span>Kamikaze automatique (fonctionne uniquement si équipé)</span></label>
+            <label class="botField"><span>Comportement principal</span><select id="botPetMode"></select></label>
+            <label class="botField" id="botPetMode2Field"><span>Comportement secondaire</span><select id="botPetMode2"></select></label>
+            <label class="botField" id="botPetLocField" style="display:none"><span>Liste de NPC</span><select id="botPetLocNpc" aria-label="NPC à localiser"></select></label>
+            <small class="botNote" id="botPetMode2Note">Un module à recharge (balise, lien HP...) en principal se relance dès qu'il est prêt et va jusqu'au bout ; pendant sa recharge, c'est le secondaire qui tourne.</small>
+            <small class="botNote">La liste ne montre que les modules équipés sur le P.E.T du vaisseau actif.</small>
           </section>
 
           <!-- SOUTE -->
@@ -930,13 +935,15 @@
           </section>
           <section class="botSection" data-bot-section="cargo">
             <div class="botSectionTitle">Raffinage automatique</div>
+            <label class="botSwitch"><input id="botRefineryAuto" type="checkbox" /><i></i><span>Raffinage automatique</span></label>
+            <label class="botSwitch"><input id="botRefineryAutoUpgrades" type="checkbox" /><i></i><span>Raffinage automatique des équipements</span></label>
             <div class="botRefineGrid">
-              <span>Lasers</span><select id="botRefineLaser"></select><input id="botRefineLaserQty" type="number" min="1" max="999" step="1" value="20" />
-              <span>Bouclier</span><select id="botRefineShield"></select><input id="botRefineShieldQty" type="number" min="1" max="999" step="1" value="20" />
-              <span>Roquettes</span><select id="botRefineRocket"></select><input id="botRefineRocketQty" type="number" min="1" max="999" step="1" value="20" />
-              <span>Vitesse</span><select id="botRefineSpeed"></select><input id="botRefineSpeedQty" type="number" min="1" max="999" step="1" value="20" />
+              <span>Lasers</span><select id="botRefineLaser" aria-label="Minerai des lasers"></select>
+              <span>Bouclier</span><select id="botRefineShield" aria-label="Minerai du bouclier"></select>
+              <span>Roquettes</span><select id="botRefineRocket" aria-label="Minerai des roquettes"></select>
+              <span>Vitesse</span><select id="botRefineSpeed" aria-label="Minerai de la vitesse"></select>
             </div>
-            <small class="botNote">Quantité de minerai chargée par slot (1 minerai = 10 tirs / 10 min). Un slot déjà chargé avec un autre minerai n'est jamais écrasé.</small>
+            <small class="botNote">Mêmes réglages que la fenêtre Raffinerie : un changement ici s'y applique, et inversement.</small>
           </section>
 
         </div>

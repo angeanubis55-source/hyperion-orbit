@@ -331,7 +331,9 @@ function botProfileContext(saved = {}) {
     BOT_STORE_KEY: "bot-test", BOT_TAB_LEGACY: {}, BOT_AMMO_IDS: [],
     document: { querySelector: () => null },
     localStorage: { getItem: () => stored, setItem: (key, value) => { stored = value; } },
-    performance: { now: () => 10000 },
+    // Horloge réglable (context.now) : délais du camouflage et maintien de profil.
+    now: 10000,
+    performance: { now: () => context.now },
     botApplyFormation: value => { context.appliedFormation = value; },
     botApplyConfig: value => { context.appliedConfig = value; },
   });
@@ -349,7 +351,8 @@ test("les anciens choix de deplacement migrent vers fuite et navigation", () => 
   assert.equal(c.Bot.formTravel, "wheel"); assert.equal(c.Bot.cfgTravel, "2");
 });
 
-test("les trois profils se sauvegardent separement et le choix vide reste explicite", () => {
+test("exploration et navigation partagent un reglage, la fuite reste a part, formation vide = Standard", () => {
+  // Un ancien profil avec une navigation differente : elle suit desormais l'exploration.
   const { context: c } = botProfileContext({ formMove: "wheel", cfgFly: "2",
     formFlee: "", cfgFlee: "", formTravel: "ring", cfgTravel: "1" });
   c.botLoadConfig();
@@ -357,12 +360,26 @@ test("les trois profils se sauvegardent separement et le choix vide reste explic
   const { context: restored } = botProfileContext(c.saved());
   restored.botLoadConfig();
   assert.equal(restored.Bot.formMove, "wheel"); assert.equal(restored.Bot.cfgFly, "2");
-  assert.equal(restored.Bot.formFlee, ""); assert.equal(restored.Bot.cfgFlee, "");
-  assert.equal(restored.Bot.formTravel, "ring"); assert.equal(restored.Bot.cfgTravel, "1");
+  assert.equal(restored.Bot.formFlee, "standard", "plus de « ne pas changer » : Standard de base"); assert.equal(restored.Bot.cfgFlee, "");
+  assert.equal(restored.Bot.formTravel, "wheel"); assert.equal(restored.Bot.cfgTravel, "2");
   restored.botApplyMoveProfile("travel");
-  assert.equal(restored.appliedFormation, "ring"); assert.equal(restored.appliedConfig, "1");
+  assert.equal(restored.appliedFormation, "wheel"); assert.equal(restored.appliedConfig, "2");
   restored.botApplyMoveProfile("flee");
-  assert.equal(restored.appliedFormation, ""); assert.equal(restored.appliedConfig, "");
+  assert.equal(restored.appliedFormation, "standard"); assert.equal(restored.appliedConfig, "");
+});
+
+test("maintien de profil : pas de bascule avant 1,5 s, la fuite reste immediate", () => {
+  const { context: c } = botProfileContext();
+  Object.assign(c.Bot, { formMove: "wheel", cfgFly: "1", formFlee: "ring", cfgFlee: "2", formTravel: "heart", cfgTravel: "" });
+  c.botApplyMoveProfile("explore");
+  assert.equal(c.appliedFormation, "wheel");
+  c.botApplyMoveProfile("travel");
+  c.now += 1400; c.botApplyMoveProfile("travel");
+  assert.equal(c.appliedFormation, "wheel", "trop tot : on garde le profil en place");
+  c.now += 200; c.botApplyMoveProfile("travel");
+  assert.equal(c.appliedFormation, "heart");
+  c.botApplyMoveProfile("flee");
+  assert.equal(c.appliedFormation, "ring", "la fuite ne patiente jamais");
 });
 
 test("le vrai tick passe entre exploration, navigation et fuite puis reprend la recherche", () => {
@@ -386,6 +403,9 @@ test("le vrai tick passe entre exploration, navigation et fuite puis reprend la 
   assert.equal(c.moveTarget.active, true, "la recherche continue de deplacer le bot");
   c.Bot.targetMap = "1-2";
   c.tickBot(1 / 60);
+  // Maintien de 1,5 s avant de passer en navigation.
+  c.now += 1500;
+  c.tickBot(1 / 60);
   assert.equal(c.appliedFormation, "heart"); assert.equal(c.appliedConfig, "");
   c.player.hp = 20;
   c.tickBot(1 / 60);
@@ -395,6 +415,8 @@ test("le vrai tick passe entre exploration, navigation et fuite puis reprend la 
   c.Bot.targetMap = ""; c.player.hp = 50;
   c.tickBot(1 / 60);
   assert.equal(c.Bot.fleeing, false);
+  c.now += 1500;
+  c.tickBot(1 / 60);
   assert.equal(c.appliedFormation, "wheel"); assert.equal(c.appliedConfig, "1");
 });
 
@@ -423,6 +445,10 @@ test('camouflage bot : mort confirmee de la cible, une seule activation et un se
   const c = autoCloakContext(), npc = { id: 7, hp: 0 };
   c.botQueueCloakAfterKill(npc);
   assert.equal(c.Bot.cloakPendingMap, '1-7'); assert.equal(c.attackStopped, true);
+  // 1 s d'attente après la mort du NPC : le bot patiente sans payer.
+  assert.equal(c.botTickAutoCloak(), true);
+  assert.equal(c.player.cpuCloak, false); assert.deepEqual(c.purchases, []);
+  c.now += 1000;
   assert.equal(c.botTickAutoCloak(), true);
   assert.equal(c.player.cpuCloak, true); assert.equal(c.player.credits, 30000);
   assert.equal(c.account.user.credits, 30000); assert.deepEqual(c.purchases, [30000]);
@@ -433,6 +459,7 @@ test('camouflage bot : mort confirmee de la cible, une seule activation et un se
 test('camouflage bot : attend la recharge du CPU sans payer ni spammer de messages', () => {
   const c = autoCloakContext(); c.cloakCd = .5;
   c.botQueueCloakAfterKill({ id: 7, hp: 0 });
+  c.now += 1000;
   for (let i = 0; i < 20; i++) assert.equal(c.botTickAutoCloak(), true);
   assert.equal(c.player.credits, 60000); assert.deepEqual(c.notifications, []);
   c.cloakCd = 0; c.botTickAutoCloak();
@@ -450,9 +477,9 @@ test('camouflage bot : ignore NPC vivants, autres cibles, predictions serveur et
 
 test('camouflage bot : la reapparition du meme NPC reseau permet une nouvelle activation', () => {
   const c = autoCloakContext(), npc = { id: 7, hp: 0, _netUid: 'shared', _netSeq: 1, _netKiller: true };
-  c.Bot.lastNpcKey = 'net:shared:1'; c.botQueueCloakAfterKill(npc); c.botTickAutoCloak();
+  c.Bot.lastNpcKey = 'net:shared:1'; c.botQueueCloakAfterKill(npc); c.now += 1000; c.botTickAutoCloak();
   c.player.cpuCloak = false; npc._netSeq = 2; c.Bot.lastNpcKey = 'net:shared:2';
-  c.botQueueCloakAfterKill(npc); c.botTickAutoCloak();
+  c.botQueueCloakAfterKill(npc); c.now += 1000; c.botTickAutoCloak();
   assert.deepEqual(c.purchases, [30000, 30000]); assert.equal(c.player.credits, 0);
 });
 
@@ -677,9 +704,10 @@ test("au plus proche : pas de bascule entre deux cibles presque à égalité", (
 
 function instantContext() {
   const source = readFileSync(new URL("../SRC/CORE/ORBIT_ENGINE.js", import.meta.url), "utf8");
-  const from = source.indexOf("const BOT_BURST_IDS"), to = source.indexOf("// Rayon de combat", from);
+  const from = source.indexOf("const BOT_PRIO_MIN"), to = source.indexOf("// Rayon de combat", from);
   const c = vm.createContext({
-    Bot: { npcInstant: { boss: true, mini: true }, npcAllow: new Set(["boss", "mini", "streuner"]), npcBurst: {} },
+    // Priorité négative = immédiat ; streuner reste en priorité normale.
+    Bot: { npcPrio: { boss: -1, mini: -1, streuner: 5 }, npcAllow: new Set(["boss", "mini", "streuner"]), npcBurst: {} },
     player: { x: 0, y: 0 },
     enemies: [],
     botNpcVisible: () => true, botNpcInWall: () => false, botNpcWallBanActive: () => false,
@@ -707,4 +735,171 @@ test("immédiat : un immédiat déjà engagé est gardé, un NPC décoché est i
   c.Bot.npcAllow.delete("mini");
   assert.equal(c.botInstantNpc(null), farBoss);
   assert.equal(c.botNpcBurst("streuner"), "");
+});
+
+test("immédiat : -10 passe avant -1, même plus loin, et lâche un -1 déjà engagé", () => {
+  const c = instantContext();
+  const nearMini = { id: 3, type: "mini", hp: 10, x: 300, y: 0 };
+  const farBoss = { id: 2, type: "boss", hp: 10, x: 2000, y: 0 };
+  c.enemies = [nearMini, farBoss];
+  c.Bot.npcPrio.boss = -10;
+  assert.equal(c.botInstantNpc(null), farBoss);
+  assert.equal(c.botInstantNpc(nearMini), farBoss, "un immédiat plus prioritaire prend la main");
+  assert.equal(c.botInstantNpc(farBoss), farBoss);
+  c.Bot.npcPrio.boss = 0;
+  assert.equal(c.botInstantNpc(null), nearMini, "priorité 0 = plus immédiat");
+  assert.equal(c.botNpcPrio("streuner"), 5);
+  c.Bot.npcPrio.streuner = -500;
+  assert.equal(c.botNpcPrio("streuner"), -100, "plancher à -100");
+});
+
+test("immédiat : une ancienne case cochée devient la priorité -1, les priorités négatives sont gardées", () => {
+  const { context: c } = botProfileContext({
+    npcInstant: { boss: true, mini: true, off: false },
+    npcPrio: { mini: -20, streuner: 7, bad: -999 },
+  });
+  c.botLoadConfig();
+  assert.equal(c.Bot.npcPrio.boss, -1);
+  assert.equal(c.Bot.npcPrio.mini, -20);
+  assert.equal(c.Bot.npcPrio.off, undefined);
+  assert.equal(c.Bot.npcPrio.streuner, 7);
+  assert.equal(c.Bot.npcPrio.bad, -100);
+  c.botSaveConfig();
+  assert.equal(c.saved().npcInstant, undefined, "l'ancienne case n'est plus sauvegardée");
+});
+
+// REX piloté par le bot : comportement principal (gear à recharge) + secondaire.
+function petBotContext() {
+  const source = readFileSync(new URL("../SRC/CORE/ORBIT_ENGINE.js", import.meta.url), "utf8");
+  const from = source.indexOf("const BOT_PET_CD_GEARS"), to = source.indexOf("// Restaure le mode REX", from);
+  const c = vm.createContext({
+    Bot: { active: true, petEnabled: true, petAutoKk: true, petMode: "gear:al", petMode2: "passive", petTickT: 0, petFailUntil: {} },
+    petGearLevels: () => ({ kk: c.kkLevel ?? 1, al: c.alLevel ?? 1, bc: 1 }),
+    account: { user: { pet: { owned: true, active: true, hp: 100, fuel: 50, mode: "passive", activeGear: "" } } },
+    player: { dead: false },
+    now: 1000, performance: { now: () => c.now },
+    cd: { kk: 0, bc: 0 }, session: { kk: false, bc: false }, target: true, gear: "",
+    calls: [],
+    kkRunActive: () => c.session.kk, traWindowActive: () => false, hplLinkActive: () => false,
+    buoySessionActive: () => c.session.bc, petBuoy: { key: "bc" },
+    kkCooldownLeftSec: () => c.cd.kk, traCooldownLeftSec: () => 0, fsCooldownLeftSec: () => 0,
+    hplCooldownLeftSec: () => 0, buoyCooldownLeftSec: () => c.cd.bc,
+    pickKamikazeTarget: () => (c.target ? {} : null),
+    applyPetModeValue: (v) => { c.calls.push(v); if (c.accept !== false) { const k = v.slice(5); c.cd[k] = 30; } },
+    petActiveGearKey: () => c.gear || null,
+    normalizePetMode: (m) => m || "passive",
+    setPetMode: () => ({ ok: true }), setPetActiveGear: (k) => { c.gear = k || ""; return { ok: true }; },
+    endTraSession: () => {}, endHplLink: () => {}, endBuoySession: () => {},
+    saveProgressNow: () => {}, loadAccountUser: () => {}, botLog: () => {},
+    petLocator: {},
+  });
+  vm.runInContext(source.slice(from, to), c);
+  return c;
+}
+
+test("REX : kamikaze automatique des qu il est pret, le principal tourne pendant sa recharge", () => {
+  const c = petBotContext();
+  c.botTickPet(1);
+  assert.deepEqual(c.calls, ["gear:kk"], "kamikaze pret : declenche");
+  c.botTickPet(1);
+  assert.equal(c.gear, "al", "kamikaze en recharge : le comportement principal (Auto-Loot) tourne");
+  c.cd.kk = 0;
+  c.botTickPet(1);
+  assert.deepEqual(c.calls, ["gear:kk", "gear:kk"], "recharge finie : le kamikaze reprend la main");
+});
+
+test("REX : sans cible, le kamikaze n'est jamais lance (carburant preserve)", () => {
+  const c = petBotContext();
+  c.target = false;
+  c.botTickPet(1);
+  assert.deepEqual(c.calls, []);
+  assert.equal(c.gear, "al");
+});
+
+test("REX : une balise en cours va jusqu'au bout, un gear refuse attend 5 s", () => {
+  const c = petBotContext();
+  c.Bot.petMode = "gear:bc";
+  c.Bot.petAutoKk = false;
+  c.session.bc = true;
+  c.botTickPet(1);
+  assert.deepEqual(c.calls, [], "balise active : on n'y touche pas");
+  assert.equal(c.gear, "");
+  c.session.bc = false;
+  c.accept = false;
+  c.botTickPet(1);
+  assert.deepEqual(c.calls, ["gear:bc"]);
+  c.botTickPet(1);
+  assert.deepEqual(c.calls, ["gear:bc"], "refuse : pas de nouvel essai tout de suite");
+  c.now += 5001;
+  c.botTickPet(1);
+  assert.deepEqual(c.calls, ["gear:bc", "gear:bc"]);
+});
+
+test("REX : kamikaze non equipe = jamais lance ; ancien choix kamikaze migre vers l'interrupteur", () => {
+  const c = petBotContext();
+  c.kkLevel = 0;
+  c.botTickPet(1);
+  assert.deepEqual(c.calls, [], "kamikaze non equipe : rien");
+  assert.equal(c.gear, "al");
+  const { context: p } = botProfileContext({ petMode: "gear:kk", petMode2: "gear:al" });
+  p.botLoadConfig();
+  assert.equal(p.Bot.petAutoKk, true);
+  assert.equal(p.Bot.petMode, "gear:al");
+});
+
+test("REX : module absent de la config actuelle = secondaire ou Passif, choix garde", () => {
+  const c = petBotContext();
+  c.Bot.petAutoKk = false;
+  c.alLevel = 0;
+  c.botTickPet(1);
+  assert.equal(c.gear, "", "Auto-Loot pas equipe sur cette config : Passif");
+  assert.equal(c.Bot.petMode, "gear:al", "le choix n'est pas efface");
+  c.alLevel = 1;
+  c.botTickPet(1);
+  assert.equal(c.gear, "al", "retour sur la config equipee : Auto-Loot reprend");
+});
+
+function locatorPrioContext() {
+  const source = readFileSync(new URL("../SRC/CORE/ORBIT_ENGINE.js", import.meta.url), "utf8");
+  const from = source.indexOf("function botSyncLocatorPrio("), to = source.indexOf("// Restaure le mode REX", from);
+  const c = vm.createContext({
+    Bot: { npcPrio: { boss: 5, elite: -10 }, npcAllow: new Set(["elite"]), locOverride: null },
+    saves: 0, botSaveConfig: () => { c.saves++; }, botRenderNpcList: () => {},
+  });
+  vm.runInContext(source.slice(from, to), c);
+  return c;
+}
+
+test("localisateur : le NPC suivi passe en -1 et coche, puis retrouve sa priorite et sa case", () => {
+  const c = locatorPrioContext();
+  c.botSyncLocatorPrio(["boss"]);
+  assert.equal(c.Bot.npcPrio.boss, -1);
+  assert.equal(c.Bot.npcAllow.has("boss"), true);
+  c.botSyncLocatorPrio(["boss"]);
+  assert.equal(c.saves, 1, "meme NPC : rien a refaire");
+  c.botSyncLocatorPrio(null);
+  assert.equal(c.Bot.npcPrio.boss, 5);
+  assert.equal(c.Bot.npcAllow.has("boss"), false);
+  assert.equal(c.Bot.locOverride, null);
+});
+
+test("localisateur : un immediat plus fort est garde, changer de NPC rend le precedent", () => {
+  const c = locatorPrioContext();
+  c.botSyncLocatorPrio(["elite"]);
+  assert.equal(c.Bot.npcPrio.elite, -10);
+  c.botSyncLocatorPrio(["boss"]);
+  assert.equal(c.Bot.npcPrio.elite, -10);
+  assert.equal(c.Bot.npcAllow.has("elite"), true);
+  assert.equal(c.Bot.npcPrio.boss, -1);
+});
+
+test("localisateur : priorite rendue au chargement si la page a ete fermee en cours", () => {
+  const { context: c } = botProfileContext({
+    npcAllow: ["boss"], npcPrio: { boss: -1 },
+    locOverride: { types: ["boss"], prev: { boss: { prio: 7, allow: false } } },
+  });
+  c.botLoadConfig();
+  assert.equal(c.Bot.npcPrio.boss, 7);
+  assert.equal(c.Bot.npcAllow.has("boss"), false);
+  assert.equal(c.Bot.locOverride, null);
 });
