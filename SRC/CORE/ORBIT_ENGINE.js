@@ -36898,7 +36898,7 @@ const RELATION_COLORS = Object.freeze({
   group: Object.freeze({ map: "rgba(255,229,138,0.98)", mini: "rgba(255,229,138,0.95)", hex: "#ffd60a" }),
 });
 function cleanClanTag(tag) {
-  return String(tag || "").normalize("NFKC").trim().slice(0, 32);
+  return String(tag || "").normalize("NFKC").slice(0, 32);
 }
 function clanTagKey(tag) {
   return cleanClanTag(tag).toLocaleLowerCase("fr");

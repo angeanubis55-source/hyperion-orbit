@@ -1453,10 +1453,10 @@ const CLAN_LOG_MAX = 30;
 const CLAN_RANK_NAME_RE = /^[\p{L}\p{N}_ -]{2,20}$/u;
 
 function cleanClanName(s) {
-  return String(s || "").normalize("NFKC").trim().slice(0, CLAN_NAME_MAX);
+  return String(s || "").normalize("NFKC").slice(0, CLAN_NAME_MAX);
 }
 function cleanClanTag(s) {
-  return String(s || "").normalize("NFKC").trim().slice(0, CLAN_TAG_MAX);
+  return String(s || "").normalize("NFKC").slice(0, CLAN_TAG_MAX);
 }
 function clanTagKey(s) {
   return cleanClanTag(s).toLocaleLowerCase("fr");
@@ -1682,8 +1682,8 @@ export function createClan(userId, name, tag, description) {
     if (clanIdOfUser(uid)) return { ok: false, error: "ALREADY" };
     const cleanName = cleanClanName(name);
     const cleanTag = cleanClanTag(tag);
-    if (!cleanName) return { ok: false, error: "NAME" };
-    if (!cleanTag) return { ok: false, error: "TAG" };
+    if (!cleanName.trim()) return { ok: false, error: "NAME" };
+    if (!cleanTag.trim()) return { ok: false, error: "TAG" };
     const cleanTagNorm = clanTagKey(cleanTag);
     const clash = db.prepare("SELECT 1 FROM clans WHERE tag_norm = ?").get(cleanTagNorm);
     if (clash) return { ok: false, error: "TAKEN" };

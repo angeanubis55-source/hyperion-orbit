@@ -1579,7 +1579,7 @@ const pvpFarm = new Map(); // anti-farm : "tueur|victime" -> { n, t0 } (rendemen
 const chatHistory = []; // global : [{ from, text, at }] (40 derniers)
 const chatLastById = new Map(); // anti-spam : id -> timestamp dernier message
 const clanChatLast = new Map(); // anti-spam tchat de clan : id -> timestamp
-const cleanClanTag = (tag) => String(tag || "").normalize("NFKC").trim().slice(0, 32);
+const cleanClanTag = (tag) => String(tag || "").normalize("NFKC").slice(0, 32);
 const clanTagKey = (tag) => cleanClanTag(tag).toLocaleLowerCase("fr");
 
 // Tchat de clan : diffusé aux membres connectés (rooms + instances).
@@ -1897,7 +1897,7 @@ function describePeer(pid) {
   if (!entry) return null;
   const s = entry.state || {};
   return {
-    id, pseudo: String(s.pseudo || "Pilote").slice(0, 20), map, online: entry.ws?.readyState === 1, instance, clanTag: String(s.clanTag || "").normalize("NFKC").trim().slice(0, 32),
+    id, pseudo: String(s.pseudo || "Pilote").slice(0, 20), map, online: entry.ws?.readyState === 1, instance, clanTag: String(s.clanTag || "").normalize("NFKC").slice(0, 32),
     x: Number(s.x) || 0, y: Number(s.y) || 0, hpPct: Number(s.hpPct ?? 1), shPct: Number(s.shPct ?? 1),
     hpMax: Number(s.hpMax) || 1, shMax: Number(s.shMax) || 0, dead: s.dead === true,
     shipId: String(s.shipId || "").slice(0, 64), petActive: s.peta === 1,

@@ -724,7 +724,7 @@ export function sendFriendResponded(to) {
 // les notifications de changement et le tag en mémoire du serveur.
 let netClanDirty = false;
 let netMyClanTag = "";
-const cleanClanTag = (tag) => String(tag || "").normalize("NFKC").trim().slice(0, 32);
+const cleanClanTag = (tag) => String(tag || "").normalize("NFKC").slice(0, 32);
 const clanTagKey = (tag) => cleanClanTag(tag).toLocaleLowerCase("fr");
 // Tag en cache : le serveur ne pousse le tag qu'après connexion, ce qui
 // retardait le bouton CBS. Le cache affiche le bouton aussitôt, le

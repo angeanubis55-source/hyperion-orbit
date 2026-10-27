@@ -413,8 +413,8 @@ export function initClanUI() {
   });
   document.getElementById("clanCreateForm")?.addEventListener("submit", async (event) => {
     event.preventDefault(); event.stopPropagation();
-    const name = document.getElementById("clanNameInput")?.value.trim() || "";
-    const tag = document.getElementById("clanTagInput")?.value.trim() || "";
+    const name = document.getElementById("clanNameInput")?.value || "";
+    const tag = document.getElementById("clanTagInput")?.value || "";
     const description = document.getElementById("clanDescCreateInput")?.value.trim() || "";
     if (!name || !tag) return;
     try {
@@ -587,7 +587,7 @@ export function initClanUI() {
 
   document.getElementById("clanDiploForm")?.addEventListener("submit", async (event) => {
     event.preventDefault(); event.stopPropagation();
-    const tag = document.getElementById("clanDiploTagInput")?.value.trim() || "";
+    const tag = document.getElementById("clanDiploTagInput")?.value || "";
     const kind = document.getElementById("clanDiploKindSelect")?.value || "nap";
     if (!tag) return;
     const label = kind === "war" ? "guerre" : kind === "alliance" ? "alliance" : "NAP";
