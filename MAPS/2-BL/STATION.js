@@ -1,9 +1,9 @@
-// MAPS/2-BL/STATION.js — Base de Combat (centre 10800,2450).
+// MAPS/2-BL/STATION.js — Base de Combat alignée en Y avec le module de quête (centre 11800,7800).
 import { STATION_SLOT_IDS, STATION_SLOT_OFFSETS } from "../../SRC/DATA/BATTLESTATION.js";
 
 export function getZoneStation(WORLD) {
-  const cx = 10800;
-  const cy = 2450;
+  const cx = 11800;
+  const cy = 7800;
   return {
     x: cx,
     y: cy,

@@ -591,7 +591,7 @@ function applyRadiation(dt) {
       try { spawnExplosion(petState.x, petState.y, 1.0); } catch {}
       try { SFX.play("npcDeath", { cooldown: 0 }); } catch {}
       onPetDestroyed();
-      showToast("REX detruit par les radiations.", 1.8);
+      showToast("P.E.T detruit par les radiations.", 1.8);
       if (petLink.until > 0) endHplLink("destroyed");
     }
   }
@@ -11829,6 +11829,8 @@ const Bot = {
   cargo: false,
   cargoPct: 90,
   sellBase: "auto",
+  // Vente au comptoir : minerai décoché = gardé (absent = vendu).
+  sellOres: Object.create(null),
   selling: false,
   travelOverride: "",
   skillIem: false,
@@ -11911,6 +11913,7 @@ function botSaveConfig() {
       cargo: Bot.cargo,
       cargoPct: Bot.cargoPct,
       sellBase: Bot.sellBase,
+      sellOres: Bot.sellOres,
       skillIem: Bot.skillIem,
       iemFoes: Bot.iemFoes,
       skillIsh: Bot.skillIsh,
@@ -12005,8 +12008,13 @@ function botLoadConfig() {
     };
     if (typeof data.grabInFight === "boolean") Bot.grabInFight = data.grabInFight;
     if (typeof data.cargo === "boolean") Bot.cargo = data.cargo;
-    Bot.cargoPct = intIn(data.cargoPct, 50, 100, Bot.cargoPct);
+    Bot.cargoPct = intIn(data.cargoPct, 1, 100, Bot.cargoPct);
     if (["auto", "low", "high"].includes(data.sellBase)) Bot.sellBase = data.sellBase;
+    try {
+      if (data.sellOres && typeof data.sellOres === "object") {
+        for (const id of ["palladium", ...Object.keys(ORE_SELL_PRICES)]) if (data.sellOres[id] === false) Bot.sellOres[id] = false;
+      }
+    } catch {}
     if (typeof data.skillIem === "boolean") Bot.skillIem = data.skillIem;
     const foes = Math.floor(Number(data.iemFoes));
     if (Number.isFinite(foes)) Bot.iemFoes = Math.max(1, Math.min(10, foes));
@@ -12083,6 +12091,69 @@ function botSyncRefineryUi() {
     const upgrades = document.getElementById("botRefineryAutoUpgrades");
     if (upgrades) upgrades.checked = ui.refineryAutoUpgrades?.checked === true;
   } catch {}
+  botRenderRefineStock();
+}
+
+// Onglet Soute affiché : quantités et stock rafraîchis chaque seconde, bot
+// actif ou non (raffinage auto, consommation du bouclier, ventes...).
+function botTickCargoView(dt) {
+  Bot.cargoViewT = (Number(Bot.cargoViewT) || 0) - dt;
+  if (Bot.cargoViewT > 0) return;
+  Bot.cargoViewT = 1;
+  if (Bot.tab !== "cargo" || !isWindowShown("botWindow")) return;
+  botRenderSellList();
+  botRenderRefineStock();
+}
+
+// Stock encore chargé par emplacement, dans son unité (bouclier / vitesse
+// en minutes, lasers / roquettes en tirs), ou « Aucun ».
+function botRenderRefineStock() {
+  try {
+    const loaded = account.user?.upgrades || {};
+    for (const slot of UPGRADE_SLOTS) {
+      const el = document.getElementById(`${BOT_REFINE_SELECTS[slot.id]}Stock`);
+      if (!el) continue;
+      const stock = Math.max(0, Math.floor(Number(loaded[slot.id]?.stock) || 0));
+      const text = stock > 0 ? `${formatInteger(stock)} ${slot.unit}` : "Aucun";
+      if (el.textContent !== text) el.textContent = text;
+      el.classList.toggle("empty", stock <= 0);
+    }
+  } catch {}
+}
+
+// Soute : tableau « Vente au comptoir » (vendre ou garder chaque minerai,
+// quantité possédée en direct). Lignes construites une fois, puis seuls les
+// chiffres et les cases sont mis à jour.
+// Lignes du tableau Vente au comptoir : Palladium (échange) puis minerais vendables.
+function BOT_SELL_IDS() { return ["palladium", ...Object.keys(ORE_SELL_PRICES)]; }
+function botRenderSellList() {
+  try {
+    const list = document.getElementById("botSellList");
+    if (!list) return;
+    // Palladium en tête : échangé contre de l'énergie Galaxy (10 → 1).
+    const ores = BOT_SELL_IDS();
+    if (list.dataset.built !== ores.join("|")) {
+      list.dataset.built = ores.join("|");
+      list.innerHTML = ores.map((id) =>
+        `<div class="botSellRow" data-ore="${escapeHtml(id)}">`
+        + `<label class="botSwitch"><input class="botSellPick" type="checkbox" data-ore="${escapeHtml(id)}" aria-label="${id === "palladium" ? "Échanger" : "Vendre"} ${escapeHtml(getResourceName(id))}" /><i></i></label>`
+        + `<span class="botSellName"><img src="${escapeHtml(getResourceIcon(id))}" alt="" loading="lazy" />${escapeHtml(getResourceName(id))}</span>`
+        + (id === "palladium"
+          ? `<span class="botSellPrice energy" title="10 Palladium = 1 énergie Galaxy Gate">10 → 1 énergie</span>`
+          : `<span class="botSellPrice">${formatInteger(ORE_SELL_PRICES[id])}</span>`)
+        + `<b class="botSellQty"></b></div>`).join("");
+    }
+    const owned = account.user?.inventory?.resources || {};
+    for (const row of list.querySelectorAll(".botSellRow")) {
+      const id = row.dataset.ore;
+      const qty = formatInteger(Math.max(0, Math.floor(Number(owned[id]) || 0)));
+      const qtyEl = row.querySelector(".botSellQty");
+      if (qtyEl && qtyEl.textContent !== qty) qtyEl.textContent = qty;
+      const box = row.querySelector(".botSellPick");
+      if (box) box.checked = Bot.sellOres[id] !== false;
+      row.classList.toggle("off", Bot.sellOres[id] === false);
+    }
+  } catch {}
 }
 
 function botSwitchTab(name) {
@@ -12098,7 +12169,7 @@ function botSwitchTab(name) {
   });
   // Onglet P.E.T : la liste des modules équipés est relue à chaque ouverture.
   if (name === "gear") { try { botRefreshPetOptions(); } catch {} }
-  if (name === "cargo") botSyncRefineryUi();
+  if (name === "cargo") { botSyncRefineryUi(); botRenderSellList(); }
   botSaveConfig();
 }
 
@@ -12127,6 +12198,8 @@ function botRefreshHud() {
     if (playEl.title !== tip) playEl.title = tip;
   }
   botRefreshStats();
+  // Onglet Soute ouvert : quantités de minerai en direct.
+  if (Bot.tab === "cargo") { botRenderSellList(); botRenderRefineStock(); }
 }
 
 // Compteurs de la session en cours (depuis le dernier démarrage).
@@ -12252,6 +12325,8 @@ function botSetActive(on) {
   Bot.ggSwitchCd = 0;
   Bot.fleeing = false;
   Bot.selling = false;
+  Bot.sellPending = false;
+  Bot.sellCdUntil = 0;
   Bot.travelOverride = "";
   Bot.lastFormation = "";
   Bot.roamT = 0;
@@ -12416,10 +12491,24 @@ async function botSellOres() {
   let total = 0;
   try {
     for (const id of Object.keys(ORE_SELL_PRICES)) {
+      // Minerai décoché dans « Vente au comptoir » : gardé.
+      if (Bot.sellOres?.[id] === false) continue;
       const owned = Math.floor(Number(account.user?.inventory?.resources?.[id]) || 0);
       if (owned <= 0) continue;
       const out = await sellCurrentUserOreOnline(id, false);
       if (out?.ok) total += Math.floor(Number(out.gained) || 0);
+    }
+    // Palladium (coché) : échangé contre de l'énergie Galaxy (10 → 1), au
+    // même comptoir et par le même chemin serveur que la fenêtre Commerce.
+    const palladium = Math.floor(Number(account.user?.inventory?.resources?.palladium) || 0);
+    if (Bot.sellOres?.palladium !== false && palladiumExchangeForEnergy(palladium, Infinity).energies > 0) {
+      saveProgressNow();
+      const ex = await exchangeCurrentUserPalladiumForEnergyOnline();
+      if (ex?.ok) {
+        account.user = ex.user;
+        botLog(`Échange : ${formatInteger(ex.cost)} Palladium → +${formatInteger(ex.energies)} énergie Galaxy`);
+        window.dispatchEvent(new CustomEvent("orbit:profile-progress"));
+      }
     }
     if (total > 0) {
       account.user = getCurrentUserFull();
@@ -12691,7 +12780,7 @@ function botApplyPetMode() {
   // Le comportement d'avant le bot est mémorisé une seule fois (plus bas) et
   // restauré à l'arrêt : un changement en cours de route ne l'écrase pas.
   const pet = account.user?.pet?.owned === true ? account.user.pet : null;
-  if (!pet) { botLog("REX : non possédé — choix ignoré"); return; }
+  if (!pet) { botLog("P.E.T : non possédé — choix ignoré"); return; }
   if (!Bot.petEnabled) {
     if (pet.active === true) { try { setPetActive(false); loadAccountUser(); } catch {} }
     return;
@@ -12773,7 +12862,7 @@ function botPetUse(value) {
     // Même chemin que la fenêtre P.E.T (déclenchement réel du gear).
     try { applyPetModeValue(value); } catch {}
     if (botPetSessionActive(key) || botPetCooldownLeft(key) > 0) {
-      botLog(`REX : ${key.toUpperCase()} déclenché`);
+      botLog(`P.E.T : ${key.toUpperCase()} déclenché`);
     } else {
       // Refusé (bouclier plein, gear déséquipé...) : on réessaie dans 5 s.
       Bot.petFailUntil[key] = performance.now() + 5000;
@@ -12793,7 +12882,7 @@ function botPetUse(value) {
     petLocator.enemyId = null;
     petLocator.needsPick = true;
     loadAccountUser();
-    botLog(`REX : ${key ? `module ${key.toUpperCase()}` : value === "combat" ? "mode combat" : "passif"}`);
+    botLog(`P.E.T : ${key ? `module ${key.toUpperCase()}` : value === "combat" ? "mode combat" : "passif"}`);
   } catch {}
 }
 function botTickPet(dt) {
@@ -13709,7 +13798,7 @@ function wireBotWindow() {
       cargoPct.addEventListener("change", () => {
         const v = Math.floor(Number(cargoPct.value));
         if (Number.isFinite(v)) {
-          Bot.cargoPct = Math.max(50, Math.min(100, v));
+          Bot.cargoPct = Math.max(1, Math.min(100, v));
           cargoPct.value = Bot.cargoPct;
           botSaveConfig();
         }
@@ -13762,6 +13851,30 @@ function wireBotWindow() {
     target.addEventListener("change", () => botSyncRefineryUi());
   }
   ui.refineryUpgrades?.addEventListener("change", () => botSyncRefineryUi());
+  // Vente au comptoir : vendre ou garder chaque minerai.
+  const sellList = document.getElementById("botSellList");
+  if (sellList && !sellList.dataset.wired) {
+    sellList.dataset.wired = "1";
+    sellList.addEventListener("change", (event) => {
+      const box = event.target.closest?.(".botSellPick");
+      if (!box) return;
+      if (box.checked) delete Bot.sellOres[box.dataset.ore];
+      else Bot.sellOres[box.dataset.ore] = false;
+      botSaveConfig();
+      botRenderSellList();
+    });
+  }
+  const setAllSell = (on) => {
+    for (const id of BOT_SELL_IDS()) {
+      if (on) delete Bot.sellOres[id];
+      else Bot.sellOres[id] = false;
+    }
+    botSaveConfig();
+    botRenderSellList();
+  };
+  document.getElementById("botSellAll")?.addEventListener("click", () => setAllSell(true));
+  document.getElementById("botSellNone")?.addEventListener("click", () => setAllSell(false));
+  botRenderSellList();
   // Préférences restaurées après le montage du moteur : synchro juste après.
   queueMicrotask(() => botSyncRefineryUi());
 
@@ -13786,6 +13899,9 @@ function wireBotWindow() {
       botRefreshPetOptions();
       botRenderNpcList();
       botRefreshStats();
+      // Soute : minerais et cases de la raffinerie, à jour dès l'ouverture.
+      botSyncRefineryUi();
+      botRenderSellList();
     }
   });
   // La liste NPC dépend de l'index des maps (chargé en async) : on la
@@ -13794,7 +13910,7 @@ function wireBotWindow() {
   // Équipement du P.E.T modifié (fenêtre P.E.T, boutique, compte chargé) :
   // la liste « Comportement » suit.
   for (const evt of ["orbit:user-updated", "orbit:profile-progress"]) {
-    window.addEventListener(evt, () => { try { botRefreshPetOptions(); } catch {} });
+    window.addEventListener(evt, () => { try { botRefreshPetOptions(); botRenderSellList(); } catch {} });
   }
   // Toutes les listes du bot au style « Tous les vaisseaux » (historique modules).
   watchSelects(document.getElementById("botWindow"), { maxHeight: 180 });
@@ -14910,6 +15026,7 @@ function tickBot(dt) {
   // Seul l'ordre de combat de ce tick peut imposer le NPC au navigateur.
   Bot.combatMoveTargetId = null;
   try { botTickNpcCatalog(dt); } catch {}
+  try { botTickCargoView(dt); } catch {}
   if (!Bot.active) return;
   if (StarJump.channel) return;
   if (!started || player.dead) {
@@ -14991,7 +15108,7 @@ function tickBot(dt) {
           loadAccountUser();
           markProgressDirty();
           botApplyPetMode();
-          botLog("REX réparé automatiquement (10 000 crédits)");
+          botLog("P.E.T réparé automatiquement (10 000 crédits)");
         }
       } catch {}
     }
@@ -15134,7 +15251,8 @@ function tickBot(dt) {
   // Soute pleine : on raffine d'abord (charge les améliorations), et
   // seulement si vraiment pas moyen on va vendre au comptoir.
   // Jamais en Galaxy Gate (pas de comptoir, pas de sortie auto).
-  if (Bot.cargo && !Bot.selling && !player.dead && started && rules?.mode !== "gate") {
+  if (Bot.cargo && !Bot.selling && !player.dead && started && rules?.mode !== "gate"
+    && Date.now() >= (Number(Bot.sellCdUntil) || 0)) {
     try {
       const c = currentCargo();
       if (c.capacity > 0 && c.used / c.capacity * 100 >= Bot.cargoPct) {
@@ -15151,6 +15269,17 @@ function tickBot(dt) {
         }
       }
     } catch {}
+  }
+  // Vente en cours (aller-retour serveur) : le bot reste immobile au
+  // comptoir. Sans ça il repartait farmer pendant la vente, retrouvait la
+  // soute encore pleine et revenait : demi-tours et dérive autour de la base.
+  if (Bot.sellPending) {
+    Bot.status = "Vente — en cours";
+    Bot.target = "Comptoir";
+    moveTarget.active = false;
+    if (attackActive) { try { stopAttack(); } catch {} }
+    botRefreshHudThrottled(dt);
+    return;
   }
   if (Bot.selling) {
     const trade = botNearestTradeModule();
@@ -15170,10 +15299,27 @@ function tickBot(dt) {
     } else {
       Bot.travelOverride = null;
       if (isPlayerNearTradeModule(trade.module)) {
-        Bot.selling = false;
+        Bot.sellPending = true;
+        moveTarget.active = false;
+        const finish = (message) => {
+          Bot.sellPending = false;
+          Bot.selling = false;
+          // Pas de nouvelle vérification de soute pendant 20 s ; si elle reste
+          // pleine (ressources que le comptoir n'achète pas), pause de 5 min
+          // au lieu de faire des allers-retours sans fin.
+          let stillFull = false;
+          try {
+            const c = currentCargo();
+            stillFull = c.capacity > 0 && c.used / c.capacity * 100 >= Bot.cargoPct;
+          } catch {}
+          Bot.sellCdUntil = Date.now() + (stillFull ? 5 * 60_000 : 20_000);
+          botLog(stillFull ? `${message} — soute toujours pleine (ressources invendables) : gestion de soute en pause 5 min` : message);
+        };
         botSellOres().then((gained) => {
-          botLog(gained > 0 ? `Vente comptoir : +${formatInteger(gained)} crédits — reprise` : "Soute : rien à vendre — reprise");
-        }).catch(() => botLog("Soute : vente serveur refusée — reprise"));
+          finish(gained > 0 ? `Vente comptoir : +${formatInteger(gained)} crédits — reprise` : "Soute : rien à vendre — reprise");
+        }).catch(() => finish("Soute : vente serveur refusée — reprise"));
+        botRefreshHudThrottled(dt);
+        return;
       } else {
         Bot.status = "Vente — comptoir";
         Bot.target = `Comptoir (${Math.round(Math.sqrt(trade.d2))}m)`;
@@ -15860,7 +16006,7 @@ function wirePetWindow() {
       loadAccountUser();
       markProgressDirty();
       window.dispatchEvent(new CustomEvent("orbit:profile-progress"));
-      return showToast("REX réparé (coque 10 %, bouclier 0).", 1.8);
+      return showToast("P.E.T réparé (coque 10 %, bouclier 0).", 1.8);
     }
     // Panne sèche : la goutte achète +1000 essence (100 000 crédits débités),
     // sans activer le REX — le bouton repasse en play, à toi de l'allumer.
@@ -16086,7 +16232,7 @@ function applyPetModeValue(v) {
     // Kamikaze en cours : course verrouillée, rien ne peut l'arrêter.
     if (kkRunActive()) {
       loadAccountUser();
-      return showToast("Kamikaze en cours — REX verrouillé.", 1.5);
+      return showToast("Kamikaze en cours — P.E.T verrouillé.", 1.5);
     }
     // Un seul comportement à la fois : Passif, Mode combat ou un gear équipé.
     if (v.startsWith("gear:")) {
@@ -16244,7 +16390,7 @@ function updatePetHud() {
   if (level > 15) setHudText(ui.petXpTxt, `${formatInteger(Math.floor(exp))} - ${level}`);
   else setHudText(ui.petXpTxt, `${formatInteger(Math.floor(exp))} / ${formatInteger(next)} - ${level}`);
   setHudWidth(ui.petXpBar, `${xpPct}%`);
-  if (has) setHudText(ui.petNameTxt, String(pet.pseudo || "REX"));
+  if (has) setHudText(ui.petNameTxt, String(pet.pseudo || "P.E.T"));
   setHudText(ui.petHpTxt, `${formatInteger(hp)} / ${formatInteger(hpMax)}`);
   setHudWidth(ui.petHpBar, `${hpMax > 0 ? (hp / hpMax) * 100 : 0}%`);
   setHudText(ui.petShTxt, `${formatInteger(sh)} / ${formatInteger(shMax)}`);
@@ -16287,9 +16433,9 @@ function updatePetHud() {
       ui.petPlayBtn.innerHTML = label;
     }
     setHudAttr(ui.petPlayBtn, "title", destroyed
-      ? "Réparer le REX — 10 000 crédits"
+      ? "Réparer le P.E.T — 10 000 crédits"
       : outOfFuel
-        ? "+1000 essence — 100 000 crédits (sans activer le REX)"
+        ? "+1000 essence — 100 000 crédits (sans activer le P.E.T)"
         : shownActive ? "Désactiver le P.E.T" : "Activer le P.E.T");
     setHudClass(ui.petPlayBtn, "isOn", shownActive);
     // Jauges (coque, bouclier, carburant, niveau) masquées quand le bouton
@@ -17023,6 +17169,8 @@ queueMicrotask(() => { try {
     }
     refineryEquipmentPrefs.cursors = stored.cursors && typeof stored.cursors === "object" ? stored.cursors : {};
   }
+  // La fenêtre BOT (onglet Soute) affiche ces mêmes réglages.
+  botSyncRefineryUi();
 } catch {} });
 ui.refineryAutoUpgrades?.addEventListener("change", async () => {
   saveRefineryEquipmentPrefs();
@@ -24759,7 +24907,7 @@ canvas.addEventListener(
 
     if (pressedTrade && releasedOnTrade === pressedTrade) {
       if (!isPlayerNearTradeModule(pressedTrade)) {
-        showToast("Approche-toi du comptoir pirate", 1.4);
+        showToast("Approche-toi du comptoir", 1.4);
       } else {
         openOreTradeWindow(pressedTrade);
       }
@@ -25275,7 +25423,7 @@ function damagePetFromPlayer(dmg) {
     spawnExplosion(petState.x, petState.y, 1.0);
     SFX.play("npcDeath", { cooldown: 0 });
     onPetDestroyed();
-    showToast("REX détruit.", 1.8);
+    showToast("P.E.T détruit.", 1.8);
     if (petLink.until > 0) endHplLink("destroyed");
   }
   return out;
@@ -25296,7 +25444,7 @@ function onPetTookDamage() {
     petState.combatTarget = null;
     markProgressDirty();
     try { saveProgressNow(); } catch {}
-    try { showToast("REX touché : réparation interrompue", 1.6); } catch {}
+    try { showToast("P.E.T touché : réparation interrompue", 1.6); } catch {}
   }
 }
 
@@ -25576,7 +25724,7 @@ function startHplLink() {
   const pet = account.user?.pet;
   if (!(Number(pet?.hp) > 0)) {
     loadAccountUser();
-    return showToast("Lien HP : REX détruit, répare-le.", 1.8);
+    return showToast("Lien HP : P.E.T détruit, répare-le.", 1.8);
   }
   petLink.prevMode = normalizePetMode(pet?.mode);
   const prevGear = String(pet?.activeGear || "").toLowerCase() || null;
@@ -25613,11 +25761,11 @@ function endHplLink(reason) {
   loadAccountUser();
   const messages = {
     expired: "Lien HP terminé — cooldown 240 s",
-    destroyed: "Lien rompu : REX détruit — cooldown 240 s",
+    destroyed: "Lien rompu : P.E.T détruit — cooldown 240 s",
     gear: "Lien rompu : autre matériel — cooldown 240 s",
     config: "Lien rompu : configuration changée — cooldown 240 s",
     emp: "Lien rompu : IEM — cooldown 240 s",
-    off: "Lien rompu : REX désactivé — cooldown 240 s",
+    off: "Lien rompu : P.E.T désactivé — cooldown 240 s",
   };
   showToast(messages[reason] || messages.expired, 2);
 }
@@ -25805,7 +25953,7 @@ function startBuoySession(key) {
   const pet = account.user?.pet;
   if (!(Number(pet?.hp) > 0)) {
     loadAccountUser();
-    return showToast("Bouée : REX détruit, répare-le.", 1.8);
+    return showToast("Bouée : P.E.T détruit, répare-le.", 1.8);
   }
   petBuoy.prevMode = normalizePetMode(pet?.mode);
   const prevGear = String(pet?.activeGear || "").toLowerCase() || null;
@@ -25847,8 +25995,8 @@ function endBuoySession(reason) {
   const messages = {
     expired: "Bouée terminée — cooldown 240 s",
     gear: "Bouée coupée : autre matériel — cooldown 240 s",
-    off: "Bouée coupée : REX désactivé — cooldown 240 s",
-    destroyed: "Bouée coupée : REX détruit — cooldown 240 s",
+    off: "Bouée coupée : P.E.T désactivé — cooldown 240 s",
+    destroyed: "Bouée coupée : P.E.T détruit — cooldown 240 s",
     config: "Bouée coupée : config sans bouée — cooldown 240 s",
   };
   showToast(messages[reason] || messages.expired, 2);
@@ -25919,7 +26067,7 @@ function cancelKamikazeRun(reason) {
     try { setPetActiveGear(null); } catch {}
   }
   try { loadAccountUser(); } catch {}
-  if (reason === "destroyed") showToast("Kamikaze interrompu : REX détruit.", 1.8);
+  if (reason === "destroyed") showToast("Kamikaze interrompu : P.E.T détruit.", 1.8);
   return true;
 }
 
@@ -25962,11 +26110,11 @@ function triggerPetKamikaze() {
   const pet = account.user?.pet;
   if (pet?.owned !== true || pet?.active !== true) {
     loadAccountUser();
-    return showToast("Kamikaze : REX désactivé.", 1.8);
+    return showToast("Kamikaze : P.E.T désactivé.", 1.8);
   }
   if (!(Number(pet.hp) > 0)) {
     loadAccountUser();
-    return showToast("Kamikaze : REX détruit, répare-le.", 1.8);
+    return showToast("Kamikaze : P.E.T détruit, répare-le.", 1.8);
   }
   // One-shot : 3 de carburant d'un coup (réduit par AI-ECO). Prélevé ici :
   // la course détruit le REX, aucun gear ne reste actif derrière.
@@ -26120,8 +26268,8 @@ function detonatePetKamikaze() {
   setPetActiveGear(null);
   loadAccountUser();
   showToast(hit > 0
-    ? `Kamikaze : ${formatInteger(Math.round(dmg))} dégâts (${hit} cible${hit > 1 ? "s" : ""}) — REX détruit.`
-    : "Kamikaze : explosion manquée — REX détruit.", 2);
+    ? `Kamikaze : ${formatInteger(Math.round(dmg))} dégâts (${hit} cible${hit > 1 ? "s" : ""}) — P.E.T détruit.`
+    : "Kamikaze : explosion manquée — P.E.T détruit.", 2);
 }
 
 function triggerSacrificeFlame() {
@@ -26137,7 +26285,7 @@ function triggerSacrificeFlame() {
     setPetMode("passive");
     setPetActiveGear(null);
     loadAccountUser();
-    return showToast("Flamme sacrificielle : REX sans bouclier.", 1.8);
+    return showToast("Flamme sacrificielle : P.E.T sans bouclier.", 1.8);
   }
   const missing = player.shMax - player.sh;
   const amount = Math.min(rexSh, Math.max(0, missing));
@@ -26475,7 +26623,7 @@ function tickPetFuel(dt) {
     try { setPetActive(false); } catch {}
     try { setPetActiveGear(null); } catch {}
     loadAccountUser();
-    showToast("REX à sec — achète de l'essence P.E.T.", 2.5);
+    showToast("P.E.T à sec — achète de l'essence P.E.T.", 2.5);
   }
 }
 // Prélèvement one-shot (kamikaze / sacrifice) : 3 × économie, min 1.
@@ -26505,7 +26653,7 @@ function updatePet(dt) {
     try { setPetActive(false); } catch {}
     try { setPetActiveGear(null); } catch {}
     loadAccountUser();
-    showToast("REX à sec — achète de l'essence P.E.T.", 2.5);
+    showToast("P.E.T à sec — achète de l'essence P.E.T.", 2.5);
     return;
   }
   if (!pet?.owned || pet?.active !== true) {
@@ -27216,7 +27364,7 @@ function drawPet(ox, oy) {
   if (Target.get() === petTargetProxy) drawNpcStatus(ctx, petTargetProxy, "", true);
   // Étiquette du REX : pseudo + firme à droite, comme le vaisseau — fixe, sans balancement.
   try {
-    const petPseudo = String(pet?.pseudo || "REX");
+    const petPseudo = String(pet?.pseudo || "P.E.T");
     const petFaction = getFaction(pet?.faction || account.user?.faction);
     let petFactionImage = getCachedImage(petFaction.imagePath);
     if (!isImgReady(petFactionImage)) {
@@ -27252,7 +27400,7 @@ function drawTbrClones(ox, oy, remote = null) {
   const pet = account.user?.pet;
   if (!remote && (!pet?.owned || pet?.active !== true)) return;
   const level = remote ? remote.petl : getPetLevel(pet.exp);
-  const petPseudo = String((remote ? remote.petn : pet?.pseudo) || "REX");
+  const petPseudo = String((remote ? remote.petn : pet?.pseudo) || "P.E.T");
   const petFaction = getFaction(remote ? remote.petf || remote.firm : pet?.faction || account.user?.faction);
   for (const c of clones) {
     if (!c || (!remote && !(Number(c.hp) > 0))) continue;
@@ -30311,7 +30459,7 @@ const Target = (() => {
 const petTargetProxy = {
   id: "pet",
   isPetTarget: true,
-  name: "REX",
+  name: "P.E.T",
   type: "pet_rex",
   r: 40,
   vx: 0,
@@ -35109,14 +35257,14 @@ function syncNetPlayers(dt = 0.016) {
         if (!pe) {
           pe = {
             id: `netpet:${rid}`, _netPet: String(rid), type: "pet",
-            name: String(r.petn || "REX"),
+            name: String(r.petn || "P.E.T"),
             x: 0, y: 0, r: 24, angle: 0,
             hp: 100, hpMax: 100, sh: 100, shMax: 100,
           };
           netPetProxies.set(rid, pe);
           try { enemiesById.set(pe.id, pe); } catch {}
         }
-        pe.name = String(r.petn || "REX");
+        pe.name = String(r.petn || "P.E.T");
         pe.x = Number(r.petrx ?? r.petx);
         pe.y = Number(r.petry ?? r.pety);
         pe.angle = Number(r.petd ?? r.angle) || 0;
@@ -35611,7 +35759,7 @@ function syncNetNpcs(dt) {
     }
     for (const k of drainNetPvpPetKillInbox()) {
       if (!k) continue;
-      showToast(`REX de ${k.victim} détruit !`, 2.6);
+      showToast(`P.E.T de ${k.victim} détruit !`, 2.6);
     }
   } catch {}
   // Cargo du vaincu : copies sur les autres ecrans + effacement au ramassage.
@@ -39324,7 +39472,7 @@ function drawNetplayRemotes(ox, oy) {
             try { if (GAME_SETTINGS.shipSmoke) petEngine.draw(ctx, peng.holder, psprite, pframe, isImgReady); } catch {}
             // Etiquette du REX distant : pseudo + firme, comme sur son ecran.
             try {
-              const petPseudo = String(r.petn || "REX");
+              const petPseudo = String(r.petn || "P.E.T");
               const petFaction = getFaction(r.petf || r.firm);
               let petFactionImage = getCachedImage(petFaction.imagePath);
               if (!isImgReady(petFactionImage)) {
@@ -39847,7 +39995,8 @@ for (const state of Object.values(TRADE_BUTTON).filter(value => value?.src)) {
 }
 
 // ============================================================
-// Comptoir pirate 5-2 : vente minerais, ouvert UNIQUEMENT via le bouton monde.
+// Comptoirs (bases x-1 / x-8 de sa firme + pirate 5-2) : vente minerais et
+// échange Palladium -> énergie Galaxy, ouverts UNIQUEMENT via le bouton monde.
 // ============================================================
 function renderOreTradeWindow() {
   if (!shouldRefreshWindow("oreTradeWindow")) return;
@@ -39881,7 +40030,7 @@ function renderOreTradeWindow() {
 function openOreTradeWindow(tradeModule = null) {
   const anchor = tradeModule && isTradeModule(tradeModule) ? tradeModule : null;
   if (!anchor || !canUseStation(anchor) || !isPlayerNearTradeModule(anchor)) {
-    showToast("Approche-toi du comptoir pirate", 1.4);
+    showToast("Approche-toi du comptoir", 1.4);
     return;
   }
   if (!ui.oreTradeWindow) {
@@ -42992,7 +43141,7 @@ function update(dt) {
         if (pet) { pet.hp = 0; try { onPetDestroyed(); } catch {} }
       } catch {}
       endTbrLinked(true);
-      showNotification("Triple barrage : les 3 REX sont tombés !", 2.5, "error");
+      showNotification("Triple barrage : les 3 P.E.T sont tombés !", 2.5, "error");
     } else if (player.tbrT <= 0) {
       endTbrLinked(false);
       showNotification("Triple barrage terminé", 2, "info");
@@ -44202,7 +44351,7 @@ if (movementLocked) {
           try { spawnExplosion(petState.x, petState.y, 1.0); } catch {}
           try { SFX.play("npcDeath", { cooldown: 0 }); } catch {}
           try { onPetDestroyed(); } catch {}
-          try { showToast("REX détruit par un autre joueur.", 2.4); } catch {}
+          try { showToast("P.E.T détruit par un autre joueur.", 2.4); } catch {}
         }
         if (pet.hp > 0) pet._netDeadDone = false;
       }
@@ -48042,7 +48191,7 @@ function frame(t) {
           petX = Math.round(Number(petState.x) || 0);
           petY = Math.round(Number(petState.y) || 0);
           petD = Math.round((Number(petState.angle) || 0) * 100) / 100;
-          petN = String(pet.pseudo || "REX").slice(0, 32);
+          petN = String(pet.pseudo || "P.E.T").slice(0, 32);
           petF = String(pet.faction || account.user?.faction || "").slice(0, 16);
         }
       } catch {}

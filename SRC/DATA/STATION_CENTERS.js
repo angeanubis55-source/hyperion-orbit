@@ -23,6 +23,6 @@ export const STATION_CENTERS = Object.freeze([
   { map: "2-5", x: 5500, y: 3500 },
   { map: "3-5", x: 5500, y: 3500 },
   { map: "1-bl", x: 12875, y: 7000 },
-  { map: "2-bl", x: 10800, y: 2450 },
+  { map: "2-bl", x: 11800, y: 7800 },
   { map: "3-bl", x: 12730, y: 13000 },
 ]);

@@ -1354,7 +1354,7 @@ export function ensureNetplayConnection() {
       if (netPvpPetKillInbox.length > 8) netPvpPetKillInbox.shift();
       netPvpPetKillInbox.push({
         victim: String(msg.victim || "Pilote").slice(0, 20),
-        pet: String(msg.pet || "REX").slice(0, 32),
+        pet: String(msg.pet || "P.E.T").slice(0, 32),
       });
       return;
     }

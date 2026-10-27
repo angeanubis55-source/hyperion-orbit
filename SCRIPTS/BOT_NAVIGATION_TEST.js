@@ -903,3 +903,40 @@ test("localisateur : priorite rendue au chargement si la page a ete fermee en co
   assert.equal(c.Bot.npcAllow.has("boss"), false);
   assert.equal(c.Bot.locOverride, null);
 });
+
+test("soute pleine : une seule vente, immobile pendant la vente, pause si la soute reste pleine", async () => {
+  const { context: c, source } = botProfileContext();
+  Object.assign(c.Bot, { active: true, manualT: 0, mode: "kill", cargo: true, cargoPct: 90, flee: false });
+  let resolveSale;
+  Object.assign(c, {
+    started: true, StarJump: { channel: null }, player: { x: 1000, y: 1000, hp: 100, hpMax: 100 }, WORLD: { w: 4000, h: 4000 },
+    window: { __CURRENT_MAP_ID__: "1-1" }, rules: {}, moveTarget: { active: true, x: 0, y: 0 },
+    enemies: [], collectables: [], attackActive: false, Target: { get: () => null, clear: () => {} },
+    botNearestNpc: () => null, botInstantNpc: () => null, botBlacklightSearch: () => null, botPortalIndex: null, botClearSpecialAmmo: () => {},
+    botApplyRocketFlags: () => {}, botRefreshHudThrottled: () => {}, botLog: () => {}, botTickNpcCatalog: () => {}, botTickPet: () => {},
+    stopAttack: () => {}, cancelCollectableTarget: () => {},
+    clamp: (value, min, max) => Math.max(min, Math.min(max, value)),
+    currentCargo: () => ({ used: 100, capacity: 100 }),
+    botRefineUpgrades: () => 0, formatInteger: (n) => String(n),
+    botNearestTradeModule: () => ({ module: {}, pos: { x: 1000, y: 1000 }, d2: 0 }),
+    isPlayerNearTradeModule: () => true,
+    sales: 0,
+    botSellOres: () => { c.sales++; return new Promise((resolve) => { resolveSale = resolve; }); },
+  });
+  const from = source.indexOf("function tickBot("), to = source.indexOf("function botRefreshHudThrottled(", from);
+  vm.runInContext(source.slice(from, to), c);
+  c.tickBot(1 / 60);
+  c.tickBot(1 / 60);
+  assert.equal(c.sales, 1, "une seule vente lancée");
+  assert.equal(c.Bot.sellPending, true);
+  assert.equal(c.moveTarget.active, false, "immobile au comptoir pendant la vente");
+  c.tickBot(1 / 60);
+  assert.equal(c.moveTarget.active, false);
+  resolveSale(0);
+  await new Promise((r) => setTimeout(r, 0));
+  assert.equal(c.Bot.sellPending, false);
+  assert.ok(c.Bot.sellCdUntil - Date.now() > 60_000, "soute toujours pleine : pause longue");
+  c.tickBot(1 / 60);
+  assert.equal(c.Bot.selling, false, "pas de nouvel aller-retour au comptoir");
+  assert.equal(c.sales, 1);
+});

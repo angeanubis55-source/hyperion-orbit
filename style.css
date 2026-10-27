@@ -19073,11 +19073,43 @@ html body #profileOverlay #profileWindow.gameWindow > .gameWinBar .gameWinMinBtn
 /* Soute : raffinage. */
 .botRefineGrid {
   display:grid;
-  grid-template-columns:80px minmax(0,1fr);
+  grid-template-columns:80px minmax(0,1fr) 96px;
   gap:6px;
   align-items:center;
 }
 .botRefineGrid > span { color:#d9eef5; font-size:12px; font-weight:700; }
+.botRefineStock { text-align:right; color:#ffe14d; font-size:12px; font-variant-numeric:tabular-nums; white-space:nowrap; }
+/* Soute : tableau « Vente au comptoir ». */
+.botSellHead, .botSellRow {
+  display:grid;
+  grid-template-columns:52px minmax(0,1fr) 96px 72px;
+  gap:10px;
+  align-items:center;
+}
+.botSellHead {
+  padding:0 10px;
+  color:#75e8ff;
+  font-size:9px;
+  font-weight:900;
+  text-transform:uppercase;
+  letter-spacing:.4px;
+}
+.botSellHead span:nth-child(n+3) { text-align:right; }
+.botSellList { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); grid-template-rows:repeat(5,auto); grid-auto-flow:column; gap:4px 12px; }
+.botSellHeads { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; }
+.botSellRow {
+  padding:6px 10px;
+  border:1px solid rgba(124,240,255,.12);
+  border-radius:8px;
+  background:rgba(0,0,0,.16);
+}
+.botSellRow.off { opacity:.55; }
+.botSellName { display:flex; align-items:center; gap:8px; min-width:0; color:#eaffff; font-size:12px; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.botSellName img { width:22px; height:22px; object-fit:contain; flex:0 0 auto; }
+.botSellPrice { white-space:nowrap; text-align:right; color:#79d8ff; font-weight:800; font-size:11px; font-variant-numeric:tabular-nums; }
+.botSellPrice:not(.energy)::after { content:" cr."; }
+.botSellPrice.energy { color:#79d8ff; font-weight:800; }
+.botSellQty { text-align:right; color:#ffe14d; font-size:13px; font-variant-numeric:tabular-nums; }
 
 /* NPC : filtres + lignes. */
 .botFilterRow {
@@ -19161,6 +19193,9 @@ html body #profileOverlay #profileWindow.gameWindow > .gameWinBar .gameWinMinBtn
   .botTab { width:auto; }
   .botGrid { grid-column:1; grid-row:3; grid-template-columns:1fr; overflow:visible; }
   .botChoice, .botStatsGrid, .botBoxList, .botTwoCols, .botTallies { grid-template-columns:1fr; }
+  .botSellList { grid-template-columns:1fr; grid-template-rows:none; grid-auto-flow:row; }
+  .botSellHeads { grid-template-columns:1fr; }
+  .botSellHead + .botSellHead { display:none; }
   .botFilterRow { grid-template-columns:1fr; }
   .botNpcColumns { display:none; }
   .botNpcRow { grid-template-columns:22px minmax(0,1fr) 52px; }

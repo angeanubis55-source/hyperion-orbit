@@ -1468,14 +1468,14 @@ export function updateCurrentUserPetPseudo(pseudo, { free = false } = {}) {
   if (u.pet?.owned !== true) return { ok: false, error: "P.E.T non possédé." };
   const nextPseudo = String(pseudo || "").trim();
   if (nextPseudo.length < 3 || nextPseudo.length > 32) {
-    return { ok: false, error: "Le pseudo du REX doit contenir entre 3 et 32 caractères." };
+    return { ok: false, error: "Le pseudo du P.E.T doit contenir entre 3 et 32 caractères." };
   }
   if (!/^[\p{L}\p{N}_ -]+$/u.test(nextPseudo)) {
-    return { ok: false, error: "Le pseudo du REX contient des caractères non autorisés." };
+    return { ok: false, error: "Le pseudo du P.E.T contient des caractères non autorisés." };
   }
   if (!free) {
     if (Number(u.credits || 0) < PET_PSEUDO_CHANGE_CREDIT_COST) {
-      return { ok: false, error: "Il faut 1 000 000 crédits pour renommer le REX." };
+      return { ok: false, error: "Il faut 1 000 000 crédits pour renommer le P.E.T." };
     }
     u.credits = Math.max(0, Math.floor(Number(u.credits || 0) - PET_PSEUDO_CHANGE_CREDIT_COST));
   }
@@ -2282,7 +2282,7 @@ export function setPetActive(active) {
   const u = getCurrentUserForMutation();
   if (!u) return { ok: false, error: "Non connecté." };
   if (u.pet?.owned !== true) return { ok: false, error: "P.E.T non possédé." };
-  if (active === true && !(Number(u.pet.hp) > 0)) return { ok: false, error: "REX détruit, répare-le." };
+  if (active === true && !(Number(u.pet.hp) > 0)) return { ok: false, error: "P.E.T détruit, répare-le." };
   if (active === true && !(Math.max(0, Math.floor(Number(u.pet.fuel) || 0)) > 0)) {
     return { ok: false, error: "Plus de carburant — achète de l'essence P.E.T." };
   }
@@ -2299,7 +2299,7 @@ export function repairPet() {
   const u = getCurrentUserForMutation();
   if (!u) return { ok: false, error: "Non connecté." };
   if (u.pet?.owned !== true) return { ok: false, error: "P.E.T non possédé." };
-  if (Number(u.pet.hp) > 0) return { ok: false, error: "REX intact." };
+  if (Number(u.pet.hp) > 0) return { ok: false, error: "P.E.T intact." };
   if (Math.max(0, Number(u.credits) || 0) < PET_REPAIR_COST) {
     return { ok: false, error: `Il faut ${PET_REPAIR_COST} crédits.`, user: u };
   }

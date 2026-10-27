@@ -899,7 +899,7 @@
             <label class="botField botInline"><span>Délai avant réparation (s)</span><input id="botReviveWait" type="number" min="0" max="60" step="1" value="3" /></label>
           </section>
 
-          <!-- ÉQUIPEMENT & REX -->
+          <!-- ÉQUIPEMENT & P.E.T -->
           <section class="botSection botSpan" data-bot-section="farm">
             <div class="botSectionTitle">Configuration et formation</div>
             <div class="botCfgRow"><span>Attaque</span><div class="botSeg" id="botCfgAttackSeg" role="group" aria-label="Configuration d’attaque"><button type="button" data-v="">—</button><button type="button" data-v="1">1</button><button type="button" data-v="2">2</button></div><select id="botFormAttack" aria-label="Formation d’attaque"></select><small class="botCfgHint">Combat contre les NPC.</small></div>
@@ -908,10 +908,10 @@
           </section>
           <section class="botSection botSpan" data-bot-section="gear">
             <div class="botSectionTitle">P.E.T pendant le bot</div>
-            <label class="botSwitch"><input id="botPetEnabled" type="checkbox" /><i></i><span>Activer le REX avec le bot</span></label>
+            <label class="botSwitch"><input id="botPetEnabled" type="checkbox" /><i></i><span>Activer le P.E.T avec le bot</span></label>
             <label class="botSwitch"><input id="botPetAutoFuel" type="checkbox" /><i></i><span>Racheter du carburant automatiquement</span></label>
-            <label class="botSwitch"><input id="botPetAutoRepair" type="checkbox" /><i></i><span>Réparation automatique si le REX est détruit (10 000 crédits)</span></label>
-            <label class="botSwitch" title="Le kamikaze détruit le REX : pense à la réparation automatique."><input id="botPetAutoKk" type="checkbox" /><i></i><span>Kamikaze automatique (fonctionne uniquement si équipé)</span></label>
+            <label class="botSwitch"><input id="botPetAutoRepair" type="checkbox" /><i></i><span>Réparation automatique si le P.E.T est détruit (10 000 crédits)</span></label>
+            <label class="botSwitch" title="Le kamikaze détruit le P.E.T : pense à la réparation automatique."><input id="botPetAutoKk" type="checkbox" /><i></i><span>Kamikaze automatique (fonctionne uniquement si équipé)</span></label>
             <label class="botField"><span>Comportement principal</span><select id="botPetMode"></select></label>
             <label class="botField" id="botPetMode2Field"><span>Comportement secondaire</span><select id="botPetMode2"></select></label>
             <label class="botField" id="botPetLocField" style="display:none"><span>Liste de NPC</span><select id="botPetLocNpc" aria-label="NPC à localiser"></select></label>
@@ -923,7 +923,7 @@
           <section class="botSection" data-bot-section="cargo">
             <div class="botSectionTitle">Soute pleine</div>
             <label class="botSwitch"><input id="botCargo" type="checkbox" /><i></i><span>Gérer la soute automatiquement</span></label>
-            <label class="botField botInline"><span>Dès (% de remplissage)</span><input id="botCargoPct" type="number" min="50" max="100" step="5" value="90" /></label>
+            <label class="botField botInline"><span>Dès (% de remplissage)</span><input id="botCargoPct" type="number" min="1" max="100" step="1" value="90" /></label>
             <label class="botField"><span>Base de vente</span>
               <select id="botSellBase">
                 <option value="auto">La plus proche</option>
@@ -938,12 +938,18 @@
             <label class="botSwitch"><input id="botRefineryAuto" type="checkbox" /><i></i><span>Raffinage automatique</span></label>
             <label class="botSwitch"><input id="botRefineryAutoUpgrades" type="checkbox" /><i></i><span>Raffinage automatique des équipements</span></label>
             <div class="botRefineGrid">
-              <span>Lasers</span><select id="botRefineLaser" aria-label="Minerai des lasers"></select>
-              <span>Bouclier</span><select id="botRefineShield" aria-label="Minerai du bouclier"></select>
-              <span>Roquettes</span><select id="botRefineRocket" aria-label="Minerai des roquettes"></select>
-              <span>Vitesse</span><select id="botRefineSpeed" aria-label="Minerai de la vitesse"></select>
+              <span>Lasers</span><select id="botRefineLaser" aria-label="Minerai des lasers"></select><b class="botRefineStock" id="botRefineLaserStock">Aucun</b>
+              <span>Bouclier</span><select id="botRefineShield" aria-label="Minerai du bouclier"></select><b class="botRefineStock" id="botRefineShieldStock">Aucun</b>
+              <span>Roquettes</span><select id="botRefineRocket" aria-label="Minerai des roquettes"></select><b class="botRefineStock" id="botRefineRocketStock">Aucun</b>
+              <span>Vitesse</span><select id="botRefineSpeed" aria-label="Minerai de la vitesse"></select><b class="botRefineStock" id="botRefineSpeedStock">Aucun</b>
             </div>
             <small class="botNote">Mêmes réglages que la fenêtre Raffinerie : un changement ici s'y applique, et inversement.</small>
+          </section>
+          <section class="botSection botSpan" data-bot-section="cargo">
+            <div class="botSectionTitle botRowTitle"><span>Vente au comptoir</span><span class="botMiniActions"><button id="botSellAll" type="button">Tout</button><button id="botSellNone" type="button">Aucun</button></span></div>
+            <div class="botSellHeads" aria-hidden="true"><div class="botSellHead"><span>Vendre</span><span>Minerai</span><span>Prix</span><span>Quantité</span></div><div class="botSellHead"><span>Vendre</span><span>Minerai</span><span>Prix</span><span>Quantité</span></div></div>
+            <div id="botSellList" class="botSellList"></div>
+            <small class="botNote">Seuls les minerais cochés sont vendus quand la soute est pleine. Le Palladium est échangé contre de l'énergie Galaxy Gate.</small>
           </section>
 
         </div>
