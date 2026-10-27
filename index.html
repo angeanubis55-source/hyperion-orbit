@@ -800,44 +800,95 @@
     <div id="botWindow" class="panel botPanel botWide">
       <div class="botBody">
         <div class="botTopRow">
-          <button id="botPlayBtn" class="botPlayBtn" type="button" title="Démarrer / mettre en pause">▶</button>
-          <div class="botStatusWrap">
-            <strong id="botStatusTxt" class="botStatus">En pause</strong>
-            <small id="botTargetTxt" class="botTarget">—</small>
-          </div>
+          <button id="botPlayBtn" class="botPlayBtn" type="button" title="Démarrer">▶</button>
+          <p class="botRule"><b>L'utilisation du bot est autorisée.</b> En contrepartie, tout ce qu'il rapporte est réduit de <b>75 %</b> :<br />NPC détruits (crédits, expérience, honneur) et box ramassées. Seuls le palladium et les Sun Box gardent leur gain complet.</p>
         </div>
-        <div class="botTabs" id="botTabs">
-          <button class="botTab active" data-bot-tab="general" type="button">Général</button>
+        <nav class="botTabs" id="botTabs" aria-label="Sections du bot">
+          <button class="botTab active" data-bot-tab="dash" type="button">Tableau de bord</button>
+          <button class="botTab" data-bot-tab="farm" type="button">Configuration</button>
           <button class="botTab" data-bot-tab="npc" type="button">NPC</button>
           <button class="botTab" data-bot-tab="collect" type="button">Bonus Box</button>
-          <button class="botTab" data-bot-tab="rex" type="button">REX</button>
-        </div>
+          <button class="botTab" data-bot-tab="gear" type="button">Équipement &amp; REX</button>
+          <button class="botTab" data-bot-tab="cargo" type="button">Soute</button>
+        </nav>
         <div class="botGrid">
-          <div class="botSection" data-bot-section="general">
-            <div class="botSectionTitle">Mode de farm</div>
-            <div id="botModeRow" class="botModeRow">
-              <label class="botCheck"><input type="radio" name="botMode" value="both" checked /><span>Kill &amp; Collect</span></label>
-              <label class="botCheck"><input type="radio" name="botMode" value="kill" /><span>Kill</span></label>
-              <label class="botCheck"><input type="radio" name="botMode" value="collect" /><span>Collect</span></label>
+
+          <!-- TABLEAU DE BORD -->
+          <section class="botSection botSpan botSession" data-bot-section="dash">
+            <div class="botSectionTitle botRowTitle"><span>Session en cours</span><span class="botMiniActions"><button id="botResetStats" type="button">Remettre à zéro</button></span></div>
+            <div class="botStatsGrid">
+              <div><span>Durée</span><b id="botStatTime">—</b></div>
+              <div><span>Morts</span><b id="botStatDeaths">0</b></div>
+              <div><span>Crédits</span><b id="botStatCredits">+0</b><em id="botStatCreditsH">— / h</em></div>
+              <div><span>Expérience</span><b id="botStatXp">+0</b><em id="botStatXpH">— / h</em></div>
+              <div><span>Honneur</span><b id="botStatHonor">+0</b><em id="botStatHonorH">— / h</em></div>
+              <div><span>PDG</span><b id="botStatRank">+0</b><em id="botStatRankH">— / h</em></div>
             </div>
-          </div>
-          <div class="botSection" data-bot-section="general">
-            <div class="botSectionTitle">Travail</div>
-            <label class="botField"><span>Map de travail</span></label>
-            <div class="botMapRow">
-              <select id="botMapSelect" aria-label="Carte cible du bot"></select>
+            <div class="botTallies">
+              <div class="botTally">
+                <div class="botTallyHead"><span>NPC tués</span><b id="botStatKills">0</b><em id="botStatKillsH">— / h</em></div>
+                <div id="botKillList" class="botTallyList"></div>
+              </div>
+              <div class="botTally">
+                <div class="botTallyHead"><span>Box ramassées</span><b id="botStatBoxes">0</b><em id="botStatBoxesH">— / h</em></div>
+                <div id="botBoxTally" class="botTallyList"></div>
+              </div>
             </div>
-            <label class="botField"><span>Priorité Kill &amp; Collect</span>
-              <select id="botPriority">
-                <option value="box">Box en priorité</option>
-                <option value="npc">NPC en priorité</option>
-                <option value="nearest">Les deux simultanément</option>
+          </section>
+
+          <!-- FARM -->
+          <section class="botSection" data-bot-section="farm">
+            <div class="botSectionTitle">Zone de travail</div>
+            <label class="botField"><span>Mode de farm</span>
+              <select id="botFarmMode" aria-label="Mode de farm">
+                <option value="kill">Kill</option>
+                <option value="collect">Collect</option>
+                <option value="both:npc">Kill &amp; Collect — NPC d'abord</option>
+                <option value="both:box">Kill &amp; Collect — Box d'abord</option>
+                <option value="both:nearest">Kill &amp; Collect — Au plus proche</option>
               </select>
             </label>
-          </div>
-          <div class="botSection" data-bot-section="general">
-            <div class="botSectionTitle">Réparation si mort</div>
-            <label class="botCheck"><input id="botAutoRepair" type="checkbox" checked /><span>Réparation auto si mort</span></label>
+            <label class="botField"><span>Map de travail</span><select id="botMapSelect" aria-label="Carte cible du bot"></select></label>
+            <label class="botSwitch" title="Une box n'est prise que si on peut continuer à tirer depuis elle."><input id="botGrabInFight" type="checkbox" checked /><i></i><span>Ramasser les box proches en plein combat</span></label>
+          </section>
+          <section class="botSection" data-bot-section="farm">
+            <div class="botSectionTitle">Compétences automatiques</div>
+            <div class="botSkillRow"><label class="botSwitch"><input id="botSkillIem" type="checkbox" /><i></i><span>IEM si attaqué par (NPC)</span></label><input id="botIemFoes" type="number" min="1" max="10" step="1" value="3" aria-label="Nombre d'assaillants pour l'IEM" /></div>
+            <div class="botSkillRow"><label class="botSwitch"><input id="botSkillIsh" type="checkbox" /><i></i><span>ISH si coque sous (%)</span></label><input id="botIshPct" type="number" min="5" max="90" step="1" value="20" aria-label="Seuil de coque pour l'ISH (%)" /></div>
+            <div class="botSkillRow"><label class="botSwitch"><input id="botSkillCloak" type="checkbox" /><i></i><span>Camouflage auto après un kill NPC</span></label></div>
+            <small class="botNote">30 000 crédits par activation (IEM, ISH, camouflage).</small>
+          </section>
+
+          <!-- NPC -->
+          <section class="botSection botSpan" data-bot-section="npc">
+            <div class="botSectionTitle botRowTitle"><span>NPC à tuer <small id="botNpcCount" class="botCount"></small></span><span class="botMiniActions"><button id="botNpcAll" type="button">Tout</button><button id="botNpcNone" type="button">Aucun</button></span></div>
+            <div class="botFilterRow">
+              <input id="botNpcSearch" class="botSearch" type="search" placeholder="Rechercher un NPC…" autocomplete="off" />
+              <select id="botNpcMapFilter" aria-label="Filtrer les NPC par map"><option value="">Toutes les maps</option></select>
+            </div>
+            <div class="botNpcColumns" aria-hidden="true"><span></span><span>NPC / cartes</span><span>Priorité</span><span>Munition · SAB · salve · config · formation</span></div>
+            <div id="botNpcList" class="botCheckList botNpcList"></div>
+          </section>
+
+          <!-- BOX -->
+          <section class="botSection botSpan" data-bot-section="collect">
+            <div class="botSectionTitle botRowTitle"><span>Box à ramasser</span><span class="botMiniActions"><button id="botBoxAll" type="button">Tout</button><button id="botBoxNone" type="button">Aucun</button></span></div>
+            <div class="botCfgRow"><span>Pendant la collecte</span><div class="botSeg" id="botCfgCollectSeg" role="group" aria-label="Configuration de collecte"><button type="button" data-v="">—</button><button type="button" data-v="1">1</button><button type="button" data-v="2">2</button></div><select id="botFormCollect" aria-label="Formation de collecte"></select></div>
+            <div id="botBoxList" class="botCheckList botBoxList"></div>
+          </section>
+
+          <!-- SURVIE -->
+          <section class="botSection" data-bot-section="farm">
+            <div class="botSectionTitle">Fuite &amp; réparation</div>
+            <label class="botSwitch"><input id="botFlee" type="checkbox" checked /><i></i><span>Fuir vers la zone sûre la plus proche</span></label>
+            <label class="botField botInline"><span>Fuir sous (% coque)</span><input id="botFleePct" type="number" min="5" max="90" step="1" value="25" /></label>
+            <label class="botField botInline"><span>Reprendre à (% coque)</span><input id="botFleeResume" type="number" min="10" max="100" step="1" value="45" /></label>
+            <label class="botSwitch"><input id="botFleeCloak" type="checkbox" /><i></i><span>Camouflage pendant la fuite</span></label>
+            <small class="botNote">Camouflage : une activation au début de la fuite, 30 000 crédits.</small>
+          </section>
+          <section class="botSection" data-bot-section="farm">
+            <div class="botSectionTitle">Si le vaisseau est détruit</div>
+            <label class="botSwitch"><input id="botAutoRepair" type="checkbox" checked /><i></i><span>Réparation automatique</span></label>
             <label class="botField"><span>Réapparaître</span>
               <select id="botRespawn">
                 <option value="base">À la base</option>
@@ -845,55 +896,49 @@
                 <option value="here">Sur place</option>
               </select>
             </label>
-            <label class="botField"><span>Délai avant réparation (s)</span><input id="botReviveWait" type="number" min="0" max="60" step="1" value="3" /></label>
-            <label class="botField"><span>Morts max (0 = illimité)</span><input id="botMaxDeaths" type="number" min="0" max="999" step="1" value="0" /></label>
-          </div>
-          <div class="botSection" data-bot-section="general">
-            <div class="botSectionTitle">Exploration, fuite et navigation</div>
-            <div class="botCfgRow"><span>Exploration</span><div class="botSeg" id="botCfgFlySeg" role="group" aria-label="Configuration d’exploration"><button type="button" data-v="">—</button><button type="button" data-v="1">1</button><button type="button" data-v="2">2</button></div><select id="botFormMove" aria-label="Formation d’exploration"></select></div>
-            <div class="botCfgRow"><span>Fuite</span><div class="botSeg" id="botCfgFleeSeg" role="group" aria-label="Configuration de fuite"><button type="button" data-v="">—</button><button type="button" data-v="1">1</button><button type="button" data-v="2">2</button></div><select id="botFormFlee" aria-label="Formation de fuite"></select></div>
-            <div class="botCfgRow"><span>Navigation</span><div class="botSeg" id="botCfgTravelSeg" role="group" aria-label="Configuration de navigation"><button type="button" data-v="">—</button><button type="button" data-v="1">1</button><button type="button" data-v="2">2</button></div><select id="botFormTravel" aria-label="Formation de navigation"></select></div>
-            <small class="botNote">Exploration : recherche de cibles. Fuite : repli pour se réparer. Navigation : trajet entre les cartes. — conserve le réglage actuel.</small>
-          </div>
-          <div class="botSection" data-bot-section="general">
-            <div class="botSectionTitle">Compétences auto</div>
-            <label class="botCheck"><input id="botSkillIem" type="checkbox" /><span>IEM si assailli par au moins</span></label>
-            <label class="botField"><span>Assaillants (nombre)</span><input id="botIemFoes" type="number" min="1" max="10" step="1" value="3" /></label>
-            <label class="botCheck"><input id="botSkillIsh" type="checkbox" /><span>ISH sous (coque %)</span></label>
-            <label class="botField"><span>Seuil ISH (% coque)</span><input id="botIshPct" type="number" min="5" max="90" step="1" value="20" /></label>
-            <label class="botCheck"><input id="botSkillCloak" type="checkbox" /><span>Camouflage automatique</span></label>
-            <small class="botNote">Camouflage après la destruction de la cible du bot : 30 000 crédits par activation. REP = robot réparateur passif, toujours actif (30 000 crédits par IEM/ISH).</small>
-          </div>
-          <div class="botSection" data-bot-section="rex">
+            <label class="botField botInline"><span>Délai avant réparation (s)</span><input id="botReviveWait" type="number" min="0" max="60" step="1" value="3" /></label>
+          </section>
+
+          <!-- ÉQUIPEMENT & REX -->
+          <section class="botSection botSpan" data-bot-section="farm">
+            <div class="botSectionTitle">Configuration et formation</div>
+            <div class="botCfgRow"><span>Attaque</span><div class="botSeg" id="botCfgAttackSeg" role="group" aria-label="Configuration d’attaque"><button type="button" data-v="">—</button><button type="button" data-v="1">1</button><button type="button" data-v="2">2</button></div><select id="botFormAttack" aria-label="Formation d’attaque"></select><small class="botCfgHint">Combat contre les NPC réglés « Par défaut » (onglet NPC).</small></div>
+            <div class="botCfgRow"><span>Exploration &amp; navigation</span><div class="botSeg" id="botCfgFlySeg" role="group" aria-label="Configuration d’exploration et de navigation"><button type="button" data-v="">—</button><button type="button" data-v="1">1</button><button type="button" data-v="2">2</button></div><select id="botFormMove" aria-label="Formation d’exploration et de navigation"></select><small class="botCfgHint">Recherche de cibles et trajet entre les maps.</small></div>
+            <div class="botCfgRow"><span>Fuite</span><div class="botSeg" id="botCfgFleeSeg" role="group" aria-label="Configuration de fuite"><button type="button" data-v="">—</button><button type="button" data-v="1">1</button><button type="button" data-v="2">2</button></div><select id="botFormFlee" aria-label="Formation de fuite"></select><small class="botCfgHint">Repli vers une zone sûre pour se réparer.</small></div>
+          </section>
+          <section class="botSection botSpan" data-bot-section="gear">
             <div class="botSectionTitle">REX pendant le bot</div>
-            <label class="botCheck"><input id="botPetEnabled" type="checkbox" /><span>Activer le REX avec le bot</span></label>
-            <label class="botCheck"><input id="botPetAutoFuel" type="checkbox" /><span>Achat automatique de carburant</span></label>
+            <label class="botSwitch"><input id="botPetEnabled" type="checkbox" /><i></i><span>Activer le REX avec le bot</span></label>
+            <label class="botSwitch"><input id="botPetAutoFuel" type="checkbox" /><i></i><span>Racheter du carburant automatiquement</span></label>
             <label class="botField"><span>Comportement</span><select id="botPetMode"></select></label>
-            <small class="botNote">Le comportement et le module choisis sont appliqués réellement au REX actif.</small>
-          </div>
-          <div class="botSection" data-bot-section="general">
-            <div class="botSectionTitle">Fuite &amp; réparation (style DarkBot)</div>
-            <label class="botCheck"><input id="botFlee" type="checkbox" checked /><span>Fuir vers la zone de non-agression la plus proche pour se réparer sous</span></label>
-            <label class="botField"><span>Seuil de fuite (% coque)</span><input id="botFleePct" type="number" min="5" max="90" step="1" value="25" /></label>
-            <label class="botField"><span>Reprise à (% coque)</span><input id="botFleeResume" type="number" min="10" max="100" step="1" value="45" /></label>
-            <label class="botCheck"><input id="botFleeCloak" type="checkbox" /><span>Camouflage automatique pour réparer</span></label>
-            <small class="botNote">Une activation au début de la fuite, dès que le CPU est prêt : 30 000 crédits.</small>
-          </div>
-          <div class="botSection botSpan" data-bot-section="npc">
-            <div class="botSectionTitle botRowTitle"><span>NPC à tuer <small id="botNpcCount" class="botCount"></small></span><span class="botMiniActions"><button id="botNpcAll" type="button">Tout</button><button id="botNpcNone" type="button">Aucun</button></span></div>
-            <div class="botFilterRow">
-              <select id="botNpcMapFilter" aria-label="Filtrer les NPC par map"><option value="">Toutes les maps</option></select>
-              <label class="botCheck"><input id="botNpcUnknown" type="checkbox" /><span>Inclure les NPC non localisés</span></label>
+            <small class="botNote">Le comportement et le module choisis sont appliqués au REX actif.</small>
+          </section>
+
+          <!-- SOUTE -->
+          <section class="botSection" data-bot-section="cargo">
+            <div class="botSectionTitle">Soute pleine</div>
+            <label class="botSwitch"><input id="botCargo" type="checkbox" /><i></i><span>Gérer la soute automatiquement</span></label>
+            <label class="botField botInline"><span>Dès (% de remplissage)</span><input id="botCargoPct" type="number" min="50" max="100" step="5" value="90" /></label>
+            <label class="botField"><span>Base de vente</span>
+              <select id="botSellBase">
+                <option value="auto">La plus proche</option>
+                <option value="low">Base X-1</option>
+                <option value="high">Base X-8</option>
+              </select>
+            </label>
+            <small class="botNote">D'abord le raffinage ci-contre. Si la soute reste pleine, le bot va vendre au comptoir puis reprend le farm.</small>
+          </section>
+          <section class="botSection" data-bot-section="cargo">
+            <div class="botSectionTitle">Raffinage automatique</div>
+            <div class="botRefineGrid">
+              <span>Lasers</span><select id="botRefineLaser"></select><input id="botRefineLaserQty" type="number" min="1" max="999" step="1" value="20" />
+              <span>Bouclier</span><select id="botRefineShield"></select><input id="botRefineShieldQty" type="number" min="1" max="999" step="1" value="20" />
+              <span>Roquettes</span><select id="botRefineRocket"></select><input id="botRefineRocketQty" type="number" min="1" max="999" step="1" value="20" />
+              <span>Vitesse</span><select id="botRefineSpeed"></select><input id="botRefineSpeedQty" type="number" min="1" max="999" step="1" value="20" />
             </div>
-            <input id="botNpcSearch" class="botSearch" type="search" placeholder="Rechercher un NPC…" autocomplete="off" />
-            <div class="botNpcColumns" aria-hidden="true"><span></span><span>NPC / cartes</span><span>Priorité</span><span>Munition / SAB / X6 / config / formation</span></div>
-            <div id="botNpcList" class="botCheckList botNpcList"></div>
-          </div>
-          <div class="botSection botSpan" data-bot-section="collect">
-            <div class="botSectionTitle botRowTitle"><span>Bonus Box</span><span class="botMiniActions"><button id="botBoxAll" type="button">Tout</button><button id="botBoxNone" type="button">Aucun</button></span></div>
-            <div class="botCfgRow"><span>Collecte</span><div class="botSeg" id="botCfgCollectSeg"><button type="button" data-v="">—</button><button type="button" data-v="1">1</button><button type="button" data-v="2">2</button></div><select id="botFormCollect" aria-label="Formation de collecte"></select></div>
-            <div id="botBoxList" class="botCheckList"></div>
-          </div>
+            <small class="botNote">Quantité de minerai chargée par slot (1 minerai = 10 tirs / 10 min). Un slot déjà chargé avec un autre minerai n'est jamais écrasé.</small>
+          </section>
+
         </div>
       </div>
     </div>

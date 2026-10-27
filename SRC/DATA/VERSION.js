@@ -1,1 +1,1 @@
-export const GAME_VERSION = "0.524";
+export const GAME_VERSION = "0.525";

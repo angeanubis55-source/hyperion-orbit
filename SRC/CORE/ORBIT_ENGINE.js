@@ -41,6 +41,8 @@ import {
 import { drawEngineTrailParticles, updateEngineTrailParticles } from "./ENGINE_TRAILS.js";
 import { computeBotCombatMove, computeBotWallMove, isPointInWall } from "./BOT_NAVIGATION.js";
 import { blacklightSearchTarget } from "./BOT_SEARCH.js";
+import { botCatalogGroups, botMapGroupKey, botMapGroupLabel, botMapsLabel, buildBotNpcCatalog } from "./BOT_NPC_CATALOG.js";
+import { watchSelects } from "../../UI/UI_SELECT_COMBO.js";
 import { SpatialIndex } from "./SPATIAL_INDEX.js";
 import { normalizeMapId } from "./MAP_REGISTRY.js";
 import { getPortalSkinForMap } from "./PORTAL_SKINS.js";
@@ -11745,6 +11747,9 @@ const Bot = {
   boxAllow: new Set(),
   npcMapFilter: "",
   formMove: "",
+  // Attaque : configuration / formation de combat quand le NPC est « par défaut ».
+  formAttack: "",
+  cfgAttack: "",
   cfgFly: "",
   formFlee: "",
   cfgFlee: "",
@@ -11761,22 +11766,22 @@ const Bot = {
   npcAmmo: Object.create(null),
   npcSab: Object.create(null),
   npcX6: Object.create(null),
+  npcBurst: Object.create(null),
+  npcInstant: Object.create(null),
   npcForm: Object.create(null),
   npcCfg: Object.create(null),
-  npcIncludeUnknown: false,
-  npcSeen: Object.create(null),
-  sightT: 0,
+  npcRowsKnown: new Set(),
+  npcRowsKnownLoaded: false,
+  catalogT: 0,
+  catalogSig: "",
   formCollect: "",
   cfgCollect: "",
   npcPrio: Object.create(null),
   fleeResume: 45,
-  maxDeaths: 0,
   reviveWait: 3,
   deaths: 0,
   wasDead: false,
   statsT0: 0,
-  credits0: 0,
-  exp0: 0,
   moveTag: null,
   combatMoveTargetId: null,
   moveOrderedAt: 0,
@@ -11796,33 +11801,37 @@ const Bot = {
   fleePct: 25,
   fleeCloak: false,
   fleeCloakUsed: false,
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+  // Recherche des box (0 = toute la map) et box ramassées en plein combat.
+  boxRadius: 0,
+  grabInFight: true,
+  grabRadius: 700,
+  grabT0: 0,
+  // Compteurs de session (depuis le démarrage) : totaux et détail par type.
+  kills0: 0,
+  killsByType: Object.create(null),
+  boxesByType: Object.create(null),
+  lastNpcType: "",
+  lastBoxType: "",
+  gains0: null,
+  gainsEnd: null,
+  boxes0: 0,
+  // Soute pleine : raffinage puis vente au comptoir.
+  cargo: false,
+  cargoPct: 90,
+  sellBase: "auto",
+  selling: false,
+  travelOverride: "",
+  refine: {
+    laser: { ore: "", qty: 20 },
+    shield: { ore: "", qty: 20 },
+    rocket: { ore: "", qty: 20 },
+    speed: { ore: "", qty: 20 },
+  },
   skillIem: false,
   iemFoes: 3,
   skillIsh: false,
   skillCloak: false,
+  cloakAt: 0,
   cloakPendingMap: null,
   ishPct: 20,
   kills: 0,
@@ -11845,7 +11854,7 @@ const Bot = {
   status: "En pause",
   target: "—",
   hudT: 0,
-  tab: "general",
+  tab: "dash",
 };
 
 function botNotifyManual() {
@@ -11865,6 +11874,8 @@ function botSaveConfig() {
       boxAllow: [...Bot.boxAllow],
       npcMapFilter: Bot.npcMapFilter,
       formMove: Bot.formMove,
+      formAttack: Bot.formAttack,
+      cfgAttack: Bot.cfgAttack,
       cfgFly: Bot.cfgFly,
       formFlee: Bot.formFlee,
       cfgFlee: Bot.cfgFlee,
@@ -11877,23 +11888,22 @@ function botSaveConfig() {
       cfgCollect: Bot.cfgCollect,
       npcPrio: Bot.npcPrio,
       fleeResume: Bot.fleeResume,
-      maxDeaths: Bot.maxDeaths,
       reviveWait: Bot.reviveWait,
       npcAmmo: Bot.npcAmmo,
       npcSab: Bot.npcSab,
-      npcX6: Bot.npcX6,
+      npcBurst: Bot.npcBurst,
+      npcInstant: Bot.npcInstant,
       npcForm: Bot.npcForm,
       npcCfg: Bot.npcCfg,
-      npcIncludeUnknown: Bot.npcIncludeUnknown,
-      npcSeen: Bot.npcSeen,
+      npcRowsKnown: [...Bot.npcRowsKnown],
       flee: Bot.flee,
       fleePct: Bot.fleePct,
       fleeCloak: Bot.fleeCloak,
-
-
-
-
-
+      grabInFight: Bot.grabInFight,
+      cargo: Bot.cargo,
+      cargoPct: Bot.cargoPct,
+      sellBase: Bot.sellBase,
+      refine: Bot.refine,
       skillIem: Bot.skillIem,
       iemFoes: Bot.iemFoes,
       skillIsh: Bot.skillIsh,
@@ -11928,8 +11938,10 @@ function botLoadConfig() {
       Bot.boxAllow = new Set(data.boxAllow.map(String));
       Bot.boxSelectionLoaded = true;
     }
-    if (typeof data.npcMapFilter === "string") Bot.npcMapFilter = data.npcMapFilter;
+    if (typeof data.npcMapFilter === "string") Bot.npcMapFilter = data.npcMapFilter ? botMapGroupKey(data.npcMapFilter) : "";
     if (typeof data.formMove === "string") Bot.formMove = data.formMove;
+    if (typeof data.formAttack === "string") Bot.formAttack = data.formAttack;
+    Bot.cfgAttack = data.cfgAttack === "1" || data.cfgAttack === "2" ? data.cfgAttack : "";
     if (data.cfgFly === "1" || data.cfgFly === "2") Bot.cfgFly = data.cfgFly;
     // Les anciens profils partageaient exploration, fuite et voyage.
     // Migrer les champs absents, mais conserver un choix explicite « — ».
@@ -11938,6 +11950,9 @@ function botLoadConfig() {
       const savedCfg = data[cfgKey] === undefined ? Bot.cfgFly : data[cfgKey];
       Bot[cfgKey] = savedCfg === "1" || savedCfg === "2" ? savedCfg : "";
     }
+    // Exploration et navigation fusionnées dans la fenêtre : même réglage.
+    Bot.formTravel = Bot.formMove;
+    Bot.cfgTravel = Bot.cfgFly;
     if (typeof data.petMode === "string") Bot.petMode = data.petMode;
     if (typeof data.petEnabled === "boolean") Bot.petEnabled = data.petEnabled;
     if (typeof data.petAutoFuel === "boolean") Bot.petAutoFuel = data.petAutoFuel;
@@ -11951,22 +11966,33 @@ function botLoadConfig() {
     }
     const fr = Math.floor(Number(data.fleeResume));
     if (Number.isFinite(fr)) Bot.fleeResume = Math.max(10, Math.min(100, fr));
-    const md = Math.floor(Number(data.maxDeaths));
-    Bot.maxDeaths = Number.isFinite(md) ? Math.max(0, Math.min(999, md)) : 0;
     const rw = Math.floor(Number(data.reviveWait));
     Bot.reviveWait = Number.isFinite(rw) ? Math.max(0, Math.min(60, rw)) : 3;
     if (typeof data.flee === "boolean") Bot.flee = data.flee;
     if (typeof data.fleeCloak === "boolean") Bot.fleeCloak = data.fleeCloak;
     const fp = Math.floor(Number(data.fleePct));
     if (Number.isFinite(fp)) Bot.fleePct = Math.max(5, Math.min(90, fp));
-
-
-
-
-
-
-
-
+    const intIn = (value, min, max, fallback) => {
+      const n = Math.floor(Number(value));
+      return Number.isFinite(n) ? Math.max(min, Math.min(max, n)) : fallback;
+    };
+    if (typeof data.grabInFight === "boolean") Bot.grabInFight = data.grabInFight;
+    if (typeof data.cargo === "boolean") Bot.cargo = data.cargo;
+    Bot.cargoPct = intIn(data.cargoPct, 50, 100, Bot.cargoPct);
+    if (["auto", "low", "high"].includes(data.sellBase)) Bot.sellBase = data.sellBase;
+    // Isolé : un réglage de raffinage illisible ne doit pas faire perdre
+    // tout le reste du profil.
+    try {
+      for (const slot of Object.keys(Bot.refine)) {
+        const saved = data.refine?.[slot];
+        if (!saved || typeof saved !== "object") continue;
+        const ore = String(saved.ore || "").toLowerCase();
+        Bot.refine[slot] = {
+          ore: (UPGRADE_SLOT_ORES[slot] || []).includes(ore) ? ore : "",
+          qty: intIn(saved.qty, 1, 999, 20),
+        };
+      }
+    } catch {}
     if (typeof data.skillIem === "boolean") Bot.skillIem = data.skillIem;
     const foes = Math.floor(Number(data.iemFoes));
     if (Number.isFinite(foes)) Bot.iemFoes = Math.max(1, Math.min(10, foes));
@@ -11980,17 +12006,25 @@ function botLoadConfig() {
         if (BOT_AMMO_IDS.includes(a)) Bot.npcAmmo[String(k)] = a;
       }
     }
-    for (const key of ["npcSab", "npcX6", "npcForm", "npcCfg"]) {
+    for (const key of ["npcSab", "npcX6", "npcBurst", "npcInstant", "npcForm", "npcCfg"]) {
       if (data[key] && typeof data[key] === "object") Bot[key] = { ...data[key] };
     }
-    if (typeof data.npcIncludeUnknown === "boolean") Bot.npcIncludeUnknown = data.npcIncludeUnknown;
-    if (data.npcSeen && typeof data.npcSeen === "object") {
-      for (const [k, v] of Object.entries(data.npcSeen)) {
-        if (Array.isArray(v)) Bot.npcSeen[String(k)] = v.map(String).slice(0, 12);
-      }
+    // Ancienne case X6 cochée = salve X6 (la liste Salve remplace la case).
+    for (const [t, on] of Object.entries(Bot.npcX6)) {
+      if (on === true && !Bot.npcBurst[t]) Bot.npcBurst[t] = "x6";
+    }
+    Bot.npcX6 = Object.create(null);
+    // Lignes de la liste fixe déjà proposées (une ligne nouvelle est cochée
+    // d'office). Absent = ancien profil : voir botSyncNpcCatalog.
+    if (Array.isArray(data.npcRowsKnown)) {
+      Bot.npcRowsKnown = new Set(data.npcRowsKnown.map(String));
+      Bot.npcRowsKnownLoaded = true;
     }
     Bot.kills = Math.max(0, Math.floor(Number(data.kills) || 0));
     Bot.boxes = Math.max(0, Math.floor(Number(data.boxes) || 0));
+    // La session repart de zéro à chaque chargement.
+    Bot.kills0 = Bot.kills;
+    Bot.boxes0 = Bot.boxes;
     if (typeof data.tab === "string") {
       const migrated = BOT_TAB_LEGACY[data.tab] || data.tab;
       if (document.querySelector(`#botTabs [data-bot-tab="${migrated}"]`)) Bot.tab = migrated;
@@ -12004,16 +12038,20 @@ function botLog(text) {
   const el = document.getElementById("botLog");
   if (!el) return;
   const line = document.createElement("div");
-  line.textContent = text;
+  const time = document.createElement("time");
+  const now = new Date();
+  time.textContent = [now.getHours(), now.getMinutes(), now.getSeconds()].map((n) => String(n).padStart(2, "0")).join(":");
+  line.append(time, document.createTextNode(String(text)));
   el.prepend(line);
-  while (el.children.length > 30) el.removeChild(el.lastChild);
+  while (el.children.length > 60) el.removeChild(el.lastChild);
 }
 
 // Onglets de la fenêtre : n'affiche que les sections de l'onglet actif.
-const BOT_TABS = ["general", "npc", "collect", "rex"];
-const BOT_TAB_LEGACY = Object.freeze({ combat: "attack", boxes: "collect" });
+const BOT_TABS = ["dash", "farm", "npc", "collect", "gear", "cargo"];
+const BOT_TAB_LEGACY = Object.freeze({ general: "farm", combat: "npc", boxes: "collect", rex: "gear", survival: "farm" });
 function botSwitchTab(name) {
-  if (!BOT_TABS.includes(name)) name = "general";
+  name = BOT_TAB_LEGACY[name] || name;
+  if (!BOT_TABS.includes(name)) name = "dash";
   Bot.tab = name;
   document.querySelectorAll("#botTabs .botTab").forEach((btn) => {
     btn.classList.toggle("active", btn.dataset.botTab === name);
@@ -12036,62 +12074,136 @@ function botRefreshHud() {
   }
   if (targetEl) targetEl.textContent = Bot.active ? Bot.target : "—";
   if (playEl) {
-    // ✅ ne remplace le nÅ“ud texte que sur changement d'état : sinon le
-    // remplacement à chaque refresh peut avaler un clic en cours.
-    const txt = Bot.active ? "⏸" : "▶";
-    if (playEl.textContent !== txt) playEl.textContent = txt;
+    // Mêmes icônes que le bouton du P.E.T. On ne touche au DOM que sur
+    // changement d'état : sinon le remplacement peut avaler un clic en cours.
+    const state = Bot.active ? "pause" : "play";
+    if (playEl.dataset.state !== state) {
+      playEl.dataset.state = state;
+      playEl.innerHTML = Bot.active
+        ? '<svg viewBox="0 0 16 16" width="14" height="14"><rect x="3" y="2" width="4" height="12" rx="1" fill="#eaffff"/><rect x="9" y="2" width="4" height="12" rx="1" fill="#eaffff"/></svg>'
+        : '<svg viewBox="0 0 16 16" width="14" height="14"><path d="M4 2 L13 8 L4 14 Z" fill="#eaffff"/></svg>';
+    }
     playEl.classList.toggle("running", Bot.active);
     const tip = Bot.active ? "Mettre en pause" : "Démarrer";
     if (playEl.title !== tip) playEl.title = tip;
   }
+  botRefreshStats();
 }
 
-// Stats de session (onglet Stats) : durée, gains et taux horaires.
+// Compteurs de la session en cours (depuis le dernier démarrage).
+function botSessionKills() { return Math.max(0, Bot.kills - Bot.kills0); }
+function botSessionBoxes() { return Math.max(0, Bot.boxes - Bot.boxes0); }
+function botTally(map, type) {
+  const key = String(type || "");
+  if (!key) return;
+  map[key] = (Number(map[key]) || 0) + 1;
+}
+
+// Gains du compte (crédits, XP, honneur, PDG) à un instant donné.
+function botGainsNow() {
+  const stats = account.user?.stats || {};
+  return {
+    credits: Math.max(0, Math.floor(Number(player.credits) || 0)),
+    exp: Math.max(0, Math.floor(Number(stats.exp) || 0)),
+    honor: Math.max(0, Math.floor(Number(stats.honor) || 0)),
+    rank: calculateRankPoints(stats),
+  };
+}
+
+// Liste « type → nombre » de la session, du plus fréquent au moins fréquent.
+// Les variantes d'un même NPC (events) sont regroupées sous leur nom.
+function botTallyHtml(map, nameOf, empty) {
+  const byName = new Map();
+  for (const [type, count] of Object.entries(map || {})) {
+    const name = String(nameOf(type) || type);
+    byName.set(name, (byName.get(name) || 0) + (Number(count) || 0));
+  }
+  const rows = [...byName.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], "fr"));
+  if (!rows.length) return `<div class="botTallyEmpty">${escapeHtml(empty)}</div>`;
+  return rows.map(([name, count]) => `<div><span title="${escapeHtml(name)}">${escapeHtml(name)}</span><b>${formatInteger(count)}</b></div>`).join("");
+}
+
+// Stats de session (tableau de bord + bandeau) : rafraîchies 4 fois par
+// seconde pendant le bot ; le « par heure » s'affiche dès la 1re seconde.
 function botRefreshStats() {
   if (!shouldRefreshWindow("botWindow")) return;
   const set = (id, txt) => {
     const el = document.getElementById(id);
     if (el && el.textContent !== txt) el.textContent = txt;
   };
-  set("botStatKills", String(Bot.kills));
-  set("botStatBoxes", String(Bot.boxes));
-  set("botStatDeaths", String(Bot.deaths));
-  if (!Bot.statsT0) {
+  const setHtml = (id, html) => {
+    const el = document.getElementById(id);
+    if (el && el.dataset.html !== html) { el.dataset.html = html; el.innerHTML = html; }
+  };
+  const kills = botSessionKills();
+  const boxes = botSessionBoxes();
+  set("botStatKills", formatInteger(kills));
+  set("botStatBoxes", formatInteger(boxes));
+  set("botKillCount", formatInteger(kills));
+  set("botBoxCount", formatInteger(boxes));
+  set("botStatDeaths", formatInteger(Bot.deaths));
+  setHtml("botKillList", botTallyHtml(Bot.killsByType, (t) => NPC_TYPES[t]?.name, "Aucun NPC tué pour l'instant."));
+  setHtml("botBoxTally", botTallyHtml(Bot.boxesByType, (t) => COLLECTABLE_TYPES[t]?.name, "Aucune box ramassée pour l'instant."));
+  const sign = (n) => (n < 0 ? "-" : "+") + formatInteger(Math.abs(n));
+  const rows = [
+    ["botStatCredits", "botStatCreditsH", "credits"],
+    ["botStatXp", "botStatXpH", "exp"],
+    ["botStatHonor", "botStatHonorH", "honor"],
+    ["botStatRank", "botStatRankH", "rank"],
+  ];
+  if (!Bot.statsT0 || !Bot.gains0) {
     set("botStatTime", "—");
-    set("botStatCredits", "+0");
-    set("botStatCreditsH", "—");
-    set("botStatXp", "+0");
-    set("botStatXpH", "—");
+    set("botHeroTime", "—");
+    set("botHeroCreditsH", "—");
+    for (const [valueId, rateId] of rows) { set(valueId, "+0"); set(rateId, "— / h"); }
+    set("botStatKillsH", "— / h");
+    set("botStatBoxesH", "— / h");
     return;
   }
-  const elapsedS = Math.max(0, (Date.now() - Bot.statsT0) / 1000);
-  const mm = String(Math.floor(elapsedS / 60)).padStart(2, "0");
+  // En pause : session figée (durée et gains au moment de la pause).
+  const frozen = !Bot.active && Bot.statsEnd > 0;
+  const elapsedS = Math.max(0, ((frozen ? Bot.statsEnd : Date.now()) - Bot.statsT0) / 1000);
+  const mm = String(Math.floor(elapsedS / 60) % 60).padStart(2, "0");
   const ss = String(Math.floor(elapsedS % 60)).padStart(2, "0");
   const hh = Math.floor(elapsedS / 3600);
-  set("botStatTime", hh > 0 ? `${hh}h${mm}m` : `${mm}:${ss}`);
-  let credits = 0;
-  let exp = 0;
-  try {
-    credits = Math.max(0, Math.floor(Number(player.credits) || 0)) - Bot.credits0;
-    exp = Math.max(0, Math.floor(Number(account.user?.stats?.exp) || 0)) - Bot.exp0;
-  } catch {}
-  const sign = (n) => (n < 0 ? "-" : "+") + formatInteger(Math.abs(n));
-  set("botStatCredits", sign(credits));
-  set("botStatXp", sign(exp));
-
-  if (elapsedS >= 60) {
-    const perH = (n) => sign(Math.round(n / elapsedS * 3600));
-    set("botStatCreditsH", perH(credits));
-    set("botStatXpH", perH(exp));
-  } else {
-    set("botStatCreditsH", "—");
-    set("botStatXpH", "—");
+  const time = hh > 0 ? `${hh}h${mm}m` : `${mm}:${ss}`;
+  set("botStatTime", time);
+  set("botHeroTime", time);
+  let now = Bot.gains0;
+  try { now = frozen && Bot.gainsEnd ? Bot.gainsEnd : botGainsNow(); } catch {}
+  const perH = (n) => (elapsedS >= 1 ? `${sign(Math.round(n / elapsedS * 3600))} / h` : "— / h");
+  for (const [valueId, rateId, key] of rows) {
+    const gained = (Number(now[key]) || 0) - (Number(Bot.gains0[key]) || 0);
+    set(valueId, sign(gained));
+    set(rateId, perH(gained));
   }
+  const creditsGained = (Number(now.credits) || 0) - (Number(Bot.gains0.credits) || 0);
+  set("botHeroCreditsH", elapsedS >= 1 ? sign(Math.round(creditsGained / elapsedS * 3600)) : "—");
+  set("botStatKillsH", elapsedS >= 1 ? `${formatInteger(Math.round(kills / elapsedS * 3600))} / h` : "— / h");
+  set("botStatBoxesH", elapsedS >= 1 ? `${formatInteger(Math.round(boxes / elapsedS * 3600))} / h` : "— / h");
+}
+
+// Nouvelle session : chrono, gains de référence et détails par type à zéro.
+function botStartSession() {
+  Bot.statsT0 = Date.now();
+  Bot.statsEnd = 0;
+  Bot.gainsEnd = null;
+  try { Bot.gains0 = botGainsNow(); } catch { Bot.gains0 = null; }
+  Bot.kills0 = Bot.kills;
+  Bot.boxes0 = Bot.boxes;
+  Bot.killsByType = Object.create(null);
+  Bot.boxesByType = Object.create(null);
+  Bot.deaths = 0;
 }
 
 function botSetActive(on) {
+  const wasActive = Bot.active;
   Bot.active = !!on;
   Bot.fleeCloakUsed = false;
+  Bot.grabT0 = 0;
+  Bot.profileKey = null;
+  Bot.profileWantKey = null;
+  Bot.formFailId = "";
   Bot.repairT = 0;
   Bot.travelCd = 0;
   Bot.jumpCd = 0;
@@ -12118,6 +12230,12 @@ function botSetActive(on) {
   Bot.lastNpcKey = null;
 
   if (!Bot.active) {
+    if (wasActive) {
+      try {
+        Bot.statsEnd = Date.now();
+        Bot.gainsEnd = botGainsNow();
+      } catch { Bot.statsEnd = 0; }
+    }
     Bot.status = "En pause";
     Bot.target = "—";
     botRestorePetMode();
@@ -12127,12 +12245,7 @@ function botSetActive(on) {
   } else {
     Bot.status = "Démarré";
     botSnapshotLoadout();
-    try {
-      Bot.statsT0 = Date.now();
-      Bot.credits0 = Math.max(0, Math.floor(Number(player.credits) || 0));
-      Bot.exp0 = Math.max(0, Math.floor(Number(account.user?.stats?.exp) || 0));
-    } catch { Bot.statsT0 = 0; Bot.credits0 = 0; Bot.exp0 = 0; }
-    Bot.deaths = 0;
+    botStartSession();
     Bot.wasDead = false;
     Bot.grabCd = 0;
 
@@ -12147,6 +12260,36 @@ function botSetActive(on) {
 function botNpcPrio(type) {
   const p = Math.floor(Number(Bot.npcPrio[String(type)]));
   return Number.isFinite(p) ? Math.max(0, Math.min(99, p)) : 0;
+}
+
+// Salve par NPC (liste « Salve » : non / X6 / RCB).
+const BOT_BURST_IDS = ["x6", "rcb"];
+function botNpcBurst(type) {
+  const burst = String(Bot.npcBurst[String(type)] || "");
+  return BOT_BURST_IDS.includes(burst) ? burst : "";
+}
+
+// NPC « immédiat » : dès qu'il est en vue, il passe devant tout (cible en
+// cours, box). Plusieurs en vue : le plus proche. Un NPC immédiat déjà
+// engagé est gardé jusqu'à sa mort (pas de bascule entre deux immédiats).
+function botNpcInstant(type) {
+  return Bot.npcInstant[String(type)] === true;
+}
+function botInstantNpc(locked) {
+  try {
+    if (locked && Number(locked.hp) > 0 && botNpcInstant(locked.type) && Bot.npcAllow.has(String(locked.type))) return locked;
+    let best = null;
+    let bestD2 = Infinity;
+    for (const e of enemies) {
+      if (!e || Number(e.hp) <= 0 || e.isPetTarget || e.isJpcBot === true) continue;
+      if (!botNpcInstant(e.type) || !Bot.npcAllow.has(String(e.type))) continue;
+      if (!botNpcVisible(e) || botNpcInWall(e)) continue;
+      if (e.id != null && botNpcWallBanActive(e.id)) continue;
+      const d2 = dist2(player.x, player.y, e.x, e.y);
+      if (d2 < bestD2) { bestD2 = d2; best = e; }
+    }
+    return best;
+  } catch { return null; }
 }
 
 // Rayon de combat (la "zone") : TOUJOURS notre portee laser max, en direct.
@@ -12168,8 +12311,29 @@ function botCombatDistance(npcOrType) {
 function botApplyMoveProfile(phase) {
   const [formKey, cfgKey] = phase === "flee" ? ["formFlee", "cfgFlee"]
     : phase === "travel" ? ["formTravel", "cfgTravel"] : ["formMove", "cfgFly"];
-  botApplyFormation(Bot[formKey]);
-  botApplyConfig(Bot[cfgKey]);
+  botUseProfile(phase === "flee" ? "flee" : phase === "travel" ? "travel" : "explore", Bot[formKey], Bot[cfgKey]);
+}
+
+// Change de profil (formation + configuration) avec MAINTIEN : un profil
+// doit être demandé 1,5 s d'affilée avant de remplacer celui en place
+// (la fuite reste immédiate). Sans ça, les passages combat / patrouille /
+// collecte basculaient formation et config en boucle (sauvegarde du compte
+// et bouclier touchés à chaque fois) dès qu'Attaque différait d'Exploration.
+const BOT_PROFILE_HOLD_MS = 1500;
+function botUseProfile(phase, form, cfg) {
+  const key = `${phase}|${form || ""}|${cfg || ""}`;
+  const now = performance.now();
+  if (Bot.profileKey !== key) {
+    if (Bot.profileWantKey !== key) {
+      Bot.profileWantKey = key;
+      Bot.profileWantAt = now;
+    }
+    if (phase !== "flee" && Bot.profileKey && now - Bot.profileWantAt < BOT_PROFILE_HOLD_MS) return;
+    Bot.profileKey = key;
+  }
+  Bot.profileWantKey = null;
+  botApplyFormation(form);
+  botApplyConfig(cfg);
 }
 
 // Bascule silencieuse de configuration 1/2 (même logique que le bouton,
@@ -12345,9 +12509,18 @@ function botApplyFormation(id) {
     Bot.lastFormation = String(id);
     return;
   }
+  // Formation refusée (recharge 2 s, non possédée, pas assez de drones) :
+  // un seul nouvel essai par seconde, pas à chaque image.
+  const now = performance.now();
+  if (Bot.formFailId === String(id) && now - (Number(Bot.formFailAt) || 0) < 1000) return;
   let out = null;
-  try { out = setCurrentUserDroneFormation(id); } catch { return; }
-  if (!out?.ok) return;
+  try { out = setCurrentUserDroneFormation(id); } catch { out = null; }
+  if (!out?.ok) {
+    Bot.formFailId = String(id);
+    Bot.formFailAt = now;
+    return;
+  }
+  Bot.formFailId = "";
   Bot.lastFormation = String(id);
   try {
     account.user = out.user;
@@ -12494,19 +12667,9 @@ function botRestorePetMode() {
 }
 
 // Accès sûr à l'index NPC->maps (let déclaré plus bas : TDZ au wire initial).
-// Fusionne l'index des spawns (quêtes) + les observations du bot en jeu.
+// Uniquement les spawns des maps : jamais de NPC « vus » en jeu.
 function botNpcLocations() {
-  let base = {};
-  try { base = questNpcLocations || {}; } catch { base = {}; }
-  const seen = Bot.npcSeen || {};
-  if (!Object.keys(seen).length) return base;
-  const out = { ...base };
-  for (const [k, v] of Object.entries(seen)) {
-    const arr = Array.isArray(v) ? v.map(String) : [];
-    if (!arr.length) continue;
-    out[k] = [...new Set([...(out[k] || []).map(String), ...arr])];
-  }
-  return out;
+  try { return questNpcLocations || {}; } catch { return {}; }
 }
 
 // Quêtes auto du bot (toutes les 5 s) : rend les quêtes terminées, et
@@ -12561,32 +12724,6 @@ function botTickQuests(dt) {
     }
   } catch {}
 }
-// Mémorise les NPC croisés par map (throttlé) : enrichit le filtre par map
-// pour les types absents de l'index des spawns. Tourne même bot en pause.
-function botRecordSightings(dt) {
-  Bot.sightT -= dt;
-  if (Bot.sightT > 0) return;
-  Bot.sightT = 5;
-  try {
-    if (!started || player.dead) return;
-    const cur = String(window.__CURRENT_MAP_ID__ || "").toLowerCase();
-    if (!cur) return;
-    let changed = false;
-    for (const e of enemies) {
-      if (!e || Number(e.hp) <= 0) continue;
-      const t = String(e.type || "");
-      if (!t) continue;
-      const arr = Bot.npcSeen[t] || (Bot.npcSeen[t] = []);
-      if (!arr.includes(cur)) {
-        arr.push(cur);
-        if (arr.length > 12) arr.shift();
-        changed = true;
-      }
-    }
-    if (changed) botSaveConfig();
-  } catch {}
-}
-
 // Libellé court des maps d'un NPC (index quêtes : type -> [mapIds]).
 function botNpcMapsLabel(type) {
   const maps = botNpcLocations()[String(type)] || [];
@@ -12600,7 +12737,8 @@ function botUpdateNpcCount() {
   if (!el) return;
   const list = document.getElementById("botNpcList");
   const shown = list ? list.querySelectorAll(".botNpcRow").length : 0;
-  el.textContent = `· ${shown} affichés · ${Bot.npcAllow.size} cochés`;
+  const checked = (botNpcCatalog() || []).filter((row) => row.types.every((t) => Bot.npcAllow.has(t))).length;
+  el.textContent = `· ${shown} affichés · ${checked} cochés`;
 }
 
 // Options du select de munition par NPC (X1 par défaut).
@@ -12608,63 +12746,131 @@ function botAmmoOptions(selected) {
   selected = BOT_AMMO_IDS.includes(selected) ? selected : "x1";
   const opts = [];
   for (const id of BOT_AMMO_IDS) {
-    const label = `${id.toUpperCase()} · ${BOT_AMMO_NAMES[id] || id}`;
-    opts.push(`<option value="${id}"${selected === id ? " selected" : ""}>${escapeHtml(label)}</option>`);
+    opts.push(`<option value="${id}"${selected === id ? " selected" : ""} title="${escapeHtml(BOT_AMMO_NAMES[id] || id)}">${escapeHtml(id.toUpperCase())}</option>`);
   }
   return opts.join("");
 }
 
 function botFormationOptions(selected) {
-  const opts = [`<option value="">Formation —</option>`];
+  const opts = [`<option value="">Par défaut</option>`];
   for (const formation of DRONE_FORMATIONS) {
     opts.push(`<option value="${escapeHtml(formation.id)}"${selected === formation.id ? " selected" : ""}>${escapeHtml(formation.name)}</option>`);
   }
   return opts.join("");
 }
 
-// (Re)construit la liste NPC : triés par nom, filtrés par map + recherche,
-// avec distance de combat par NPC.
+// Liste FIXE des NPC (BOT_NPC_CATALOG) : NPC des maps + NPC des events en
+// cours. Null tant que l'index des maps n'est pas chargé (async).
+function botNpcCatalog() {
+  let locations = {};
+  try { locations = questNpcLocations || {}; } catch { locations = {}; }
+  if (!Object.keys(locations).length) return null;
+  try { return buildBotNpcCatalog({ locations, npcTypes: NPC_TYPES }); } catch { return null; }
+}
+
+// Synchronise la sélection avec la liste fixe : les types qui n'y sont plus
+// (JPC, fin d'event, anciens NPC « vus ») sont retirés ; une ligne nouvelle
+// (event qui commence, NPC ajouté sur une map) est cochée d'office.
+function botSyncNpcCatalog(rows = botNpcCatalog()) {
+  if (!rows) return;
+  let changed = false;
+  if (!Bot.npcRowsKnownLoaded) {
+    // Premier passage (ancien profil) : la sélection actuelle est gardée
+    // telle quelle, seules les lignes à venir seront cochées d'office.
+    Bot.npcRowsKnownLoaded = true;
+    for (const row of rows) Bot.npcRowsKnown.add(row.key);
+    if (!Bot.npcSelectionLoaded) {
+      for (const row of rows) for (const t of row.types) Bot.npcAllow.add(t);
+      Bot.npcSelectionLoaded = true;
+    }
+    changed = true;
+  }
+  for (const row of rows) {
+    if (Bot.npcRowsKnown.has(row.key)) continue;
+    Bot.npcRowsKnown.add(row.key);
+    for (const t of row.types) Bot.npcAllow.add(t);
+    changed = true;
+  }
+  const keys = new Set(rows.map((row) => row.key));
+  for (const key of [...Bot.npcRowsKnown]) {
+    if (keys.has(key)) continue;
+    Bot.npcRowsKnown.delete(key);
+    changed = true;
+  }
+  const known = new Set(rows.flatMap((row) => row.types));
+  for (const t of [...Bot.npcAllow]) {
+    if (known.has(t)) continue;
+    Bot.npcAllow.delete(t);
+    changed = true;
+  }
+  if (changed) botSaveConfig();
+}
+
+// Les events commencent / finissent en pleine partie : resynchro régulière,
+// même fenêtre fermée (le bot lit Bot.npcAllow, pas le DOM).
+function botTickNpcCatalog(dt) {
+  Bot.catalogT -= dt;
+  if (Bot.catalogT > 0) return;
+  Bot.catalogT = 30;
+  const rows = botNpcCatalog();
+  if (!rows) return;
+  const sig = rows.map((row) => row.key).join("|");
+  if (sig === Bot.catalogSig) return;
+  Bot.catalogSig = sig;
+  botSyncNpcCatalog(rows);
+  botRenderNpcList();
+}
+
+// (Re)construit la liste NPC : liste fixe, filtrée par groupe de maps + recherche.
 function botRenderNpcList() {
-  // Centaines de lignes HTML : construites à l'ouverture (orbit:window-restoring),
-  // jamais dans la fenêtre fermée (gros blocage au chargement sinon). Le bot
-  // lit ses choix dans Bot.npcAllow / botNpcPrio, pas dans ce DOM.
+  // Construite à l'ouverture (orbit:window-restoring), jamais fenêtre fermée.
+  // Le bot lit ses choix dans Bot.npcAllow / botNpcPrio, pas dans ce DOM.
   if (!shouldRefreshWindow("botWindow") || !isWindowShown("botWindow")) return;
   const list = document.getElementById("botNpcList");
   if (!list) return;
-  const q = String(document.getElementById("botNpcSearch")?.value || "").toLowerCase();
-  const mapF = String(Bot.npcMapFilter || "").toLowerCase();
-  const locs = botNpcLocations();
-  const types = Object.keys(NPC_TYPES || {}).sort((a, b) =>
-    String(NPC_TYPES[a]?.name || a).localeCompare(String(NPC_TYPES[b]?.name || b), "fr"));
-  const rows = [];
-  let located = 0;
-  for (const t of types) {
-    const name = String(NPC_TYPES[t]?.name || t);
-    if (q && !`${name} ${t}`.toLowerCase().includes(q)) continue;
-    const maps = locs[String(t)] || [];
-    if (maps.length) located++;
-    if (mapF) {
-      if (maps.length) {
-        if (!maps.some((m) => String(m).toLowerCase() === mapF)) continue;
-      } else if (!Bot.npcIncludeUnknown) {
-        // Filtre actif : on cache les NPC sans données de map (sinon la
-        // liste reste pleine et donne l'impression de ne pas filtrer).
-        continue;
-      }
+  const catalog = botNpcCatalog();
+  if (!catalog) {
+    list.innerHTML = `<div class="boosterEmpty">Chargement de la liste des NPC…</div>`;
+    return;
+  }
+  botSyncNpcCatalog(catalog);
+  // Filtre : groupes présents dans la liste (le choix mémorisé reste valable
+  // tant que son groupe existe).
+  const filter = document.getElementById("botNpcMapFilter");
+  const groups = botCatalogGroups(catalog);
+  if (Bot.npcMapFilter && !groups.includes(Bot.npcMapFilter)) Bot.npcMapFilter = "";
+  if (filter) {
+    const sig = groups.join("|");
+    if (filter.dataset.sig !== sig) {
+      filter.dataset.sig = sig;
+      filter.innerHTML = [`<option value="">Toutes les maps</option>`,
+        ...groups.map((g) => `<option value="${escapeHtml(g)}">${escapeHtml(botMapGroupLabel(g))}</option>`)].join("");
     }
-    const ammo = Bot.npcAmmo[String(t)] || "x1";
-    const prio = botNpcPrio(t);
-    const mapsFull = (maps || []).map(String).join(", ");
+    filter.value = Bot.npcMapFilter || "";
+  }
+  const q = String(document.getElementById("botNpcSearch")?.value || "").trim().toLowerCase();
+  const group = String(Bot.npcMapFilter || "");
+  const rows = [];
+  for (const row of catalog) {
+    if (group && !row.groups.includes(group)) continue;
+    if (q && !`${row.name} ${row.key}`.toLowerCase().includes(q)) continue;
+    const t = row.types[0];
+    const types = escapeHtml(row.types.join(","));
+    const checked = row.types.every((type) => Bot.npcAllow.has(type));
+    const mapsLabel = botMapsLabel(row.maps) || "—";
+    const badge = row.event ? `<em class="botNpcEvent">${escapeHtml(row.event)}</em>` : "";
+    const burst = botNpcBurst(t);
     rows.push(
-      `<div class="botNpcRow" data-npc="${escapeHtml(t)}">` +
-      `<input class="botNpcSel" type="checkbox" value="${escapeHtml(t)}"${Bot.npcAllow.has(t) ? " checked" : ""} title="Tuer ce NPC" />` +
-      `<div class="botNpcId"><span class="botNpcName">${escapeHtml(name)}</span><small class="botNpcMaps" title="${escapeHtml(mapsFull || "Map inconnue")}">Maps : ${escapeHtml(mapsFull || "?")}</small></div>` +
-      `<input class="botNpcPrio" type="number" data-type="${escapeHtml(t)}" value="${prio}" min="0" max="99" step="1" title="Priorité (plus haute = tuée d'abord)" />` +
-      `<div class="botNpcCombat"><select class="botNpcAmmo" data-type="${escapeHtml(t)}" title="Munition laser">${botAmmoOptions(ammo)}</select>` +
-      `<label><input class="botNpcSab" data-type="${escapeHtml(t)}" type="checkbox"${Bot.npcSab[t] ? " checked" : ""}/>SAB</label>` +
-      `<label><input class="botNpcX6" data-type="${escapeHtml(t)}" type="checkbox"${Bot.npcX6[t] ? " checked" : ""}/>X6</label>` +
-      `<select class="botNpcCfg" data-type="${escapeHtml(t)}"><option value="">Cfg —</option><option value="1"${Bot.npcCfg[t] === "1" ? " selected" : ""}>Cfg 1</option><option value="2"${Bot.npcCfg[t] === "2" ? " selected" : ""}>Cfg 2</option></select>` +
-      `<select class="botNpcForm" data-type="${escapeHtml(t)}">${botFormationOptions(Bot.npcForm[t] || "")}</select></div>` +
+      `<div class="botNpcRow" data-npc="${escapeHtml(row.key)}" data-types="${types}">` +
+      `<input class="botNpcSel" type="checkbox"${checked ? " checked" : ""} title="Tuer ce NPC" />` +
+      `<div class="botNpcId"><span class="botNpcName" title="${escapeHtml(row.name)}">${escapeHtml(row.name)}</span><small class="botNpcMaps" title="${escapeHtml(row.maps.join(", "))}">${badge}${escapeHtml(mapsLabel)}</small></div>` +
+      `<div class="botNpcPrioCell"><input class="botNpcPrio" type="number" value="${botNpcPrio(t)}" min="0" max="99" step="1" title="Priorité (plus haute = tuée d'abord)" />` +
+      `<label class="botNpcInstantLbl" title="Dès qu'il est en vue, il passe devant tout. Plusieurs en vue : le plus proche."><input class="botNpcInstant" type="checkbox"${botNpcInstant(t) ? " checked" : ""}/>Immédiat</label></div>` +
+      `<div class="botNpcCombat"><select class="botNpcAmmo" title="Munition laser">${botAmmoOptions(Bot.npcAmmo[t] || "x1")}</select>` +
+      `<label class="botSwitch botSwitchSm" title="SAB : vide le bouclier puis revient au laser"><input class="botNpcSab" type="checkbox"${Bot.npcSab[t] ? " checked" : ""}/><i></i><span>SAB</span></label>` +
+      `<select class="botNpcBurst" title="Salve dès que prête"><option value=""${burst ? "" : " selected"}>Salve —</option><option value="x6"${burst === "x6" ? " selected" : ""}>X6</option><option value="rcb"${burst === "rcb" ? " selected" : ""}>RCB</option></select>` +
+      `<select class="botNpcCfg"><option value="">Par défaut</option><option value="1"${Bot.npcCfg[t] === "1" ? " selected" : ""}>Cfg 1</option><option value="2"${Bot.npcCfg[t] === "2" ? " selected" : ""}>Cfg 2</option></select>` +
+      `<select class="botNpcForm">${botFormationOptions(Bot.npcForm[t] || "")}</select></div>` +
       `</div>`
     );
   }
@@ -12680,68 +12886,59 @@ function wireBotWindow() {
       btn.addEventListener("click", () => botSwitchTab(btn.dataset.botTab));
     }
   });
-  botSwitchTab(Bot.tab || "general");
+  botSwitchTab(Bot.tab || "dash");
+  // Map de travail (liste habillée par watchSelects : 7 maps visibles).
   const mapSelect = document.getElementById("botMapSelect");
   if (mapSelect && !mapSelect.options.length) {
-    const cur = String(window.__CURRENT_MAP_ID__ || "1-1");
-    const opts = [`<option value="">— Rester sur la map —</option>`];
-    for (const id of BOT_MAPS) {
-      opts.push(`<option value="${escapeHtml(id)}"${id.toLowerCase() === cur.toLowerCase() ? "" : ""}>${escapeHtml(id.toUpperCase())}</option>`);
-    }
-    mapSelect.innerHTML = opts.join("");
-    if (Bot.targetMap) mapSelect.value = Bot.targetMap;
+    mapSelect.innerHTML = [`<option value="">— Rester sur la map —</option>`,
+      ...BOT_MAPS.map((id) => `<option value="${escapeHtml(id)}">${escapeHtml(id.toUpperCase())}</option>`)].join("");
+    mapSelect.value = Bot.targetMap || "";
+    mapSelect.addEventListener("change", () => {
+      Bot.targetMap = String(mapSelect.value || "");
+      botSaveConfig();
+      if (Bot.targetMap) botLog(`Carte cible : ${Bot.targetMap.toUpperCase()}`);
+    });
   }
   const npcList = document.getElementById("botNpcList");
   if (npcList && !npcList.dataset.wired) {
     npcList.dataset.wired = "1";
-    const allTypes = Object.keys(NPC_TYPES || {});
-    if (!Bot.npcSelectionLoaded) {
-      for (const t of allTypes) Bot.npcAllow.add(t);
-      Bot.npcSelectionLoaded = true;
-    }
     botRenderNpcList();
-    npcList.addEventListener("change", (e) => {
-      const el = e.target.closest?.("input");
-      if (!el) return;
-      if (el.classList.contains("botNpcSel")) {
-        if (el.checked) Bot.npcAllow.add(el.value);
-        else Bot.npcAllow.delete(el.value);
-        botUpdateNpcCount();
-        botSaveConfig();
-      }
-    });
-    npcList.addEventListener("change", (e) => {
-      const sel = e.target.closest?.("select.botNpcAmmo");
-      if (sel) {
-        const a = String(sel.value || "").toLowerCase();
-        if (BOT_AMMO_IDS.includes(a)) Bot.npcAmmo[sel.dataset.type] = a;
-        else delete Bot.npcAmmo[sel.dataset.type];
-        botSaveConfig();
-        return;
-      }
-    });
+    // Une ligne peut regrouper plusieurs types (variantes d'un NPC d'event) :
+    // chaque réglage s'applique à tous les types de la ligne.
     npcList.addEventListener("change", (e) => {
       const control = e.target;
-      const type = String(control?.dataset?.type || "");
-      if (!type) return;
-      if (control.classList.contains("botNpcSab")) Bot.npcSab[type] = control.checked;
-      else if (control.classList.contains("botNpcX6")) Bot.npcX6[type] = control.checked;
-      else if (control.classList.contains("botNpcCfg")) Bot.npcCfg[type] = ["1", "2"].includes(control.value) ? control.value : "";
-      else if (control.classList.contains("botNpcForm")) Bot.npcForm[type] = String(control.value || "");
+      const types = String(control?.closest?.(".botNpcRow")?.dataset.types || "").split(",").filter(Boolean);
+      if (!types.length) return;
+      if (control.classList.contains("botNpcSel")) {
+        for (const t of types) {
+          if (control.checked) Bot.npcAllow.add(t);
+          else Bot.npcAllow.delete(t);
+        }
+        botUpdateNpcCount();
+      } else if (control.classList.contains("botNpcAmmo")) {
+        const a = String(control.value || "").toLowerCase();
+        for (const t of types) {
+          if (BOT_AMMO_IDS.includes(a)) Bot.npcAmmo[t] = a;
+          else delete Bot.npcAmmo[t];
+        }
+      } else if (control.classList.contains("botNpcPrio")) {
+        const p = Math.floor(Number(control.value));
+        const v = Number.isFinite(p) ? Math.max(0, Math.min(99, p)) : 0;
+        for (const t of types) {
+          if (v > 0) Bot.npcPrio[t] = v;
+          else delete Bot.npcPrio[t];
+        }
+        control.value = v;
+      } else if (control.classList.contains("botNpcSab")) for (const t of types) Bot.npcSab[t] = control.checked;
+      else if (control.classList.contains("botNpcInstant")) for (const t of types) Bot.npcInstant[t] = control.checked;
+      else if (control.classList.contains("botNpcBurst")) {
+        const burst = BOT_BURST_IDS.includes(control.value) ? control.value : "";
+        for (const t of types) Bot.npcBurst[t] = burst;
+      }
+      else if (control.classList.contains("botNpcCfg")) for (const t of types) Bot.npcCfg[t] = ["1", "2"].includes(control.value) ? control.value : "";
+      else if (control.classList.contains("botNpcForm")) for (const t of types) Bot.npcForm[t] = String(control.value || "");
       else return;
       botSaveConfig();
-    });
-    npcList.addEventListener("change", (e) => {
-      const el = e.target.closest?.('input[type="number"].botNpcPrio');
-      if (!el) return;
-      const p = Math.floor(Number(el.value));
-      if (Number.isFinite(p)) {
-        const v = Math.max(0, Math.min(99, p));
-        if (v > 0) Bot.npcPrio[el.dataset.type] = v;
-        else delete Bot.npcPrio[el.dataset.type];
-        el.value = v;
-        botSaveConfig();
-      }
     });
   }
   const boxList = document.getElementById("botBoxList");
@@ -12777,15 +12974,26 @@ function wireBotWindow() {
       botSaveConfig();
     });
   }
-  // Module (façon fenêtre Général) : Kill & Collect / Kill / Collect / Quest / Galaxy Gates.
-  document.querySelectorAll('#botModeRow input[name="botMode"]').forEach((radio) => {
-    radio.checked = radio.value === Bot.mode;
-    radio.addEventListener("change", () => {
-      if (!radio.checked) return;
-      botSetMode(radio.value);
-      botLog(`Mode : ${BOT_MODULES[Bot.mode]?.label || Bot.mode}`);
-    });
-  });
+  // Mode de farm : une seule liste (Kill / Collect / Kill & Collect avec sa
+  // priorité NPC d'abord, Box d'abord ou Au plus proche).
+  const farmMode = document.getElementById("botFarmMode");
+  if (farmMode) {
+    farmMode.value = Bot.mode === "both" ? `both:${Bot.priority}` : Bot.mode;
+    if (!farmMode.value) farmMode.value = "both:npc";
+    if (!farmMode.dataset.wired) {
+      farmMode.dataset.wired = "1";
+      farmMode.addEventListener("change", () => {
+        const [mode, prio] = String(farmMode.value || "both:npc").split(":");
+        botSetMode(mode);
+        if (["npc", "box", "nearest"].includes(prio)) Bot.priority = prio;
+        // Nouvelle règle : on repart d'une décision propre.
+        Bot.lastBoxId = null;
+        Bot.grabT0 = 0;
+        botSaveConfig();
+        botLog(`Mode : ${farmMode.selectedOptions[0]?.textContent || farmMode.value}`);
+      });
+    }
+  }
   const autoRepair = document.getElementById("botAutoRepair");
   if (autoRepair) {
     autoRepair.checked = Bot.autoRepair;
@@ -12806,72 +13014,38 @@ function wireBotWindow() {
       });
     }
   }
-  const maxDeaths = document.getElementById("botMaxDeaths");
-  if (maxDeaths) {
-    maxDeaths.value = Bot.maxDeaths;
-    if (!maxDeaths.dataset.wired) {
-      maxDeaths.dataset.wired = "1";
-      maxDeaths.addEventListener("change", () => {
-        const v = Math.floor(Number(maxDeaths.value));
-        if (Number.isFinite(v)) {
-          Bot.maxDeaths = Math.max(0, Math.min(999, v));
-          maxDeaths.value = Bot.maxDeaths;
-          botSaveConfig();
-        }
-      });
-    }
-  }
-  if (mapSelect) {
-    mapSelect.addEventListener("change", () => {
-      Bot.targetMap = String(mapSelect.value || "");
-      botSaveConfig();
-      if (Bot.targetMap) botLog(`Carte cible : ${Bot.targetMap.toUpperCase()}`);
-    });
-  }
   document.getElementById("botPlayBtn")?.addEventListener("click", () => botSetActive(!Bot.active));
-  // Filtre NPC par map (index des spawns par carte).
+  // Filtre NPC par groupe de maps (X-1..X-8, X-BL, 4-x...) : options
+  // reconstruites par botRenderNpcList depuis la liste fixe.
   const npcMapFilter = document.getElementById("botNpcMapFilter");
-  if (npcMapFilter && !npcMapFilter.dataset.filled) {
-    npcMapFilter.dataset.filled = "1";
-    const opts = [`<option value="">Toutes les maps</option>`];
-    for (const id of BOT_MAPS) opts.push(`<option value="${escapeHtml(id)}">${escapeHtml(id.toUpperCase())}</option>`);
-    npcMapFilter.innerHTML = opts.join("");
-    if (Bot.npcMapFilter) npcMapFilter.value = Bot.npcMapFilter;
+  if (npcMapFilter && !npcMapFilter.dataset.wired) {
+    npcMapFilter.dataset.wired = "1";
     npcMapFilter.addEventListener("change", () => {
       Bot.npcMapFilter = String(npcMapFilter.value || "");
       botSaveConfig();
       botRenderNpcList();
     });
   }
-  const npcUnknown = document.getElementById("botNpcUnknown");
-  if (npcUnknown) {
-    npcUnknown.checked = Bot.npcIncludeUnknown;
-    if (!npcUnknown.dataset.wired) {
-      npcUnknown.dataset.wired = "1";
-      npcUnknown.addEventListener("change", () => {
-        Bot.npcIncludeUnknown = npcUnknown.checked;
-        botSaveConfig();
-        botRenderNpcList();
-      });
-    }
-  }
   const npcSearch = document.getElementById("botNpcSearch");
   if (npcSearch && !npcSearch.dataset.wired) {
     npcSearch.dataset.wired = "1";
     npcSearch.addEventListener("input", () => botRenderNpcList());
   }
-  document.getElementById("botNpcAll")?.addEventListener("click", () => {
-    Bot.npcAllow = new Set(Object.keys(NPC_TYPES || {}));
-    npcList?.querySelectorAll("input.botNpcSel").forEach((c) => { c.checked = true; });
+  // Tout / Aucun : uniquement les lignes affichées (filtre + recherche).
+  const setShownNpcRows = (on) => {
+    npcList?.querySelectorAll(".botNpcRow").forEach((row) => {
+      for (const t of String(row.dataset.types || "").split(",").filter(Boolean)) {
+        if (on) Bot.npcAllow.add(t);
+        else Bot.npcAllow.delete(t);
+      }
+      const box = row.querySelector("input.botNpcSel");
+      if (box) box.checked = on;
+    });
     botUpdateNpcCount();
     botSaveConfig();
-  });
-  document.getElementById("botNpcNone")?.addEventListener("click", () => {
-    Bot.npcAllow.clear();
-    npcList?.querySelectorAll("input.botNpcSel").forEach((c) => { c.checked = false; });
-    botUpdateNpcCount();
-    botSaveConfig();
-  });
+  };
+  document.getElementById("botNpcAll")?.addEventListener("click", () => setShownNpcRows(true));
+  document.getElementById("botNpcNone")?.addEventListener("click", () => setShownNpcRows(false));
   document.getElementById("botBoxAll")?.addEventListener("click", () => {
     Bot.boxAllow = new Set(Object.keys(COLLECTABLE_TYPES || {}));
     boxList?.querySelectorAll('input[type="checkbox"]').forEach((c) => { c.checked = true; });
@@ -12882,33 +13056,24 @@ function wireBotWindow() {
     boxList?.querySelectorAll('input[type="checkbox"]').forEach((c) => { c.checked = false; });
     botSaveConfig();
   });
-  const boxRadius = document.getElementById("botBoxRadius");
-  if (boxRadius) {
-    boxRadius.value = Bot.boxRadius;
-    if (!boxRadius.dataset.wired) {
-      boxRadius.dataset.wired = "1";
-      boxRadius.addEventListener("change", () => {
-        const v = Math.floor(Number(boxRadius.value));
-        if (Number.isFinite(v)) {
-          Bot.boxRadius = Math.max(0, Math.min(20000, v));
-          boxRadius.value = Bot.boxRadius;
-          botSaveConfig();
-        }
-      });
+  // Box pendant un combat.
+  const grabBox = document.getElementById("botGrabInFight");
+  if (grabBox) {
+    grabBox.checked = Bot.grabInFight !== false;
+    if (!grabBox.dataset.wired) {
+      grabBox.dataset.wired = "1";
+      grabBox.addEventListener("change", () => { Bot.grabInFight = grabBox.checked; botSaveConfig(); });
     }
   }
-  // Priorité du mode mixte.
-  const priority = document.getElementById("botPriority");
-  if (priority) {
-    priority.value = Bot.priority;
-    if (!priority.dataset.wired) {
-      priority.dataset.wired = "1";
-      priority.addEventListener("change", () => {
-        if (["npc", "box", "nearest"].includes(priority.value)) Bot.priority = priority.value;
-        botSaveConfig();
-      });
-    }
-  }
+  document.getElementById("botResetStats")?.addEventListener("click", () => {
+    Bot.kills = 0;
+    Bot.boxes = 0;
+    botStartSession();
+    // Bot en pause : la session repartira au prochain démarrage.
+    if (!Bot.active) Bot.statsT0 = 0;
+    botSaveConfig();
+    botRefreshStats();
+  });
   // Lieu de réapparition.
   const respawnSel = document.getElementById("botRespawn");
   if (respawnSel) {
@@ -12923,6 +13088,7 @@ function wireBotWindow() {
   }
   // Formations drones par phase (option vide = ne pas changer).
   const formDefs = [
+    ["botFormAttack", "formAttack"],
     ["botFormMove", "formMove"],
     ["botFormFlee", "formFlee"],
     ["botFormTravel", "formTravel"],
@@ -12946,11 +13112,17 @@ function wireBotWindow() {
     sel.value = Bot[key] || "";
     if (!sel.dataset.wired) {
       sel.dataset.wired = "1";
-      sel.addEventListener("change", () => { Bot[key] = String(sel.value || ""); botSaveConfig(); });
+      sel.addEventListener("change", () => {
+        Bot[key] = String(sel.value || "");
+        // Exploration et navigation fusionnées : un seul réglage pour les deux.
+        if (key === "formMove") Bot.formTravel = Bot.formMove;
+        botSaveConfig();
+      });
     }
   }
   // Configurations 1/2 par phase, style boutons segmentés (—, 1, 2).
   const cfgSegDefs = [
+    ["botCfgAttackSeg", "cfgAttack"],
     ["botCfgFlySeg", "cfgFly"],
     ["botCfgFleeSeg", "cfgFlee"],
     ["botCfgTravelSeg", "cfgTravel"],
@@ -12972,6 +13144,8 @@ function wireBotWindow() {
         if (!b) return;
         const v = String(b.dataset.v || "");
         Bot[key] = v === "1" || v === "2" ? v : "";
+        // Exploration et navigation fusionnées : un seul réglage pour les deux.
+        if (key === "cfgFly") Bot.cfgTravel = Bot.cfgFly;
         botSaveConfig();
         paint();
       });
@@ -13304,13 +13478,6 @@ function wireBotWindow() {
       });
     }
   }
-  const overlayBox = document.getElementById("botOverlay");  if (overlayBox) {
-    overlayBox.checked = Bot.overlay;
-    if (!overlayBox.dataset.wired) {
-      overlayBox.dataset.wired = "1";
-      overlayBox.addEventListener("change", () => { Bot.overlay = overlayBox.checked; botSaveConfig(); });
-    }
-  }
 
   // Élargissement unique de la fenêtre (l'ancienne largeur sauvegardée
   // écraserait sinon le nouveau layout large).
@@ -13337,7 +13504,9 @@ function wireBotWindow() {
   });
   // La liste NPC dépend de l'index des maps (chargé en async) : on la
   // reconstruit dès qu'il arrive.
-  window.addEventListener("orbit:npc-locations-ready", () => botRenderNpcList());
+  window.addEventListener("orbit:npc-locations-ready", () => { botSyncNpcCatalog(); botRenderNpcList(); });
+  // Toutes les listes du bot au style « Tous les vaisseaux » (historique modules).
+  watchSelects(document.getElementById("botWindow"), { maxHeight: 180 });
   botRefreshHud();
   // Reprise auto après un changement de map avec rechargement : le bot
   // était actif, il repart seul (vrai farm background inter-maps).
@@ -13517,6 +13686,28 @@ function botNearestNpcByDistance() {
   return botHalloweenBossFallback();
 }
 
+// Choix "Au plus proche" (pur, testable) : NPC attaqué = gardé ; sinon la
+// cible la plus proche entre NPC et box. La cible actuelle (NPC locké ou
+// box en cours) garde un petit avantage pour ne pas vriller entre deux
+// cibles à égalité : l'autre doit être nettement plus proche pour passer.
+const BOT_NEAREST_KEEP_RATIO = 0.85;
+const BOT_NEAREST_KEEP_M = 60;
+function botPickNearest({ lockedNpc, attacked, lockedBox, nearestNpc, nearestBox, from }) {
+  if (lockedNpc && attacked) return { kind: "npc", ref: lockedNpc };
+  const cost = (ref, current) => {
+    const d = Math.hypot(ref.x - from.x, ref.y - from.y);
+    return current ? d * BOT_NEAREST_KEEP_RATIO - BOT_NEAREST_KEEP_M : d;
+  };
+  const candidates = [];
+  if (lockedNpc) candidates.push({ kind: "npc", ref: lockedNpc, cost: cost(lockedNpc, true) });
+  if (nearestNpc?.npc && nearestNpc.npc !== lockedNpc) candidates.push({ kind: "npc", ref: nearestNpc.npc, cost: cost(nearestNpc.npc, false) });
+  if (lockedBox) candidates.push({ kind: "box", ref: lockedBox, cost: cost(lockedBox, true) });
+  if (nearestBox?.box && nearestBox.box !== lockedBox) candidates.push({ kind: "box", ref: nearestBox.box, cost: cost(nearestBox.box, false) });
+  if (!candidates.length) return null;
+  candidates.sort((a, b) => a.cost - b.cost);
+  return { kind: candidates[0].kind, ref: candidates[0].ref };
+}
+
 // La portee d'engagement est toujours notre portee laser reelle.
 function botEngageRange() {
   try { return Math.max(0, Number(playerRange) || 0); } catch { return 0; }
@@ -13582,9 +13773,10 @@ function botAutoSpecialAmmo(npc, d, engageMax) {
   const shRatio = shMax > 0 ? Math.max(0, Number(npc.sh) || 0) / shMax : 0;
   const shieldUp = shMax > 0 && shRatio > 0.02;
 
-  // X6 : burst des que pret et a portee (prioritaire sur le SAB, mais sans
-  // voler son ticket de retour : si on est en plein SAB, on y revient après).
-  const npcAutoX6 = Bot.npcX6[String(npc.type)] === true;
+  // Salve (X6 ou RCB, recharge partagée) : burst des que pret et a portee
+  // (prioritaire sur le SAB, mais sans voler son ticket de retour : si on
+  // est en plein SAB, on y revient après).
+  const burst = botNpcBurst(npc.type);
   const npcAutoSab = Bot.npcSab[String(npc.type)] === true;
   // Laser de retour avec repli stock (config épuisée → X1) : évite de
   // redemander chaque frame une munition vide (spam persist + UI, chute FPS).
@@ -13598,15 +13790,15 @@ function botAutoSpecialAmmo(npc, d, engageMax) {
     try { startAttack(configuredLaser); } catch {}
     return;
   }
-  if (npcAutoX6 && inRange && !Bot.x6Armed && cur !== "x6"
-    && ammoCount("x6") > 0) {
+  if (burst && inRange && !Bot.x6Armed && cur !== burst
+    && ammoCount(burst) > 0) {
     try {
-      if (rsbLikeCooldown("x6") <= 0) {
+      if (rsbLikeCooldown(burst) <= 0) {
         if (cur === "sab" && shieldUp) Bot.x6BackToSab = true;
         else Bot.specialPrev = cur;
         Bot.x6Armed = true;
         Bot.x6ArmedAt = Date.now();
-        try { startAttack("x6"); } catch {}
+        try { startAttack(burst); } catch {}
         return;
       }
     } catch {}
@@ -13615,7 +13807,7 @@ function botAutoSpecialAmmo(npc, d, engageMax) {
   // (ou au SAB en cours si le burst l'avait interrompu).
   if (Bot.x6Armed) {
     let fired = false;
-    try { fired = rsbLikeCooldown("x6") > 0; } catch {}
+    try { fired = rsbLikeCooldown(cur) > 0; } catch {}
     if (fired || Date.now() - Number(Bot.x6ArmedAt || 0) > 3000) {
       Bot.x6Armed = false;
       let back = "";
@@ -13638,7 +13830,7 @@ function botAutoSpecialAmmo(npc, d, engageMax) {
 
   // SAB : on vide le bouclier jusqu'au bout, puis retour aux lasers.
   // (Jamais pendant un burst X6 : la garde x6Armed ci-dessus a déjà filtré.)
-  if (npcAutoSab && AMMO.sab && cur !== "x6") {
+  if (npcAutoSab && AMMO.sab && cur !== "x6" && cur !== "rcb") {
     if (cur !== "sab" && shieldUp && ammoCount("sab") > 0) {
       Bot.sabPrev = cur;
       try { startAttack("sab"); } catch {}
@@ -13659,12 +13851,12 @@ function botAutoSpecialAmmo(npc, d, engageMax) {
 function botClearSpecialAmmo() {
   const current = String(player.ammo.active || "").toLowerCase();
   let back = "";
-  if (current === "x6" && (Bot.x6Armed || Bot.specialPrev || Bot.x6BackToSab)) {
+  if ((current === "x6" || current === "rcb") && (Bot.x6Armed || Bot.specialPrev || Bot.x6BackToSab)) {
     back = Bot.x6BackToSab ? Bot.sabPrev : Bot.specialPrev;
   } else if (current === "sab" && Bot.sabPrev) {
     back = Bot.sabPrev;
   }
-  if (back && AMMO[back] && back !== "x6" && back !== "sab") {
+  if (back && AMMO[back] && back !== "x6" && back !== "rcb" && back !== "sab") {
     // Repli stock : le précédent peut s'être épuisé (→ X1, converge).
     try { setAmmo(back === "x1" || ammoCount(back) > 0 ? back : "x1"); } catch {}
   }
@@ -13679,20 +13871,22 @@ function botClearSpecialAmmo() {
 // cible verrouillee d'abord (respect du lock), sinon le plus proche a portee.
 // Module quest : uniquement les NPC de quete. Autres modes que both : rien.
 function botConcurrentNpc(engageMax, locked) {
-  const lim2 = engageMax * engageMax;
-  const okTarget = (e) => {
+  const alive = (e) => {
     if (!e || e.isPetTarget || Number(e.hp) <= 0) return false;
     try { if (!enemies.includes(e)) return false; } catch { return false; }
     if (botNpcInWall(e)) return false;
     try { if (e.id != null && botNpcWallBanActive(e.id)) return false; } catch {}
-    try { return dist2(player.x, player.y, e.x, e.y) <= lim2; } catch { return false; }
+    return true;
   };
   try {
     if (Bot.mode !== "both") return null;
-    // Bots JPC : adversaires à part entière (plaque joueur) — un lock manuel
-    // sur eux tient toujours, même si leur type dynamique n'est pas coché
-    // dans la liste du bot. Sinon le bot relockait un autre NPC aussitôt.
-    if (locked && (Bot.npcAllow.has(String(locked.type)) || locked.isJpcBot === true) && okTarget(locked)) return locked;
+    // Le NPC verrouillé est gardé QUELLE QUE SOIT la distance : en allant
+    // vers une box il sort de portée, mais ce n'est pas une raison pour en
+    // locker un autre (botEngageNpc coupe le tir hors portée et le reprend
+    // dès que la distance le permet). Bots JPC : un lock manuel sur eux
+    // tient toujours, même si leur type dynamique n'est pas coché.
+    if (locked && (Bot.npcAllow.has(String(locked.type)) || locked.isJpcBot === true) && alive(locked)) return locked;
+    // Aucun NPC en cours : seulement alors on engage le plus proche à portée.
     return botNearestNpcInRange(engageMax);
   } catch { return null; }
 }
@@ -13717,6 +13911,7 @@ function botLockNpc(npc) {
   Bot.combatTargetId = key;
   Bot.lastNpcId = npc.id;
   Bot.lastNpcKey = key;
+  Bot.lastNpcType = String(npc.type || "");
 }
 
 function botTargetIsNpc(npc) {
@@ -13738,55 +13933,66 @@ function botEngageNpc(npc) {
   return npc;
 }
 
-// Box a ramasser AU PASSAGE pendant un combat : autorisee, dans le rayon de
-// detour ET plus proche que le NPC. Module quest : box de quete uniquement.
-const BOT_GRAB_RADIUS = 380;
+// Box a ramasser AU PASSAGE pendant un combat. Regle tranchee (jamais
+// d'hesitation devant une box) :
+//  - ACCEPTEE seulement si, une fois dessus, le NPC reste a portee de tir
+//    (on continue de tirer pendant la collecte) et hors de son rayon de tir ;
+//  - une fois acceptee, ENGAGEMENT : on va au bout, meme si le tir se coupe
+//    un instant pendant le trajet ;
+//  - ABANDON seulement pour une vraie raison (box disparue, devenue
+//    dangereuse, NPC parti trop loin, delai depasse) : la box est alors
+//    ecartee quelques secondes pour ne pas etre reprise au tick suivant.
+const BOT_GRAB_MAX_S = 6;
+function botGrabRelease(box, banMs) {
+  if (box) {
+    try { botBoxBan(box, banMs); } catch {}
+    try { if (collectableTargetId === box.id) cancelCollectableTarget(); } catch {}
+  }
+  Bot.lastBoxId = null;
+  Bot.grabT0 = 0;
+  return null;
+}
 function botGrabBoxForFight(npc, standD) {
   try {
-    if (Bot.mode !== "both" || Bot.priority !== "npc" || !npc) return null;
-    if ((Bot.grabCd || 0) > 0) return null;
-    const grabR2 = BOT_GRAB_RADIUS * BOT_GRAB_RADIUS;
-    const currentNpcD = Math.hypot(player.x - npc.x, player.y - npc.y);
-    // Tant que le tir n'est pas reellement etabli, poursuite pure. Au bord de
-    // portee une box ne doit jamais etre acceptee puis rejetee au tick suivant
-    // parce que le NPC passif s'est eloigne de quelques metres.
-    if (!attackActive || currentNpcD > botEngageRange()) {
-      Bot.lastBoxId = null;
-      return null;
-    }
+    if (Bot.mode !== "both" || Bot.grabInFight === false || !npc) return null;
+    const grabRadius = Bot.grabRadius;
+    const engageMax = botEngageRange();
     const shootRange = Math.max(0, Number(npc.shootRange) || Number(NPC_TYPES[npc.type]?.shootRange) || 0);
     const safeAtBox = shootRange > 0 ? shootRange + 70 : Math.max(180, standD - 25);
+    const currentNpcD = Math.hypot(player.x - npc.x, player.y - npc.y);
+
+    // 1. Box deja engagee : on la finit, sauf raison serieuse.
+    if (Bot.lastBoxId != null) {
+      const current = collectables.find((c) => c && String(c.id) === String(Bot.lastBoxId));
+      if (!current || !Bot.boxAllow.has(String(current.type)) || botBoxBanned(current)) return botGrabRelease(null);
+      if (!(Bot.grabT0 > 0)) Bot.grabT0 = performance.now();
+      const boxNpcD = Math.hypot(current.x - npc.x, current.y - npc.y);
+      const tookTooLong = Bot.grabT0 > 0 && performance.now() - Bot.grabT0 > BOT_GRAB_MAX_S * 1000;
+      const dangerous = shootRange > 0 && boxNpcD < shootRange + 20;
+      const npcGone = boxNpcD > engageMax * 1.25 || currentNpcD > engageMax * 1.6;
+      if (tookTooLong || dangerous || npcGone) return botGrabRelease(current, 8000);
+      return { box: current, d2: dist2(player.x, player.y, current.x, current.y) };
+    }
+
+    // 2. Nouvelle box : seulement quand le tir est etabli sur le NPC.
+    if ((Bot.grabCd || 0) > 0) return null;
+    if (!attackActive || currentNpcD > engageMax) return null;
+    const grabR2 = grabRadius * grabRadius;
     const routeX = moveTarget.active ? Number(moveTarget.x) : player.x;
     const routeY = moveTarget.active ? Number(moveTarget.y) : player.y;
     const segX = routeX - player.x, segY = routeY - player.y;
     const segL2 = segX * segX + segY * segY;
-    // Une fois la petite deviation commencee, terminer CETTE box. Sans ce
-    // verrou, deux box voisines deviennent tour a tour "la plus proche" et
-    // font alterner le point de mouvement a chaque tick.
-    if (Bot.lastBoxId != null) {
-      const current = collectables.find((c) => c && String(c.id) === String(Bot.lastBoxId));
-      if (current && Bot.boxAllow.has(String(current.type)) && !botBoxBanned(current)) {
-        const currentD2 = dist2(player.x, player.y, current.x, current.y);
-        const currentNpcD = Math.hypot(current.x - npc.x, current.y - npc.y);
-        const releaseR = BOT_GRAB_RADIUS + 120;
-        const stickySafeAtBox = shootRange > 0 ? safeAtBox : Math.max(140, safeAtBox - 60);
-        if (currentD2 <= releaseR * releaseR && currentNpcD >= stickySafeAtBox) {
-          return { box: current, d2: currentD2 };
-        }
-      }
-      // Disparue, trop loin ou devenue dangereuse : seulement ici une autre
-      // box peut etre choisie.
-      Bot.lastBoxId = null;
-    }
     let best = null;
     let bestD2 = Infinity;
-    for (const c of spatialCollectablesNear(player.x, player.y, BOT_GRAB_RADIUS)) {
+    for (const c of spatialCollectablesNear(player.x, player.y, grabRadius)) {
       if (!c) continue;
-      if (!Bot.boxAllow.has(String(c.type))) continue;
+      if (!Bot.boxAllow.has(String(c.type)) || botBoxBanned(c)) continue;
       const d2 = dist2(player.x, player.y, c.x, c.y);
       if (d2 > grabR2) continue;
       const boxNpcD = Math.hypot(c.x - npc.x, c.y - npc.y);
-      if (boxNpcD < safeAtBox) continue;
+      // Trop pres du NPC (dans son rayon de tir) ou trop loin pour continuer
+      // a tirer depuis la box : on ne la prend pas du tout.
+      if (boxNpcD < safeAtBox || boxNpcD > engageMax * 0.9) continue;
       let routeDistance = Math.sqrt(d2);
       if (segL2 > 1) {
         const t = clamp(((c.x - player.x) * segX + (c.y - player.y) * segY) / segL2, 0, 1);
@@ -13797,7 +14003,9 @@ function botGrabBoxForFight(npc, standD) {
       if (!onRoute && !slightRetreat) continue;
       if (d2 < bestD2) { bestD2 = d2; best = c; }
     }
-    return best ? { box: best, d2: bestD2 } : null;
+    if (!best) return null;
+    Bot.grabT0 = performance.now();
+    return { box: best, d2: bestD2 };
   } catch { return null; }
 }
 
@@ -14368,6 +14576,8 @@ function botQueueCloakAfterKill(npc) {
       || !botNpcHasLockKey(npc, Bot.lastNpcKey)) return;
   npc._botCloakQueued = key;
   Bot.cloakPendingMap = currentMapId();
+  // Camouflage 1 s après la mort du NPC (le bot attend sur place).
+  Bot.cloakAt = performance.now() + 1000;
   stopAttack();
 }
 
@@ -14381,7 +14591,7 @@ function botTickAutoCloak() {
   }
   // Attendre la courte recharge apres le dernier tir avant de reprendre
   // une cible : sinon les nouveaux tirs retarderaient toujours le camouflage.
-  if (cloakCd > 0) return true;
+  if (cloakCd > 0 || performance.now() < (Number(Bot.cloakAt) || 0)) return true;
   toggleCpuCloak();
   Bot.cloakPendingMap = null;
   if (isPlayerCpuCloaked()) botLog("Camouflage auto après destruction du NPC (30 000 crédits)");
@@ -14408,7 +14618,7 @@ function botTickRepairCloak() {
 function tickBot(dt) {
   // Seul l'ordre de combat de ce tick peut imposer le NPC au navigateur.
   Bot.combatMoveTargetId = null;
-  try { botRecordSightings(dt); } catch {}
+  try { botTickNpcCatalog(dt); } catch {}
   if (!Bot.active) return;
   if (StarJump.channel) return;
   if (!started || player.dead) {
@@ -14425,11 +14635,6 @@ function tickBot(dt) {
         Bot.wasDead = true;
         Bot.deaths++;
         botRefreshHud();
-        if (Bot.maxDeaths > 0 && Bot.deaths >= Bot.maxDeaths) {
-          botLog(`Limite de morts atteinte (${Bot.deaths}) — arrêt du bot`);
-          botSetActive(false);
-          return;
-        }
       }
       if (Bot.autoRepair && Bot.active) {
         Bot.repairT += dt;
@@ -14872,30 +15077,40 @@ function tickBot(dt) {
     if (!pick) Bot.target = "Aucune cible de quête";
   } else if (Bot.mode === "kill") pick = lockedNpc ? { kind: "npc", ref: lockedNpc } : (foundNpc ? { kind: "npc", ref: foundNpc.npc } : null);
   else if (Bot.mode === "collect") pick = selectedBox ? { kind: "box", ref: selectedBox.box } : null;
-  else if (Bot.priority === "box") pick = selectedBox
-    ? { kind: "box", ref: selectedBox.box }
-    : (lockedNpc ? { kind: "npc", ref: lockedNpc } : (foundNpc ? { kind: "npc", ref: foundNpc.npc } : null));
-  else if (Bot.priority === "nearest") {
-    // "Les deux simultanement" choisit le NPC le plus proche uniquement au
-    // debut d'un combat. Un autre NPC qui s'approche ne remplace jamais la
-    // cible vivante deja verrouillee.
-    const nearestNpc = lockedNpc
-      ? { npc: lockedNpc, d2: dist2(player.x, player.y, lockedNpc.x, lockedNpc.y) }
-      : botNearestNpcByDistance();
-    const simultaneousReach = Math.max(900, botEngageRange() * 1.5);
-    const simultaneousBoxReach = Math.max(1800, botEngageRange() * 2.5);
-    if (nearestNpc && selectedBox) {
-      const boxToNpc = Math.hypot(selectedBox.box.x - nearestNpc.npc.x, selectedBox.box.y - nearestNpc.npc.y);
-      const playerToBox = Math.sqrt(selectedBox.d2);
-      const continuingBox = lockedBox && String(lockedBox.id) === String(selectedBox.box.id);
-      const keepBox = continuingBox
-        ? (boxToNpc <= simultaneousReach * 1.6 || playerToBox <= simultaneousBoxReach * 1.25)
-        : (boxToNpc <= simultaneousReach || playerToBox <= simultaneousBoxReach);
-      if (!keepBox && continuingBox) Bot.lastBoxId = null;
-      pick = keepBox ? { kind: "box", ref: selectedBox.box } : { kind: "npc", ref: nearestNpc.npc };
+  else if (Bot.priority === "box") {
+    // Box d'abord : une box déjà choisie est terminée avant toute autre
+    // décision (le NPC verrouillé reste locké et reçoit des tirs dès qu'il
+    // est à portée). Un combat déjà engagé n'est pas lâché pour une box
+    // lointaine ; une box proche du combat, elle, est prise tout de suite.
+    const npcPick = lockedNpc ? { kind: "npc", ref: lockedNpc } : (foundNpc ? { kind: "npc", ref: foundNpc.npc } : null);
+    const boxPick = selectedBox ? { kind: "box", ref: selectedBox.box } : null;
+    if (lockedBox) pick = { kind: "box", ref: lockedBox };
+    else {
+      let engaged = false;
+      try { engaged = !!lockedNpc && (attackActive || npcIsEngagingPlayer(lockedNpc) === true); } catch { engaged = !!lockedNpc; }
+      const fightReach = Math.max(600, botEngageRange() * 1.5);
+      const boxNearFight = boxPick && lockedNpc
+        && Math.hypot(boxPick.ref.x - lockedNpc.x, boxPick.ref.y - lockedNpc.y) <= fightReach;
+      pick = boxPick && (!engaged || boxNearFight) ? boxPick : (npcPick || boxPick);
     }
-    else if (nearestNpc) pick = { kind: "npc", ref: nearestNpc.npc };
-    else if (selectedBox) pick = { kind: "box", ref: selectedBox.box };
+  } else if (Bot.priority === "nearest") {
+    // Au plus proche : comparaison box / NPC en TEMPS RÉEL. Seul un NPC
+    // réellement attaqué (on lui tire dessus, ou il nous tire dessus) fige
+    // le choix jusqu'à sa mort.
+    let attacked = false;
+    try {
+      attacked = !!lockedNpc && ((attackActive && botTargetIsNpc(lockedNpc)) || npcIsEngagingPlayer(lockedNpc) === true);
+    } catch { attacked = false; }
+    pick = botPickNearest({
+      lockedNpc,
+      attacked,
+      lockedBox,
+      nearestNpc: botNearestNpcByDistance(),
+      nearestBox: foundBox,
+      from: player,
+    });
+    // On part vers un NPC : la box en cours n'est plus suivie.
+    if (pick?.kind === "npc" && lockedBox) Bot.lastBoxId = null;
   } else {
     // NPC d'abord (défaut) : le NPC le plus proche gagne, sinon la box.
     pick = lockedNpc ? { kind: "npc", ref: lockedNpc } : (foundNpc ? { kind: "npc", ref: foundNpc.npc } : (foundBox ? { kind: "box", ref: foundBox.box } : null));
@@ -14914,6 +15129,16 @@ function tickBot(dt) {
     else if (pick?.kind === "box") pick = null;
   }
 
+  // NPC « immédiat » en vue : il passe devant tout, quelle que soit la
+  // priorité (cible en cours, box, patrouille).
+  if (wantKill && Bot.module !== "galaxy" && Bot.module !== "quest") {
+    const instant = botInstantNpc(lockedNpc);
+    if (instant) {
+      if (instant !== lockedNpc) botLog(`Immédiat : ${String(NPC_TYPES[instant.type]?.name || instant.type)}`);
+      pick = { kind: "npc", ref: instant };
+    }
+  }
+
   // Simultané : le pick donne la PRIORITÉ de mouvement, mais en mode mixte
   // les deux tâches tournent ensemble (la branche combat ramasse les box au
   // passage, la branche collecte lock et tire dès que ça porte).
@@ -14923,9 +15148,9 @@ function tickBot(dt) {
     const stillAlive = enemies.some((e) => e && botNpcHasLockKey(e, Bot.lastNpcKey) && Number(e.hp) > 0);
     if (!stillAlive) {
       Bot.kills++;
+      botTally(Bot.killsByType, Bot.lastNpcType);
       botSaveConfig();
-      const kc = document.getElementById("botKillCount");
-      if (kc) kc.textContent = String(Bot.kills);
+      botRefreshStats();
       Bot.lastNpcId = null;
       Bot.lastNpcKey = null;
       Bot.combatTargetId = null;
@@ -14935,9 +15160,9 @@ function tickBot(dt) {
     const stillThere = collectables.some((c) => c && String(c.id) === String(Bot.lastBoxId));
     if (!stillThere) {
       Bot.boxes++;
+      botTally(Bot.boxesByType, Bot.lastBoxType);
       botSaveConfig();
-      const bc = document.getElementById("botBoxCount");
-      if (bc) bc.textContent = String(Bot.boxes);
+      botRefreshStats();
       Bot.grabCd = 4;
       Bot.lastBoxId = null;
     }
@@ -15015,10 +15240,10 @@ function tickBot(dt) {
     // Quand la distance est perdue, la configuration et la formation de fuite
     // passent avant celles d'attaque afin d'utiliser la meilleure vitesse
     // disponible. Une fois le rayon recupere, l'equipement d'attaque revient.
-    const npcForm = Bot.npcForm[String(npc.type)] || "";
-    const npcCfg = Bot.npcCfg[String(npc.type)] || "";
-    botApplyFormation(npcForm);
-    botApplyConfig(npcCfg);
+    // « Par défaut » sur la ligne du NPC = réglage Attaque (Configuration).
+    const npcForm = Bot.npcForm[String(npc.type)] || Bot.formAttack || "";
+    const npcCfg = Bot.npcCfg[String(npc.type)] || Bot.cfgAttack || "";
+    botUseProfile("attack", npcForm, npcCfg);
     const npcName = String((NPC_TYPES[npc.type]?.name || npc.type || "NPC")).replace(/^-=\[?\s*|\s*\]?=-$/g, "").trim() || "NPC";
     try { if (!botTargetIsNpc(npc)) Target.set(npc); } catch {}
     // Le tir continue même si on se décale vers une box (simultané) : jamais
@@ -15035,17 +15260,11 @@ function tickBot(dt) {
     }
     // Munitions speciales auto (SAB bouclier / X6 burst).
     try { botAutoSpecialAmmo(npc, d, engageMax); } catch {}
-    // Une cible NPC engagee garde la priorite absolue sur le mouvement.
-    // La collecte reprendra apres le combat : aucune box ne peut maintenant
-    // detourner le vaisseau du rayon de combat demande.
+    // Une cible NPC engagee garde la priorite absolue sur le mouvement. Seule
+    // exception : une box d'ou l'on peut continuer a tirer (botGrabBoxForFight).
     let grab = null;
     try { grab = botGrabBoxForFight(npc, standD); } catch { grab = null; }
     if (!grab) { try { if (collectableTargetId != null) cancelCollectableTarget(); } catch {} }
-    if (grab && d > engageMax * 1.1) {
-      try { if (collectableTargetId === grab.box.id) cancelCollectableTarget(); } catch {}
-      Bot.lastBoxId = null;
-      grab = null;
-    }
     if (grab) {
       if (collectableTargetId !== grab.box.id) {
         collectableTargetId = grab.box.id;
@@ -15053,6 +15272,7 @@ function tickBot(dt) {
         grab.box.collectT = 0;
       }
       Bot.lastBoxId = grab.box.id;
+      Bot.lastBoxType = String(grab.box.type || "");
       Bot.status = Bot.mode === "both" ? "Farm — combat + collecte" : "Chasse — collecte";
       Bot.target = `${npcName} (${Math.round(d)}m) + ${String(COLLECTABLE_TYPES[grab.box.type]?.name || grab.box.type)} (${Math.round(Math.sqrt(grab.d2))}m)`;
       moveTarget.active = true;
@@ -15102,8 +15322,8 @@ function tickBot(dt) {
   } else {
     const box = pick.ref;
     Bot.lastBoxId = box.id;
-    botApplyFormation(Bot.formCollect || Bot.formMove);
-    botApplyConfig(Bot.cfgCollect || Bot.cfgFly);
+    Bot.lastBoxType = String(box.type || "");
+    botUseProfile("collect", Bot.formCollect || Bot.formMove, Bot.cfgCollect || Bot.cfgFly);
     const d = Math.hypot(box.x - player.x, box.y - player.y);
     // ✅ anti-freeze : aucune progression vers la box depuis 5 s (mur, bord,
     // point de collecte bloqué) => ban 30 s + suivante, au lieu de rester collé.
@@ -49179,6 +49399,17 @@ window.__ORBIT_ENGINE__ = {
     try { renderGalaxyGateWindow("Toutes les gates construites (debug)."); } catch {}
     try { window.dispatchEvent(new CustomEvent("orbit:galaxy-gates")); } catch {}
     return "OK : toutes les gates construites et posées sur la map.";
+  },
+  // Diagnostic du bot (lecture seule).
+  getBotState() {
+    return {
+      active: Bot.active, status: Bot.status, target: Bot.target,
+      x: Math.round(player.x), y: Math.round(player.y),
+      vx: Math.round(Number(player.vx) || 0), vy: Math.round(Number(player.vy) || 0),
+      config: getActiveConfigNo(),
+      formation: String(account.user?.drones?.activeFormation || ""),
+      profileKey: Bot.profileKey, moveX: Math.round(moveTarget.x), moveY: Math.round(moveTarget.y),
+    };
   },
   getEquipmentState() {
     const hangar = getActiveHangarFromUser(account.user);

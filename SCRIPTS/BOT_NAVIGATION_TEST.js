@@ -373,7 +373,7 @@ test("le vrai tick passe entre exploration, navigation et fuite puis reprend la 
     started: true, StarJump: { channel: null }, player: { x: 1000, y: 1000, hp: 100, hpMax: 100 }, WORLD: { w: 4000, h: 4000 },
     window: { __CURRENT_MAP_ID__: "1-1" }, rules: {}, moveTarget: { active: false },
     enemies: [], collectables: [], attackActive: false, Target: { get: () => null },
-    botNearestNpc: () => null, botBlacklightSearch: () => null, botPortalIndex: null, botClearSpecialAmmo: () => {},
+    botNearestNpc: () => null, botInstantNpc: () => null, botBlacklightSearch: () => null, botPortalIndex: null, botClearSpecialAmmo: () => {},
     botApplyRocketFlags: () => {}, botRefreshHudThrottled: () => {}, botLog: () => {},
     stopAttack: () => {}, cancelCollectableTarget: () => {},
     botNearestSafeRefuge: () => ({ x: 1500, y: 1500, label: "Zone sure" }),
@@ -486,7 +486,7 @@ function repairCloakContext() {
     StarJump: { channel: null }, WORLD: { w: 4000, h: 4000 },
     window: { __CURRENT_MAP_ID__: '1-7' }, rules: {}, moveTarget: { active: false },
     collectables: [], attackActive: true, Target: { get: () => null },
-    botNearestNpc: () => null, botBlacklightSearch: () => null, botPortalIndex: null, botClearSpecialAmmo: () => {},
+    botNearestNpc: () => null, botInstantNpc: () => null, botBlacklightSearch: () => null, botPortalIndex: null, botClearSpecialAmmo: () => {},
     botApplyRocketFlags: () => {}, botRefreshHudThrottled: () => {}, cancelCollectableTarget: () => {},
     stopAttack: () => { c.attackActive = false; },
     botNearestSafeRefuge: () => ({ x: 1500, y: 1500, label: 'Zone sure' }),
@@ -553,4 +553,158 @@ test('camouflage reparation : reglage independant sauvegarde, etat du repli non 
   const { context: restored } = botProfileContext(c.saved()); restored.botLoadConfig();
   assert.equal(restored.Bot.fleeCloak, true); assert.equal(restored.Bot.skillCloak, false);
   assert.equal(restored.Bot.fleeCloakUsed, false);
+});
+
+// Kill & Collect : choix de cible pendant la collecte et box en plein combat.
+function botTargetingContext() {
+  const source = readFileSync(new URL("../SRC/CORE/ORBIT_ENGINE.js", import.meta.url), "utf8");
+  const slice = (start, end) => {
+    const from = source.indexOf(start), to = source.indexOf(end, from);
+    return source.slice(from, to);
+  };
+  const c = vm.createContext({
+    Bot: { mode: "both", npcAllow: new Set(["streuner"]), boxAllow: new Set(["bonus"]), grabInFight: true, grabRadius: 380, grabCd: 0, lastBoxId: null, grabT0: 0, boxBan: {} },
+    player: { x: 1000, y: 1000 },
+    enemies: [], collectables: [],
+    attackActive: true, collectableTargetId: null,
+    moveTarget: { active: false, x: 0, y: 0 },
+    NPC_TYPES: { streuner: { shootRange: 0 } },
+    performance: { now: () => c.now },
+    now: 10000,
+    Date,
+    botNpcInWall: () => false, botNpcWallBanActive: () => false,
+    botNearestNpcInRange: () => c.nearestInRange || null,
+    botEngageRange: () => 600,
+    cancelCollectableTarget: () => { c.collectableTargetId = null; },
+    spatialCollectablesNear: () => c.collectables,
+    dist2: (ax, ay, bx, by) => (ax - bx) ** 2 + (ay - by) ** 2,
+    clamp: (v, min, max) => Math.max(min, Math.min(max, v)),
+  });
+  vm.runInContext(slice("function botConcurrentNpc(", "function botNpcLockKey("), c);
+  vm.runInContext(slice("const BOT_GRAB_MAX_S", "function botNearestBox("), c);
+  vm.runInContext(slice("function botBoxBanned(", "// Itinéraire physique"), c);
+  return c;
+}
+
+test("collecte : le NPC verrouillé hors de portée n'est jamais remplacé par un autre", () => {
+  const c = botTargetingContext();
+  const locked = { id: 1, type: "streuner", hp: 50, x: 2500, y: 1000 }; // 1500 m : hors portée
+  const other = { id: 2, type: "streuner", hp: 50, x: 1200, y: 1000 };  // à portée
+  c.enemies = [locked, other];
+  c.nearestInRange = other;
+  assert.equal(c.botConcurrentNpc(600, locked), locked);
+  // Sans NPC verrouillé, le plus proche à portée est engagé.
+  assert.equal(c.botConcurrentNpc(600, null), other);
+});
+
+test("box en combat : refusée si on ne peut plus tirer depuis elle", () => {
+  const c = botTargetingContext();
+  const npc = { id: 1, type: "streuner", hp: 50, x: 1500, y: 1000 }; // 500 m
+  c.collectables = [{ id: "far", type: "bonus", x: 800, y: 1000 }];  // 700 m du NPC > 600 × 0,9
+  assert.equal(c.botGrabBoxForFight(npc, 560), null);
+  c.collectables = [{ id: "ok", type: "bonus", x: 1050, y: 1100 }];  // ~470 m du NPC
+  assert.equal(c.botGrabBoxForFight(npc, 300)?.box.id, "ok");
+});
+
+test("box en combat : une fois choisie, gardée même si le tir se coupe", () => {
+  const c = botTargetingContext();
+  const npc = { id: 1, type: "streuner", hp: 50, x: 1500, y: 1000 };
+  const box = { id: "ok", type: "bonus", x: 1050, y: 1100 };
+  c.collectables = [box];
+  assert.equal(c.botGrabBoxForFight(npc, 300)?.box, box);
+  c.Bot.lastBoxId = box.id;
+  // En route vers la box : le NPC sort de portée, le tir s'arrête.
+  c.attackActive = false;
+  npc.x = 1700;
+  assert.equal(c.botGrabBoxForFight(npc, 300)?.box, box);
+});
+
+test("box en combat : abandon franc après le délai, sans reprise immédiate", () => {
+  const c = botTargetingContext();
+  const npc = { id: 1, type: "streuner", hp: 50, x: 1500, y: 1000 };
+  const box = { id: "ok", type: "bonus", x: 1050, y: 1100 };
+  c.collectables = [box];
+  c.botGrabBoxForFight(npc, 300);
+  c.Bot.lastBoxId = box.id;
+  c.now += 7000;
+  assert.equal(c.botGrabBoxForFight(npc, 300), null);
+  assert.equal(c.Bot.lastBoxId, null);
+  // Écartée quelques secondes : pas de nouvel aller-retour vers elle.
+  assert.equal(c.botGrabBoxForFight(npc, 300), null);
+});
+
+function nearestPickContext() {
+  const source = readFileSync(new URL("../SRC/CORE/ORBIT_ENGINE.js", import.meta.url), "utf8");
+  const from = source.indexOf("const BOT_NEAREST_KEEP_RATIO"), to = source.indexOf("// La portee d'engagement", from);
+  const c = vm.createContext({});
+  vm.runInContext(source.slice(from, to), c);
+  return c;
+}
+
+test("au plus proche : un NPC plus proche passe devant la box en cours", () => {
+  const c = nearestPickContext();
+  const from = { x: 0, y: 0 };
+  const box = { id: "b", x: 900, y: 0 };
+  const npc = { id: 1, x: 300, y: 0 };
+  const pick = c.botPickNearest({ lockedBox: box, nearestBox: { box }, nearestNpc: { npc }, from });
+  assert.equal(pick.kind, "npc");
+  assert.equal(pick.ref, npc);
+});
+
+test("au plus proche : une box plus proche passe devant un NPC pas encore attaqué", () => {
+  const c = nearestPickContext();
+  const npc = { id: 1, x: 1000, y: 0 };
+  const box = { id: "b", x: 200, y: 0 };
+  const pick = c.botPickNearest({ lockedNpc: npc, attacked: false, nearestNpc: { npc }, nearestBox: { box }, from: { x: 0, y: 0 } });
+  assert.equal(pick.kind, "box");
+});
+
+test("au plus proche : un NPC attaqué n'est jamais lâché", () => {
+  const c = nearestPickContext();
+  const npc = { id: 1, x: 1000, y: 0 };
+  const box = { id: "b", x: 50, y: 0 };
+  const pick = c.botPickNearest({ lockedNpc: npc, attacked: true, nearestBox: { box }, from: { x: 0, y: 0 } });
+  assert.equal(pick.ref, npc);
+});
+
+test("au plus proche : pas de bascule entre deux cibles presque à égalité", () => {
+  const c = nearestPickContext();
+  const box = { id: "b", x: 500, y: 0 };
+  const npc = { id: 1, x: 460, y: 0 };
+  const pick = c.botPickNearest({ lockedBox: box, nearestBox: { box }, nearestNpc: { npc }, from: { x: 0, y: 0 } });
+  assert.equal(pick.ref, box);
+});
+
+function instantContext() {
+  const source = readFileSync(new URL("../SRC/CORE/ORBIT_ENGINE.js", import.meta.url), "utf8");
+  const from = source.indexOf("const BOT_BURST_IDS"), to = source.indexOf("// Rayon de combat", from);
+  const c = vm.createContext({
+    Bot: { npcInstant: { boss: true, mini: true }, npcAllow: new Set(["boss", "mini", "streuner"]), npcBurst: {} },
+    player: { x: 0, y: 0 },
+    enemies: [],
+    botNpcVisible: () => true, botNpcInWall: () => false, botNpcWallBanActive: () => false,
+    dist2: (ax, ay, bx, by) => (ax - bx) ** 2 + (ay - by) ** 2,
+  });
+  vm.runInContext(source.slice(from, to), c);
+  return c;
+}
+
+test("immédiat : le NPC immédiat le plus proche passe devant la cible en cours", () => {
+  const c = instantContext();
+  const streuner = { id: 1, type: "streuner", hp: 10, x: 100, y: 0 };
+  const farBoss = { id: 2, type: "boss", hp: 10, x: 2000, y: 0 };
+  const nearMini = { id: 3, type: "mini", hp: 10, x: 900, y: 0 };
+  c.enemies = [streuner, farBoss, nearMini];
+  assert.equal(c.botInstantNpc(streuner), nearMini);
+});
+
+test("immédiat : un immédiat déjà engagé est gardé, un NPC décoché est ignoré", () => {
+  const c = instantContext();
+  const farBoss = { id: 2, type: "boss", hp: 10, x: 2000, y: 0 };
+  const nearMini = { id: 3, type: "mini", hp: 10, x: 900, y: 0 };
+  c.enemies = [farBoss, nearMini];
+  assert.equal(c.botInstantNpc(farBoss), farBoss);
+  c.Bot.npcAllow.delete("mini");
+  assert.equal(c.botInstantNpc(null), farBoss);
+  assert.equal(c.botNpcBurst("streuner"), "");
 });
