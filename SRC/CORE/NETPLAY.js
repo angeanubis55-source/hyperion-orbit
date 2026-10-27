@@ -724,12 +724,14 @@ export function sendFriendResponded(to) {
 // les notifications de changement et le tag en mémoire du serveur.
 let netClanDirty = false;
 let netMyClanTag = "";
+const cleanClanTag = (tag) => String(tag || "").normalize("NFKC").trim().slice(0, 32);
+const clanTagKey = (tag) => cleanClanTag(tag).toLocaleLowerCase("fr");
 // Tag en cache : le serveur ne pousse le tag qu'après connexion, ce qui
 // retardait le bouton CBS. Le cache affiche le bouton aussitôt, le
 // serveur corrige dès sa notification.
 try {
   const cachedTag = localStorage.getItem("orbit_myclan_tag");
-  if (cachedTag) netMyClanTag = String(cachedTag).toUpperCase().slice(0, 5);
+  if (cachedTag) netMyClanTag = cleanClanTag(cachedTag);
 } catch {}
 export function consumeClanDirty() {
   const v = netClanDirty;
@@ -744,7 +746,7 @@ export function getMyClanTag() {
 // le WS dans tous les cas (les deux écrivent la même valeur).
 export function setMyClanTag(tag) {
   try {
-    netMyClanTag = String(tag || "").toUpperCase().slice(0, 5);
+    netMyClanTag = cleanClanTag(tag);
     try {
       if (netMyClanTag) localStorage.setItem("orbit_myclan_tag", netMyClanTag);
       else localStorage.removeItem("orbit_myclan_tag");
@@ -771,7 +773,7 @@ export function sendClanNotify(to) {
 export function sendClanRefresh() {
   return sendSocialMsg({ t: "clanRefresh" });
 }
-// Diplomatie : relations connues (tags en majuscules) pour colorer les
+// Diplomatie : relations connues (clés Unicode insensibles à la casse) pour colorer les
 // vaisseaux distants (vert allié, jaune NAP, rouge guerre, façon DO).
 // Alimenté par UI_CLAN.js depuis /api/clans/relations.
 const netDiploAlly = new Set();
@@ -781,22 +783,22 @@ export function setNetDiplo(ally, nap, war) {
   try {
     netDiploAlly.clear(); netDiploNap.clear(); netDiploWar.clear();
     for (const tag of (Array.isArray(ally) ? ally : [])) {
-      const clean = String(tag || "").toUpperCase().slice(0, 5);
+      const clean = clanTagKey(tag);
       if (clean) netDiploAlly.add(clean);
     }
     for (const tag of (Array.isArray(nap) ? nap : [])) {
-      const clean = String(tag || "").toUpperCase().slice(0, 5);
+      const clean = clanTagKey(tag);
       if (clean) netDiploNap.add(clean);
     }
     for (const tag of (Array.isArray(war) ? war : [])) {
-      const clean = String(tag || "").toUpperCase().slice(0, 5);
+      const clean = clanTagKey(tag);
       if (clean) netDiploWar.add(clean);
     }
   } catch {}
 }
 export function getClanRelation(tag) {
   try {
-    const clean = String(tag || "").toUpperCase().slice(0, 5);
+    const clean = clanTagKey(tag);
     if (!clean) return null;
     if (netDiploWar.has(clean)) return "war";
     if (netDiploNap.has(clean)) return "nap";
@@ -806,7 +808,7 @@ export function getClanRelation(tag) {
 }
 // Après une mutation diplo HTTP : resync les deux clans + annonce.
 export function sendDiploNotify(tag, text) {
-  const other = String(tag || "").toUpperCase().slice(0, 5);
+  const other = cleanClanTag(tag);
   const clean = String(text || "").replace(/\s+/g, " ").trim().slice(0, 200);
   if (!other && !clean) return sendSocialMsg({ t: "diploNotify" });
   return sendSocialMsg({ t: "diploNotify", tag: other || undefined, text: clean || undefined });
@@ -1607,7 +1609,7 @@ export function ensureNetplayConnection() {
           if (!b || typeof b !== "object") continue;
           clean.push({
             map: String(b.map || "").toLowerCase().slice(0, 16),
-            clan: String(b.clan || "").toUpperCase().slice(0, 5),
+            clan: cleanClanTag(b.clan),
             dmg: b.dmg === true,
             hon: b.hon === true,
             exp: b.exp === true,
@@ -1622,7 +1624,7 @@ export function ensureNetplayConnection() {
         for (const b of msg.cbsOwn.slice(0, 32)) {
           if (!b || typeof b !== "object") continue;
           const mp = String(b.map || "").toLowerCase().slice(0, 16);
-          const cl = String(b.clan || "").toUpperCase().slice(0, 5);
+          const cl = cleanClanTag(b.clan);
           if (!mp || !cl) continue;
           clean.push({ map: mp, clan: cl, firm: String(b.firm || "").toLowerCase().slice(0, 16), builtAt: Math.max(0, Number(b.builtAt) || 0) });
         }
@@ -1812,7 +1814,7 @@ export function ensureNetplayConnection() {
         Object.assign(entry, {
           id,
           pseudo: String(p.pseudo ?? prev?.pseudo ?? "Pilote").slice(0, 20),
-          clan: String(p.clan ?? prev?.clan ?? "").toUpperCase().slice(0, 5),
+          clan: cleanClanTag(p.clan ?? prev?.clan),
           shipId: String(p.shipId ?? prev?.shipId ?? ""),
           hswap: swapRemaining > 0 ? Math.max(0, swapDuration - renderedSwapElapsed) : 0,
           hswapDur: swapDuration,

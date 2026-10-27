@@ -1442,20 +1442,24 @@ export function removeFriend(userId, target) {
 // diplomatie alliance / NAP / guerre (100 jours max, score de kills),
 // journal de clan. Tchat via MULTI_SERVER.
 // Un pilote = un seul clan. Le tag est unique (2-5 caractères affichés
-// en majuscules). Taille max 30 membres.
+// Nom et tag libres (Unicode, espaces et symboles). Taille max 30 membres.
 export const CLAN_MAX_MEMBERS = 30;
 export const CLAN_RIGHTS = Object.freeze({ APPS: 1, KICK: 2, DIPLO: 4, EDIT: 8 });
-const CLAN_TAG_RE = /^[A-Z0-9]{2,5}$/;
+const CLAN_NAME_MAX = 64;
+const CLAN_TAG_MAX = 32;
 const CLAN_CREATE_COST = 300000;
 const CLAN_WAR_MAX_MS = 100 * 24 * 3600_000;
 const CLAN_LOG_MAX = 30;
 const CLAN_RANK_NAME_RE = /^[\p{L}\p{N}_ -]{2,20}$/u;
 
 function cleanClanName(s) {
-  return String(s || "").replace(/\s+/g, " ").trim().slice(0, 30);
+  return String(s || "").normalize("NFKC").trim().slice(0, CLAN_NAME_MAX);
 }
 function cleanClanTag(s) {
-  return String(s || "").replace(/\s+/g, "").trim().toUpperCase().slice(0, 5);
+  return String(s || "").normalize("NFKC").trim().slice(0, CLAN_TAG_MAX);
+}
+function clanTagKey(s) {
+  return cleanClanTag(s).toLocaleLowerCase("fr");
 }
 function cleanClanDesc(s) {
   return String(s || "").replace(/\s+/g, " ").trim().slice(0, 250);
@@ -1579,7 +1583,7 @@ export function clanIdOfUser(userId) {
 export function clanIdOfTag(tag) {
   try {
     initAccountDb();
-    const row = db.prepare("SELECT id FROM clans WHERE tag_norm = ?").get(String(tag || "").trim().toLowerCase());
+    const row = db.prepare("SELECT id FROM clans WHERE tag_norm = ?").get(clanTagKey(tag));
     return row ? String(row.id) : "";
   } catch { return ""; }
 }
@@ -1588,7 +1592,7 @@ export function clanTagOfUser(userId) {
   try {
     initAccountDb();
     const row = db.prepare("SELECT c.tag AS tag FROM clan_members m JOIN clans c ON c.id = m.clan_id WHERE m.user_id = ?").get(String(userId || ""));
-    return row ? String(row.tag || "").slice(0, 5) : "";
+    return row ? String(row.tag || "").slice(0, CLAN_TAG_MAX) : "";
   } catch { return ""; }
 }
 
@@ -1612,7 +1616,7 @@ export function getMyClan(userId) {
     const members = db.prepare("SELECT m.user_id AS id, u.pseudo AS pseudo, m.role AS role FROM clan_members m JOIN users u ON u.id = m.user_id WHERE m.clan_id = ? ORDER BY CASE m.role WHEN 'leader' THEN 0 WHEN 'officer' THEN 1 ELSE 2 END, m.joined_at").all(String(clan.id))
       .map((r) => ({ id: String(r.id), pseudo: String(r.pseudo || "Pilote").slice(0, 20), role: String(r.role || "member") }));
     const out = {
-      id: String(clan.id), name: String(clan.name || "Clan").slice(0, 30), tag: String(clan.tag || "").slice(0, 5),
+      id: String(clan.id), name: String(clan.name || "Clan").slice(0, CLAN_NAME_MAX), tag: String(clan.tag || "").slice(0, CLAN_TAG_MAX),
       description: String(clan.description || "").slice(0, 250),
       leader: String(clan.leader_id || ""), role: String(clan.my_role || "member"), members,
       open: Number(clan.open ?? 1) !== 0,
@@ -1636,7 +1640,7 @@ export function listClans() {
     initAccountDb();
     return db.prepare("SELECT c.id AS id, c.name AS name, c.tag AS tag, c.description AS description, c.open AS open, u.pseudo AS leader, (SELECT COUNT(*) FROM clan_members m WHERE m.clan_id = c.id) AS n FROM clans c LEFT JOIN users u ON u.id = c.leader_id ORDER BY n DESC, c.name COLLATE NOCASE LIMIT 200").all()
       .map((r) => ({
-        id: String(r.id), name: String(r.name || "Clan").slice(0, 30), tag: String(r.tag || "").slice(0, 5),
+        id: String(r.id), name: String(r.name || "Clan").slice(0, CLAN_NAME_MAX), tag: String(r.tag || "").slice(0, CLAN_TAG_MAX),
         description: String(r.description || "").slice(0, 250),
         leader: String(r.leader || "Pilote").slice(0, 20), memberCount: Math.max(0, Number(r.n) || 0),
         open: Number(r.open ?? 1) !== 0,
@@ -1649,7 +1653,7 @@ export function getMyApplications(userId) {
   try {
     initAccountDb();
     return db.prepare("SELECT a.clan_id AS clanId, c.name AS name, c.tag AS tag, a.created_at AS at FROM clan_applications a JOIN clans c ON c.id = a.clan_id WHERE a.user_id = ? ORDER BY a.created_at").all(String(userId))
-      .map((r) => ({ clanId: String(r.clanId), name: String(r.name || "Clan").slice(0, 30), tag: String(r.tag || "").slice(0, 5), at: Number(r.at) || 0 }));
+      .map((r) => ({ clanId: String(r.clanId), name: String(r.name || "Clan").slice(0, CLAN_NAME_MAX), tag: String(r.tag || "").slice(0, CLAN_TAG_MAX), at: Number(r.at) || 0 }));
   } catch { return []; }
 }
 
@@ -1657,7 +1661,7 @@ export function getMyApplications(userId) {
 export function getClanInfo(tag) {
   try {
     initAccountDb();
-    const row = db.prepare("SELECT * FROM clans WHERE tag_norm = ?").get(String(tag || "").trim().toLowerCase());
+    const row = db.prepare("SELECT * FROM clans WHERE tag_norm = ?").get(clanTagKey(tag));
     if (!row) return null;
     const members = db.prepare("SELECT u.pseudo AS pseudo, m.role AS role FROM clan_members m JOIN users u ON u.id = m.user_id WHERE m.clan_id = ? ORDER BY CASE m.role WHEN 'leader' THEN 0 WHEN 'officer' THEN 1 ELSE 2 END, m.joined_at").all(String(row.id))
       .map((r) => ({ pseudo: String(r.pseudo || "Pilote").slice(0, 20), role: String(r.role || "member") }));
@@ -1666,7 +1670,7 @@ export function getClanInfo(tag) {
       const lr = db.prepare("SELECT pseudo FROM users WHERE id = ?").get(String(row.leader_id));
       if (lr) leaderPseudo = String(lr.pseudo || "Pilote").slice(0, 20);
     } catch {}
-    return { id: String(row.id), name: String(row.name || "Clan").slice(0, 30), tag: String(row.tag || "").slice(0, 5), description: String(row.description || "").slice(0, 250), leader: leaderPseudo, memberCount: members.length, members };
+    return { id: String(row.id), name: String(row.name || "Clan").slice(0, CLAN_NAME_MAX), tag: String(row.tag || "").slice(0, CLAN_TAG_MAX), description: String(row.description || "").slice(0, 250), leader: leaderPseudo, memberCount: members.length, members };
   } catch { return null; }
 }
 
@@ -1678,16 +1682,17 @@ export function createClan(userId, name, tag, description) {
     if (clanIdOfUser(uid)) return { ok: false, error: "ALREADY" };
     const cleanName = cleanClanName(name);
     const cleanTag = cleanClanTag(tag);
-    if (cleanName.length < 3) return { ok: false, error: "NAME" };
-    if (!CLAN_TAG_RE.test(cleanTag)) return { ok: false, error: "TAG" };
-    const clash = db.prepare("SELECT 1 FROM clans WHERE tag_norm = ?").get(cleanTag.toLowerCase());
+    if (!cleanName) return { ok: false, error: "NAME" };
+    if (!cleanTag) return { ok: false, error: "TAG" };
+    const cleanTagNorm = clanTagKey(cleanTag);
+    const clash = db.prepare("SELECT 1 FROM clans WHERE tag_norm = ?").get(cleanTagNorm);
     if (clash) return { ok: false, error: "TAKEN" };
     // Frais de fondation façon DO : 300 000 crédits.
     const paid = adjustCredits(uid, -CLAN_CREATE_COST);
     if (!paid.ok) return { ok: false, error: "NOCASH" };
     const id = uuid();
     const now = Date.now();
-    db.prepare("INSERT INTO clans (id, name, tag, tag_norm, leader_id, description, open, created_at) VALUES (?, ?, ?, ?, ?, ?, 1, ?)").run(id, cleanName, cleanTag, cleanTag.toLowerCase(), uid, cleanClanDesc(description), now);
+    db.prepare("INSERT INTO clans (id, name, tag, tag_norm, leader_id, description, open, created_at) VALUES (?, ?, ?, ?, ?, ?, 1, ?)").run(id, cleanName, cleanTag, cleanTagNorm, uid, cleanClanDesc(description), now);
     db.prepare("INSERT INTO clan_members (clan_id, user_id, role, joined_at) VALUES (?, ?, 'leader', ?)").run(id, uid, now);
     clanRanks(id);
     addClanLog(id, `Clan fondé par ${pseudoOf(uid)}.`);
@@ -1753,7 +1758,7 @@ export function applyToClan(userId, tag) {
     const uid = String(userId || "");
     if (!uid) return { ok: false, error: "AUTH" };
     if (clanIdOfUser(uid)) return { ok: false, error: "INCLAN" };
-    const clan = db.prepare("SELECT * FROM clans WHERE tag_norm = ?").get(String(tag || "").trim().toLowerCase());
+    const clan = db.prepare("SELECT * FROM clans WHERE tag_norm = ?").get(clanTagKey(tag));
     if (!clan) return { ok: false, error: "NONE" };
     if (Number(clan.open ?? 1) === 0) return { ok: false, error: "CLOSED" };
     const count = (() => {
@@ -1765,7 +1770,7 @@ export function applyToClan(userId, tag) {
     })();
     if (dup) return { ok: false, error: "APPLIED" };
     db.prepare("INSERT INTO clan_applications (clan_id, user_id, created_at) VALUES (?, ?, ?)").run(String(clan.id), uid, Date.now());
-    return { ok: true, clan: { id: String(clan.id), name: String(clan.name || "Clan").slice(0, 30), tag: String(clan.tag || "").slice(0, 5) } };
+    return { ok: true, clan: { id: String(clan.id), name: String(clan.name || "Clan").slice(0, CLAN_NAME_MAX), tag: String(clan.tag || "").slice(0, CLAN_TAG_MAX) } };
   } catch { return { ok: false, error: "SERVER" }; }
 }
 
@@ -1775,7 +1780,7 @@ export function cancelApplication(userId, tag) {
     initAccountDb();
     const uid = String(userId || "");
     if (!uid) return { ok: false };
-    const clan = db.prepare("SELECT id FROM clans WHERE tag_norm = ?").get(String(tag || "").trim().toLowerCase());
+    const clan = db.prepare("SELECT id FROM clans WHERE tag_norm = ?").get(clanTagKey(tag));
     if (!clan) {
       try { db.prepare("DELETE FROM clan_applications WHERE user_id = ?").run(uid); } catch {}
       return { ok: true };
@@ -2001,7 +2006,7 @@ function purgeExpiredWars() {
 function clanTagById(clanId) {
   try {
     const row = db.prepare("SELECT tag FROM clans WHERE id = ?").get(String(clanId || ""));
-    return row ? String(row.tag || "").slice(0, 5) : "?";
+    return row ? String(row.tag || "").slice(0, CLAN_TAG_MAX) : "?";
   } catch { return "?"; }
 }
 
@@ -2030,7 +2035,7 @@ export function getClanRelations(userId) {
       try {
         const c = db.prepare("SELECT tag, name FROM clans WHERE id = ?").get(cid);
         const n = db.prepare("SELECT COUNT(*) AS n FROM clan_members WHERE clan_id = ?").get(cid)?.n;
-        if (c) d = { tag: String(c.tag || "?").slice(0, 5), name: String(c.name || "Clan").slice(0, 30), members: Math.max(0, Number(n) || 0) };
+        if (c) d = { tag: String(c.tag || "?").slice(0, CLAN_TAG_MAX), name: String(c.name || "Clan").slice(0, CLAN_NAME_MAX), members: Math.max(0, Number(n) || 0) };
       } catch {}
       info.set(cid, d);
       return d;
@@ -2067,13 +2072,13 @@ export function proposeDiplo(actorId, tag, kind) {
     const clanId = clanIdOfUser(uid);
     if (!clanId) return { ok: false, error: "NOCLAN" };
     if (!clanRightsOf(uid, clanId).diplo) return { ok: false, error: "RIGHTS" };
-    const target = db.prepare("SELECT * FROM clans WHERE tag_norm = ?").get(String(tag || "").trim().toLowerCase());
+    const target = db.prepare("SELECT * FROM clans WHERE tag_norm = ?").get(clanTagKey(tag));
     if (!target) return { ok: false, error: "NONE" };
     if (String(target.id) === String(clanId)) return { ok: false, error: "SELF" };
     if (diploBetween(clanId, String(target.id)).length) return { ok: false, error: "EXISTS" };
     const now = Date.now();
     const id = uuid();
-    const myTag = clanTagById(clanId), theirTag = String(target.tag || "").slice(0, 5);
+    const myTag = clanTagById(clanId), theirTag = String(target.tag || "").slice(0, CLAN_TAG_MAX);
     if (k === "war") {
       db.prepare("INSERT INTO clan_diplo (id, from_clan, to_clan, kind, status, kills_from, kills_to, created_at, ends_at) VALUES (?, ?, ?, 'war', 'active', 0, 0, ?, ?)").run(id, clanId, String(target.id), now, now + CLAN_WAR_MAX_MS);
       addClanLog(clanId, `Guerre déclarée à [${theirTag}].`);
@@ -3447,8 +3452,8 @@ export function handleAccountApi(req, res) {
         const r = createClan(me.id, body?.name, body?.tag, body?.description);
         if (!r.ok) {
           const msg = r.error === "ALREADY" ? "Tu es déjà dans un clan."
-            : r.error === "NAME" ? "Nom de clan invalide (3 lettres minimum)."
-            : r.error === "TAG" ? "Tag invalide (2 à 5 lettres/chiffres)."
+            : r.error === "NAME" ? "Le nom du clan ne peut pas être vide."
+            : r.error === "TAG" ? "Le tag du clan ne peut pas être vide."
             : r.error === "TAKEN" ? "Ce tag est déjà pris." : "Erreur serveur.";
           return json(res, r.error === "TAKEN" || r.error === "ALREADY" ? 409 : 400, { ok: false, error: msg });
         }

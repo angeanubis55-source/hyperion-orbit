@@ -199,7 +199,7 @@ export function drawPlayerStatus(context, player, playerName, x, y, rankImage = 
   // Tag de clan [TAG] en blanc (ou couleur diplo : rouge guerre, jaune
   // foncé NAP, vert alliance), pseudo dans la couleur relationnelle
   // (vert clan, rouge guerre, jaune NAP/escadrille, bleu firme...).
-  const clanSplit = /^\[([A-Z0-9]{2,5})\] ([\s\S]+)$/.exec(displayName);
+  const clanSplit = /^\[([\s\S]{1,32})\] ([\s\S]+)$/.exec(displayName);
   if (clanSplit) {
     const tagPart = `[${clanSplit[1]}] `;
     const prevAlign = context.textAlign;

@@ -1579,16 +1579,18 @@ const pvpFarm = new Map(); // anti-farm : "tueur|victime" -> { n, t0 } (rendemen
 const chatHistory = []; // global : [{ from, text, at }] (40 derniers)
 const chatLastById = new Map(); // anti-spam : id -> timestamp dernier message
 const clanChatLast = new Map(); // anti-spam tchat de clan : id -> timestamp
+const cleanClanTag = (tag) => String(tag || "").normalize("NFKC").trim().slice(0, 32);
+const clanTagKey = (tag) => cleanClanTag(tag).toLocaleLowerCase("fr");
 
 // Tchat de clan : diffusé aux membres connectés (rooms + instances).
 // Comparaison sur le tag en mémoire (rafraîchi au hello + ping 15 s).
 function broadcastToClan(tag, obj, excludeId = null) {
-  const clean = String(tag || "").toUpperCase().slice(0, 5);
+  const clean = clanTagKey(tag);
   if (!clean) return 0;
   let payload = null;
   try { payload = JSON.stringify(obj); } catch { return 0; }
   let n = 0;
-  const matches = (s) => String(s?.clanTag || "").toUpperCase().slice(0, 5) === clean;
+  const matches = (s) => clanTagKey(s?.clanTag) === clean;
   for (const [, room] of rooms) {
     for (const [pid, entry] of room) {
       if (excludeId != null && String(pid) === String(excludeId)) continue;
@@ -1609,7 +1611,7 @@ function refreshClanTag(state, accountId) {
   try {
     if (!accountId) { state.clanTag = ""; return ""; }
     const tag = clanTagOfUser(accountId) || "";
-    state.clanTag = String(tag).slice(0, 5);
+    state.clanTag = cleanClanTag(tag);
     return state.clanTag;
   } catch { return String(state?.clanTag || ""); }
 }
@@ -1895,7 +1897,7 @@ function describePeer(pid) {
   if (!entry) return null;
   const s = entry.state || {};
   return {
-    id, pseudo: String(s.pseudo || "Pilote").slice(0, 20), map, online: entry.ws?.readyState === 1, instance, clanTag: String(s.clanTag || "").slice(0, 5),
+    id, pseudo: String(s.pseudo || "Pilote").slice(0, 20), map, online: entry.ws?.readyState === 1, instance, clanTag: String(s.clanTag || "").normalize("NFKC").trim().slice(0, 32),
     x: Number(s.x) || 0, y: Number(s.y) || 0, hpPct: Number(s.hpPct ?? 1), shPct: Number(s.shPct ?? 1),
     hpMax: Number(s.hpMax) || 1, shMax: Number(s.shMax) || 0, dead: s.dead === true,
     shipId: String(s.shipId || "").slice(0, 64), petActive: s.peta === 1,
@@ -2577,13 +2579,13 @@ wss.on("connection", (ws) => {
         try {
           if (ws.readyState === 1) ws.send(JSON.stringify({ t: "clanTag", tag: String(tag || "") }));
         } catch {}
-        const other = String(msg.tag || "").toUpperCase().slice(0, 5);
+        const other = cleanClanTag(msg.tag);
         const text = String(msg.text || "").replace(/\s+/g, " ").trim().slice(0, 200);
         if (tag) {
           broadcastToClan(tag, { t: "clanChanged", tag });
           if (text) broadcastToClan(tag, { t: "clanMsg", from: "", fromPseudo: "[Diplomatie]", tag, text, at: now });
         }
-        if (other && other !== String(tag || "").toUpperCase()) {
+        if (other && clanTagKey(other) !== clanTagKey(tag)) {
           broadcastToClan(other, { t: "clanChanged", tag: other });
           if (text) broadcastToClan(other, { t: "clanMsg", from: "", fromPseudo: "[Diplomatie]", tag: other, text, at: now });
         }
@@ -4358,7 +4360,7 @@ function tickStationDefense(map, room, now) {
         if (Number(s._graceUntil || 0) > now) continue;
         const acct = s._account || null;
         // Clan : état pair (rafraîchi à l'auth), repli DB avec id brut.
-        let vClan = String(s?.clanTag || "").toUpperCase().slice(0, 5);
+        let vClan = cleanClanTag(s?.clanTag);
         if (!vClan) {
           try {
             const raw = String(pid || "").replace(/^u_/i, "");
@@ -4727,7 +4729,7 @@ setInterval(() => {
           delete s._abilityFx[skill];
         }
       }
-      players.push({ id: s.id, pseudo: s.pseudo, clan: String(s.clanTag || "").slice(0, 5), shipId: s.shipId, hswap: Math.max(0, Math.min(3, Number(s.hswap) || 0)), x: Math.round(s.x), y: Math.round(s.y), vx: Math.round((Number(s.vx) || 0) * 100) / 100, vy: Math.round((Number(s.vy) || 0) * 100) / 100, moving: s.moving === true, motionBlocked: s.motionBlocked === true, teleportSeq: Number(s.teleportSeq) || 0, mx: Math.round(Number(s.mx) || 0), my: Math.round(Number(s.my) || 0), cloakCpu: s.cloakCpu === true, cloaked: s.cloaked === true, vmax: Math.max(50, Math.min(7500, Math.round(Number(s.vmax) || 400))), angle: Number(s.angle) || 0, dead: s.dead === true, hpPct: s.hpPct ?? 1, shPct: s.shPct ?? 1, collectUid: String(s.collectUid || "").slice(0, 64), collectPet: s.collectPet === true, bg: s.bg === true, atk: s.atk === true, tx: Math.round(Number(s.tx) || 0), ty: Math.round(Number(s.ty) || 0), ammo: String(s.ammo || "x1").slice(0, 16), drones: Number(s.drones) || 0, dform: String(s.dform || "standard").slice(0, 32), fint: Number(s.fint) || 0.25, bspd: Math.round(Number(s.bspd) || 4000), dslots: String(s.dslots || ""), gg: Math.max(0, Math.min(127, Math.floor(Number(s.gg) || 0))), alt: s.alt === true, shots: Math.max(0, Math.floor(Number(s.shots) || 0)), rank: String(s.rank || ""), firm: String(s.firm || ""), title: String(s.title || "").slice(0, 32), showTitle: s.showTitle === true, titleT: String(s.titleT || ""), titleC: String(s.titleC || "").slice(0, 32), dind: String(s.dind || ""), ficon: String(s.ficon || ""), mind: String(s.mind || ""), rseq: Math.max(0, Math.floor(Number(s.rseq) || 0)), rkind: String(s.rkind || "r310").slice(0, 16), rspd: Math.round(Number(s.rspd) || 1500),
+      players.push({ id: s.id, pseudo: s.pseudo, clan: cleanClanTag(s.clanTag), shipId: s.shipId, hswap: Math.max(0, Math.min(3, Number(s.hswap) || 0)), x: Math.round(s.x), y: Math.round(s.y), vx: Math.round((Number(s.vx) || 0) * 100) / 100, vy: Math.round((Number(s.vy) || 0) * 100) / 100, moving: s.moving === true, motionBlocked: s.motionBlocked === true, teleportSeq: Number(s.teleportSeq) || 0, mx: Math.round(Number(s.mx) || 0), my: Math.round(Number(s.my) || 0), cloakCpu: s.cloakCpu === true, cloaked: s.cloaked === true, vmax: Math.max(50, Math.min(7500, Math.round(Number(s.vmax) || 400))), angle: Number(s.angle) || 0, dead: s.dead === true, hpPct: s.hpPct ?? 1, shPct: s.shPct ?? 1, collectUid: String(s.collectUid || "").slice(0, 64), collectPet: s.collectPet === true, bg: s.bg === true, atk: s.atk === true, tx: Math.round(Number(s.tx) || 0), ty: Math.round(Number(s.ty) || 0), ammo: String(s.ammo || "x1").slice(0, 16), drones: Number(s.drones) || 0, dform: String(s.dform || "standard").slice(0, 32), fint: Number(s.fint) || 0.25, bspd: Math.round(Number(s.bspd) || 4000), dslots: String(s.dslots || ""), gg: Math.max(0, Math.min(127, Math.floor(Number(s.gg) || 0))), alt: s.alt === true, shots: Math.max(0, Math.floor(Number(s.shots) || 0)), rank: String(s.rank || ""), firm: String(s.firm || ""), title: String(s.title || "").slice(0, 32), showTitle: s.showTitle === true, titleT: String(s.titleT || ""), titleC: String(s.titleC || "").slice(0, 32), dind: String(s.dind || ""), ficon: String(s.ficon || ""), mind: String(s.mind || ""), rseq: Math.max(0, Math.floor(Number(s.rseq) || 0)), rkind: String(s.rkind || "r310").slice(0, 16), rspd: Math.round(Number(s.rspd) || 1500),
         // PvP : PV autoritaires + date du dernier coup recu + attaquant (anneau Ship_damage).
         pvpAt: Number(s.pvpAt) || 0, pvpFrom: s.pvpFrom != null ? String(s.pvpFrom) : null, pvpHp: Math.max(0, Math.round(Number(s.hp) || 0)), pvpSh: Math.max(0, Math.round(Number(s.sh) || 0)),
         npcAt: Number(s.npcAt) || 0, npcSeq: Math.max(0, Math.floor(Number(s.npcSeq) || 0)), npcFrom: s.npcFrom != null ? String(s.npcFrom) : null,

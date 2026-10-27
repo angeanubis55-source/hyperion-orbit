@@ -36897,6 +36897,12 @@ const RELATION_COLORS = Object.freeze({
   blue: Object.freeze({ map: "rgba(80,225,255,0.98)", mini: "rgba(80,160,255,0.95)", hex: "#3b9dff" }),
   group: Object.freeze({ map: "rgba(255,229,138,0.98)", mini: "rgba(255,229,138,0.95)", hex: "#ffd60a" }),
 });
+function cleanClanTag(tag) {
+  return String(tag || "").normalize("NFKC").trim().slice(0, 32);
+}
+function clanTagKey(tag) {
+  return cleanClanTag(tag).toLocaleLowerCase("fr");
+}
 function isSameFirm(firm) {
   try {
     const myFirm = String(normalizeFactionId(account.user?.faction) || "").toLowerCase();
@@ -36905,9 +36911,9 @@ function isSameFirm(firm) {
 }
 // Clé relationnelle unique : own > war > nap > ally > même firme (blue) > autre firme (red).
 function relationKey(tag, firm) {
-  const clean = String(tag || "").toUpperCase().slice(0, 5);
+  const clean = clanTagKey(tag);
   let myClan = "";
-  try { myClan = String(getMyClanTag() || "").toUpperCase(); } catch {}
+  try { myClan = clanTagKey(getMyClanTag()); } catch {}
   if (myClan && clean === myClan) return "own";
   let rel = "";
   if (clean) {
@@ -36940,7 +36946,7 @@ function minimapAllies() {
       if (!rr || rr.dead) continue;
       // Camouflage d'aptitude : pas de point (le CPU garde le sien).
       if (rr.cloaked === true) continue;
-      const tag = String(rr.clan || "").toUpperCase().slice(0, 5);
+      const tag = cleanClanTag(rr.clan);
       const key = relationKey(tag, rr.firm);
       let color = RELATION_COLORS[key].mini;
       // Groupe : jaune (sauf guerre : le danger prime).
@@ -39384,7 +39390,7 @@ function drawNetplayRemotes(ox, oy) {
       // Pseudo : vert clan, jaune groupe, bleu même firme, rouge sinon.
       // Tag : vert clan/allié, rouge guerre, orange NAP.
       const remoteColors = (() => {
-        const tag = String(r.clan || "").toUpperCase().slice(0, 5);
+        const tag = cleanClanTag(r.clan);
         const key = relationKey(tag, r.firm);
         const name = key === "own"
           ? RELATION_COLORS.own.map
@@ -41404,7 +41410,7 @@ function refreshMyClanTagNow() {
       const headers = { Authorization: `Bearer ${token}` };
       const res = await fetch("/api/clans/me", { headers });
       const data = await res.json().catch(() => ({}));
-      const tag = String(data?.clan?.tag || "").toUpperCase().slice(0, 5);
+      const tag = cleanClanTag(data?.clan?.tag);
       setMyClanTag(tag);
       try {
         const rel = await fetch("/api/clans/relations", { headers });
@@ -41634,7 +41640,7 @@ function drawZoneStation(ox, oy) {
     const def = STATION_MODULE_SPRITES[slot?.resourceId];
     if (!def) continue;
     const id = String(slot.resourceId || "");
-    const mTag = String(slot?.clan || zoneStation?.owner?.clan || zoneStation?.hubClan || "").toUpperCase().slice(0, 5);
+    const mTag = cleanClanTag(slot?.clan || zoneStation?.owner?.clan || zoneStation?.hubClan);
     let short = "";
     if (id === "station_laser_1") short = "Laser 1";
     else if (id === "station_laser_2") short = "Laser 2";
@@ -41676,19 +41682,19 @@ function drawZoneStation(ox, oy) {
   }
   // Base construite : "Base de [TAG]" sous le cœur (tag du clan proprio).
   if (built && zoneStation.hub) {
-    let tag = String(zoneStation?.owner?.clan || zoneStation?.hubClan || "").toUpperCase().slice(0, 5);
+    let tag = cleanClanTag(zoneStation?.owner?.clan || zoneStation?.hubClan);
     if (!tag) {
       // Rattrapage vieille sauvegarde construite sans clan : slots puis clan actuel.
       try {
         const counts = {};
         for (const s of zoneStation.slots || []) {
-          const c = String(s?.clan || "").toUpperCase().slice(0, 5);
+          const c = cleanClanTag(s?.clan);
           if (c) counts[c] = (counts[c] || 0) + 1;
         }
         const best = Object.entries(counts).sort((a, b) => b[1] - a[1])[0]?.[0] || "";
         if (best) tag = best;
       } catch {}
-      if (!tag) { try { tag = String(getMyClanTag() || "").toUpperCase().slice(0, 5); } catch {} }
+      if (!tag) { try { tag = cleanClanTag(getMyClanTag()); } catch {} }
       // Mémorise pour les prochains affichages / sauvegardes.
       if (tag) {
         try {
@@ -49103,7 +49109,7 @@ function refreshStarMap() {
         if (!center || !art || art.failed) {
           if (dot) dot.remove();
         } else {
-          const tag = owner ? String(owner.clan || "").toUpperCase().slice(0, 5) : "";
+          const tag = owner ? cleanClanTag(owner.clan) : "";
           const color = owner
             ? (() => { try { return stationClanColor(tag, owner.firm || ""); } catch { return "#9aa3ad"; } })()
             : "#9aa3ad";
@@ -49146,7 +49152,7 @@ function refreshStarMap() {
             } catch {}
           }
           if (bOwner) {
-            const bTag = String(bOwner.clan || "").toUpperCase().slice(0, 5);
+            const bTag = cleanClanTag(bOwner.clan);
             const since = formatStationSince(bOwner.builtAt);
             baseHtml = `<div>Base : <b>Occupée</b></div>`
               + `<div>par : Clan de [${escapeHtml(bTag)}]${since ? ` depuis ${escapeHtml(since)}` : ""}</div>`;
