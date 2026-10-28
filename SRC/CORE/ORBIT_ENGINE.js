@@ -48331,6 +48331,7 @@ window.addEventListener("orbit:server-position", async (event) => {
     player.x = x; player.y = y;
     player.vx = 0; player.vy = 0;
     moveTarget.active = false;
+    correction.ack?.();
   } finally { serverPositionCorrectionRunning = false; }
 });
 

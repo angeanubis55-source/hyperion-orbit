@@ -90,8 +90,8 @@ export function acRecordViolation(state, kind, now, details = {}) {
 // serveur (kills crédités, boxes acceptées, dégâts appliqués) à des
 // plafonds par fenêtre : impossible à forger depuis le client.
 // Score : +15 (dépassement simple), +50 (grossier), -10 par fenêtre
-// propre. Sanction (kick + gel, JAMAIS de ban auto) à 100 : il faut
-// ~2 fenêtres grossières ou ~7 fenêtres simples d'affilée.
+// propre. A 100, le joueur est signale "a examiner" dans le panneau admin :
+// aucune sanction automatique (ni kick, ni gel, ni ban), l'admin decide.
 const AUDIT_WIN_MS = 10000;
 // Farm intensif légitime à 50 sur une map (Low, QZ, Maudite...) : même en
 // chaîne, un joueur ne tient pas 15 kills/s sur la durée. Les seuils sont
@@ -213,6 +213,18 @@ export function acMoveTake(state, nx, ny, nowMs, allowance = null) {
   }
 }
 
+// Chaque correction porte un numero que le client renvoie (cseq) une fois
+// sa position recalee. Un paquet portant un numero plus ancien a ete envoye
+// avant le recalage (latence) : il n'est ni accepte ni compte comme triche.
+// Sans cseq (ancien client), comportement strict inchange. Mentir sur cseq
+// ne donne aucun deplacement : au mieux le paquet est ignore.
+const STALE_CORRECTION_RESEND_MS = 1500;
+export function acStaleCorrection(state, msg) {
+  const seq = Number(state?._corrSeq) || 0;
+  const ack = msg?.cseq;
+  return seq > 0 && typeof ack === "number" && Number.isFinite(ack) && ack < seq;
+}
+
 // Un changement de maximum ne soigne pas et ne ressuscite pas. La toute
 // première initialisation reçoit ses valeurs du profil serveur.
 export function acPoolResize(state, hpMax, shMax) {
@@ -259,7 +271,7 @@ export const ANTICHEAT = {
   SERVER_VMAX, FAR_JUMP_NO_HEAL, MOVE_BUCKET_CAP, MOVE_BUCKET_REFILL, MOVE_NETWORK_WINDOW_MS,
   AC_HIT_CAP, AC_HIT_REFILL, AC_DMG_CAP, AC_DMG_REFILL,
   AC_PVP_HIT_CAP, AC_PVP_HIT_REFILL, AC_PVP_DMG_CAP, AC_PVP_DMG_REFILL,
-  HEAL_BUDGET_RATE, HEAL_BUDGET_CAP, REVIVE_REBASE_MAX, PET_LEASH,
+  HEAL_BUDGET_RATE, HEAL_BUDGET_CAP, REVIVE_REBASE_MAX, PET_LEASH, STALE_CORRECTION_RESEND_MS,
   AUDIT_WIN_MS, AUDIT_KILLS_SOFT, AUDIT_KILLS_HARD,
   AUDIT_BOXES_SOFT, AUDIT_BOXES_HARD,
   AUDIT_DMG_SOFT, AUDIT_DMG_HARD,

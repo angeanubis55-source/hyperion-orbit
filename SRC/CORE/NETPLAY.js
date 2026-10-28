@@ -319,6 +319,8 @@ let lastSendMs = 0;
 let lastLocalBuildMs = -Infinity;
 let pendingLocal = null;
 let lastMapSent = "";
+// Derniere correction serveur appliquee (renvoyee dans chaque pos).
+let appliedCorrectionSeq = 0;
 const remotes = new Map(); // id -> { ...state, rx, ry, lastSeen }
 // NPC partages (serveur autoritaire) : uid -> snapshot + interpolation.
 const netNpcs = new Map();
@@ -1061,7 +1063,9 @@ export function ensureNetplayConnection() {
     if (msg.t === "stateCorrection") {
       if (hangarArrivalPending || hangarArrivalApplying) return;
       if (!Number.isFinite(Number(msg.x)) || !Number.isFinite(Number(msg.y))) return;
-      try { window.dispatchEvent(new CustomEvent("orbit:server-position", { detail: msg })); } catch {}
+      const seq = Number(msg.seq);
+      const ack = () => { if (Number.isFinite(seq)) appliedCorrectionSeq = Math.max(appliedCorrectionSeq, seq); };
+      try { window.dispatchEvent(new CustomEvent("orbit:server-position", { detail: { ...msg, ack } })); } catch {}
       return;
     }
     if (msg.t === "hangarArrival") {
@@ -1095,6 +1099,8 @@ export function ensureNetplayConnection() {
     }
     if (msg.t === "welcome") {
       myId = String(msg.id || "");
+      // Nouvelle connexion = nouvel etat serveur : numerotation repartie a 0.
+      appliedCorrectionSeq = 0;
       if (msg.authed === true) netAuthed = true;
       // Redémarrage serveur : run différent du précédent (stocké en session).
       // Les joueurs sur la Low sont exclus vers le portail extérieur.
@@ -2115,6 +2121,7 @@ function sendNow(local, force = false) {
     ws.send(JSON.stringify({
       t: "pos",
       map,
+      cseq: appliedCorrectionSeq,
       x: Math.round(Number(local.x) || 0),
       y: Math.round(Number(local.y) || 0),
       vx: Math.round((Number(local.vx) || 0) * 100) / 100,

@@ -900,7 +900,8 @@
           : Array.isArray(s.last?.triggers) ? s.last.triggers.slice(-2).join(" · ") : "—");
         const history = Array.isArray(report?.history) ? report.history : [];
         const detail = history.length ? `<details data-id="${esc(s.id)}"${expanded.has(s.id) ? " open" : ""}><summary>${fmtN(report.total)} événements · détails</summary><ul>${history.map(e => `<li>${esc(fmtDateTime(e.at))} : ${esc(securityEventText(e))}</li>`).join("")}</ul></details>` : "";
-        tr.innerHTML = `<td>${esc(s.pseudo)}${s.online ? "" : " <span class=\"badge off\">hors ligne</span>"}</td><td class="num">${fmtN(s.score)}</td><td class="num">${fmtN(s.strikes)}</td><td>${esc(last)}${detail}</td><td></td>`;
+        const flag = s.flagged ? ` <span class=\"badge off\" title=\"Seuil atteint le ${esc(fmtDateTime(s.flagged.at))} : aucune sanction automatique, à toi de décider\">à examiner</span>` : "";
+        tr.innerHTML = `<td>${esc(s.pseudo)}${flag}${s.online ? "" : " <span class=\"badge off\">hors ligne</span>"}</td><td class="num">${fmtN(s.score)}</td><td class="num">${fmtN(s.strikes)}</td><td>${esc(last)}${detail}</td><td></td>`;
         const td = tr.lastChild;
         const kick = document.createElement("button");
         kick.type = "button"; kick.className = "small danger"; kick.textContent = "Kick";

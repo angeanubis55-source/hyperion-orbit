@@ -15,6 +15,7 @@ import {
   acRecordCollection,
   acPoolResize,
   acRecordViolation,
+  acStaleCorrection,
 } from "./ANTICHEAT.js";
 const {
   AC_HIT_CAP, AC_HIT_REFILL, AC_DMG_CAP, AC_DMG_REFILL,
@@ -885,13 +886,14 @@ function handleAdminApi(request, response, pathname) {
     const collect = (pid, st, map, online = true) => {
       const a = st && st._audit;
       const recent = st?._security && Date.now() - st._security.last.at < 300000;
-      if (!a || (!(Number(a.score) > 0) && !recent)) return;
+      if (!a || (!(Number(a.score) > 0) && !recent && !a.flagged)) return;
       if (seen.has(pid)) return;
       seen.add(pid);
       suspects.push({
         id: pid, pseudo: String(st.pseudo || ""), online, map: map || null,
         score: Math.round(Number(a.score) || 0), strikes: Number(a.strikes || 0),
         last: a.last && typeof a.last === "object" ? a.last : null,
+        flagged: a.flagged && typeof a.flagged === "object" ? a.flagged : null,
         security: st._security || null,
         clockBlocked: st._clockGuard?.blocked === true,
       });
@@ -2275,8 +2277,8 @@ function pumpSundayEvent() {
   }
 }
 setInterval(() => { try { pumpSundayEvent(); } catch {} }, 2000).unref?.();
-// --- Audit anticheat périodique (10 s) + sanction (kick + gel, JAMAIS de
-// ban auto : l'admin tranche après inspection). Voir ANTICHEAT.js.
+// --- Audit anticheat périodique (10 s) : signalement seulement. Kick, gel
+// et ban sont des actions manuelles de l'admin. Voir ANTICHEAT.js.
 const CHEAT_KICK_MESSAGE = "Vous avez triché. La modération étudie actuellement votre cas. Si cela est avéré, vous serez définitivement banni.";
 function punishCheater(pid, evidence, manualReason = null) {
   const id = String(pid || "");
@@ -2329,16 +2331,15 @@ function runCheatAudit() {
     a.strikes = Number(a.strikes || 0) + 1;
     a.last = { at: now, triggers: triggers.slice(-6) };
     try { console.log(`[multi:anticheat] audit ${st.pseudo} (${pid}) score ${score} : ${triggers.join(" · ")}`); } catch {}
-    if (score >= AC.AUDIT_PUNISH_SCORE) {
-      try {
-        punishCheater(pid, {
-          score, strikes: a.strikes,
-          kills10s: Math.round(rates.kills), boxes10s: Math.round(rates.boxes),
-          dmg10s: Math.round(rates.dmg), triggers: triggers.slice(-6), at: now,
-          security: st._security || null,
-        });
-      } catch {}
-      a.score = 0;
+    // Jamais de sanction automatique (ni kick, ni gel, ni ban) : le dossier
+    // remonte dans les suspects du panneau admin, qui seul decide.
+    if (score >= AC.AUDIT_PUNISH_SCORE && !a.flagged) {
+      a.flagged = {
+        at: now, score, strikes: a.strikes,
+        kills10s: Math.round(rates.kills), boxes10s: Math.round(rates.boxes),
+        dmg10s: Math.round(rates.dmg), triggers: triggers.slice(-6),
+      };
+      try { console.log(`[multi:anticheat] a examiner ${st.pseudo} (${pid}) score ${score} : aucune sanction automatique`); } catch {}
     }
   }
 }
@@ -2390,7 +2391,10 @@ wss.on("connection", (ws) => {
     const now = Date.now();
     if (now - Number(state._correctionAt || 0) < 500) return;
     state._correctionAt = now;
-    if (ws.readyState === 1) ws.send(JSON.stringify({ t: "stateCorrection", map: mapId, x: state.x, y: state.y }));
+    // Numero rendu par le client une fois la correction appliquee : les
+    // positions parties avant (encore en vol) ne sont plus des violations.
+    state._corrSeq = (Number(state._corrSeq) || 0) + 1;
+    if (ws.readyState === 1) ws.send(JSON.stringify({ t: "stateCorrection", map: mapId, x: state.x, y: state.y, seq: state._corrSeq }));
   };
   const movementTarget = key => rooms.get(mapId)?.get(String(key))?.state || npcSims.get(mapId)?.entries?.get(String(key)) || null;
   const changeMap = (nextMap, instance = false) => {
@@ -3517,6 +3521,7 @@ wss.on("connection", (ws) => {
             audOf(state);
             state.pseudo = String(who.pseudo || "Pilote").slice(0, 20);
             refreshClanTag(state, accountId);
+            state._corrSeq = 0; // le client repart a 0 a chaque welcome
             try { ws.send(JSON.stringify({ t: "welcome", id, authed: true, run: serverRunId, at: Date.now(), clockBlocked: state._clockGuard?.blocked === true })); } catch {}
           }
         } catch {}
@@ -3920,6 +3925,14 @@ wss.on("connection", (ws) => {
             state.ishUntil = nowMove + 3000;
             state.portalCdUntil = nowMove + 5000;
           }
+        } else if (acStaleCorrection(state, msg)) {
+          // Position envoyee avant que le client ait applique la derniere
+          // correction (latence mobile) : ignoree, sans violation ni nouveau
+          // rollback. Sans ce filtre, chaque correction faisait rejeter les
+          // paquets en vol et relancait une correction : boucle sans fin.
+          // Correction ignoree (chargement, changement de map) : on la renvoie.
+          if (nowMove - Number(state._correctionAt || 0) >= AC.STALE_CORRECTION_RESEND_MS) correctState();
+          movementAccepted = null;
         } else {
           // Décision de déplacement : voir SCRIPTS/ANTICHEAT.js (testable).
           const mv = takeMovement(state, profile, nx, ny, nowMove,
@@ -3929,8 +3942,8 @@ wss.on("connection", (ws) => {
           movementAccepted = mv.accepted;
         }
       }
-      if (!movementAccepted) { stopRejectedMotion(state); correctState(); }
-      else {
+      if (movementAccepted === false) { stopRejectedMotion(state); correctState(); }
+      else if (movementAccepted) {
         state.motionBlocked = false;
         // Première position valide reçue (DÉPART effectif) : le vaisseau
         // devient visible aux autres. Couvre aussi le cas nominal (petit

@@ -115,7 +115,6 @@ ZoneNpcSim.prototype.drainPlayerHits = function() { this.playerHits.length = 0; 
   const silentClosed = once(silent.ws, "close");
   const speedAccount = await makeAccount("anticheat-speed50");
   const speed = await connect(speedAccount);
-  const speedClosed = once(speed.ws, "close");
   // Des sauts frequents, tous sous l'ancien seuil de telemetry de 4000 u.
   const speedTimer = setInterval(() => {
     if (speed.ws.readyState === WebSocket.OPEN) speed.send({ ...speed.pos, x: speed.pos.x + 3000, vx: 1e9, moving: true, mx: 99999, my: 99999, time: 1e15 });
@@ -227,6 +226,32 @@ ZoneNpcSim.prototype.drainPlayerHits = function() { this.playerHits.length = 0; 
   a.send({ t: "map", map: "4-5" });
   await pause(100);
   assert.equal((await peers()).peers.find(p => p.id === a.id).map, "1-1");
+
+  // Telephone/latence : les positions parties avant la correction (cseq
+  // ancien) sont ignorees sans violation ni nouvelle correction en boucle.
+  const mobile = await connect(await makeAccount("anticheat-mobile"));
+  const mobileSecurity = async () => (await api("/api/admin/cheat", { headers: { "x-admin-token": password } }))
+    .suspects.find(p => p.id === mobile.id)?.security?.total || 0;
+  const lagAt = mobile.messages.length;
+  mobile.send({ ...mobile.pos, cseq: 0, x: mobile.pos.x + 900, moving: true });
+  const lagFix = await mobile.wait(m => m.t === "stateCorrection", lagAt);
+  assert.equal(lagFix.seq, 1);
+  const lagViolations = await mobileSecurity();
+  assert.equal(lagViolations, 1);
+  const inFlightAt = mobile.messages.length;
+  for (let i = 1; i <= 12; i++) mobile.send({ ...mobile.pos, cseq: 0, x: mobile.pos.x + 900 + i * 30, moving: true });
+  await pause(700);
+  assert.equal(await mobileSecurity(), lagViolations, "paquets en vol avant la correction : aucune violation");
+  assert.equal(mobile.messages.slice(inFlightAt).some(m => m.t === "stateCorrection"), false, "pas de boucle de corrections");
+  const resyncAt = mobile.messages.length;
+  mobile.send({ ...mobile.pos, cseq: lagFix.seq, x: mobile.pos.x + 20, moving: true });
+  await mobile.wait(m => m.t === "snapshot" && m.players.some(p => p.id === mobile.id && p.x === mobile.pos.x + 20), resyncAt);
+  const ignoredAt = mobile.messages.length;
+  mobile.send({ ...mobile.pos, cseq: 0, x: mobile.pos.x + 20 });
+  await pause(1700);
+  mobile.send({ ...mobile.pos, cseq: 0, x: mobile.pos.x + 20 });
+  const resent = await mobile.wait(m => m.t === "stateCorrection", ignoredAt);
+  assert.equal(resent.seq, 2, "correction non appliquee : renvoyee");
 
   // Même situation que le blocage signalé : mort en 4-5, réparation,
   // puis plusieurs déplacements ordinaires, sans retour à la position morte.
@@ -363,9 +388,17 @@ ZoneNpcSim.prototype.drainPlayerHits = function() { this.playerHits.length = 0; 
   const [silentCode, silentReason] = await silentClosed;
   assert.equal(silentCode, 4000, "un socket vraiment silencieux finit par etre ferme");
   assert.equal(String(silentReason), "Heartbeat timeout");
-  await speedClosed;
-  const held = (await api("/api/admin/cheat", { headers: { "x-admin-token": password } })).holds.find(h => h.pseudo === "anticheat-speed50");
-  assert.ok(held, "les rejets repetes aboutissent a un dossier en examen");
-  assert.ok(held.evidence.score >= 100);
-  assert.equal(held.evidence.security.last.distance, 3000);
+  // Jamais de sanction automatique : signale a l'admin, toujours connecte.
+  let flagged = null, cheatReport = null;
+  for (let i = 0; i < 150 && !flagged; i++) {
+    cheatReport = await api("/api/admin/cheat", { headers: { "x-admin-token": password } });
+    flagged = cheatReport.suspects.find(p => p.pseudo === "anticheat-speed50" && p.flagged);
+    if (!flagged) await pause(200);
+  }
+  assert.ok(flagged, "les rejets repetes remontent comme dossier a examiner");
+  assert.ok(flagged.flagged.score >= 100);
+  assert.equal(flagged.security.last.distance, 3000);
+  assert.equal(speed.ws.readyState, WebSocket.OPEN, "aucun kick automatique");
+  assert.equal(speed.messages.some(m => m.t === "cheatKick" || m.t === "cheatHold"), false);
+  assert.equal(cheatReport.holds.some(h => h.pseudo === "anticheat-speed50"), false, "aucun gel automatique");
 });
