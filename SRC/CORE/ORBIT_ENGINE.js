@@ -13635,6 +13635,19 @@ function wireBotWindow() {
       skillIshBox.addEventListener("change", () => { Bot.skillIsh = skillIshBox.checked; botSaveConfig(); });
     }
   }
+  for (const [id, key] of [["botPetEnabled", "petEnabled"], ["botPetAutoFuel", "petAutoFuel"], ["botPetAutoRepair", "petAutoRepair"], ["botPetAutoKk", "petAutoKk"]]) {
+    const box = document.getElementById(id);
+    if (!box) continue;
+    box.checked = Bot[key] === true;
+    if (!box.dataset.wired) {
+      box.dataset.wired = "1";
+      box.addEventListener("change", () => {
+        Bot[key] = box.checked;
+        botSaveConfig();
+        if (Bot.active) botApplyPetMode();
+      });
+    }
+  }
   const skillCloakBox = document.getElementById("botSkillCloak");
   if (skillCloakBox) {
     skillCloakBox.checked = Bot.skillCloak;
@@ -14378,9 +14391,15 @@ function botGrabBoxForFight(npc, standD) {
       if (!(Bot.grabT0 > 0)) Bot.grabT0 = performance.now();
       const boxNpcD = Math.hypot(current.x - npc.x, current.y - npc.y);
       const tookTooLong = Bot.grabT0 > 0 && performance.now() - Bot.grabT0 > BOT_GRAB_MAX_S * 1000;
-      const dangerous = shootRange > 0 && boxNpcD < shootRange + 20;
+      // Le NPC nous poursuit : il se rapproche forcement de la box. Seul un
+      // NPC presque dessus annule la collecte (l'ancien seuil a +20 m de sa
+      // portee lachait la box 0,3 s apres l'avoir prise, en boucle).
+      const dangerous = shootRange > 0 && boxNpcD < shootRange * 0.75;
       const npcGone = boxNpcD > engageMax * 1.25 || currentNpcD > engageMax * 1.6;
-      if (tookTooLong || dangerous || npcGone) return botGrabRelease(current, 8000);
+      if (tookTooLong || dangerous || npcGone) {
+        Bot.grabCd = Math.max(Number(Bot.grabCd) || 0, 2);
+        return botGrabRelease(current, 15000);
+      }
       return { box: current, d2: dist2(player.x, player.y, current.x, current.y) };
     }
 
@@ -14392,6 +14411,7 @@ function botGrabBoxForFight(npc, standD) {
     const routeY = moveTarget.active ? Number(moveTarget.y) : player.y;
     const segX = routeX - player.x, segY = routeY - player.y;
     const segL2 = segX * segX + segY * segY;
+    const shipSpeed = Math.max(200, Math.hypot(Number(player.vx) || 0, Number(player.vy) || 0));
     let best = null;
     let bestD2 = Infinity;
     for (const c of spatialCollectablesNear(player.x, player.y, grabRadius)) {
@@ -14403,6 +14423,11 @@ function botGrabBoxForFight(npc, standD) {
       // Trop pres du NPC (dans son rayon de tir) ou trop loin pour continuer
       // a tirer depuis la box : on ne la prend pas du tout.
       if (boxNpcD < safeAtBox || boxNpcD > engageMax * 0.9) continue;
+      // Position du NPC a notre arrivee : une box qui sera sous son feu ne
+      // doit pas etre prise pour etre abandonnee en chemin.
+      const reach = Math.min(1.5, Math.sqrt(d2) / shipSpeed);
+      const futureD = Math.hypot(c.x - (npc.x + (Number(npc.vx) || 0) * reach), c.y - (npc.y + (Number(npc.vy) || 0) * reach));
+      if (shootRange > 0 && futureD < shootRange * 0.9) continue;
       let routeDistance = Math.sqrt(d2);
       if (segL2 > 1) {
         const t = clamp(((c.x - player.x) * segX + (c.y - player.y) * segY) / segL2, 0, 1);
@@ -14546,19 +14571,6 @@ function botOrderMove(x, y, tag) {
     const dx = x - moveTarget.x, dy = y - moveTarget.y;
     const remaining2 = dist2(player.x, player.y, moveTarget.x, moveTarget.y);
     if (dx * dx + dy * dy < 900 && remaining2 > 6400 && now - Bot.moveOrderedAt < 220) return;
-  }
-  for (const [id, key] of [["botPetEnabled", "petEnabled"], ["botPetAutoFuel", "petAutoFuel"], ["botPetAutoRepair", "petAutoRepair"], ["botPetAutoKk", "petAutoKk"]]) {
-    const box = document.getElementById(id);
-    if (!box) continue;
-    box.checked = Bot[key] === true;
-    if (!box.dataset.wired) {
-      box.dataset.wired = "1";
-      box.addEventListener("change", () => {
-        Bot[key] = box.checked;
-        botSaveConfig();
-        if (Bot.active) botApplyPetMode();
-      });
-    }
   }
   Bot.moveTag = tag;
   Bot.moveOrderedAt = now;
@@ -15373,7 +15385,7 @@ function tickBot(dt) {
     // ✅ jamais de départ via un portail caché (marqueur d'arrivée d'aller simple).
     const portal = (zonePortals || []).find((p) => !p?.hidden && String(p.toMap || "").toLowerCase() === nextHop);
     if (!portal) {
-      Bot.status = `Voyage → ${Bot.targetMap.toUpperCase()}`;
+      Bot.status = `Voyage → ${String(effRaw).toUpperCase()}`;
       Bot.target = `Portail vers ${nextHop.toUpperCase()} introuvable ici`;
       botRefreshHudThrottled(dt);
       return;

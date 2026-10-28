@@ -243,14 +243,34 @@ export function computeBotCombatMove({ player, npc, range, desiredDistance, boun
   const minY = Number(bounds?.minY ?? 0) + margin;
   const maxX = Number(bounds?.maxX ?? 10000) - margin;
   const maxY = Number(bounds?.maxY ?? 10000) - margin;
-  if (x < minX || x > maxX || y < minY || y > maxY) {
-    if (wallTurnT <= 0) {
-      direction *= -1;
-      wallTurnT = 0.75;
+  const inBounds = (cx, cy) => cx >= minX && cx <= maxX && cy >= minY && cy <= maxY;
+  if (!inBounds(x, y)) {
+    // Bord de carte : on glisse le long du bord en gardant le sens, en
+    // prenant le premier point du cercle de combat encore dans la carte.
+    // Avant, chaque bord inversait le sens toutes les 0,75 s : plaque contre
+    // le bord par le NPC, le vaisseau faisait des allers-retours sur place.
+    const baseAngle = Math.atan2(radial.y, radial.x);
+    let found = null;
+    for (const sign of [direction, -direction]) {
+      if (sign !== direction && wallTurnT > 0) continue;
+      for (let i = 1; i <= 30 && !found; i++) {
+        const angle = baseAngle + sign * (angleStep + i * 0.1);
+        const cx = predictedX + Math.cos(angle) * targetRadius;
+        const cy = predictedY + Math.sin(angle) * targetRadius;
+        if (inBounds(cx, cy)) found = { x: cx, y: cy, sign };
+      }
+      if (found) break;
     }
-    const tx = -radial.y * direction, ty = radial.x * direction;
-    x = clamp(Number(player.x) + radial.x * 260 + tx * 520, minX, maxX);
-    y = clamp(Number(player.y) + radial.y * 260 + ty * 520, minY, maxY);
+    if (found) {
+      x = found.x; y = found.y;
+      // Demi-tour seulement dans un coin, puis tenu au moins 2 s.
+      if (found.sign !== direction) { direction = found.sign; wallTurnT = 2; }
+    } else {
+      // Cercle plus grand que la place disponible : on longe le bord.
+      const tx = -radial.y * direction, ty = radial.x * direction;
+      x = clamp(Number(player.x) + radial.x * 260 + tx * 520, minX, maxX);
+      y = clamp(Number(player.y) + radial.y * 260 + ty * 520, minY, maxY);
+    }
   } else {
     x = clamp(x, minX, maxX);
     y = clamp(y, minY, maxY);

@@ -940,3 +940,30 @@ test("soute pleine : une seule vente, immobile pendant la vente, pause si la sou
   assert.equal(c.Bot.selling, false, "pas de nouvel aller-retour au comptoir");
   assert.equal(c.sales, 1);
 });
+
+test("plaque contre un bord par un NPC qui le poursuit, le bot longe le bord sans allers-retours", () => {
+  for (const start of [{ x: 5000, y: 200 }, { x: 200, y: 3000 }, { x: 9800, y: 5800 }]) {
+    const ship = { ...start };
+    const chaser = { id: 7, x: start.x, y: start.y + (start.y < 3000 ? 500 : -500), vx: 0, vy: 0, hp: 100 };
+    if (start.x < 1000) Object.assign(chaser, { x: start.x + 500, y: start.y });
+    let state = {}, flips = 0, travelled = 0;
+    const dt = 1 / 20;
+    for (let frame = 0; frame < 20 * 20; frame++) {
+      // Le NPC colle a ~480 m, plus lent que le vaisseau.
+      const cdx = ship.x - chaser.x, cdy = ship.y - chaser.y, cd = Math.hypot(cdx, cdy) || 1;
+      const chase = cd > 480 ? Math.min(cd - 480, 280 * dt) : 0;
+      chaser.vx = cdx / cd * chase / dt; chaser.vy = cdy / cd * chase / dt;
+      chaser.x += cdx / cd * chase; chaser.y += cdy / cd * chase;
+      const out = computeBotCombatMove({ player: ship, npc: chaser, range: 700, bounds, state, dt });
+      if (state.direction && out.state.direction !== state.direction) flips++;
+      state = out.state;
+      const dx = out.x - ship.x, dy = out.y - ship.y, length = Math.hypot(dx, dy) || 1;
+      const step = Math.min(320 * dt, length);
+      ship.x += dx / length * step; ship.y += dy / length * step;
+      travelled += step;
+      assert.ok(out.x >= 80 && out.x <= 9920 && out.y >= 80 && out.y <= 5920);
+    }
+    assert.ok(flips <= 2, `${JSON.stringify(start)}: ${flips} demi-tours en 20 s`);
+    assert.ok(travelled > 4000, "reste en mouvement");
+  }
+});

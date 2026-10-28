@@ -165,22 +165,28 @@ try {
     assert.ok(result.longestIdle < 60, result.name + ': reste mobile');
   }
   await page.locator('[data-window-id="botWindow"]').click();
-  await page.locator('#botSkillCloak').check();
+  // Les reglages vivent dans l'onglet Configuration. Les interrupteurs
+  // masquent leur case : on clique sur le libelle, comme un joueur.
+  await page.locator('#botTabs [data-bot-tab="farm"]').click();
+  const setSwitch = async (id, on) => {
+    if (await page.locator('#' + id).isChecked() !== on) await page.locator('label:has(#' + id + ')').click();
+    assert.equal(await page.locator('#' + id).isChecked(), on, id);
+  };
+  await setSwitch('botSkillCloak', true);
   assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('orbit_bot_config_v1')).skillCloak), true,
     'la nouvelle case sauvegarde le camouflage automatique');
-  await page.locator('#botSkillCloak').uncheck();
+  await setSwitch('botSkillCloak', false);
   assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('orbit_bot_config_v1')).skillCloak), false);
-  await page.locator('#botFleeCloak').check();
+  await setSwitch('botFleeCloak', true);
   assert.deepEqual(await page.evaluate(() => {
     const saved = JSON.parse(localStorage.getItem('orbit_bot_config_v1'));
     return { fleeCloak: saved.fleeCloak, skillCloak: saved.skillCloak };
   }), { fleeCloak: true, skillCloak: false }, 'camouflage de reparation independant du camouflage apres un kill');
-  await page.locator('#botFleeCloak').uncheck();
+  await setSwitch('botFleeCloak', false);
   assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('orbit_bot_config_v1')).fleeCloak), false);
   const profiles = [
     { config: 'botCfgFlySeg', formation: 'botFormMove', configKey: 'cfgFly', formKey: 'formMove', value: '1' },
     { config: 'botCfgFleeSeg', formation: 'botFormFlee', configKey: 'cfgFlee', formKey: 'formFlee', value: '2' },
-    { config: 'botCfgTravelSeg', formation: 'botFormTravel', configKey: 'cfgTravel', formKey: 'formTravel', value: '' },
   ];
   const expectedProfiles = {};
   for (const [index, profile] of profiles.entries()) {
@@ -188,18 +194,20 @@ try {
     await page.locator('#' + profile.config + ' button[data-v="' + profile.value + '"]').click();
     const select = page.locator('#' + profile.formation);
     const formation = await select.locator('option').nth(index + 1).getAttribute('value');
-    await select.selectOption(formation);
+    await select.selectOption(formation, { force: true }); // select natif masque par la liste stylee
     expectedProfiles[profile.configKey] = profile.value;
     expectedProfiles[profile.formKey] = formation;
     assert.equal(await page.locator('#' + profile.config + ' button.on').getAttribute('data-v'), profile.value);
   }
+  // Exploration et navigation sont fusionnees : le voyage suit l'exploration.
+  expectedProfiles.cfgTravel = expectedProfiles.cfgFly;
   const savedProfiles = await page.evaluate(keys => {
     const saved = JSON.parse(localStorage.getItem('orbit_bot_config_v1'));
     return Object.fromEntries(keys.map(key => [key, saved[key]]));
   }, Object.keys(expectedProfiles));
   assert.deepEqual(savedProfiles, expectedProfiles);
   await page.locator("#botPlayBtn").click();
-  await page.waitForFunction(() => document.getElementById("botStatusTxt")?.classList.contains("running"));
+  await page.waitForFunction(() => document.getElementById("botPlayBtn")?.classList.contains("running"));
   await page.waitForTimeout(3000); await page.locator("#botPlayBtn").click();
   assert.deepEqual(errors, []);
   console.log(JSON.stringify({ route, combat, profiles: savedProfiles, botUI: "OK", errors }));
