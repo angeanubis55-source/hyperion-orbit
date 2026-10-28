@@ -22207,8 +22207,15 @@ function tickShieldShimmer(dt) {
     shieldShimmerT = -1;
     return;
   }
-  // En combat, le temps est gelé : ni le délai ni l'anim ne progressent,
-  // ça reprend exactement où c'était à la fin du combat.
+  // Une anim déjà lancée va toujours au bout (combat compris, Sentinel la
+  // relance chaque seconde) : la geler laissait le sprite figé sur le
+  // vaisseau dès qu'un NPC touchait pendant le shimmer.
+  if (shieldShimmerT >= 0) {
+    shieldShimmerT += dt;
+    if (shieldShimmerT >= SHIELD_SHIMMER_PACK.frames / SHIELD_SHIMMER_PACK.fps) shieldShimmerT = -1;
+    return;
+  }
+  // En combat, seul le délai avant le prochain shimmer est gelé.
   if ((Number(player.combatT) || 0) > 0 || attackActive === true) return;
   const cfg = getActiveConfigNo();
   if (cfg !== shieldShimmerCfg) {
@@ -22223,11 +22230,6 @@ function tickShieldShimmer(dt) {
     // dans un délai frais de 10 à 30 s.
     shieldShimmerT = -1;
     shieldShimmerNext = 10 + Math.random() * 20;
-    return;
-  }
-  if (shieldShimmerT >= 0) {
-    shieldShimmerT += dt;
-    if (shieldShimmerT >= SHIELD_SHIMMER_PACK.frames / SHIELD_SHIMMER_PACK.fps) shieldShimmerT = -1;
     return;
   }
   shieldShimmerNext -= dt;
@@ -48043,9 +48045,62 @@ function ensureFpsFreeChannel() {
   return fpsFreeChannel;
 }
 
+// Onglet masqué : après ~5 min, Chrome/Edge brident les setTimeout de la
+// page à 1 réveil par minute. Le jeu (et le bot) tombait alors à ~1 s de
+// simulation par minute, plus aucun ping ne partait et le serveur coupait
+// le socket au bout de 30 s : jeu figé au retour. Les timers d'un worker
+// dédié ne subissent pas ce bridage : il cadence les frames en arrière-plan.
+let backgroundTicker = null;
+let backgroundTickerFailed = false;
+let backgroundTickPending = 0;
+let backgroundPingAt = 0;
+function ensureBackgroundTicker() {
+  if (backgroundTicker || backgroundTickerFailed) return backgroundTicker;
+  try {
+    const source = "let t=0;onmessage=e=>{clearInterval(t);t=0;if(e.data===\"start\")t=setInterval(()=>postMessage(0),33);};";
+    const url = URL.createObjectURL(new Blob([source], { type: "text/javascript" }));
+    backgroundTicker = new Worker(url);
+    URL.revokeObjectURL(url);
+    backgroundTicker.onmessage = () => {
+      // backgroundTickPending = génération + 1 (0 = aucune frame demandée).
+      const pending = backgroundTickPending;
+      if (!pending || pending - 1 !== frameScheduleGeneration) return;
+      backgroundTickPending = 0;
+      // Preuve de vie au serveur même si la frame échoue.
+      const now = performance.now();
+      if (now - backgroundPingAt >= 3000) {
+        backgroundPingAt = now;
+        try { sendPing(); } catch {}
+      }
+      frame(now);
+    };
+    backgroundTicker.onerror = () => {
+      backgroundTickerFailed = true; backgroundTicker = null; backgroundTickerRunning = false;
+      restartFrameScheduler();
+    };
+  } catch {
+    backgroundTickerFailed = true;
+    backgroundTicker = null;
+  }
+  return backgroundTicker;
+}
+let backgroundTickerRunning = false;
+function setBackgroundTicker(running) {
+  running = running === true;
+  if (running === backgroundTickerRunning) return;
+  const ticker = running ? ensureBackgroundTicker() : backgroundTicker;
+  if (!ticker) return;
+  try { ticker.postMessage(running ? "start" : "stop"); backgroundTickerRunning = running; } catch {}
+}
+
 function scheduleNextFrame() {
   const generation = frameScheduleGeneration;
   if (document.visibilityState === "hidden") {
+    setBackgroundTicker(true);
+    if (backgroundTickerRunning) {
+      backgroundTickPending = generation + 1;
+      return;
+    }
     backgroundFrameTimer = setTimeout(() => {
       backgroundFrameTimer = 0;
       if (generation === frameScheduleGeneration) frame(performance.now());
@@ -48082,7 +48137,9 @@ function restartFrameScheduler() {
   if (backgroundFrameTimer) clearTimeout(backgroundFrameTimer);
   frameRequestId = 0;
   backgroundFrameTimer = 0;
+  backgroundTickPending = 0;
   fpsFreePendingGeneration = 0;
+  setBackgroundTicker(document.visibilityState === "hidden");
   scheduleNextFrame();
 }
 

@@ -218,17 +218,21 @@ export function computeBotCombatMove({ player, npc, range, desiredDistance, boun
   const dy = Number(player.y) - Number(npc.y);
   const distance = Math.hypot(dx, dy);
   const radial = unit(dx, dy);
+  // Le recul vise un cercle legerement plus large, mais toujours DANS la
+  // portee laser : a desired + 45 contre un NPC longue portee (desired 695),
+  // le bot tournait a 740 m autour de sa cible sans pouvoir tirer (700 m).
+  const retreatRadius = Math.min(desired + 45, laserRange - 15);
   let mode = state.mode || "orbit";
   if (distance < inner) mode = "retreat";
   else if (distance > outer) mode = "approach";
-  else if ((mode === "retreat" && distance >= desired) || (mode === "approach" && distance <= desired)) mode = "orbit";
+  else if ((mode === "retreat" && distance >= Math.min(desired, retreatRadius - 10)) || (mode === "approach" && distance <= desired)) mode = "orbit";
 
   let direction = state.direction === -1 ? -1 : 1;
   if (!state.direction) direction = ((Number(npc.id) || 0) % 2) ? 1 : -1;
   const lead = mode === "approach" ? 0.3 : 0.15;
   const predictedX = Number(npc.x) + (Number(npc.vx) || 0) * lead;
   const predictedY = Number(npc.y) + (Number(npc.vy) || 0) * lead;
-  const targetRadius = mode === "retreat" ? desired + 45 : desired;
+  const targetRadius = mode === "retreat" ? retreatRadius : desired;
   const angleStep = mode === "orbit" ? 0.58 : mode === "retreat" ? 0.24 : 0.18;
   const ca = Math.cos(angleStep * direction);
   const sa = Math.sin(angleStep * direction);
@@ -268,12 +272,25 @@ export function computeBotCombatMove({ player, npc, range, desiredDistance, boun
     } else {
       // Cercle plus grand que la place disponible : on longe le bord.
       const tx = -radial.y * direction, ty = radial.x * direction;
-      x = clamp(Number(player.x) + radial.x * 260 + tx * 520, minX, maxX);
-      y = clamp(Number(player.y) + radial.y * 260 + ty * 520, minY, maxY);
+      // On ne s'eloigne que si l'on est trop pres : jamais hors de portee.
+      const push = distance < desired - 40 ? 200 : 0;
+      x = clamp(Number(player.x) + radial.x * push + tx * 520, minX, maxX);
+      y = clamp(Number(player.y) + radial.y * push + ty * 520, minY, maxY);
     }
   } else {
     x = clamp(x, minX, maxX);
     y = clamp(y, minY, maxY);
+  }
+  // Plafond strict : quel que soit le mode (recul, bord de carte, prediction
+  // du mouvement du NPC), le point vise ne sort jamais de la portee laser
+  // autour de la position reelle du NPC. Sinon le bot tournait a 740 m de sa
+  // cible sans jamais tirer.
+  const capRange = laserRange - 15;
+  const capDx = x - Number(npc.x), capDy = y - Number(npc.y);
+  const capD = Math.hypot(capDx, capDy);
+  if (capD > capRange) {
+    x = clamp(Number(npc.x) + capDx / capD * capRange, minX, maxX);
+    y = clamp(Number(npc.y) + capDy / capD * capRange, minY, maxY);
   }
   // Conserver le sens tant que le segment est praticable. La proximite
   // d'un mur seule n'impose pas de demi-tour : on cherche un point d'orbite

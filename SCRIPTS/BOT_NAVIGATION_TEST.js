@@ -967,3 +967,25 @@ test("plaque contre un bord par un NPC qui le poursuit, le bot longe le bord san
     assert.ok(travelled > 4000, "reste en mouvement");
   }
 });
+
+test("contre un NPC longue portee qui colle, le recul reste dans la portee laser (pas de tour a 740 m sans tirer)", () => {
+  for (const desiredDistance of [695, 574]) {
+    const chaser = { id: 7, x: 5000, y: 3000, vx: 0, vy: 0 };
+    const ship = { x: 5400, y: 3000 };
+    let state = {}, maxD = 0;
+    const dt = 1 / 30;
+    for (let t = 0; t < 30; t += dt) {
+      const out = computeBotCombatMove({ player: ship, npc: chaser, range: 700, desiredDistance, bounds, state, dt });
+      state = out.state;
+      assert.ok(Math.hypot(out.x - chaser.x, out.y - chaser.y) <= 686, `point vise hors portee (${desiredDistance})`);
+      const mx = out.x - ship.x, my = out.y - ship.y, ml = Math.hypot(mx, my);
+      if (ml > 1) { const step = Math.min(ml, 420 * dt); ship.x += mx / ml * step; ship.y += my / ml * step; }
+      // Le NPC (portee 920) revient a 470 m du vaisseau puis s'arrete (hold).
+      const cx = ship.x - chaser.x, cy = ship.y - chaser.y, cd = Math.hypot(cx, cy);
+      chaser.vx = cd > 470 ? cx / cd * 300 : 0; chaser.vy = cd > 470 ? cy / cd * 300 : 0;
+      chaser.x += chaser.vx * dt; chaser.y += chaser.vy * dt;
+      if (t > 2) maxD = Math.max(maxD, Math.hypot(ship.x - chaser.x, ship.y - chaser.y));
+    }
+    assert.ok(maxD <= 715, `distance max ${Math.round(maxD)} pour desired ${desiredDistance}`);
+  }
+});
