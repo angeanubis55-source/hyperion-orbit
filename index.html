@@ -1075,109 +1075,297 @@
     </div>
 
     <div id="groupWindow" class="panel groupPanel">
-      <div id="groupStatus" class="groupStatus">Solo</div>
-      <div id="groupMembers" class="groupEntries"></div>
-      <div id="groupInvites" class="groupEntries"><div class="groupEmpty">Aucune invitation.</div></div>
-      <div class="groupActions">
-        <div class="groupControlRow">
-          <button id="groupLeaveBtn" type="button" style="display:none;">Quitter</button>
-          <span class="groupLeaderControls">
-            <button id="groupInviteLockBtn" class="groupIconBtn" type="button" style="display:none;" aria-label="Verrouiller les invitations" title="Verrouiller les invitations"></button>
-            <button id="groupRallyBtn" class="groupIconBtn" type="button" style="display:none;" aria-label="Point de rassemblement" title="Point de rassemblement"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 22s7-6.1 7-13A7 7 0 1 0 5 9c0 6.9 7 13 7 13Z"/><path d="M9 9h6M12 6v6"/></svg></button>
-            <button id="groupKickModeBtn" type="button" style="display:none;">Exclure</button>
-          </span>
-        </div>
-        <div class="groupInviteRow">
-          <input id="groupInviteInput" type="text" placeholder="Pseudo à inviter…" maxlength="20" autocomplete="off" />
-          <button id="groupInviteBtn" type="button">Inviter</button>
-        </div>
-        <label class="groupAutoAccept" id="groupAutoAcceptRow" for="groupAutoAccept"><input id="groupAutoAccept" type="checkbox" /><span><b>Accepter automatiquement les invitations</b><small>Rejoint directement sans cliquer Rejoindre.</small></span></label>
+      <div class="groupBody">
+        <section class="wikiCard groupCard">
+          <div id="groupStatus" class="wikiCardTitle">Groupe</div>
+          <div id="groupMembers" class="groupEntries"></div>
+          <div id="groupInvites" class="groupEntries"><div class="groupEmpty">Aucune invitation.</div></div>
+        </section>
+        <section class="wikiCard groupActions">
+          <div class="groupInviteRow">
+            <input id="groupInviteInput" type="text" placeholder="Pseudo à inviter…" maxlength="20" autocomplete="off" />
+            <button id="groupInviteBtn" class="clanPrimary" type="button">Inviter</button>
+          </div>
+          <div class="groupControlRow">
+            <button id="groupLeaveBtn" class="danger" type="button" style="display:none;">Quitter</button>
+            <span class="groupLeaderControls">
+              <button id="groupInviteLockBtn" class="groupIconBtn" type="button" style="display:none;" aria-label="Verrouiller les invitations" title="Verrouiller les invitations"></button>
+              <button id="groupRallyBtn" class="groupIconBtn" type="button" style="display:none;" aria-label="Point de rassemblement" title="Point de rassemblement"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 22s7-6.1 7-13A7 7 0 1 0 5 9c0 6.9 7 13 7 13Z"/><path d="M9 9h6M12 6v6"/></svg></button>
+              <button id="groupKickModeBtn" class="danger" type="button" style="display:none;">Exclure</button>
+            </span>
+          </div>
+          <label class="groupAutoAccept" id="groupAutoAcceptRow" for="groupAutoAccept"><input id="groupAutoAccept" type="checkbox" /><span><b>Accepter automatiquement les invitations</b><small>Rejoint directement sans cliquer Rejoindre.</small></span></label>
+        </section>
+        <div id="groupNotices" class="groupNotices"></div>
       </div>
-      <div id="groupNotices" class="groupNotices"></div>
     </div>
 
     <div id="friendsWindow" class="panel friendsPanel">
-      <div id="friendsStatus" class="friendsStatus">Chargement…</div>
-      <div class="friendsTabs" role="tablist">
-        <button class="active" type="button" data-friends-tab="friends">Amis</button>
-        <button type="button" data-friends-tab="requests">Demandes <span id="friendsRequestBadge" hidden>0</span></button>
+      <div class="wikiBody friendsBody">
+        <nav class="wikiTabs friendsTabs" aria-label="Amis">
+          <button class="wikiTab active" type="button" data-friends-tab="friends"><span>Amis</span><i id="friendsRequestBadge" class="wikiHits"></i></button>
+          <button class="wikiTab" type="button" data-friends-tab="blocked"><span>Bloqués</span></button>
+        </nav>
+        <div class="wikiPages clanPages">
+          <div id="friendsStatus" class="clanStatus" role="status" hidden></div>
+
+          <div class="wikiPage active" data-friends-pane="friends">
+            <section class="wikiCard wikiSpan">
+              <form id="friendAddForm" class="clanInline" autocomplete="off">
+                <input id="friendAddInput" type="text" placeholder="Ajouter un ami par pseudo…" maxlength="20" autocomplete="off" />
+                <button id="friendAddBtn" class="clanPrimary" type="submit">Ajouter</button>
+              </form>
+              <input id="friendsSearch" type="search" placeholder="Rechercher un ami…" autocomplete="off" hidden />
+              <div id="friendsList"><div class="clanEmpty">Chargement…</div></div>
+            </section>
+          </div>
+
+          <div class="wikiPage" data-friends-pane="blocked">
+            <section class="wikiCard wikiSpan">
+              <form id="friendBlockForm" class="clanInline" autocomplete="off">
+                <input id="friendBlockInput" type="text" placeholder="Bloquer un pilote par pseudo…" maxlength="20" autocomplete="off" />
+                <button class="danger" type="submit">Bloquer</button>
+              </form>
+              <div id="friendsBlocked"><div class="clanEmpty">Aucun pilote bloqué.</div></div>
+              <p class="wikiNote">Un pilote bloqué ne peut plus t'envoyer de demande d'ami, de message privé ni d'invitation de groupe. Il n'est pas prévenu.</p>
+            </section>
+          </div>
+        </div>
       </div>
-      <div class="friendsToolbar"><input id="friendsSearch" type="search" placeholder="Rechercher un ami…" autocomplete="off" hidden /></div>
-      <div id="friendsList" class="friendsRows friendsPane active" data-friends-pane="friends"><div class="friendsEmpty">Chargement…</div></div>
-      <div id="friendsRequests" class="friendsRows friendsRequests friendsPane" data-friends-pane="requests"><div class="friendsEmpty">Aucune demande.</div></div>
-      <form id="friendAddForm" class="friendsForm" autocomplete="off">
-        <input id="friendAddInput" type="text" placeholder="Ajouter par pseudo…" maxlength="20" autocomplete="off" />
-        <button id="friendAddBtn" type="submit">Ajouter</button>
-      </form>
     </div>
 
     <div id="clanWindow" class="panel clanPanel">
-      <div id="clanStatus" class="clanStatus">Chargement…</div>
-      <div id="clanCreatePane" class="clanPane active">
-        <div class="clanTabs clanBrowseTabs" role="tablist">
-          <button class="active" type="button" data-browse-tab="create">Créer</button>
-          <button type="button" data-browse-tab="join">Rejoindre</button>
-        </div>
-        <div class="clanPane active" data-browse-pane="create">
-          <form id="clanCreateForm" class="clanForm clanCreateGrid" autocomplete="off">
-            <input id="clanNameInput" type="text" placeholder="Nom libre (espaces et symboles acceptés)…" maxlength="64" autocomplete="off" />
-            <input id="clanTagInput" type="text" placeholder="Tag libre (espaces et symboles acceptés)…" maxlength="32" autocomplete="off" />
-            <input id="clanDescCreateInput" type="text" placeholder="Description du clan (250 max)…" maxlength="250" autocomplete="off" />
-            <button id="clanCreateBtn" type="submit">Créer (300k)</button>
-          </form>
-        </div>
-        <div class="clanPane" data-browse-pane="join">
-          <div class="clanSubHead">Tous les clans — postule pour rejoindre</div>
-          <div id="clanAllList" class="clanRows"><div class="clanEmpty">Chargement…</div></div>
-        </div>
-      </div>
-      <div id="clanManagePane" class="clanPane">
-        <div class="clanTabs" role="tablist">
-          <button class="active" type="button" data-clan-tab="infos">Infos</button>
-          <button type="button" data-clan-tab="members">Membres</button>
-          <button type="button" data-clan-tab="ranks">Rangs</button>
-          <button type="button" data-clan-tab="diplo">Diplomatie</button>
-          <button type="button" data-clan-tab="log">Journal</button>
-        </div>
-        <div class="clanPane active" data-clan-pane="infos">
-          <div id="clanInfoBox" class="clanInfoBox"><div class="clanEmpty">Chargement…</div></div>
-          <form id="clanDescForm" class="clanForm" autocomplete="off">
-            <span class="clanDescLabel">Description</span>
-            <p id="clanDescCurrent" class="clanDescCurrent">Aucune description.</p>
-            <input id="clanDescInput" type="text" placeholder="Description du clan (250 max)…" maxlength="250" autocomplete="off" />
-            <button id="clanDescBtn" type="submit">OK</button>
-          </form>
-        </div>
-        <div class="clanPane" data-clan-pane="members">
-          <div id="clanAppsBlock" hidden>
-            <div class="clanSubHead">Candidatures reçues</div>
-            <div id="clanAppsList" class="clanRows"></div>
+      <div class="wikiBody clanBody">
+        <nav class="wikiTabs clanBrowseTabs" aria-label="Clans">
+          <button class="wikiTab active" type="button" data-browse-tab="join"><span>Rejoindre</span></button>
+          <button class="wikiTab" type="button" data-browse-tab="create"><span>Créer un clan</span></button>
+          <button class="wikiTab" type="button" data-browse-tab="ranking"><span>Classement</span></button>
+        </nav>
+        <nav class="wikiTabs clanManageTabs" aria-label="Sections du clan" hidden>
+          <button class="wikiTab active" type="button" data-clan-tab="infos"><span>Infos</span></button>
+          <button class="wikiTab" type="button" data-clan-tab="news"><span>Annonces</span></button>
+          <button class="wikiTab" type="button" data-clan-tab="members"><span>Membres</span><i id="clanAppsBadge" class="wikiHits"></i></button>
+          <button class="wikiTab" type="button" data-clan-tab="bank"><span>Banque</span></button>
+          <button class="wikiTab" type="button" data-clan-tab="bases"><span>Bases</span></button>
+          <button class="wikiTab" type="button" data-clan-tab="ranking"><span>Classement</span></button>
+          <button class="wikiTab" type="button" data-clan-tab="ranks"><span>Rangs</span></button>
+          <button class="wikiTab" type="button" data-clan-tab="diplo"><span>Diplomatie</span></button>
+          <button class="wikiTab" type="button" data-clan-tab="log"><span>Journal</span></button>
+        </nav>
+        <div class="wikiPages clanPages">
+          <div id="clanMotdBanner" class="clanMotdBanner" hidden>
+            <span class="clanMotdIcon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M4 10v4h3l6 4V6L7 10H4Z"/><path d="M16.5 9a4 4 0 0 1 0 6M19 6.5a7.5 7.5 0 0 1 0 11"/></svg>
+            </span>
+            <span class="clanMotdText"><b>Annonce du clan</b><span id="clanMotdBannerText"></span></span>
+            <button id="clanMotdClose" class="clanMotdClose" type="button" title="Masquer l'annonce (pour toi seulement)" aria-label="Masquer l'annonce">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 7 10 10M17 7 7 17"/></svg>
+            </button>
           </div>
-          <div id="clanList" class="clanRows"><div class="clanEmpty">Chargement…</div></div>
-          <div id="clanMemberFoot"></div>
-        </div>
-        <div class="clanPane" data-clan-pane="ranks">
-          <form id="clanRankCreateForm" class="clanForm" autocomplete="off">
-            <input id="clanRankNameInput" type="text" placeholder="Nouveau rang…" maxlength="20" autocomplete="off" />
-            <button id="clanRankCreateBtn" type="submit">Créer</button>
-          </form>
-          <div id="clanRanksList" class="clanRows"><div class="clanEmpty">Chargement…</div></div>
-        </div>
-        <div class="clanPane" data-clan-pane="diplo">
-          <form id="clanDiploForm" class="clanForm" autocomplete="off">
-            <input id="clanDiploTagInput" type="text" placeholder="Tag du clan…" maxlength="5" autocomplete="off" />
-            <select id="clanDiploKindSelect">
-              <option value="nap">NAP</option>
-              <option value="alliance">Alliance</option>
-              <option value="war">Guerre</option>
-            </select>
-            <button id="clanDiploBtn" type="submit">Proposer</button>
-          </form>
-          <div class="clanSubHead">Tous les clans — la guerre est immédiate, NAP/Alliance = demande</div>
-          <div id="clanDiploClans" class="clanRows"><div class="clanEmpty">Chargement…</div></div>
-        </div>
-        <div class="clanPane" data-clan-pane="log">
-          <div id="clanLogList" class="clanRows"><div class="clanEmpty">Chargement…</div></div>
+          <div id="clanStatus" class="clanStatus" role="status" hidden></div>
+
+          <div id="clanCreatePane" class="clanPaneGroup">
+            <div class="wikiPage active" data-browse-pane="join">
+              <section class="wikiCard wikiSpan">
+                <div class="wikiCardTitle">Tous les clans</div>
+                <div id="clanAllList"><div class="clanEmpty">Chargement…</div></div>
+                <p class="wikiNote">Une candidature est gratuite. Le chef ou un rang avec le droit Candidatures l'accepte.</p>
+              </section>
+            </div>
+            <div class="wikiPage" data-browse-pane="create">
+              <section class="wikiCard">
+                <div class="wikiCardTitle">Fonder un clan</div>
+                <form id="clanCreateForm" class="clanForm" autocomplete="off">
+                  <label class="wikiField clanField"><span>Nom</span>
+                    <input id="clanNameInput" type="text" placeholder="Nom libre (espaces et symboles acceptés)…" maxlength="64" autocomplete="off" /></label>
+                  <label class="wikiField clanField"><span>Tag</span>
+                    <input id="clanTagInput" type="text" placeholder="Tag de 5 caractères max…" maxlength="5" autocomplete="off" /></label>
+                  <label class="wikiField clanField"><span>Description</span>
+                    <input id="clanDescCreateInput" type="text" placeholder="Description du clan (250 max)…" maxlength="250" autocomplete="off" /></label>
+                  <button id="clanCreateBtn" class="clanPrimary" type="submit">Créer le clan · 300 000 crédits</button>
+                </form>
+              </section>
+              <section class="wikiCard">
+                <div class="wikiCardTitle">À savoir</div>
+                <div class="wikiText"><ul>
+                  <li>Fonder un clan coûte <b class="wikiGold">300 000</b> crédits.</li>
+                  <li><b>30 membres</b> maximum, un seul clan par pilote.</li>
+                  <li>Le tag (<b>5 caractères max</b>) est unique et s'affiche devant le pseudo de chaque membre.</li>
+                  <li>Le chef crée des rangs et choisit leurs droits : candidatures, exclusion, diplomatie, édition, banque.</li>
+                  <li>Tchat de clan : <kbd>/c</kbd> suivi du message.</li>
+                </ul></div>
+              </section>
+            </div>
+            <div class="wikiPage" data-browse-pane="ranking">
+              <section class="wikiCard wikiSpan" data-clan-ranking><div class="clanEmpty">Chargement…</div></section>
+            </div>
+          </div>
+
+          <div id="clanManagePane" class="clanPaneGroup" hidden>
+            <div class="wikiPage active" data-clan-pane="infos">
+              <section class="wikiCard">
+                <div class="wikiCardTitle">Fiche du clan</div>
+                <div id="clanInfoBox"><div class="clanEmpty">Chargement…</div></div>
+              </section>
+              <section class="wikiCard">
+                <div class="wikiCardTitle">Chiffres du clan</div>
+                <div id="clanStatTiles"></div>
+              </section>
+              <section class="wikiCard wikiSpan">
+                <div class="wikiCardTitle">Description</div>
+                <p id="clanDescCurrent" class="wikiText clanText">Aucune description.</p>
+                <form id="clanDescForm" class="clanInline" autocomplete="off" data-needs-right="edit">
+                  <input id="clanDescInput" type="text" placeholder="Description du clan (250 max)…" maxlength="250" autocomplete="off" />
+                  <button id="clanDescBtn" type="submit">Modifier</button>
+                </form>
+              </section>
+            </div>
+
+            <div class="wikiPage" data-clan-pane="news">
+              <section class="wikiCard wikiSpan">
+                <div class="wikiCardTitle">Annonce en cours</div>
+                <p id="clanMotdCurrent" class="wikiText clanText">Aucune annonce.</p>
+                <p class="wikiNote">Affichée en haut de la fenêtre clan. Chaque membre reçoit une notification en jeu à la publication ou à sa connexion.</p>
+              </section>
+              <section class="wikiCard wikiSpan" data-needs-right="edit">
+                <div class="wikiCardTitle">Publier une annonce</div>
+                <form id="clanMotdForm" class="clanForm" autocomplete="off">
+                  <input id="clanMotdInput" type="text" placeholder="Message affiché à tous les membres (300 max)…" maxlength="300" autocomplete="off" />
+                  <div class="clanInline">
+                    <button id="clanMotdBtn" class="clanPrimary" type="submit">Publier</button>
+                    <button id="clanMotdClear" type="button" class="danger">Retirer l'annonce en cours</button>
+                  </div>
+                </form>
+              </section>
+              <section class="wikiCard wikiSpan">
+                <div class="wikiCardTitle">Historique des annonces</div>
+                <div id="clanNewsList"><div class="clanEmpty">Aucune annonce publiée.</div></div>
+              </section>
+            </div>
+
+            <div class="wikiPage" data-clan-pane="members">
+              <section id="clanAppsBlock" class="wikiCard wikiSpan" hidden>
+                <div class="wikiCardTitle">Candidatures reçues</div>
+                <div id="clanAppsList"></div>
+              </section>
+              <section class="wikiCard wikiSpan">
+                <div class="wikiCardTitle">Membres</div>
+                <div class="wikiFilterRow">
+                  <label class="wikiField"><span>Trier par</span>
+                    <select id="clanMemberSort">
+                      <option value="rank">Grade</option>
+                      <option value="honor">Honneur</option>
+                      <option value="npc">Kills NPC</option>
+                      <option value="pvp">Kills PvP</option>
+                      <option value="online">En ligne</option>
+                      <option value="role">Rang du clan</option>
+                      <option value="joined">Ancienneté</option>
+                    </select>
+                  </label>
+                  <span id="clanOnlineCount" class="wikiCount"></span>
+                </div>
+                <div id="clanList"><div class="clanEmpty">Chargement…</div></div>
+              </section>
+            </div>
+
+            <div class="wikiPage" data-clan-pane="bank">
+              <section class="wikiCard">
+                <div class="wikiCardTitle">Solde de la banque</div>
+                <div class="clanBankHead"><strong id="clanBankBalance">0</strong><small>crédits</small></div>
+                <p class="wikiNote">Si le clan est dissous, la banque revient au chef.</p>
+              </section>
+              <section class="wikiCard">
+                <div class="wikiCardTitle">Déposer</div>
+                <form id="clanBankDepositForm" class="clanForm" autocomplete="off">
+                  <div class="clanInline">
+                    <input id="clanBankDepositInput" type="text" inputmode="numeric" placeholder="Montant (ex. 250k, 1.5M)…" autocomplete="off" />
+                    <button type="submit" class="clanPrimary">Déposer</button>
+                  </div>
+                  <div class="clanQuick" data-quick-target="clanBankDepositInput">
+                    <button type="button" data-quick="100000">100k</button>
+                    <button type="button" data-quick="1000000">1M</button>
+                    <button type="button" data-quick="10000000">10M</button>
+                    <button type="button" data-quick="100000000">100M</button>
+                  </div>
+                </form>
+              </section>
+              <section class="wikiCard wikiSpan" data-needs-right="bank">
+                <div class="wikiCardTitle">Distribuer à un membre</div>
+                <form id="clanBankWithdrawForm" class="clanInline" autocomplete="off">
+                  <select id="clanBankTarget" aria-label="Membre"></select>
+                  <input id="clanBankWithdrawInput" type="text" inputmode="numeric" placeholder="Montant…" autocomplete="off" />
+                  <button type="submit">Envoyer</button>
+                </form>
+                <p class="wikiNote">Chaque membre peut recevoir <b class="wikiGold">50 000 000</b> crédits par jour passé dans le clan, dès son arrivée. Ce qui n'est pas reçu reste disponible les jours suivants.</p>
+              </section>
+              <section class="wikiCard wikiSpan" data-needs-right="bank">
+                <div class="wikiCardTitle">Plafond de réception des membres</div>
+                <div id="clanBankQuota"></div>
+              </section>
+            </div>
+
+            <div class="wikiPage" data-clan-pane="bases">
+              <section class="wikiCard wikiSpan">
+                <div class="wikiCardTitle">Bonus des bases du clan</div>
+                <div id="clanBasesBonus"><div class="clanEmpty">Chargement…</div></div>
+                <p class="wikiNote">Chaque base tenue par le clan avec un module actif (posé, installé, en vie) ajoute son bonus à tous les membres, où qu'ils soient.</p>
+              </section>
+              <section class="wikiCard wikiSpan">
+                <div class="wikiCardTitle">Bases du clan</div>
+                <div id="clanBasesMine"><div class="clanEmpty">Chargement…</div></div>
+              </section>
+              <div id="clanBasesDetail" class="clanBasesDetail"></div>
+              <section id="clanBasesBuildingCard" class="wikiCard wikiSpan" hidden>
+                <div class="wikiCardTitle">En construction</div>
+                <div id="clanBasesBuilding"></div>
+              </section>
+            </div>
+
+            <div class="wikiPage" data-clan-pane="ranking">
+              <section class="wikiCard wikiSpan" data-clan-ranking><div class="clanEmpty">Chargement…</div></section>
+            </div>
+
+            <div class="wikiPage" data-clan-pane="ranks">
+              <section class="wikiCard wikiSpan">
+                <div class="wikiCardTitle">Nouveau rang</div>
+                <form id="clanRankCreateForm" class="clanInline" autocomplete="off">
+                  <input id="clanRankNameInput" type="text" placeholder="Nom du rang…" maxlength="20" autocomplete="off" />
+                  <button id="clanRankCreateBtn" type="submit">Créer</button>
+                </form>
+              </section>
+              <section class="wikiCard wikiSpan">
+                <div class="wikiCardTitle">Droits des rangs</div>
+                <div id="clanRanksList"><div class="clanEmpty">Chargement…</div></div>
+              </section>
+            </div>
+
+            <div class="wikiPage" data-clan-pane="diplo">
+              <section class="wikiCard wikiSpan" data-needs-right="diplo">
+                <div class="wikiCardTitle">Proposer par tag</div>
+                <form id="clanDiploForm" class="clanInline" autocomplete="off">
+                  <input id="clanDiploTagInput" type="text" placeholder="Tag du clan…" maxlength="5" autocomplete="off" />
+                  <select id="clanDiploKindSelect">
+                    <option value="nap">NAP</option>
+                    <option value="alliance">Alliance</option>
+                    <option value="war">Guerre</option>
+                  </select>
+                  <button id="clanDiploBtn" type="submit">Proposer</button>
+                </form>
+              </section>
+              <section class="wikiCard wikiSpan">
+                <div class="wikiCardTitle">Relations avec les autres clans</div>
+                <div id="clanDiploClans"><div class="clanEmpty">Chargement…</div></div>
+                <p class="wikiNote">La guerre est immédiate (100 jours max). NAP et alliance doivent être acceptés par l'autre clan.</p>
+              </section>
+            </div>
+
+            <div class="wikiPage" data-clan-pane="log">
+              <section class="wikiCard wikiSpan">
+                <div class="wikiCardTitle">Journal du clan</div>
+                <div id="clanLogList"><div class="clanEmpty">Chargement…</div></div>
+              </section>
+            </div>
+          </div>
         </div>
       </div>
     </div>

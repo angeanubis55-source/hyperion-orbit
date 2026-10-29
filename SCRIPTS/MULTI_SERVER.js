@@ -25,7 +25,7 @@ const {
 } = AC;
 import { tickLowRaid, getLowRaidState } from "./LOW_RAID.js";
 import { damagePlayerLayers } from "../COMBAT/COMBAT_RULES.js";
-import { handleAccountApi, getAccountGameplayData, verifyWsToken, recordPvpKill, recordPvpPetKill, awardNpcKill, grantSundayModule, grantSundayTickets, grantSundayAmmo, listFriends, friendFollowers, findUserByPseudo, hasFriendRequest, clanIdOfUser, clanTagOfUser, clanMemberUserIds, recordClanWarKill, adminGiveCredits, adminGiveExperience, adminGiveHonor, adminGiveModule, adminGiveTitle, adminListAccounts, adminDebugAccount, adminDeleteAccount, adminResetGalaxyGate, adminGiveGalaxyGate, adminDroneDesigns, adminGiveDroneDesign, adminShipFamilies } from "./ACCOUNT_SERVER.js";
+import { handleAccountApi, getAccountGameplayData, verifyWsToken, recordPvpKill, recordPvpPetKill, awardNpcKill, grantSundayModule, grantSundayTickets, grantSundayAmmo, listFriends, friendFollowers, findUserByPseudo, hasFriendRequest, isBlockedBy, clanIdOfUser, clanTagOfUser, clanMemberUserIds, setClanPresenceProvider, setClanBasesProvider, recordClanWarKill, adminGiveCredits, adminGiveExperience, adminGiveHonor, adminGiveModule, adminGiveTitle, adminListAccounts, adminDebugAccount, adminDeleteAccount, adminResetGalaxyGate, adminGiveGalaxyGate, adminDroneDesigns, adminGiveDroneDesign, adminShipFamilies } from "./ACCOUNT_SERVER.js";
 import { combatProfile, validateCombatHit } from "./COMBAT_PROFILE.js";
 import { profileAbilityCooldown } from "../DRONE/DRONE_DESIGNS.js";
 import { selectNpcSnapshot } from "./NPC_SNAPSHOT.js";
@@ -532,7 +532,7 @@ import { loadServerMaps, mapTransition, validArrival, reviveArrival, baseArrival
 import { getFactionHomeMap } from "../SRC/CORE/FACTIONS.js";
 import { handleSocialMessage, socialPeerGone, socialPeerChanged, socialDescribeGroup, socialGroupOf } from "./SOCIAL_ROOM.js";
 import { getAuctionSync, handleAuctionBid, pollAuctionCycle, auctionRoomStatus } from "./AUCTION_ROOM.js";
-import { getStationSync, handleStationInstall, handleStationUninstall, handleStationBuild, handleStationReplace, handleStationCancelReplace, handleStationRepair, handleStationDeflectToggle, handleStationHit, hasStationMap, getStationDefense, stationShotReady, stationShotFired, isStationFoe, isStationRetaliation, applyStationPassiveHeal, getClanBaseBonuses, getStationOwners } from "./STATION_ROOM.js";
+import { getStationSync, handleStationInstall, handleStationUninstall, handleStationBuild, handleStationReplace, handleStationCancelReplace, handleStationRepair, handleStationDeflectToggle, handleStationHit, hasStationMap, getStationDefense, stationShotReady, stationShotFired, isStationFoe, isStationRetaliation, applyStationPassiveHeal, getClanBaseBonuses, getStationOwners, getClanBasesReport } from "./STATION_ROOM.js";
 import { GAME_VERSION } from "../SRC/DATA/VERSION.js";
 import { COLLECTABLE_TYPES } from "../SRC/DATA/COLLECTABLES.js";
 import { HALLOWEEN_END, HALLOWEEN_START, HALLOWEEN_TIME_ZONE, isHalloweenBossVariant, isHalloweenEventActive } from "../NPC/NPC_HALLOWEEN.js";
@@ -1061,7 +1061,7 @@ function handleAdminApi(request, response, pathname) {
               for (const fid of (res.affected || [])) {
                 const fpid = `u_${String(fid)}`;
                 sendToPeer(fpid, { t: "friendsChanged" });
-                sendToPeer(fpid, { t: "friendOnline", id: pid, pseudo: String(res.pseudo || "Pilote").slice(0, 20), online: false, map: "", shipId: "", instance: false, inGroup: false });
+                sendToPeer(fpid, { t: "friendOnline", id: pid, pseudo: String(res.pseudo || "Pilote").slice(0, 20), online: false });
               }
             } catch {}
             try {
@@ -1881,6 +1881,20 @@ function findPeerByPseudo(pseudo) {
   return null;
 }
 
+// Fenêtre clan : en ligne + map actuelle d'un compte (pid stable u_<id>).
+setClanPresenceProvider((userId) => {
+  const pid = `u_${String(userId || "")}`;
+  for (const [mapKey, room] of rooms) {
+    if (room.has(pid)) return { online: true, map: String(mapKey || "") };
+  }
+  const inst = instancePeers.get(pid);
+  if (inst) return { online: true, map: String(inst.mapId || "") };
+  return { online: false, map: "" };
+});
+
+// Fenêtre clan, onglet Bases : rapport des Bases de Combat du clan.
+setClanBasesProvider((tag) => getClanBasesReport(tag));
+
 // Fiche d'un pilote présent, y compris pendant la grâce de reconnexion.
 function describePeer(pid) {
   const id = String(pid);
@@ -1938,7 +1952,9 @@ function notifyFriendPresence(accountId, online) {
     for (const followerId of friendFollowers(accountId)) {
       const fpid = `u_${String(followerId)}`;
       if (fpid === selfPid) continue;
-      sendToPeer(fpid, { t: "friendOnline", id: selfPid, pseudo: selfPseudo, online: online === true, map: String(presence?.map || ""), shipId: String(presence?.shipId || ""), instance: presence?.instance === true, inGroup: !!socialGroupOf(selfPid) });
+      // Confidentialité : en ligne / hors ligne uniquement (ni map, ni
+      // vaisseau, ni groupe, ni Galaxy Gate).
+      sendToPeer(fpid, { t: "friendOnline", id: selfPid, pseudo: selfPseudo, online: online === true });
     }
   } catch {}
 }
@@ -1947,7 +1963,7 @@ function sendFriendsSync(ws, accountId) {
     const online = listFriends(accountId).map((f) => {
       const id = `u_${String(f.id)}`;
       const d = describePeer(id);
-      return d ? { id, pseudo: f.pseudo, map: String(d.map || ""), shipId: String(d.shipId || ""), instance: d.instance === true, inGroup: !!socialGroupOf(id) } : null;
+      return d ? { id, pseudo: f.pseudo } : null;
     }).filter(Boolean);
     try { ws.send(JSON.stringify({ t: "friendsSync", online })); } catch {}
   } catch {}
@@ -2607,6 +2623,8 @@ wss.on("connection", (ws) => {
           sendTo: (pid, obj) => sendToPeer(pid, obj),
           findByPseudo: (pseudo) => findPeerByPseudo(pseudo),
           describe: (pid) => describePeer(pid),
+          // Blocage : le destinataire a bloqué l'émetteur (pids u_<id>).
+          blocked: (toPid, fromPid) => isBlockedBy(String(toPid).replace(/^u_/, ""), String(fromPid).replace(/^u_/, "")),
         }, msg);
       } catch {}
       return;

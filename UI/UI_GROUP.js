@@ -42,7 +42,7 @@ export function initGroupUI() {
     const leave = document.getElementById("groupLeaveBtn"), lock = document.getElementById("groupInviteLockBtn"), rally = document.getElementById("groupRallyBtn"), kickBtn = document.getElementById("groupKickModeBtn"), inviteBtn = document.getElementById("groupInviteBtn"), actions = document.querySelector("#groupWindow .groupActions");
     if (!group) {
       kickMode = false;
-      if (status) status.textContent = "Solo — invite un pilote pour former une escadrille.";
+      if (status) status.textContent = "Groupe · solo";
       members.innerHTML = "";
       members.style.display = "none";
       invites.style.display = "";
@@ -57,7 +57,7 @@ export function initGroupUI() {
     actions?.classList.toggle("groupLeaderMode", leaderMode);
     actions?.classList.toggle("groupMemberMode", !leaderMode);
     members.style.display = "";
-    if (status) status.textContent = `Escadrille (${group.members.length}/10) — chef : ${chief?.pseudo || "?"}`;
+    if (status) status.textContent = `Groupe · ${group.members.length}/10 · chef ${chief?.pseudo || "?"}`;
     invites.style.display = "none";
     if (autoAcceptRow) autoAcceptRow.style.display = "none";
     members.innerHTML = group.members.map(member => {
@@ -106,12 +106,12 @@ export function initGroupUI() {
       if (invites.querySelector(`[data-inv-from="${CSS.escape(String(invite.from))}"]`)) continue;
       const row = document.createElement("div");
       row.className = "groupInvite"; row.dataset.invFrom = String(invite.from); row.dataset.expiresAt = String(Number(invite.expiresAt) || Date.now() + 15000);
-      row.innerHTML = `<em class="groupInviteTimer">15s</em><span>Escadrille de <b>${escapeHtml(invite.fromPseudo || "Pilote")}</b></span><span><button data-accept="1">Rejoindre</button> <button data-decline="1">Refuser</button></span>`;
+      row.innerHTML = `<em class="groupInviteTimer">15s</em><span>Groupe de <b>${escapeHtml(invite.fromPseudo || "Pilote")}</b></span><span><button data-accept="1">Rejoindre</button> <button data-decline="1">Refuser</button></span>`;
       invites.appendChild(row);
     }
     invites.querySelector(".groupEmpty")?.remove();
     for (const row of invites.querySelectorAll("[data-expires-at]")) { const left = Math.max(0, Math.ceil((Number(row.dataset.expiresAt) - Date.now()) / 1000)); const timer = row.querySelector(".groupInviteTimer"); if (timer) timer.textContent = `${left}s`; if (!left) row.remove(); }
-    if (!invites.children.length) invites.innerHTML = `<div class="groupEmpty">Aucune invitation.</div>`;
+    if (!invites.children.length) invites.innerHTML = `<div class="groupEmpty">Aucune invitation. Invite un pilote ci-dessous pour former un groupe.</div>`;
   }
 
   function pollNotices() {

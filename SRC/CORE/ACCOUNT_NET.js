@@ -899,6 +899,42 @@ export async function apiShopSell(kind, id, quantity = 1, options = {}) {
   }
 }
 
+// Banque de clan : dépôt (débite le compte) ou retrait vers un membre.
+// Même circuit que la boutique : sauvegarde en attente d'abord, puis le
+// compte renvoyé par le serveur est adopté (crédits jamais dupliqués).
+export async function apiClanBank(action, body = {}) {
+  if (!netActive()) return { ok: false, error: "Session serveur inactive." };
+  const busy = accountWriteNotice();
+  const operationKey = `clanBank:${String(action)}`;
+  if (!beginAuthoritativeOperation(operationKey)) return busy;
+  const token = memToken;
+  const userId = memUser.id;
+  let writer = null;
+  try {
+    if (saveInFlight) await saveInFlight;
+    if (netHasPendingSave()) {
+      await flushNetUser();
+      if (retrySave) return busy;
+    }
+    if (!netActive() || memToken !== token || memUser.id !== userId) return { ok: false, ignored: true };
+    writer = authoritativeWriter ? await waitForAuthoritativeWriter() : createAuthoritativeWriter();
+    if (!netActive() || memToken !== token || memUser.id !== userId) return { ok: false, ignored: true };
+    clearTimeout(saveTimer); saveTimer = null;
+    const path = action === "withdraw" ? "/api/clans/bank/withdraw" : "/api/clans/bank/deposit";
+    const out = await api(path, { method: "POST", body, token });
+    if (!netActive() || memToken !== token || memUser.id !== userId) return { ok: false, ignored: true };
+    if (out?.ok && out.user) {
+      adoptServerUser(out.user, { reason: "clanBank" });
+      try { window.dispatchEvent(new CustomEvent("orbit:user-updated", { detail: { userId: memUser.id, revision: memUser.revision, source: "clanBank" } })); } catch {}
+    }
+    return out || { ok: false, error: "Réponse serveur invalide." };
+  } catch {
+    return { ok: false, error: "Réseau." };
+  } finally {
+    finishAuthoritativeOperation(writer, operationKey);
+  }
+}
+
 export async function apiProduction(action, recipeId, quantity = 1) {
   if (!netActive()) return { ok: false, error: "Session serveur inactive." };
   const busy = accountWriteNotice();

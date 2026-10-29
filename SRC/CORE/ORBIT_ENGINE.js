@@ -12773,7 +12773,8 @@ function botPetLocatorType() {
   if (!row) return null;
   const live = new Set(enemies.filter((e) => e && Number(e.hp) > 0).map((e) => String(e.type)));
   const tag = String(window.__CURRENT_MAP_ID__ || "").replace("-", "_");
-  return row.types.find((t) => live.has(t)) || row.types.find((t) => t.endsWith(`_${tag}`)) || row.types[0];
+  return row.types.find((t) => live.has(t)) || row.types.find((t) => petLocatorKeepsPick(t))
+    || row.types.find((t) => t.endsWith(`_${tag}`)) || row.types[0];
 }
 
 // REX pendant le bot : applique le mode / module choisi au démarrage.
@@ -12945,10 +12946,14 @@ function botTickPet(dt) {
 function botLocatorTypes() {
   try {
     let type = null;
-    if (Bot.petLocNpc) type = botPetLocatorType();
-    else {
+    if (Bot.petLocNpc) {
+      // NPC choisi dans la liste du bot : gardé même mort (respawn attendu).
+      type = botPetLocatorType();
+      if (type) setPetLocatorPick(type);
+    } else {
       const live = new Set(enemies.filter((e) => e && Number(e.hp) > 0 && e.isJpcBot !== true).map((e) => String(e.type)));
-      if (petLocator.manualType && live.has(String(petLocator.manualType))) type = String(petLocator.manualType);
+      petLocatorRestorePick();
+      if (petLocator.manualType && (live.has(String(petLocator.manualType)) || petLocatorKeepsPick(petLocator.manualType))) type = String(petLocator.manualType);
       else {
         const known = new Set(botPetLocatorRows().flatMap((row) => row.types));
         const pool = [...live].filter((t) => known.has(t));
@@ -13531,7 +13536,7 @@ function wireBotWindow() {
     petLoc.addEventListener("change", () => {
       Bot.petLocNpc = String(petLoc.value || "");
       // « Au hasard » : le P.E.T choisit lui-même sa cible.
-      if (!Bot.petLocNpc) { petLocator.manualType = null; petLocator.needsPick = true; }
+      if (!Bot.petLocNpc) { petLocator.manualType = null; petLocator.needsPick = true; setPetLocatorPick(null); }
       botSaveConfig();
       Bot.petTickT = 0;
     });
@@ -16080,6 +16085,7 @@ function wirePetWindow() {
     ui.petNpcList.hidden = true;
     petLocator.manualType = btn.dataset.value || null;
     petLocator.enemyId = null;
+    setPetLocatorPick(petLocator.manualType);
   });
 }
 
@@ -16496,6 +16502,11 @@ function updatePetHud() {
     const live = enemies.filter((e) => e && Number(e.hp) > 0);
     // Une entrée par famille présente sur la carte.
     const families = [...new Set(live.map((e) => String(e.type || "?")))].sort();
+    petLocatorRestorePick();
+    // NPC choisi mais mort (respawn en cours) : reste dans la liste, en attente.
+    const waitingType = petLocator.manualType != null && !families.includes(petLocator.manualType)
+      && petLocatorKeepsPick(petLocator.manualType) ? petLocator.manualType : null;
+    if (waitingType) families.push(waitingType);
     if (petLocator.manualType != null && !families.includes(petLocator.manualType)) {
       petLocator.manualType = null;
       petLocator.needsPick = true;
@@ -16505,18 +16516,19 @@ function updatePetHud() {
       petLocator.needsPick = false;
       petLocator.manualType = families[Math.floor(Math.random() * families.length)];
     }
-    const sig = families.join("|");
+    const npcLabel = (type) => String(NPC_TYPES[type]?.name || type) + (type === waitingType ? " (en attente)" : "");
+    const sig = families.join("|") + "#" + (waitingType || "");
     if (sig !== lastPetNpcSig) {
       lastPetNpcSig = sig;
       ui.petNpcList.innerHTML = '<button type="button" data-value="">— Choisir un NPC —</button>'
-        + families.map((type) => `<button type="button" data-value="${escapeHtml(type)}">${escapeHtml(String(NPC_TYPES[type]?.name || type))}</button>`).join("");
+        + families.map((type) => `<button type="button" data-value="${escapeHtml(type)}">${escapeHtml(npcLabel(type))}</button>`).join("");
     }
     const wantNpc = petLocator.manualType != null ? String(petLocator.manualType) : "";
     for (const b of ui.petNpcList.querySelectorAll("button[data-value]")) {
       b.classList.toggle("isCurrent", (b.dataset.value || "") === wantNpc);
     }
     const wantLabel = petLocator.manualType != null
-      ? String(NPC_TYPES[petLocator.manualType]?.name || petLocator.manualType)
+      ? npcLabel(petLocator.manualType)
       : "— Choisir un NPC —";
     if (ui.petNpcBtn.textContent !== wantLabel) ui.petNpcBtn.textContent = wantLabel;
   }
@@ -25074,7 +25086,9 @@ try {
         // (cartes hors ecran) ne sert plus en mode net. En instance privee
         // la persistance continue (elle saute d'elle-meme en zone partagee).
         const net = netActive();
-        if (net && isSharedZone()) return;
+        // Zone partagée : seuls les drops personnels (Sun Box, cargos...)
+        // restent à sauvegarder localement.
+        if (net && isSharedZone()) { persistCollectables(); return; }
         if (!net) tickBackground(universe, worldClock.now(), { skipMapId: String(window.__CURRENT_MAP_ID__ || "") });
         // Ne jamais sérialiser le monde et les collectables dans le même
         // passage : deux gros JSON/localStorage consécutifs créent un pic
@@ -25101,9 +25115,11 @@ try {
 } catch {
   collectableStore = createCollectableStore();
 }
+// Toujours écrit, multi compris : les box partagées (syncNetBoxes) ne passent
+// jamais par ce store, mais les drops personnels (Sun Box, cargos...) n'existent
+// QUE là. Sauter l'écriture en zone partagée les perdait au moindre refresh
+// (ex. redémarrage serveur = rechargement automatique de la page).
 const persistCollectables = createDeferredPersistence(() => {
-  // Multi : les boites partagees viennent du serveur (syncNetBoxes).
-  try { if (netActive() && isSharedZone()) return; } catch {}
   try {
     measureGameTask("persistCollectables", () => universeStorage?.setItem?.(COLLECTABLE_STORE_KEY, serializeCollectableStore(collectableStore)));
   } catch {}
@@ -25652,7 +25668,32 @@ const isSab = ammoKey === "sab";
 // Définitions : PET/PET_GEARS.js. Les récompenses de collecte
 // passent par applyCollectableReward, comme une collecte joueur.
 // ============================================================
-const petLocator = { enemyId: null, manualType: null, needsPick: true };
+const petLocator = { enemyId: null, manualType: null, needsPick: true, picked: null, pickedMap: null };
+
+// Choix explicite du joueur (fenêtre P.E.T ou liste du bot), mémorisé pour
+// la map où il a été fait. Un NPC à respawn (boss, NPC unique...) tué ne
+// fait plus repartir le localisateur au hasard : il reste sur ce NPC, en
+// attente, et le reprend dès sa réapparition. Le tirage au hasard (aucun
+// choix) garde son fonctionnement : nouveau tirage quand la famille disparaît.
+function petLocatorMapKey() {
+  return String(window.__CURRENT_MAP_ID__ || "").toLowerCase();
+}
+function setPetLocatorPick(type) {
+  petLocator.picked = type ? String(type) : null;
+  petLocator.pickedMap = type ? petLocatorMapKey() : null;
+}
+function petLocatorKeepsPick(type) {
+  if (type == null || !petLocator.picked) return false;
+  if (petLocator.pickedMap !== petLocatorMapKey()) { setPetLocatorPick(null); return false; }
+  return petLocator.picked === String(type);
+}
+function petLocatorRestorePick() {
+  if (petLocator.manualType != null || !petLocatorKeepsPick(petLocator.picked)) return false;
+  petLocator.manualType = petLocator.picked;
+  petLocator.enemyId = null;
+  petLocator.needsPick = false;
+  return true;
+}
 
 function petFit() {
   const user = account.user;
@@ -26474,6 +26515,7 @@ function tickPetLocator(gears, dt) {
     petLocator.manualType = null;
     return;
   }
+  petLocatorRestorePick();
   // Famille choisie dans la liste : suit toujours le plus proche de nous,
   // dans la portée du gear (1000 / 1500 / 2500) + protocole radar.
   if (petLocator.manualType == null) {
@@ -26490,12 +26532,13 @@ function tickPetLocator(gears, dt) {
     return;
   }
   // Rien dans la portée : on garde la famille si elle existe encore
-  // (réacquise au rapprochement), sinon nouveau tirage.
+  // (réacquise au rapprochement) ou si le joueur l'a choisie (respawn
+  // attendu), sinon nouveau tirage.
   petLocator.enemyId = null;
   const anyLeft = enemies.some(
     (e) => Number(e?.hp) > 0 && String(e.type || "?") === petLocator.manualType,
   );
-  if (!anyLeft) {
+  if (!anyLeft && !petLocatorKeepsPick(petLocator.manualType)) {
     petLocator.manualType = null;
     petLocator.needsPick = true;
   }

@@ -6250,24 +6250,71 @@ html body #profileOverlay .profileHeaderTop .profileTitle, html body #profileOve
   border-color:rgba(124,240,255,.62);
   background:rgba(0,140,185,.3);
 }
+/* Groupe : même style que Clan / Amis (cartes wiki), sans bandeau. */
 .groupPanel {
-  width:420px;
-  min-width:320px;
-  max-width:calc(100vw - 20px);
-  height:auto;
+  width:460px !important;
+  min-width:0 !important;
+  max-width:min(460px, calc(100vw - 20px)) !important;
+  height:auto !important;
   max-height:none;
   display:flex;
   flex-direction:column;
   overflow:visible;
+  box-sizing:border-box !important;
 }
-.groupStatus {
-  padding:7px 11px;
+.groupBody {
+  display:grid;
+  gap:10px;
+  padding:10px;
   box-sizing:border-box;
-  border-bottom:1px solid rgba(124,240,255,.16);
-  color:#75e8ff;
-  font-size:11px;
-  font-weight:800;
-  text-transform:uppercase;
+}
+#groupWindow .wikiCard {
+  padding:10px;
+  gap:8px;
+}
+#groupWindow .groupEntries {
+  padding:0;
+  gap:6px;
+}
+#groupWindow .groupActions {
+  padding:10px;
+  gap:8px;
+}
+#groupWindow .groupInviteRow input {
+  flex:1 1 auto;
+  min-width:0;
+}
+#groupWindow .groupActions.groupMemberMode .groupControlRow {
+  display:flex;
+}
+#groupWindow .wikiCard button.groupIconBtn {
+  width:30px;
+  padding:0;
+  display:grid;
+  place-items:center;
+}
+#groupWindow .groupIconBtn svg {
+  width:15px;
+  height:15px;
+  fill:none;
+  stroke:currentColor;
+  stroke-width:2;
+  stroke-linecap:round;
+  stroke-linejoin:round;
+}
+#groupWindow #groupKickModeBtn.active {
+  border-color:#ff6578;
+  background:rgba(160,25,45,.45);
+}
+#groupWindow .groupInvite button {
+  height:26px;
+  padding:0 10px;
+}
+#groupWindow .groupNotices {
+  padding:0 2px;
+}
+#groupWindow .groupNotices:empty {
+  display:none;
 }
 .groupEntries {
   max-height:none;
@@ -6596,246 +6643,6 @@ html body #profileOverlay .profileHeaderTop .profileTitle, html body #profileOve
   font-style:normal;
   font-weight:900;
 }
-.friendsPanel {
-  width:440px;
-  min-width:320px;
-  max-width:calc(100vw - 20px);
-  height:auto;
-  max-height:calc(100vh - 20px);
-  display:flex;
-  flex-direction:column;
-  overflow:hidden;
-}
-.friendsStatus {
-  padding:8px 12px;
-  box-sizing:border-box;
-  border-bottom:1px solid rgba(124,240,255,.16);
-  color:#75e8ff;
-  font-size:11px;
-  font-weight:900;
-  text-transform:uppercase;
-  letter-spacing:.35px;
-}
-.friendsTabs {
-  display:grid;
-  grid-template-columns:1fr 1fr;
-  padding:7px 10px 0;
-  gap:5px;
-}
-.friendsTabs button {
-  height:29px;
-  border:0;
-  border-bottom:2px solid transparent;
-  color:#6f929e;
-  background:transparent;
-  cursor:pointer;
-  font:800 11px/1 ui-sans-serif,system-ui;
-  text-transform:uppercase;
-}
-.friendsTabs button.active {
-  color:#dffaff;
-  border-bottom-color:#63ddf8;
-  background:linear-gradient(180deg,transparent,rgba(70,210,245,.08));
-}
-.friendsTabs span {
-  display:inline-grid;
-  place-items:center;
-  min-width:17px;
-  height:17px;
-  margin-left:4px;
-  padding:0 4px;
-  border-radius:9px;
-  color:#241600;
-  background:#ffcf58;
-  font-size:10px;
-}
-.friendsToolbar {
-  padding:6px 11px 0;
-}
-.friendsToolbar:has(input[hidden]) {
-  display:none;
-}
-.friendsToolbar input {
-  width:100%;
-  height:28px;
-  box-sizing:border-box;
-  padding:0 9px;
-  outline:0;
-  border:1px solid rgba(124,240,255,.25);
-  border-radius:7px;
-  color:#effcff;
-  background:#051521;
-  font:600 11px/1 ui-sans-serif,system-ui;
-}
-.friendsPane {
-  display:none;
-}
-.friendsPane.active {
-  display:grid;
-}
-.friendsRows {
-  max-height:min(430px,calc(100vh - 210px));
-  min-height:72px;
-  overflow-y:auto;
-  align-content:start;
-  gap:6px;
-  padding:9px 11px;
-  box-sizing:border-box;
-}
-.friendCard {
-  display:grid;
-  grid-template-columns:10px minmax(0,1fr) auto auto;
-  align-items:center;
-  gap:9px;
-  padding:8px 9px;
-  border:1px solid rgba(124,240,255,.13);
-  border-radius:8px;
-  background:linear-gradient(115deg,rgba(4,25,38,.92),rgba(4,15,25,.75));
-  color:#bcdde5;
-}
-.friendCard.online {
-  border-color:rgba(92,255,145,.19);
-}
-.friendCard.offline {
-  opacity:.72;
-}
-.friendsDot {
-  width:9px;
-  height:9px;
-  border-radius:50%;
-  background:#536e78;
-  box-shadow:inset 0 0 0 1px rgba(255,255,255,.08);
-}
-.friendsDot.on {
-  background:#5bff8f;
-  box-shadow:0 0 7px rgba(91,255,143,.7);
-}
-.friendIdentity {
-  display:grid;
-  min-width:0;
-  gap:2px;
-}
-.friendIdentity strong {
-  overflow:hidden;
-  text-overflow:ellipsis;
-  white-space:nowrap;
-  color:#dff7fb;
-  font-size:12px;
-}
-.friendIdentity small {
-  overflow:hidden;
-  text-overflow:ellipsis;
-  white-space:nowrap;
-  color:#7395a1;
-  font-size:10px;
-  text-transform:capitalize;
-}
-.friendState {
-  padding:3px 6px;
-  border-radius:8px;
-  color:#6ee99a;
-  background:rgba(50,180,100,.09);
-  font-size:9px;
-  font-weight:900;
-  text-transform:uppercase;
-  white-space:nowrap;
-}
-.friendState.gate {
-  color:#ffd364;
-  background:rgba(220,160,40,.11);
-}
-.friendCard.offline .friendState {
-  color:#708992;
-  background:rgba(100,120,130,.08);
-}
-.friendsBtns {
-  display:flex;
-  gap:4px;
-}
-.friendsBtns button {
-  width:27px;
-  height:25px;
-  padding:4px;
-  display:grid;
-  place-items:center;
-  border:1px solid rgba(124,240,255,.28);
-  border-radius:7px;
-  color:#dffaff;
-  background:rgba(13,76,99,.32);
-  cursor:pointer;
-}
-.friendsBtns button:hover {
-  border-color:rgba(124,240,255,.65);
-  background:rgba(0,140,185,.3);
-}
-.friendsBtns button:disabled {
-  opacity:.25;
-  cursor:not-allowed;
-}
-.friendsBtns button.danger:hover {
-  color:#ff8998;
-  border-color:#ff6578;
-  background:rgba(160,25,45,.25);
-}
-.friendsBtns button.accept {
-  color:#77f3a3;
-}
-.friendsBtns svg {
-  width:15px;
-  height:15px;
-  fill:none;
-  stroke:currentColor;
-  stroke-width:1.8;
-  stroke-linecap:round;
-  stroke-linejoin:round;
-}
-.friendRequestIcon {
-  display:grid;
-  place-items:center;
-  width:18px;
-  height:18px;
-  border-radius:50%;
-  color:#241600;
-  background:#ffcf58;
-  font:900 11px/1 ui-sans-serif,system-ui;
-}
-.friendCard.request {
-  grid-template-columns:18px minmax(0,1fr) auto;
-}
-.friendsEmpty {
-  padding:22px;
-  text-align:center;
-  color:#5c8290;
-  font-size:11px;
-  font-weight:800;
-}
-.friendsForm {
-  display:grid;
-  grid-template-columns:minmax(0,1fr) auto;
-  gap:8px;
-  padding:9px 11px;
-  box-sizing:border-box;
-  border-top:1px solid rgba(124,240,255,.14);
-}
-.friendsForm.muted {
-  opacity:.55;
-}
-.friendsForm input {
-  min-width:0;
-  width:100%;
-  height:30px;
-  box-sizing:border-box;
-  padding:0 9px;
-  outline:0;
-  border:1px solid rgba(124,240,255,.30);
-  border-radius:7px;
-  color:#effcff;
-  background:#051521;
-  font:600 12px/1 ui-sans-serif,system-ui;
-}
-.friendsForm input:focus {
-  border-color:#69e9ff;
-}
 .friendsForm button, .rankingTabs .tabBtn {
   height:30px;
   padding:0 14px;
@@ -6851,675 +6658,521 @@ html body #profileOverlay .profileHeaderTop .profileTitle, html body #profileOve
   border-color:rgba(124,240,255,.62);
   background:rgba(0,140,185,.3);
 }
+/* ===== Fenêtre clan : même mise en page que le Wiki / Aide (bandeau,
+   onglets à gauche, cartes à titre cyan, tableaux .wikiTable). Seuls les
+   compléments propres au clan (formulaires, boutons, annonce) sont ici. */
 .clanPanel {
-  width:500px;
-  min-width:320px;
-  max-width:calc(100vw - 20px);
-  height:auto;
-  max-height:calc(100vh - 20px);
-  display:flex;
-  flex-direction:column;
-  overflow:hidden;
+  width:880px !important;
+  min-width:0 !important;
+  max-width:min(880px, calc(100vw - 20px)) !important;
+  height:auto !important;
+  min-height:0 !important;
+  box-sizing:border-box !important;
 }
-#clanWindow:has(#clanManagePane.active) {
-  width:500px;
-  max-width:calc(100vw - 20px);
+/* Fenêtre Amis : même style, compacte. */
+.friendsPanel {
+  width:620px !important;
+  min-width:0 !important;
+  max-width:min(620px, calc(100vw - 20px)) !important;
+  height:auto !important;
+  min-height:0 !important;
+  box-sizing:border-box !important;
 }
-.clanStatus {
-  padding:8px 12px;
-  box-sizing:border-box;
-  border-bottom:1px solid rgba(124,240,255,.16);
-  color:#75e8ff;
-  font-size:11px;
-  font-weight:900;
-  text-transform:uppercase;
-  letter-spacing:.35px;
+.friendsPanel [hidden] {
+  display:none !important;
 }
-.clanPane {
-  display:none;
-  flex-direction:column;
-  min-height:0;
+/* Onglets côte à côte en haut, contenu sur toute la largeur dessous. */
+#friendsWindow .friendsBody {
+  grid-template-columns:minmax(0,1fr);
+  grid-template-rows:auto minmax(0,1fr);
+  gap:8px;
+  padding:10px;
+  height:min(54vh, 360px);
 }
-.clanPane.active {
-  display:flex;
+#friendsWindow .friendsBody .wikiTabs {
+  grid-column:1;
+  grid-row:1;
+  flex-direction:row;
+  overflow:visible;
 }
-.clanSubHead {
-  padding:8px 12px 0;
-  color:#8fcddd;
-  font-size:10px;
-  font-weight:900;
-  text-transform:uppercase;
-  letter-spacing:.5px;
+#friendsWindow .friendsBody .wikiPages {
+  grid-column:1;
+  grid-row:2;
 }
-.clanSubHead span {
-  display:inline-grid;
-  place-items:center;
-  min-width:17px;
-  height:17px;
-  margin-left:4px;
-  padding:0 4px;
-  border-radius:9px;
-  color:#241600;
-  background:#ffcf58;
-  font-size:10px;
-}
-.clanRows {
-  max-height:min(420px,calc(100vh - 260px));
-  min-height:72px;
-  overflow-y:auto;
-  display:grid;
-  align-content:start;
+#friendsWindow .friendsBody .wikiTabs {
   gap:6px;
-  padding:9px 11px;
+}
+#friendsWindow .friendsBody .wikiTab {
+  position:relative;
+  flex:1 1 0;
+  width:auto;
+  min-height:32px;
+  padding:7px 26px;
+  justify-content:center;
+  text-align:center;
+}
+/* Texte centré : compteur collé au libellé, point de l'onglet actif à droite. */
+#friendsWindow .friendsBody .wikiTab .wikiHits {
+  margin-left:0;
+}
+#friendsWindow .friendsBody .wikiTab.active::after {
+  position:absolute;
+  right:12px;
+  top:50%;
+  margin:-4px 0 0;
+}
+#friendsWindow .wikiCard {
+  padding:10px;
+}
+#friendsWindow .friendsTable th,
+#friendsWindow .friendsTable td {
+  padding:5px 6px;
+  white-space:nowrap;
+}
+.friendsTable tr.friendsReq td {
+  background:rgba(255,225,77,.07);
+}
+#friendsWindow input[type="search"] {
+  width:100%;
+  height:28px;
+  padding:0 10px;
   box-sizing:border-box;
-}
-.clanBtns {
-  display:flex;
-  gap:4px;
-  flex-wrap:wrap;
-  justify-content:flex-end;
-  align-items:center;
-}
-.clanDangerZone button {
-  flex:1 1 auto;
-  min-height:30px;
-  white-space:normal;
-}
-.clanTransferForm {
-  grid-template-columns:minmax(0,1fr) auto;
-  border-top:0;
-  padding-left:0;
-  padding-right:0;
-}
-.clanCard {
-  display:grid;
-  grid-template-columns:minmax(0,1fr) auto;
-  align-items:center;
-  gap:9px;
-  padding:8px 9px;
-  border:1px solid rgba(124,240,255,.13);
+  border:1px solid rgba(124,240,255,.3);
   border-radius:8px;
-  background:linear-gradient(115deg,rgba(4,25,38,.92),rgba(4,15,25,.75));
-  color:#bcdde5;
+  background:#051521;
+  color:#eaffff;
+  font:750 12px ui-sans-serif,system-ui;
 }
-.clanCard.request {
-  grid-template-columns:auto minmax(0,1fr) auto;
+.clanPanel [hidden] {
+  display:none !important;
 }
-.clanIdentity {
-  display:grid;
-  min-width:0;
-  gap:2px;
+/* :is(#clanWindow, #friendsWindow, #groupWindow) : prime sur .wikiBody / .wikiTab déclarés plus bas. */
+/* Pas de bandeau : onglets et contenu sur une seule rangée. */
+/* Hauteur calée sur la colonne d'onglets (fin au bouton Journal) : le
+   contenu ne pèse rien dans le calcul (height 0) puis remplit la rangée et
+   défile à l'intérieur. */
+#clanWindow .clanBody {
+  grid-template-columns:172px minmax(0,1fr);
+  grid-template-rows:auto;
+  height:auto;
+  max-height:calc(100vh - 60px);
 }
-.clanIdentity strong {
-  overflow:hidden;
-  text-overflow:ellipsis;
-  white-space:nowrap;
+#clanWindow .clanBody .wikiTabs {
+  grid-row:1;
+  overflow:visible;
+}
+#clanWindow .clanBody .wikiPages {
+  grid-row:1;
+  height:0;
+  min-height:100%;
+}
+/* Onglets aérés (comme le bot), pas serrés comme la longue liste du wiki. */
+#clanWindow .clanBody .wikiTabs {
+  gap:7px;
+}
+#clanWindow .clanBody .wikiTab {
+  min-height:36px;
+  padding:9px 12px;
+}
+.clanTopStats {
   display:flex;
-  align-items:center;
-  gap:5px;
-  color:#dff7fb;
-  font-size:12px;
-}
-.clanIdentity small {
-  overflow:hidden;
-  text-overflow:ellipsis;
-  white-space:nowrap;
-  color:#7395a1;
-  font-size:10px;
-}
-.clanLeaderCrown {
-  width:15px;
-  height:15px;
+  gap:16px;
   flex:0 0 auto;
-  fill:#ffc83d;
-  stroke:#fff0a1;
-  stroke-width:1.5;
-  stroke-linejoin:round;
-  filter:drop-shadow(0 0 4px rgba(255,190,35,.55));
 }
-.clanTagBadge {
-  padding:3px 7px;
-  border-radius:7px;
-  color:#ffd364;
-  background:rgba(220,160,40,.12);
-  font-size:11px;
-  font-weight:900;
-  white-space:nowrap;
+.clanTopStats .wikiCount b {
+  margin-left:4px;
+  font-size:13px;
 }
-.clanBtns button {
-  width:30px;
-  height:30px;
-  padding:4px;
+.clanPages {
   display:grid;
-  place-items:center;
-  box-sizing:border-box;
-  border:1px solid rgba(124,240,255,.28);
-  border-radius:7px;
-  color:#dffaff;
-  background:rgba(13,76,99,.32);
-  cursor:pointer;
-  font:800 11px/1.2 ui-sans-serif,system-ui;
+  gap:12px;
+  align-content:start;
 }
-.clanBtns button:not(:has(svg)) {
-  width:auto;
-  min-width:30px;
-  padding:0 12px;
-  white-space:nowrap;
-}
-.clanBtns button:hover {
-  border-color:rgba(124,240,255,.65);
-  background:rgba(0,140,185,.3);
-}
-.clanBtns button.danger:hover {
-  color:#ff8998;
-  border-color:#ff6578;
-  background:rgba(160,25,45,.25);
-}
-.clanBtns button.accept {
-  color:#77f3a3;
-}
-.clanBtns svg {
-  width:15px;
-  height:15px;
-  fill:none;
-  stroke:currentColor;
-  stroke-width:1.8;
-  stroke-linecap:round;
-  stroke-linejoin:round;
-}
-.clanCard button {
-  width:30px;
-  height:30px;
-  padding:4px;
-  display:grid;
-  place-items:center;
-  box-sizing:border-box;
-  overflow:hidden;
-}
-.clanCard button svg {
-  width:15px;
-  height:15px;
-  max-width:15px;
-  max-height:15px;
-  flex:0 0 auto;
-  fill:none;
-  stroke:currentColor;
-  stroke-width:1.8;
-  stroke-linecap:round;
-  stroke-linejoin:round;
-}
-.clanCard button:not(:has(svg)) {
-  width:auto;
-  min-width:30px;
-}
-.clanIdentity strong svg {
-  width:15px;
-  height:15px;
-  flex:0 0 auto;
+.clanPaneGroup {
+  min-width:0;
 }
 .clanEmpty {
-  padding:22px;
-  text-align:center;
-  color:#5c8290;
-  font-size:11px;
-  font-weight:800;
-}
-.clanBrowse {
-  grid-template-columns:auto minmax(0,1fr) auto;
-}
-.clanBrowse .clanBtns button {
-  width:auto;
-  height:28px;
-  padding:0 14px;
-  font-size:11px;
-}
-.clanBrowse .clanBtns button:disabled {
-  opacity:.4;
-  cursor:not-allowed;
-}
-#clanAllList {
-  gap:10px;
-  max-height:min(480px,calc(100vh - 260px));
-}
-#clanAllList .clanBrowse {
-  display:grid;
-  grid-template-columns:minmax(0,1fr);
-  gap:5px;
-  padding:14px 16px;
-  border-radius:14px;
-  background:linear-gradient(115deg,rgba(8,45,66,.95),rgba(6,20,32,.9));
-  border:1px solid rgba(124,240,255,.28);
-  box-shadow:0 2px 14px rgba(0,0,0,.35);
-}
-.clanBrowseHead {
-  display:flex;
-  align-items:center;
-  gap:10px;
-}
-#clanAllList .clanTagBadge {
+  padding:12px 4px;
+  color:rgba(204,228,241,.6);
   font-size:12px;
-  padding:4px 9px;
-  border-radius:8px;
-  letter-spacing:.5px;
 }
-.clanBrowseName {
-  flex:1;
-  min-width:0;
-  overflow:hidden;
-  text-overflow:ellipsis;
-  white-space:nowrap;
-  color:#dff7fb;
-  font-size:15px;
-}
-#clanAllList .clanBtns button {
-  height:28px;
-  padding:0 16px;
-  font-size:11px;
-  font-weight:800;
-  border-radius:8px;
-  text-transform:uppercase;
-  letter-spacing:.5px;
-}
-#clanAllList .clanBtns button.accept {
-  color:#eafff3;
-  border-color:rgba(110,255,170,.55);
-  background:linear-gradient(135deg,rgba(0,190,120,.5),rgba(0,90,60,.45));
-  box-shadow:0 0 16px rgba(60,255,150,.18);
-}
-#clanAllList .clanBtns button.accept:hover {
-  background:rgba(0,180,110,.45);
-  box-shadow:0 0 24px rgba(60,255,150,.32);
-}
-#clanAllList .clanBtns button:not(.accept) {
-  border-color:rgba(255,190,120,.4);
-  color:#ffe1b8;
-  background:rgba(120,70,10,.25);
-}
-.clanBrowseSub {
-  color:#7395a1;
-  font-size:11px;
-  min-width:0;
-  overflow-wrap:anywhere;
-}
-.clanSep {
-  border:0;
-  border-top:1px solid rgba(124,240,255,.18);
-  margin:3px 0;
-}
-.clanBrowseDesc {
+.clanText {
   margin:0;
-  min-width:0;
-  color:#cfe7ef;
-  font-size:12px;
-  font-style:italic;
-  line-height:1.5;
-  white-space:normal;
   overflow-wrap:anywhere;
-  word-break:break-word;
 }
-#clanAllList .clanBrowse {
-  min-width:0;
-}
-#clanAllList .clanBrowseHead {
-  min-width:0;
-}
-.clanTabs {
-  display:grid;
-  grid-template-columns:repeat(5,minmax(0,1fr));
-  padding:7px 10px 0;
-  gap:5px;
-}
-.clanTabs button {
-  height:29px;
-  border:0;
-  border-bottom:2px solid transparent;
-  color:#6f929e;
-  background:transparent;
-  cursor:pointer;
-  font:800 11px/1 ui-sans-serif,system-ui;
-  text-transform:uppercase;
-}
-.clanTabs button.active {
-  color:#dffaff;
-  border-bottom-color:#63ddf8;
-  background:linear-gradient(180deg,transparent,rgba(70,210,245,.08));
-}
-.clanInfoBox {
-  padding:9px 11px 0;
-  box-sizing:border-box;
-  display:grid;
-  gap:8px;
-}
-.clanInfoGrid {
-  display:grid;
-  grid-template-columns:repeat(3,minmax(0,1fr));
-  gap:6px;
-}
-.clanInfoGrid>div {
-  display:grid;
-  gap:2px;
-  padding:7px 8px;
-  border:1px solid rgba(124,240,255,.13);
-  border-radius:8px;
-  background:rgba(2,18,29,.55);
-}
-.clanInfoGrid span {
-  color:#7395a1;
-  font-size:9px;
-  font-weight:900;
-  text-transform:uppercase;
-  letter-spacing:.5px;
-}
-.clanInfoGrid strong {
-  color:#dff7fb;
-  font-size:12px;
-  overflow:hidden;
-  text-overflow:ellipsis;
-  white-space:nowrap;
-}
-.clanInfoGrid strong.open {
-  color:#77f3a3;
-}
-.clanInfoGrid strong.closed {
-  color:#ff9aa7;
-}
-.clanInfoGrid>div.clanRecruitCell {
-  grid-column:2 / -1;
-  display:flex;
-  align-items:center;
-  gap:10px;
-  min-height:0;
-}
-.clanRecruitStack {
-  display:grid;
-  gap:2px;
-  min-width:0;
-}
-.clanRecruitCell button {
-  margin-left:auto;
-  height:22px;
-  padding:0 12px;
-  box-sizing:border-box;
-  border:1px solid rgba(124,240,255,.38);
-  border-radius:6px;
-  color:#eaffff;
-  background:linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34));
-  cursor:pointer;
-  font:800 11px/1.2 ui-sans-serif,system-ui;
-}
-.clanRecruitCell button:hover {
-  border-color:rgba(124,240,255,.62);
-  background:rgba(0,140,185,.3);
-}
+.clanTag { color:#75e8ff; }
+.clanYes { color:#3dff8c; }
+.clanNo { color:#ff7a8a; }
+.clanOnline { color:#3dff8c; font-weight:800; }
+.clanPending { color:#ffe14d; font-size:11px; font-weight:700; }
 .clanDesc {
-  margin:0;
-  padding:8px 9px;
-  border-left:2px solid rgba(124,240,255,.35);
-  color:#cfe7ef;
-  font-size:12px;
-  font-style:italic;
-}
-#clanDescForm {
-  margin:8px 11px 10px;
-  padding:10px;
-  border:1px solid rgba(124,240,255,.22);
-  border-radius:10px;
-  background:rgba(2,18,29,.55);
-}
-#clanDescForm .clanDescLabel {
-  grid-column:1 / -1;
-  color:#7395a1;
-  font-size:9px;
-  font-weight:900;
-  text-transform:uppercase;
-  letter-spacing:.5px;
-}
-#clanDescForm .clanDescCurrent {
-  grid-column:1 / -1;
-  margin:0 0 2px;
-  min-width:0;
-  max-height:110px;
-  overflow-y:auto;
-  padding:8px 9px;
-  color:#cfe7ef;
-  font-size:12px;
-  font-style:italic;
+  display:block;
+  max-width:280px;
+  color:rgba(204,228,241,.8);
   white-space:normal;
-  overflow-wrap:anywhere;
-  word-break:break-word;
 }
-#clanLogList {
-  max-height:min(320px,calc(100vh - 280px));
-  overflow-y:auto;
-}
-.clanInfoActions {
+
+/* Bandeau d'annonce (or) + message ponctuel. */
+.clanMotdBanner {
   display:flex;
-  gap:6px;
+  align-items:flex-start;
+  gap:10px;
+  padding:10px 14px;
+  border:1px solid rgba(255,207,88,.42);
+  border-radius:12px;
+  background:linear-gradient(115deg,rgba(120,85,0,.32),rgba(40,28,0,.25));
+  color:#fff;
+  font-size:12.5px;
+  line-height:1.45;
 }
-.clanInfoActions button,.clanDangerZone button {
-  height:28px;
-  padding:0 12px;
-  box-sizing:border-box;
-  border:1px solid rgba(124,240,255,.38);
-  border-radius:8px;
-  color:#eaffff;
-  background:linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34));
-  cursor:pointer;
-  font:800 11px/1.2 ui-sans-serif,system-ui;
+.clanMotdIcon svg {
+  width:20px;
+  height:20px;
+  fill:none;
+  stroke:#ffe14d;
+  stroke-width:2;
+  stroke-linecap:round;
+  stroke-linejoin:round;
 }
-.clanInfoActions button:hover,.clanDangerZone button:hover {
-  border-color:rgba(124,240,255,.62);
-  background:rgba(0,140,185,.3);
-}
-.clanLog {
+.clanMotdText {
   display:grid;
-  gap:3px;
-  max-height:130px;
-  overflow-y:auto;
-  padding:7px 9px;
-  border:1px solid rgba(124,240,255,.13);
-  border-radius:8px;
-  background:rgba(2,18,29,.55);
-}
-.clanLogRow {
-  color:#8fa8b3;
-  font-size:11px;
-}
-.clanDangerZone {
-  display:flex;
-  gap:6px;
-  flex-wrap:wrap;
-}
-.clanDangerZone button.danger {
-  border-color:rgba(255,101,120,.45);
-  color:#ff9aa7;
-  background:rgba(160,25,45,.22);
-}
-.clanDangerZone button.danger:hover {
-  border-color:#ff6578;
-  background:rgba(160,25,45,.35);
-}
-.clanCard select {
+  gap:2px;
   min-width:0;
-  max-width:110px;
-  height:30px;
-  box-sizing:border-box;
-  padding:0 4px;
-  border:1px solid rgba(124,240,255,.28);
-  border-radius:7px;
-  color:#dffaff;
-  background:#051521;
-  font:700 11px/1 ui-sans-serif,system-ui;
+  overflow-wrap:anywhere;
 }
-.clanBtns button[data-act="transfer"] {
-  color:#ffd364;
+.clanMotdBanner {
+  position:relative;
+  padding-right:44px;
 }
-.clanRank {
-  grid-template-columns:minmax(0,1fr) auto auto;
-}
-#clanList .clanCard {
-  grid-template-columns:minmax(0,1fr) auto auto;
-}
-#clanList .clanCard .clanBtns {
-  grid-column:-1;
-  justify-self:end;
-}
-.clanRankChecks {
-  display:flex;
-  gap:8px;
-  flex-wrap:wrap;
-}
-.clanRankChecks label {
-  display:inline-flex;
-  align-items:center;
-  gap:4px;
-  color:#9fc3cf;
-  font-size:10px;
-  font-weight:700;
-  cursor:pointer;
-}
-#clanRanksList .clanRankChecks input[type="checkbox"] {
-  appearance:none;
-  -webkit-appearance:none;
-  flex:0 0 auto;
-  width:17px;
-  height:17px;
-  margin:0;
+:is(#clanWindow, #friendsWindow, #groupWindow) .clanMotdClose {
+  position:absolute;
+  top:8px;
+  right:8px;
+  width:26px;
+  height:26px;
   padding:0;
   display:grid;
   place-items:center;
+  border:1px solid rgba(255,207,88,.45);
+  border-radius:7px;
+  background:rgba(60,42,0,.45);
+  color:#ffe14d;
+  cursor:pointer;
+}
+:is(#clanWindow, #friendsWindow, #groupWindow) .clanMotdClose:hover {
+  border-color:#ffe14d;
+  background:rgba(120,85,0,.55);
+}
+.clanMotdClose svg {
+  width:14px;
+  height:14px;
+  fill:none;
+  stroke:currentColor;
+  stroke-width:2.4;
+  stroke-linecap:round;
+}
+.clanMotdText b {
+  color:#ffe14d;
+  font-size:11px;
+  font-weight:900;
+  text-transform:uppercase;
+  letter-spacing:.6px;
+}
+.clanStatus {
+  padding:9px 14px;
+  border:1px solid rgba(124,240,255,.3);
+  border-radius:12px;
+  background:rgba(0,120,165,.18);
+  color:#9ff0ff;
+  font-size:12px;
+  font-weight:800;
+}
+.clanStatus[data-tone="error"] {
+  border-color:rgba(255,101,120,.5);
+  background:rgba(160,25,45,.22);
+  color:#ffb0ba;
+}
+
+/* Formulaires (mêmes champs que le wiki). */
+.clanForm {
+  display:grid;
+  gap:10px;
+}
+.clanField {
+  width:auto;
+}
+.clanInline {
+  display:flex;
+  gap:8px;
+  align-items:center;
+  flex-wrap:wrap;
+}
+.clanInline input {
+  flex:1 1 220px;
+  min-width:0;
+}
+:is(#clanWindow, #friendsWindow, #groupWindow) input[type="text"],
+:is(#clanWindow, #friendsWindow, #groupWindow) select {
+  height:30px;
+  padding:0 10px;
+  box-sizing:border-box;
+  border:1px solid rgba(124,240,255,.3);
+  border-radius:8px;
+  background:#051521;
+  color:#eaffff;
+  font:750 12px ui-sans-serif,system-ui;
+}
+:is(#clanWindow, #friendsWindow, #groupWindow) input[type="text"]:focus,
+:is(#clanWindow, #friendsWindow, #groupWindow) select:focus {
+  border-color:#7cf0ff;
+  outline:none;
+}
+:is(#clanWindow, #friendsWindow, #groupWindow) .wikiTable select {
+  height:26px;
+  padding:0 6px;
+}
+
+/* Boutons : dégradé cyan des onglets ; vert = valider, rouge = danger. */
+:is(#clanWindow, #friendsWindow, #groupWindow) .wikiCard button {
+  height:30px;
+  padding:0 12px;
+  border:1px solid rgba(124,240,255,.38);
+  border-radius:8px;
+  background:linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34));
+  color:#eaffff;
+  font:800 11px/1 ui-sans-serif,system-ui;
+  white-space:nowrap;
+  cursor:pointer;
+}
+:is(#clanWindow, #friendsWindow, #groupWindow) .wikiCard button:hover {
+  border-color:rgba(124,240,255,.62);
+  background:rgba(0,140,185,.3);
+  box-shadow:0 0 16px rgba(0,217,255,.12);
+}
+:is(#clanWindow, #friendsWindow, #groupWindow) .wikiCard button.clanPrimary {
+  border-color:rgba(70,230,150,.55);
+  background:linear-gradient(135deg,rgba(20,150,95,.5),rgba(10,80,55,.45));
+}
+:is(#clanWindow, #friendsWindow, #groupWindow) .wikiCard button.clanPrimary:hover {
+  border-color:rgba(110,255,180,.8);
+  background:rgba(20,150,95,.45);
+}
+:is(#clanWindow, #friendsWindow, #groupWindow) .wikiCard button.danger {
+  border-color:rgba(255,101,120,.45);
+  background:rgba(160,25,45,.24);
+  color:#ffb0ba;
+}
+:is(#clanWindow, #friendsWindow, #groupWindow) .wikiCard button.danger:hover {
+  border-color:#ff6578;
+  background:rgba(160,25,45,.38);
+}
+:is(#clanWindow, #friendsWindow, #groupWindow) .wikiCard button:disabled {
+  opacity:.45;
+  cursor:default;
+  box-shadow:none;
+}
+:is(#clanWindow, #friendsWindow, #groupWindow) .wikiCard button.clanSmall {
+  height:24px;
+  margin-left:8px;
+  padding:0 9px;
+  font-size:10px;
+}
+#clanCreateBtn {
+  height:36px !important;
+}
+.clanBtns {
+  display:inline-flex;
+  gap:4px;
+  justify-content:flex-end;
+  align-items:center;
+}
+:is(#clanWindow, #friendsWindow, #groupWindow) .clanBtns button:has(svg) {
+  width:28px;
+  height:28px;
+  padding:0;
+  display:grid;
+  place-items:center;
+}
+.clanBtns svg {
+  width:14px;
+  height:14px;
+  fill:none;
+  stroke:currentColor;
+  stroke-width:2.2;
+  stroke-linecap:round;
+  stroke-linejoin:round;
+}
+.clanQuick {
+  display:flex;
+  gap:6px;
+  flex-wrap:wrap;
+}
+:is(#clanWindow, #friendsWindow, #groupWindow) .clanQuick button {
+  height:26px;
+  padding:0 10px;
+  font-size:10.5px;
+}
+
+/* Colonnes des tableaux. */
+.clanTable th.num,
+.clanTable td.num {
+  text-align:right;
+  white-space:nowrap;
+}
+.clanTable th.act,
+.clanTable td.act {
+  width:1%;
+  text-align:right;
+  white-space:nowrap;
+}
+.clanTable th.chk,
+.clanTable td.chk {
+  text-align:center;
+}
+.clanTable tbody tr.isMe td,
+.clanTable tbody tr.clanRankMine td {
+  background:rgba(0,140,185,.2);
+}
+.clanTable tbody tr.isMe td:first-child,
+.clanTable tbody tr.clanRankMine td:first-child {
+  box-shadow:inset 3px 0 0 #00d9ff;
+}
+.clanKv td:first-child {
+  width:42%;
+  color:rgba(204,228,241,.7);
+  font-size:10.5px;
+  font-weight:800;
+  text-transform:uppercase;
+  letter-spacing:.4px;
+}
+.clanDot {
+  width:9px;
+  height:9px;
+  color:#3b5560;
+  background:currentColor;
+  box-shadow:none;
+}
+tr.isOnline .clanDot {
+  color:#3dff8c;
+  box-shadow:0 0 6px currentColor;
+}
+.clanLeaderCrown {
+  width:13px;
+  height:13px;
+  margin-left:5px;
+  vertical-align:-2px;
+  fill:rgba(255,207,88,.25);
+  stroke:#ffe14d;
+  stroke-width:2;
+  stroke-linejoin:round;
+}
+.clanRankPos { color:#9fc3cf; }
+tr.clanRankTop1 .clanRankPos { color:#ffe14d; }
+tr.clanRankTop2 .clanRankPos { color:#d7e2ff; }
+tr.clanRankTop3 .clanRankPos { color:#e0a070; }
+:is(#clanWindow, #friendsWindow, #groupWindow) .clanMembersTable th,
+:is(#clanWindow, #friendsWindow, #groupWindow) .clanMembersTable td {
+  padding-left:5px;
+  padding-right:5px;
+}
+.clanMembersTable td:nth-child(2),
+.clanMembersTable td:nth-child(8) {
+  white-space:nowrap;
+}
+.clanLogTable td:first-child {
+  width:110px;
+  white-space:nowrap;
+}
+
+/* Annonces + Bases. */
+.clanNewsTable td:first-child {
+  width:110px;
+  white-space:nowrap;
+}
+.clanNewsTable td:nth-child(2) {
+  width:110px;
+}
+.clanBasesDetail {
+  grid-column:1 / -1;
+  display:grid;
+  grid-template-columns:1fr;
+  gap:12px;
+}
+.clanBasesDetail:empty {
+  display:none;
+}
+.clanBar {
+  display:inline-block;
+  width:46px;
+  height:6px;
+  margin-right:6px;
+  border-radius:3px;
+  background:rgba(255,255,255,.08);
+  vertical-align:middle;
+  overflow:hidden;
+}
+.clanBar i {
+  display:block;
+  height:100%;
+  background:currentColor;
+}
+.clanModulesTable td {
+  font-size:11px;
+}
+.clanModulesTable td:nth-child(4) {
+  white-space:nowrap;
+}
+
+/* Cases à cocher des droits (même style que le bot). */
+:is(#clanWindow, #friendsWindow, #groupWindow) input.clanCheck {
+  appearance:none;
+  -webkit-appearance:none;
+  width:18px;
+  height:18px;
+  margin:0;
+  display:inline-grid;
+  place-items:center;
   border:1px solid rgba(124,240,255,.38);
   border-radius:6px;
   background:linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34));
-  box-shadow:inset 0 0 0 1px rgba(255,255,255,.03);
-  accent-color:unset;
+  vertical-align:middle;
   cursor:pointer;
 }
-#clanRanksList .clanRankChecks input[type="checkbox"]:checked::after {
+:is(#clanWindow, #friendsWindow, #groupWindow) input.clanCheck:checked::after {
   content:"✓";
   color:#eaffff;
-  font-size:11px;
+  font-size:12px;
   font-weight:900;
-  line-height:1;
 }
-#clanRanksList .clanRankChecks input[type="checkbox"]:hover {
-  border-color:rgba(124,240,255,.62);
-}
-#clanRanksList .clanRankChecks input[type="checkbox"]:disabled {
-  opacity:.35;
+:is(#clanWindow, #friendsWindow, #groupWindow) input.clanCheck:disabled {
+  opacity:.45;
   cursor:default;
 }
-.clanDiplo {
-  grid-template-columns:auto minmax(0,1fr) auto;
-}
-.clanTagBadge.diplo-war {
-  color:#ff8998;
-  background:rgba(160,25,45,.25);
-}
-.clanTagBadge.diplo-alliance {
-  color:#77f3a3;
-  background:rgba(50,180,100,.12);
-}
-.clanTagBadge.diplo-nap {
-  color:#ffd364;
-  background:rgba(220,160,40,.12);
-}
-#clanWindow .clanForm select {
-  height:30px;
-  box-sizing:border-box;
-  padding:0 8px;
-  border:1px solid rgba(124,240,255,.30);
-  border-radius:7px;
-  color:#effcff;
-  background:#051521;
-  font:700 12px/1 ui-sans-serif,system-ui;
-}
-#clanDiploForm {
-  grid-template-columns:minmax(0,1fr) auto auto;
-}
-#clanAppsBlock .clanSubHead {
-  color:#ffcf58;
-}
-#clanAppsList {
-  max-height:180px;
-  min-height:0;
-}
-.clanForm {
-  display:grid;
-  grid-template-columns:minmax(0,1fr) auto;
-  gap:8px;
-  padding:9px 11px;
-  box-sizing:border-box;
-  border-top:1px solid rgba(124,240,255,.14);
-}
-#clanCreateForm {
-  grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto;
-  border-top:0;
-}
-.clanBrowseTabs {
-  grid-template-columns:1fr 1fr;
-}
-#clanCreateForm.clanCreateGrid {
-  grid-template-columns:minmax(0,1fr) minmax(0,1fr);
-}
-#clanCreateForm.clanCreateGrid #clanDescCreateInput {
-  grid-column:1 / -1;
-}
-#clanCreateForm.clanCreateGrid #clanCreateBtn {
-  grid-column:1 / -1;
-  height:34px;
-}
-.clanForm input {
-  min-width:0;
-  width:100%;
-  height:30px;
-  box-sizing:border-box;
-  padding:0 9px;
-  outline:0;
-  border:1px solid rgba(124,240,255,.30);
-  border-radius:7px;
-  color:#effcff;
-  background:#051521;
-  font:600 12px/1 ui-sans-serif,system-ui;
-}
-.clanForm input:focus {
-  border-color:#69e9ff;
-}
-.clanForm button {
-  height:30px;
-  padding:0 14px;
-  box-sizing:border-box;
-  border:1px solid rgba(124,240,255,.38);
-  border-radius:8px;
-  color:#eaffff;
-  background:linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34));
-  cursor:pointer;
-  font:800 12px/1.2 ui-sans-serif,system-ui;
-  white-space:nowrap;
-}
-.clanForm button:hover {
-  border-color:rgba(124,240,255,.62);
-  background:rgba(0,140,185,.3);
-}
-.clanLeaveRow {
+
+/* Banque. */
+.clanBankHead {
   display:flex;
-  justify-content:flex-end;
-  padding:0 11px 10px;
-  box-sizing:border-box;
+  align-items:baseline;
+  gap:8px;
 }
-.clanLeaveRow button {
-  height:28px;
-  padding:0 12px;
-  border:1px solid rgba(255,101,120,.45);
-  border-radius:8px;
-  color:#ff9aa7;
-  background:rgba(160,25,45,.22);
-  cursor:pointer;
-  font:800 11px/1.2 ui-sans-serif,system-ui;
+.clanBankHead strong {
+  color:#ffe14d;
+  font:900 28px/1.1 ui-sans-serif,system-ui;
+  text-shadow:0 0 16px rgba(255,225,77,.25);
 }
-.clanLeaveRow button:hover {
-  border-color:#ff6578;
-  background:rgba(160,25,45,.35);
+.clanBankHead small {
+  color:rgba(204,228,241,.7);
+  font-size:11px;
+  font-weight:800;
+  text-transform:uppercase;
+}
+#clanBankWithdrawForm select {
+  flex:0 0 180px;
+}
+
+@media (max-width:800px) {
+  .clanTopStats { flex:1 1 100%; }
+  .clanDesc { max-width:160px; }
 }
 .rankingPanel {
   width:720px !important;

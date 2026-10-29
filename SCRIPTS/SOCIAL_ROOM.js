@@ -250,7 +250,7 @@ export function handleSocialMessage(ctx, msg) {
     if (t === "groupInvite") {
       pruneInvites(Date.now(), ctx);
       const target = ctx.findByPseudo(msg.to);
-      if (!target) { ctx.send({ t: "groupNotice", text: "Pilote introuvable ou hors ligne." }); return true; }
+      if (!target || ctx.blocked?.(String(target.id), me) === true) { ctx.send({ t: "groupNotice", text: "Pilote introuvable ou hors ligne." }); return true; }
       if (String(target.id) === me) { ctx.send({ t: "groupNotice", text: "Tu ne peux pas t'inviter toi-même." }); return true; }
       let gid = memberGroup.get(me);
       if (!gid) {
@@ -351,7 +351,7 @@ export function handleSocialMessage(ctx, msg) {
       const now = Date.now();
       if (now - Number(whisperLast.get(me) || 0) < WHISPER_MIN_MS) return true;
       const target = ctx.findByPseudo(msg.to);
-      if (!target) { ctx.send({ t: "whisperNotice", text: "Pilote introuvable ou hors ligne." }); return true; }
+      if (!target || ctx.blocked?.(String(target.id), me) === true) { ctx.send({ t: "whisperNotice", text: "Pilote introuvable ou hors ligne." }); return true; }
       const text = String(msg.text || "").replace(/\s+/g, " ").trim().slice(0, 200);
       if (!text) return true;
       whisperLast.set(me, now);

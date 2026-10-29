@@ -1104,3 +1104,67 @@ export function stationRoomStatus() {
   }
   return out;
 }
+
+// Fenêtre clan, onglet Bases : toutes les bases (propriétaire public, comme
+// la carte stellaire) + détail complet de celles du clan demandeur (coque,
+// déflecteur, modules, bonus apportés) et de ses chantiers en cours.
+// Passe par getStationSync : réparations / remplacements / déflecteur sont
+// appliqués paresseusement exactement comme pour un joueur sur place.
+export function getClanBasesReport(clanTag) {
+  const vc = String(clanTag || "").toUpperCase().slice(0, 5);
+  const nowMs = Date.now();
+  const maps = [], mine = [], building = [];
+  for (const center of STATION_CENTERS) {
+    const key = String(center.map || "").toLowerCase();
+    const st = getStation(key);
+    const owner = String(st.built?.clan || "").toUpperCase().slice(0, 5);
+    maps.push({
+      map: key, owner,
+      firm: String(st.owner?.firm || st.built?.firm || "").toLowerCase().slice(0, 16),
+      builtAt: Math.max(0, Number(st.builtAt) || 0),
+      mine: !!vc && owner === vc,
+    });
+    if (!vc) continue;
+    if (owner === vc) {
+      const sync = getStationSync(key, vc);
+      const modules = STATION_SLOT_IDS.map((slot, index) => {
+        const p = sync.slots?.[slot];
+        if (!p) return { slot: index + 1, resourceId: null, state: "empty" };
+        const until = Number(p.replace?.cooldownUntil || p.cooldownUntil) || 0;
+        const state = !(Number(p.hp) > 0) ? "destroyed"
+          : p.replace ? "replacing"
+            : Number(p.cooldownUntil) > nowMs ? "installing" : "active";
+        return {
+          slot: index + 1, resourceId: p.resourceId, state, until: state === "installing" || state === "replacing" ? until : 0,
+          next: p.replace?.resourceId || null,
+          hp: Math.round(Number(p.hp) || 0), hpMax: Number(p.hpMax) || STATION_MODULE_HP,
+          by: String(p.pseudo || "").slice(0, 20),
+        };
+      });
+      const has = (rid) => modules.some((m) => m.resourceId === rid && m.state === "active");
+      mine.push({
+        map: key, builtAt: Math.max(0, Number(st.builtAt) || 0),
+        firm: String(st.owner?.firm || st.built?.firm || "").toLowerCase().slice(0, 16),
+        hub: sync.hub ? { hp: Math.round(Number(sync.hub.hp) || 0), hpMax: Number(sync.hub.hpMax) || STATION_CORE_HP } : null,
+        deflect: sync.deflect || null,
+        repairing: !!(sync.repair && Number(sync.repair.until) > nowMs),
+        modules,
+        bonus: {
+          dmg: has("station_module_dmg"), hon: has("station_module_hon"),
+          exp: has("station_module_exp"), rep: has("station_module_rep"),
+        },
+      });
+    } else if (st.instances?.[vc]) {
+      const inst = st.instances[vc];
+      const placed = instancePlaced(inst);
+      if (placed > 0) {
+        building.push({
+          map: key, placed, completed: instanceCompleted(inst, nowMs),
+          total: 1 + STATION_SLOT_IDS.length, hub: !!inst.hub?.resourceId,
+          contestedBy: owner || "",
+        });
+      }
+    }
+  }
+  return { maps, mine, building };
+}

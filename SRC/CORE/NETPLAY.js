@@ -1258,14 +1258,15 @@ export function ensureNetplayConnection() {
     if (msg.t === "friendsSync" && Array.isArray(msg.online)) {
       netFriendsOnline = msg.online.slice(0, 200)
         .filter((f) => f && typeof f === "object")
-        .map((f) => ({ id: String(f.id || "").slice(0, 64), pseudo: String(f.pseudo || "Pilote").slice(0, 20), map: String(f.map || "").slice(0, 32), shipId: String(f.shipId || "").slice(0, 64), instance: f.instance === true, inGroup: f.inGroup === true }));
+        // Confidentialité : présence seule (ni map, ni vaisseau, ni groupe).
+        .map((f) => ({ id: String(f.id || "").slice(0, 64), pseudo: String(f.pseudo || "Pilote").slice(0, 20) }));
       return;
     }
     if (msg.t === "friendOnline") {
       const fid = String(msg.id || "").slice(0, 64);
       if (!fid) return;
       if (msg.online === true) {
-        const next = { id: fid, pseudo: String(msg.pseudo || "Pilote").slice(0, 20), map: String(msg.map || "").slice(0, 32), shipId: String(msg.shipId || "").slice(0, 64), instance: msg.instance === true, inGroup: msg.inGroup === true };
+        const next = { id: fid, pseudo: String(msg.pseudo || "Pilote").slice(0, 20) };
         const index = netFriendsOnline.findIndex((f) => f.id === fid);
         if (index >= 0) netFriendsOnline[index] = next;
         else netFriendsOnline.push(next);

@@ -137,3 +137,24 @@ test("la carte de groupe affiche Hors ligne sans perdre le nom ni afficher un po
   assert.match(html, /ZbliShit/); assert.match(html, /Hors ligne/); assert.match(html, /Solace Plus/);
   assert.doesNotMatch(html, />\?<|>Pilote</);
 });
+
+test("un pilote bloqué ne peut ni murmurer ni inviter (réponse identique à « hors ligne »)", () => {
+  const social2 = readFileSync(new URL("./SOCIAL_ROOM.js", import.meta.url), "utf8").replace(/^export /gm, "");
+  const sent = [];
+  const peers = { Jordie: { id: "u_a", pseudo: "Jordie" }, Bloque: { id: "u_b", pseudo: "Bloque" } };
+  const context = vm.createContext({ Date, setTimeout, clearTimeout });
+  vm.runInContext(`${social2}\nthis.api = { handleSocialMessage };`, context);
+  // u_a a bloqué u_b.
+  const ctx = (id, pseudo) => ({ id, state: { pseudo }, authed: true,
+    describe: pid => ({ id: pid, pseudo: pid === "u_a" ? "Jordie" : "Bloque", online: true, map: "1-1" }),
+    findByPseudo: p => peers[p] || null,
+    sendTo: (to, msg) => sent.push({ to, ...msg }), send: msg => sent.push({ to: id, ...msg }),
+    blocked: (toPid, fromPid) => toPid === "u_a" && fromPid === "u_b" });
+  context.api.handleSocialMessage(ctx("u_b", "Bloque"), { t: "whisper", to: "Jordie", text: "salut" });
+  context.api.handleSocialMessage(ctx("u_b", "Bloque"), { t: "groupInvite", to: "Jordie" });
+  assert.equal(sent.some(m => m.to === "u_a"), false);
+  assert.deepEqual(sent.map(m => m.text), ["Pilote introuvable ou hors ligne.", "Pilote introuvable ou hors ligne."]);
+  // Dans l'autre sens (Jordie vers Bloque), rien n'est bloqué.
+  context.api.handleSocialMessage(ctx("u_a", "Jordie"), { t: "whisper", to: "Bloque", text: "hello" });
+  assert.equal(sent.some(m => m.to === "u_b" && m.t === "whisperMsg"), true);
+});
