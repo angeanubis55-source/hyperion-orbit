@@ -39,7 +39,7 @@ function showMsg(text, ok) {
 }
 
 function goProfile() {
-  location.href = "/index.html";
+  location.href = "/game";
 }
 
 async function publicAuthApi(path, body) {
@@ -90,7 +90,7 @@ try {
 }
 
 // Tab switching
-function setTab(which) {
+function setTab(which, updateUrl = true) {
   const isLogin = which === "login";
   tabLogin.classList.toggle("active", isLogin);
   tabJoin.classList.toggle("active", !isLogin);
@@ -99,6 +99,11 @@ function setTab(which) {
   msgEl.className = "msg";
   msgEl.textContent = "";
   closeRecovery();
+
+  if (updateUrl && !location.search) {
+    const target = isLogin ? "/login" : "/register";
+    if (location.pathname !== target) history.replaceState({}, "", target);
+  }
 
   setTimeout(() => {
     (isLogin ? loginUser : regUser)?.focus();
@@ -299,5 +304,9 @@ try {
   } else if (resetToken) {
     setTab("login");
     openRecovery("reset", resetToken);
+  } else if (location.pathname === "/register") {
+    setTab("join", false);
+  } else {
+    setTab("login", false);
   }
 } catch { showMsg("Lien invalide ou service indisponible.", false); }

@@ -30,7 +30,7 @@ test("inscription confirmée, identifiant oublié et réinitialisation sécuris�
       res.writeHead(200, { "content-type": "application/json" }); res.end('{"id":"mail-test"}'); });
   });
   mailServer.listen(mailPort, "127.0.0.1"); await once(mailServer, "listening");
-  const child = spawn(process.execPath, [resolve("SCRIPTS/MULTI_SERVER.js")], { cwd: temporary, windowsHide: true,
+  const child = spawn(process.execPath, [resolve("SCRIPTS/MULTI_SERVER.js")], { cwd: resolve(), windowsHide: true,
     env: { ...process.env, PORT: String(appPort), ORBIT_DATA_DIR: join(temporary, "data"), ORBIT_MAIL_API_KEY: "test-key",
       ORBIT_MAIL_FROM: "Hyperion <noreply@hyperion.test>", ORBIT_MAIL_API_URL: `http://127.0.0.1:${mailPort}/emails`,
       ORBIT_PUBLIC_URL: `http://127.0.0.1:${appPort}` }, stdio: ["ignore", "pipe", "pipe"] });
@@ -43,6 +43,11 @@ test("inscription confirmée, identifiant oublié et réinitialisation sécuris�
   };
   try {
     await waitForServer(origin, child);
+    for (const route of ["/login", "/register", "/game"]) {
+      const page = await fetch(origin + route);
+      assert.equal(page.status, 200, `${route} doit être une route publique valide`);
+      assert.match(page.headers.get("content-type") || "", /text\/html/);
+    }
     const registration = await api("/api/register", { pseudo: "PiloteRecup", email: "pilote@auth-example.com", password: "ancien-password-123", faction: "mmo" });
     assert.equal(registration.status, 202); assert.equal(registration.pendingVerification, true); assert.equal(registration.token, undefined);
     assert.equal((await api("/api/login", { pseudoOrEmail: "PiloteRecup", password: "ancien-password-123" })).code, "EMAIL_UNVERIFIED");

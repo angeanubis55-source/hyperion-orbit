@@ -13,7 +13,7 @@ export function emailServiceReady() {
 
 export function authLink(params = {}) {
   if (!publicUrl) return "";
-  const url = new URL("/PUBLIC/AUTH.html", publicUrl);
+  const url = new URL("/login", publicUrl);
   for (const [key, value] of Object.entries(params)) if (value != null) url.searchParams.set(key, String(value));
   return url.href;
 }

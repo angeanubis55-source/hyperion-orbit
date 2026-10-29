@@ -701,7 +701,12 @@ function findPeerState(pid) {
 }
 
 function publicRelativePath(pathname) {
-  const relative = pathname === "/" ? "index.html" : pathname.replace(/^\/+/, "");
+  const routeFiles = new Map([
+    ["/login", "PUBLIC/AUTH.html"],
+    ["/register", "PUBLIC/AUTH.html"],
+    ["/game", "index.html"],
+  ]);
+  const relative = routeFiles.get(pathname) || (pathname === "/" ? "index.html" : pathname.replace(/^\/+/, ""));
   const parts = relative.split(/[\\/]+/).filter(Boolean);
   if (!parts.length) return "index.html";
   if (!PUBLIC_FILES.has(parts[0]) && !PUBLIC_DIRS.has(parts[0])) throw new Error("Private path");
