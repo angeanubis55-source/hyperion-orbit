@@ -4,53 +4,50 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Hyperion Orbit — Connexion</title>
+  <link rel="icon" type="image/png" href="/ASSETS/UI/LOGO_MINI.png" />
+  <script>
+    // Bon formulaire dès le premier affichage sur /register : AUTH.js (module,
+    // lancé après la vérification serveur) retire ensuite cette classe.
+    (function () {
+      var q = new URLSearchParams(location.search);
+      if (location.pathname === "/register" && !q.has("verify") && !q.has("reset")) {
+        document.documentElement.classList.add("routeJoin");
+      }
+    })();
+  </script>
 
   <style>
+    /* DA du jeu (style.css) : champs de la fenêtre Compte, bouton play du
+       P.E.T, libellés cyan et liens orange. */
     :root{
       color-scheme: dark;
-      --text: #e8f4ff;
-      --muted: rgba(232,244,255,.6);
-      --stroke: rgba(100,200,255,.15);
-      --accent: #00d9ff;
-      --accent2: #ff006e;
-      --glass: rgba(5, 10, 25, .35);
-      --r: 24px;
+      --txt: #d7e2ff;
+      --label: #7cecff;
+      --orange: #ffa54a;
+      --ok: #3dff8c;
+      --danger: #ff6b7a;
+      --gold: #ffd36b;
+      --info: #8fcddd;
     }
 
     *{ box-sizing:border-box; margin:0; padding:0; }
-    html,body{ height:100%; }
-    
+    html, body{ min-height:100%; }
+
     body{
-      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
-      color: var(--text);
-      overflow: hidden;
-      background: #020408;
-      position: relative;
+      font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+      color: var(--txt);
+      background: #050814;
+      overflow-x: hidden;
     }
+    button, input{ font-family: inherit; }
 
-    /* Space background avec GIF */
+    /* Fond (inchangé) */
     .space{
       position: fixed;
       inset: 0;
       background: url('https://wallpapercave.com/wp/wp11333140.jpg') center center / cover no-repeat;
       z-index: 0;
     }
-
-    .space::after{
-      content: '';
-      position: absolute;
-      inset: 0;
-      background: rgba(0,0,0,0.3);
-    }
-
-    /* Space background avec GIF */
-    .space{
-      position: fixed;
-      inset: 0;
-      background: url('https://wallpapercave.com/wp/wp11333140.jpg') center center / cover no-repeat;
-      z-index: 0;
-    }
-
     .space::after{
       content: '';
       position: absolute;
@@ -58,645 +55,464 @@
       background: rgba(0,0,0,0.25);
     }
 
-    .container{
+    .shell{
+      --logo-w: min(400px, 82vw);
       position: relative;
-      z-index: 10;
+      z-index: 1;
       min-height: 100vh;
       display: flex;
+      flex-direction: column;
       align-items: center;
-      justify-content: center;
-      padding: 20px;
+      justify-content: flex-start;
+      padding: 12px 16px 24px;
+      overflow-x: clip;
+      /* Arrivée en fondu, sans déplacement. */
+      animation: pageFade .7s ease .05s both;
     }
+    @keyframes pageFade{ from{ opacity:0; } to{ opacity:1; } }
 
-    /* Carte principale avec liquid glass */
-    .card{
-      width: min(900px, 95vw);
-      background: 
-        linear-gradient(135deg, 
-          rgba(255,255,255,.08) 0%, 
-          rgba(100,200,255,.05) 50%,
-          rgba(255,255,255,.04) 100%);
-      border: 1px solid rgba(100,200,255,.25);
-      border-radius: var(--r);
-      backdrop-filter: blur(24px) saturate(140%);
-      -webkit-backdrop-filter: blur(24px) saturate(140%);
-      box-shadow: 
-        0 8px 32px rgba(0,0,0,.6),
-        0 0 0 1px rgba(255,255,255,.05) inset,
-        0 0 100px rgba(0,217,255,.15);
-      overflow: hidden;
+    /* Logo en haut de page, taille réservée (pas de saut au chargement). */
+    .brand{
       position: relative;
-      animation: cardAppear 0.8s cubic-bezier(0.34, 1.56, 0.64, 1);
+      z-index: 2; /* toujours devant le fondu du formulaire */
+      flex-shrink: 0;
+      display: block;
+      width: var(--logo-w);
+      height: auto;
+      aspect-ratio: 1774 / 887;
+      margin: 0 auto;
+      pointer-events: none;
+      user-select: none;
+      filter: drop-shadow(0 0 30px rgba(124,240,255,.38)) drop-shadow(0 10px 24px rgba(0,0,0,.6));
     }
 
-    @keyframes cardAppear {
-      from { 
-        opacity: 0; 
-        transform: translateY(30px) scale(0.95);
-      }
-      to { 
-        opacity: 1; 
-        transform: translateY(0) scale(1);
-      }
+    /* Formulaire centré à l'écran : marges auto + cale basse de la hauteur
+       du logo (centre réel tant que la hauteur le permet). */
+    .auth{ position: relative; width: min(340px, 100%); margin: auto 0; }
+    .shell::after{ content: ''; flex: 0 1 calc(var(--logo-w) / 2); }
+    .authInner{ position: relative; z-index: 1; }
+    /* Carte sans bord : flou + voile sombre qui s'effacent vers les bords.
+       Un masque désactive backdrop-filter (Chrome/Edge) : on floute donc une
+       copie du fond, calée sur l'écran (fixed) pour coïncider avec .space. */
+    .authGlass{
+      position: absolute;
+      z-index: 0;
+      inset: -120px -190px;
+      overflow: hidden;
+      -webkit-mask-image: radial-gradient(closest-side, #000 55%, transparent 100%);
+      mask-image: radial-gradient(closest-side, #000 55%, transparent 100%);
+      pointer-events: none;
     }
-
-    /* Hologram effect sur le bord */
-    .card::before{
+    .authGlass::before{
+      content: '';
+      position: absolute;
+      inset: -40px;
+      background: url('https://wallpapercave.com/wp/wp11333140.jpg') center center / cover no-repeat fixed;
+      filter: blur(14px);
+    }
+    .authGlass::after{
       content: '';
       position: absolute;
       inset: 0;
-      border-radius: var(--r);
-      padding: 1px;
-      background: linear-gradient(45deg, 
-        transparent 30%,
-        rgba(0,217,255,.4) 50%,
-        transparent 70%);
-      -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-      mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-      -webkit-mask-composite: xor;
-      mask-composite: exclude;
-      opacity: 0.6;
-      animation: hologramShimmer 3s linear infinite;
+      background: rgba(2,8,18,.62);
     }
 
-    @keyframes hologramShimmer {
-      0% { background-position: -200% 0; }
-      100% { background-position: 200% 0; }
-    }
+    .tabs{ display: none; }
 
-    .cardInner{
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      min-height: 500px;
-    }
+    .form{ display:flex; flex-direction:column; gap:14px; }
 
-    /* Panel gauche - Hero */
-    .hero{
-      padding: 40px 35px;
-      display: flex;
-      flex-direction: column;
-      justify-content: space-between;
-      background: 
-        linear-gradient(135deg, rgba(0,0,0,.3), rgba(0,20,40,.2)),
-        radial-gradient(circle at 30% 20%, rgba(0,217,255,.08), transparent 60%);
-      border-right: 1px solid rgba(100,200,255,.2);
-      position: relative;
-      overflow: hidden;
-    }
-
-    /* Ship hologram background */
-    .hero::before{
-      display: none;
-    }
-
-    .logo{
-      display: flex;
-      align-items: center;
-      gap: 16px;
-      margin-bottom: 30px;
-      position: relative;
-      z-index: 1;
-    }
-
-    .logoIcon{
-      width: 56px;
-      height: 56px;
-      border-radius: 16px;
-      background:
-        radial-gradient(circle at 35% 25%, rgba(255,255,255,.6), transparent 50%),
-        linear-gradient(135deg, rgba(0,217,255,.5), rgba(138,43,226,.4));
-      border: 1px solid rgba(255,255,255,.3);
-      box-shadow: 
-        0 8px 32px rgba(0,217,255,.4),
-        0 0 0 1px rgba(255,255,255,.1) inset;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 28px;
-      animation: iconPulse 3s ease-in-out infinite;
-    }
-
-    @keyframes iconPulse {
-      0%, 100% { box-shadow: 0 8px 32px rgba(0,217,255,.4), 0 0 0 1px rgba(255,255,255,.1) inset; }
-      50% { box-shadow: 0 8px 48px rgba(0,217,255,.6), 0 0 0 1px rgba(255,255,255,.2) inset; }
-    }
-
-    .logoText h1{
-      font-size: 24px;
-      font-weight: 800;
-      letter-spacing: 1px;
-      margin-bottom: 4px;
-      background: linear-gradient(135deg, #fff, #00d9ff);
-      -webkit-background-clip: text;
-      background-clip: text;
-      -webkit-text-fill-color: transparent;
-    }
-
-    .logoText p{
-      font-size: 12px;
-      color: var(--muted);
-      letter-spacing: 0.5px;
-    }
-
-    .heroContent{
-      position: relative;
-      z-index: 1;
-    }
-
-    .heroTitle{
-      font-size: 38px;
+    /* Champs : style de la fenêtre Compte */
+    .field{ display:flex; flex-direction:column; gap:5px; }
+    .field label,
+    .fieldLabel{
+      color: var(--label);
+      font-size: 10px;
       font-weight: 900;
-      line-height: 1.1;
-      margin-bottom: 16px;
-      background: linear-gradient(135deg, #ffffff, #00d9ff, #8a2be2);
-      -webkit-background-clip: text;
-      background-clip: text;
-      -webkit-text-fill-color: transparent;
-      animation: titleShine 5s ease-in-out infinite;
-    }
-
-    @keyframes titleShine {
-      0%, 100% { filter: brightness(1); }
-      50% { filter: brightness(1.2); }
-    }
-
-    .heroSub{
-      color: rgba(232,244,255,.75);
-      font-size: 14px;
-      line-height: 1.6;
-      max-width: 32ch;
-    }
-
-    .heroStats{
-      display: none;
-    }
-
-    /* Panel droit - Forms */
-    .main{
-      padding: 35px 30px;
-      display: flex;
-      flex-direction: column;
-      justify-content: center;
-      background: linear-gradient(135deg, rgba(0,10,20,.4), rgba(0,5,15,.3));
-    }
-
-    /* Tabs */
-    .tabs{
-      display: flex;
-      gap: 8px;
-      margin-bottom: 24px;
-      padding: 4px;
-      background: rgba(0,0,0,.3);
-      border-radius: 14px;
-      border: 1px solid rgba(100,200,255,.15);
-      position: relative;
-    }
-
-    .tab{
-      flex: 1;
-      padding: 12px 20px;
-      border: none;
-      background: transparent;
-      color: var(--muted);
-      font-weight: 700;
-      font-size: 15px;
-      cursor: pointer;
-      border-radius: 10px;
-      transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
-      position: relative;
-      letter-spacing: 0.5px;
-    }
-
-    .tab.active{
-      color: #fff;
-      background: linear-gradient(135deg, rgba(0,217,255,.25), rgba(138,43,226,.2));
-      box-shadow: 
-        0 4px 20px rgba(0,217,255,.3),
-        0 0 0 1px rgba(255,255,255,.1) inset;
-    }
-
-    .tab:not(.active):hover{
-      color: rgba(232,244,255,.9);
-      background: rgba(255,255,255,.05);
-    }
-
-    /* Forms */
-    .form{
-      display: flex;
-      flex-direction: column;
-      gap: 18px;
-    }
-
-    .field{
-      position: relative;
-    }
-
-    .field label{
-      display: block;
-      font-size: 12px;
-      font-weight: 600;
-      color: rgba(232,244,255,.7);
-      margin-bottom: 8px;
-      letter-spacing: 0.5px;
+      letter-spacing: .7px;
       text-transform: uppercase;
+      text-shadow: 0 1px 4px rgba(0,0,0,.9);
     }
-
-    .inputWrap{
-      position: relative;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-
-    .factionChoices{ display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; }
-    .factionChoice{ position:relative; cursor:pointer; margin:0 !important; text-transform:none !important; }
-    .factionChoice input{ position:absolute; opacity:0; pointer-events:none; }
-    .factionChoiceBody{ min-height:82px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:7px; border:1px solid rgba(100,200,255,.25); border-radius:12px; background:rgba(0,217,255,.05); color:rgba(232,244,255,.72); transition:border-color .2s ease,background .2s ease,box-shadow .2s ease; }
-    .factionChoiceBody img{ max-width:42px; max-height:34px; object-fit:contain; image-rendering:auto; }
-    .factionChoiceBody strong{ font-size:13px; letter-spacing:.7px; }
-    .factionChoice input:checked + .factionChoiceBody{ color:#fff; border-color:rgba(0,217,255,.85); background:rgba(0,217,255,.13); box-shadow:0 0 0 2px rgba(0,217,255,.12),0 8px 22px rgba(0,0,0,.25); }
-
+    .inputWrap{ display:flex; align-items:center; gap:6px; }
     input[type="text"],
     input[type="email"],
     input[type="password"]{
-      flex: 1;
-      padding: 14px 16px;
-      border: 1px solid rgba(100,200,255,.25);
-      background: 
-        linear-gradient(135deg, rgba(0,217,255,.05), rgba(138,43,226,.03));
-      border-radius: 12px;
-      color: #fff;
-      font-size: 15px;
+      flex: none;
+      min-width: 0;
+      width: 100%;
+      height: 38px;
+      padding: 7px 11px;
+      border: 1px solid rgba(124,240,255,.3);
+      border-radius: 6px;
       outline: none;
-      transition: all 0.3s ease;
-      backdrop-filter: blur(12px);
-      box-shadow: 
-        0 4px 12px rgba(0,0,0,.3),
-        0 0 0 1px rgba(255,255,255,.03) inset;
+      color: #eaffff;
+      background: rgba(0,20,35,.8);
+      font: 700 13px/1.2 ui-sans-serif, system-ui;
+      text-align: center;
+      appearance: none;
+      /* Le fond (y compris celui imposé au pré-remplissage) ne passe jamais
+         sous la bordure semi-transparente : sinon bord jaune/vert. */
+      background-clip: padding-box;
     }
-
-    input::placeholder{
-      color: rgba(232,244,255,.3);
+    input::placeholder{ color: rgba(158,238,255,.45); }
+    /* Champs pré-remplis par le navigateur : garder le style normal (pas de
+       fond jaune/bleu). Le fond est repeint par une ombre interne. */
+    /* Le navigateur le réapplique quand le formulaire réapparaît (retour
+       depuis "oublié ?") : contour et halo forcés aux valeurs normales. */
+    input:-webkit-autofill,
+    input:-webkit-autofill:hover,
+    input:-webkit-autofill:active,
+    input:-webkit-autofill:focus,
+    input:autofill{
+      -webkit-text-fill-color: #eaffff !important;
+      caret-color: #eaffff;
+      border: 1px solid rgba(124,240,255,.3) !important;
+      outline: none !important;
+      -webkit-box-shadow: 0 0 0 1000px rgb(4,18,30) inset !important;
+      box-shadow: 0 0 0 1000px rgb(4,18,30) inset !important;
+      filter: none !important;
+      background-clip: padding-box !important;
+      transition: background-color 99999s ease-out 0s, color 99999s ease-out 0s;
     }
-
+    input:-webkit-autofill:focus,
+    input:autofill:focus{
+      border-color: #7cf0ff !important;
+      -webkit-box-shadow: 0 0 0 1000px rgb(4,18,30) inset, 0 0 10px rgba(0,217,255,.25) !important;
+      box-shadow: 0 0 0 1000px rgb(4,18,30) inset, 0 0 10px rgba(0,217,255,.25) !important;
+    }
     input:focus{
-      border-color: rgba(0,217,255,.6);
-      background: rgba(0,217,255,.08);
-      box-shadow: 
-        0 0 0 3px rgba(0,217,255,.15),
-        0 8px 24px rgba(0,0,0,.4),
-        0 0 0 1px rgba(255,255,255,.05) inset;
-      transform: translateY(-1px);
+      border-color: #7cf0ff;
+      box-shadow: 0 0 10px rgba(0,217,255,.25);
     }
 
-    .eyeBtn{
-      position: relative;
-      width: 40px;
-      height: 48px;
-      border: 1px solid rgba(0,217,255,0.3);
-      background: rgba(0,217,255,.12);
-      border-radius: 10px;
-      color: rgba(232,244,255,.7);
+    /* Bouton play du P.E.T (œil, Connexion) */
+    .petBtn{
+      height: 38px;
+      padding: 0 14px;
+      display: grid;
+      place-items: center;
+      border-radius: 8px;
+      border: 1px solid rgba(124,240,255,.38);
+      background: linear-gradient(135deg, rgba(0,145,190,.38), rgba(0,70,100,.34));
+      box-shadow: inset 0 0 0 1px rgba(255,255,255,.03);
+      color: #eaffff;
+      font: 750 12px/1 ui-sans-serif, system-ui;
+      letter-spacing: .6px;
+      text-transform: uppercase;
       cursor: pointer;
+    }
+    .petBtn svg{
+      width: 16px;
+      height: 16px;
+      display: block;
+      filter: drop-shadow(0 0 4px rgba(0,217,255,.6));
+      pointer-events: none;
+    }
+    .petBtn:hover:not(:disabled){
+      border-color: rgba(124,240,255,.62);
+      background: rgba(0,140,185,.3);
+      box-shadow: 0 0 16px rgba(0,217,255,.12);
+    }
+    .petBtn:disabled{ opacity: .35; cursor: default; }
+    .petBtn:focus-visible{ outline: none; box-shadow: 0 0 0 3px rgba(0,217,255,.3); }
+    /* Œil intégré dans le champ (à droite), même hauteur que les autres champs. */
+    .inputWrap{ position: relative; }
+    /* Marges égales des deux côtés : le texte reste centré malgré l'œil. */
+    .inputWrap:has(.eyeBtn) input{ padding-left: 44px; padding-right: 44px; }
+    .eyeBtn{
+      position: absolute;
+      top: 50%;
+      right: 4px;
+      width: 34px;
+      height: 30px;
+      padding: 0;
+      transform: translateY(-50%);
+      /* Icône seule, sans cadre. */
+      border: 0;
+      background: none;
+      box-shadow: none;
+      color: rgba(158,238,255,.7);
+    }
+    .eyeBtn:hover:not(:disabled){ border: 0; background: none; box-shadow: none; color: #eaffff; }
+    .eyeBtn:focus-visible{ box-shadow: none; color: #eaffff; }
+    .eyeBtn svg{ width: 16px; height: 16px; }
+    .btn{ width: 100%; margin-top: 4px; }
+
+    /* Liens orange (oublié, s'inscrire...) */
+    .authHelpLink{
+      align-self: flex-start;
+      padding: 0;
+      border: 0;
+      background: none;
+      color: var(--orange);
+      font-size: 11px;
+      font-weight: 800;
+      text-shadow: 0 1px 4px rgba(0,0,0,.9);
+      cursor: pointer;
+    }
+    .authHelpLink:hover{ text-decoration: underline; text-underline-offset: 3px; }
+    .authHelpLink:focus-visible{ outline: none; text-decoration: underline; }
+    .authSwitch{ align-self: center; font-size: 12px; }
+    /* Champs de connexion collés, ligne "oublié" réduite et centrée. */
+    .loginFields{ gap: 6px; }
+    .authForgot{
+      align-self: center;
+      margin-top: 2px;
+      color: var(--orange);
+      font-size: 10px;
+      font-weight: 800;
+      text-shadow: 0 1px 4px rgba(0,0,0,.9);
+    }
+    .authForgot .authHelpLink{ font-size: inherit; }
+    /* Connexion + S'inscrire : même bouton, espacés. */
+    .authActions{ display:flex; flex-direction:column; gap:10px; margin-top:6px; }
+    .authActions .btn{ margin-top: 0; }
+    /* Libellé lu par les lecteurs d'écran, invisible à l'écran. */
+    .srOnly{
+      position: absolute !important;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      clip: rect(0 0 0 0);
+      white-space: nowrap;
+    }
+
+    .rememberRow{ display:none; }
+
+    /* Firmes : portrait du personnage, nom + emblème en bas. Grisé tant
+       que la firme n'est pas choisie. */
+    .factionChoices{ display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; }
+    .factionChoice{ position:relative; cursor:pointer; }
+    .factionChoice input{ position:absolute; opacity:0; pointer-events:none; }
+    .factionChoiceBody{
+      position: relative;
+      display: block;
+      aspect-ratio: 130 / 177;
+      overflow: hidden;
+      border: 1px solid rgba(124,240,255,.3);
+      border-radius: 6px;
+      background: rgba(0,20,35,.8);
+      color: rgba(232,244,255,.75);
+      transition: border-color .15s ease, box-shadow .15s ease;
+    }
+    .factionPortrait{
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      filter: grayscale(.85) brightness(.6);
+      transition: filter .2s ease, transform .2s ease;
+    }
+    .factionChoiceBody strong{
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 0;
       display: flex;
       align-items: center;
       justify-content: center;
-      transition: all 0.3s ease;
-      backdrop-filter: blur(12px);
-      flex-shrink: 0;
+      gap: 5px;
+      padding: 18px 4px 6px;
+      background: linear-gradient(180deg, transparent, rgba(0,12,22,.92) 70%);
+      font-size: 12px;
+      font-weight: 900;
+      letter-spacing: .7px;
+      text-shadow: 0 1px 4px rgba(0,0,0,.9);
     }
-
-    .eyeBtn:hover{
-      background: rgba(0,217,255,.25);
+    .factionEmblem{ width:12px; height:12px; image-rendering:pixelated; }
+    .factionChoice:hover .factionPortrait{ filter: grayscale(.4) brightness(.8); }
+    .factionChoice:hover .factionChoiceBody{ border-color: rgba(124,240,255,.55); }
+    .factionChoice input:checked + .factionChoiceBody{
       color: #fff;
-      border-color: rgba(0,217,255,0.5);
+      border-color: #7cf0ff;
+      box-shadow: 0 0 10px rgba(0,217,255,.25);
     }
+    .factionChoice input:checked + .factionChoiceBody .factionPortrait{ filter: none; transform: scale(1.04); }
+    .factionChoice input:focus-visible + .factionChoiceBody{ box-shadow: 0 0 0 3px rgba(0,217,255,.3); }
 
-    .rememberRow{
-      display: none;
-    }
-
-    .authHelpLink{
-      display:inline-block; margin-top:8px; padding:0; border:0; background:none;
-      color:#68dcff; font-size:12px; cursor:pointer; text-decoration:underline;
-      text-underline-offset:3px;
-    }
-    .authHelpLink:hover{ color:#fff; }
-    .recoveryPanel{
-      margin-top:16px; padding:16px; border:1px solid rgba(100,200,255,.25);
-      border-radius:14px; background:rgba(0,8,20,.72); display:flex;
-      flex-direction:column; gap:13px;
-    }
-    .recoveryPanel.hidden{ display:none; }
-    .recoveryHead{ display:flex; align-items:flex-start; justify-content:space-between; gap:12px; }
-    .recoveryHead strong{ color:#fff; font-size:16px; }
-    .recoveryHead p{ color:var(--muted); font-size:12px; margin-top:4px; line-height:1.4; }
-    .recoveryClose{ border:0; background:none; color:#9fb7ca; cursor:pointer; font-size:20px; }
-
-    /* Buttons */
-    .btn{
-      width: 100%;
-      padding: 14px 24px;
-      border: none;
-      border-radius: 12px;
-      font-size: 15px;
-      font-weight: 700;
-      letter-spacing: 1px;
-      cursor: pointer;
-      transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
-      text-transform: uppercase;
-      position: relative;
-      overflow: hidden;
-    }
-
-    .btn::before{
-      content: '';
-      position: absolute;
-      inset: 0;
-      background: linear-gradient(45deg, transparent, rgba(255,255,255,.2), transparent);
-      transform: translateX(-100%);
-      transition: transform 0.6s;
-    }
-
-    .btn:hover::before{
-      transform: translateX(100%);
-    }
-
-    .btn.primary{
-      background: linear-gradient(135deg, #00d9ff, #0088cc);
-      color: #000;
-      box-shadow: 
-        0 8px 24px rgba(0,217,255,.4),
-        0 0 0 1px rgba(255,255,255,.2) inset;
-    }
-
-    .btn.primary:hover{
-      transform: translateY(-2px);
-      box-shadow: 
-        0 12px 32px rgba(0,217,255,.5),
-        0 0 0 1px rgba(255,255,255,.3) inset;
-    }
-
-    .btn.primary:active{
-      transform: translateY(0);
-    }
-
-    .btn.secondary{
-      background: linear-gradient(135deg, rgba(255,255,255,.1), rgba(100,200,255,.08));
-      color: #fff;
-      border: 1px solid rgba(100,200,255,.3);
-      box-shadow: 0 4px 12px rgba(0,0,0,.3);
-    }
-
-    .btn.secondary:hover{
-      background: linear-gradient(135deg, rgba(255,255,255,.15), rgba(100,200,255,.12));
-      transform: translateY(-2px);
-    }
-
-    /* Messages */
+    /* Messages : sous le bloc, hors du flux (leur apparition ne fait pas
+       bouger la page centrée). */
     .msg{
-      padding: 12px 16px;
-      border-radius: 12px;
-      font-size: 13px;
-      margin-top: 12px;
       display: none;
-      backdrop-filter: blur(12px);
-      animation: msgSlide 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
-    }
-
-    @keyframes msgSlide {
-      from { opacity: 0; transform: translateY(-10px); }
-      to { opacity: 1; transform: translateY(0); }
-    }
-
-    .msg.ok{
-      display: block;
-      background: rgba(0,255,136,.12);
-      border: 1px solid rgba(0,255,136,.3);
-      color: #00ff88;
-    }
-
-    .msg.err{
-      display: block;
-      background: rgba(255,0,110,.12);
-      border: 1px solid rgba(255,0,110,.3);
-      color: #ff4488;
-    }
-
-    .hint{
-      margin-top: 16px;
-      font-size: 11px;
-      color: rgba(232,244,255,.45);
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: calc(100% + 14px);
+      padding: 9px 11px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 700;
+      line-height: 1.45;
       text-align: center;
-      line-height: 1.5;
     }
+    .msg.ok{ display:block; color:var(--ok); border:1px solid rgba(61,255,140,.32); background:rgba(0,20,35,.8); }
+    .msg.err{ display:block; color:var(--danger); border:1px solid rgba(255,107,122,.38); background:rgba(0,20,35,.8); }
 
-    .hidden{
-      display: none !important;
+    /* Récupération du compte : remplace le formulaire de connexion */
+    .recoveryPanel{ position:relative; display:flex; flex-direction:column; gap:14px; }
+    /* Titre et phrase centrés, la phrase tient sur une ligne. */
+    .recoveryHead{ display:flex; flex-direction:column; align-items:center; text-align:center; }
+    .recoveryIcon{ display:none; }
+    .recoveryHead strong{
+      display: block;
+      color: var(--gold);
+      font-size: 13px;
+      font-weight: 900;
+      letter-spacing: .7px;
+      text-transform: uppercase;
+      text-shadow: 0 1px 4px rgba(0,0,0,.9);
     }
+    .recoveryHead p{ margin-top:4px; color:var(--info); font-size:11px; font-weight:600; line-height:1.45; white-space:nowrap; text-shadow:0 1px 4px rgba(0,0,0,.9); }
+    .recoveryBack{ align-self:center; }
 
-    .closeBtn{
-      display: none;
-    }
+    .hidden{ display:none !important; }
+    /* Arrivée sur /register (classe posée dans le <head>). */
+    html.routeJoin #formLogin{ display:none !important; }
+    html.routeJoin #formJoin{ display:flex !important; }
 
-    /* Responsive */
-    @media (max-width: 768px){
-      .cardInner{
-        grid-template-columns: 1fr;
-      }
-      
-      .hero{
-        border-right: none;
-        border-bottom: 1px solid rgba(100,200,255,.2);
-        min-height: auto;
-        padding: 30px 25px;
-      }
-
-      .heroTitle{
-        font-size: 32px;
-      }
-
-      .main{
-        padding: 30px 25px;
-      }
-    }
-
-    @media (prefers-reduced-motion: reduce){
-      *{
-        animation-duration: 0.01ms !important;
-        animation-iteration-count: 1 !important;
-        transition-duration: 0.01ms !important;
-      }
-      .asteroid{
-        display: none;
-      }
+    @media (max-width: 480px){
+      .shell::after{ display:none; }
+      .auth{ margin-top: 24px; }
+      .shell{ --logo-w: min(300px, 80vw); }
     }
   </style>
 </head>
 
 <body>
-  <!-- Background layers -->
   <div class="space"></div>
 
-  <div class="container">
-    <div class="card">
-      <div class="cardInner">
-        <!-- LEFT PANEL - Hero -->
-        <div class="hero">
-          <div>
-            <div class="logo">
-              <div class="logoText">
-                <h1>HYPERION</h1>
-                <p>Deep Space Combat System</p>
-              </div>
-            </div>
+  <main class="shell">
+    <img class="brand" src="/ASSETS/UI/LOGO.png" width="1774" height="887" alt="Hyperion Orbit" draggable="false" fetchpriority="high" />
 
-            <div class="heroContent">
-              <div class="heroTitle">Entre dans l'orbite.</div>
-              <div class="heroSub">
-                Pilote ton vaisseau dans l'immensité de l'espace. 
-                Combats, explore, conquiers les étoiles.
-              </div>
-            </div>
+    <div class="auth">
+      <div class="authGlass" aria-hidden="true"></div>
+      <div class="authInner">
+      <!-- Onglets conservés pour AUTH.js, remplacés par les liens orange. -->
+      <div class="tabs">
+        <button id="tabLogin" class="tab active" type="button">Connexion</button>
+        <button id="tabJoin" class="tab" type="button">Inscription</button>
+      </div>
+
+      <!-- CONNEXION -->
+      <form id="formLogin" class="form" autocomplete="on">
+        <div class="field loginFields">
+          <label class="srOnly" for="loginUser">Pseudo</label>
+          <input id="loginUser" type="text" autocomplete="username" placeholder="Pseudo" />
+          <label class="srOnly" for="loginPass">Mot de passe</label>
+          <div class="inputWrap">
+            <input id="loginPass" type="password" autocomplete="current-password" placeholder="Mot de passe" />
+            <button id="toggleLoginPass" class="petBtn eyeBtn" type="button" aria-label="Afficher/masquer">
+              <svg id="eyeLoginOpen" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/>
+                <circle cx="12" cy="12" r="3"/>
+              </svg>
+              <svg id="eyeLoginOff" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:none">
+                <path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"/>
+                <path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"/>
+                <path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"/>
+                <line x1="2" y1="2" x2="22" y2="22"/>
+              </svg>
+            </button>
           </div>
+          <p class="authForgot"><button id="forgotUsername" class="authHelpLink" type="button">Nom d'utilisateur</button> ou <button id="forgotPassword" class="authHelpLink" type="button">mot de passe</button> oublié ?</p>
+        </div>
 
-          <div class="heroStats">
+        <div class="rememberRow">
+          <input id="rememberMe" type="checkbox">
+          <label for="rememberMe">Se souvenir de moi</label>
+        </div>
+
+        <div class="authActions">
+          <button id="btnLogin" class="petBtn btn" type="button">Connexion</button>
+          <button id="goJoin" class="authHelpLink authSwitch" type="button">Pas de compte ? Crées-en un nouveau</button>
+        </div>
+      </form>
+
+      <!-- RÉCUPÉRATION -->
+      <section id="recoveryPanel" class="recoveryPanel hidden" aria-live="polite">
+        <div class="recoveryHead">
+          <strong id="recoveryTitle">Récupération du compte</strong>
+          <p id="recoveryHint"></p>
+        </div>
+        <div id="recoveryEmailFields" class="field">
+          <label class="srOnly" for="recoveryEmail">Adresse email du compte</label>
+          <input id="recoveryEmail" type="email" autocomplete="email" placeholder="Adresse email du compte" />
+        </div>
+        <div id="resetPasswordFields" class="form hidden">
+          <div class="field"><label for="resetPassword">Nouveau mot de passe</label><input id="resetPassword" type="password" autocomplete="new-password" placeholder="Minimum 10 caractères" /></div>
+          <div class="field"><label for="resetPasswordConfirm">Confirmation</label><input id="resetPasswordConfirm" type="password" autocomplete="new-password" placeholder="Répète le mot de passe" /></div>
+        </div>
+        <button id="recoverySubmit" class="petBtn btn" type="button">Envoyer</button>
+        <button id="recoveryBack" class="authHelpLink recoveryBack" type="button">← Retour à la connexion</button>
+      </section>
+
+      <!-- INSCRIPTION -->
+      <form id="formJoin" class="form hidden" autocomplete="on">
+        <div class="field">
+          <label class="srOnly" for="regUser">Pseudo</label>
+          <input id="regUser" type="text" autocomplete="username" placeholder="Pseudo" />
+        </div>
+
+        <div class="field">
+          <label class="srOnly" for="regEmail">Adresse email</label>
+          <input id="regEmail" type="email" autocomplete="email" inputmode="email" placeholder="Adresse email" />
+        </div>
+
+        <div class="field">
+          <span class="srOnly">Choisis ta firme</span>
+          <div class="factionChoices" role="radiogroup" aria-label="Firme du pilote">
+            <label class="factionChoice"><input type="radio" name="regFaction" value="mmo"><span class="factionChoiceBody"><img class="factionPortrait" src="/ASSETS/FACTIONS/MMO_CHAR.png" alt="" draggable="false"><strong><img class="factionEmblem" src="/ASSETS/FACTIONS/MMO.png" alt="">MMO</strong></span></label>
+            <label class="factionChoice"><input type="radio" name="regFaction" value="eic"><span class="factionChoiceBody"><img class="factionPortrait" src="/ASSETS/FACTIONS/EIC_CHAR.png" alt="" draggable="false"><strong><img class="factionEmblem" src="/ASSETS/FACTIONS/EIC.png" alt="">EIC</strong></span></label>
+            <label class="factionChoice"><input type="radio" name="regFaction" value="vru"><span class="factionChoiceBody"><img class="factionPortrait" src="/ASSETS/FACTIONS/VRU_CHAR.png" alt="" draggable="false"><strong><img class="factionEmblem" src="/ASSETS/FACTIONS/VRU.png" alt="">VRU</strong></span></label>
           </div>
         </div>
 
-        <!-- RIGHT PANEL - Forms -->
-        <div class="main">
-          <div class="tabs">
-            <button id="tabLogin" class="tab active" type="button">Connexion</button>
-            <button id="tabJoin" class="tab" type="button">Inscription</button>
+        <div class="field">
+          <label class="srOnly" for="regPass">Mot de passe</label>
+          <div class="inputWrap">
+            <input id="regPass" type="password" autocomplete="new-password" placeholder="Mot de passe (10 caractères min.)" />
+            <button id="toggleRegPass" class="petBtn eyeBtn" type="button" aria-label="Afficher/masquer">
+              <svg id="eyeRegOpen" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/>
+                <circle cx="12" cy="12" r="3"/>
+              </svg>
+              <svg id="eyeRegOff" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:none">
+                <path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"/>
+                <path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"/>
+                <path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"/>
+                <line x1="2" y1="2" x2="22" y2="22"/>
+              </svg>
+            </button>
           </div>
-
-          <!-- LOGIN FORM -->
-          <form id="formLogin" class="form" autocomplete="on">
-            <div class="field">
-              <label for="loginUser">Pseudo</label>
-              <div class="inputWrap">
-                <input id="loginUser" type="text" autocomplete="username" placeholder="Ton nom de pilote" />
-              </div>
-              <button id="forgotUsername" class="authHelpLink" type="button">Nom d'utilisateur oublié ?</button>
-            </div>
-
-            <div class="field">
-              <label for="loginPass">Mot de passe</label>
-              <div class="inputWrap">
-                <input id="loginPass" type="password" autocomplete="current-password" placeholder="••••••••" />
-                <button id="toggleLoginPass" class="eyeBtn" type="button" aria-label="Afficher/masquer">
-                  <svg id="eyeLoginOpen" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/>
-                    <circle cx="12" cy="12" r="3"/>
-                  </svg>
-                  <svg id="eyeLoginOff" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:none">
-                    <path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"/>
-                    <path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"/>
-                    <path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"/>
-                    <line x1="2" y1="2" x2="22" y2="22"/>
-                  </svg>
-                </button>
-              </div>
-              <button id="forgotPassword" class="authHelpLink" type="button">Mot de passe oublié ?</button>
-            </div>
-
-            <div class="rememberRow">
-              <input id="rememberMe" type="checkbox">
-              <label for="rememberMe" style="margin:0; text-transform:none; font-size:13px; font-weight:400;">Se souvenir de moi</label>
-            </div>
-
-            <button id="btnLogin" class="btn primary" type="button">Connexion</button>
-          </form>
-
-          <section id="recoveryPanel" class="recoveryPanel hidden" aria-live="polite">
-            <div class="recoveryHead">
-              <div><strong id="recoveryTitle">Récupération du compte</strong><p id="recoveryHint"></p></div>
-              <button id="recoveryClose" class="recoveryClose" type="button" aria-label="Fermer">×</button>
-            </div>
-            <div id="recoveryEmailFields" class="field">
-              <label for="recoveryEmail">Adresse email du compte</label>
-              <div class="inputWrap"><input id="recoveryEmail" type="email" autocomplete="email" placeholder="pilote@exemple.com" /></div>
-            </div>
-            <div id="resetPasswordFields" class="hidden">
-              <div class="field"><label for="resetPassword">Nouveau mot de passe</label><div class="inputWrap"><input id="resetPassword" type="password" autocomplete="new-password" placeholder="Minimum 10 caractères" /></div></div>
-              <div class="field"><label for="resetPasswordConfirm">Confirmation</label><div class="inputWrap"><input id="resetPasswordConfirm" type="password" autocomplete="new-password" placeholder="Répète le mot de passe" /></div></div>
-            </div>
-            <button id="recoverySubmit" class="btn secondary" type="button">Envoyer</button>
-          </section>
-
-          <!-- JOIN FORM -->
-          <form id="formJoin" class="form hidden" autocomplete="on">
-            <div class="field">
-              <label for="regUser">Pseudo</label>
-              <div class="inputWrap">
-                <input id="regUser" type="text" autocomplete="username" placeholder="Choisis ton nom de pilote" />
-              </div>
-            </div>
-
-            <div class="field">
-              <label for="regEmail">Adresse email</label>
-              <div class="inputWrap">
-                <input id="regEmail" type="email" autocomplete="email" inputmode="email" placeholder="pilote@exemple.com" />
-              </div>
-            </div>
-
-            <div class="field">
-              <label>Choisis ta firme</label>
-              <div class="factionChoices" role="radiogroup" aria-label="Firme du pilote">
-                <label class="factionChoice"><input type="radio" name="regFaction" value="mmo"><span class="factionChoiceBody"><img src="/ASSETS/FACTIONS/MMO.png" alt=""><strong>MMO</strong></span></label>
-                <label class="factionChoice"><input type="radio" name="regFaction" value="eic"><span class="factionChoiceBody"><img src="/ASSETS/FACTIONS/EIC.png" alt=""><strong>EIC</strong></span></label>
-                <label class="factionChoice"><input type="radio" name="regFaction" value="vru"><span class="factionChoiceBody"><img src="/ASSETS/FACTIONS/VRU.png" alt=""><strong>VRU</strong></span></label>
-              </div>
-            </div>
-
-            <div class="field">
-              <label for="regPass">Mot de passe</label>
-              <div class="inputWrap">
-                <input id="regPass" type="password" autocomplete="new-password" placeholder="Minimum 10 caractères" />
-                <button id="toggleRegPass" class="eyeBtn" type="button" aria-label="Afficher/masquer">
-                  <svg id="eyeRegOpen" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/>
-                    <circle cx="12" cy="12" r="3"/>
-                  </svg>
-                  <svg id="eyeRegOff" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:none">
-                    <path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"/>
-                    <path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"/>
-                    <path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"/>
-                    <line x1="2" y1="2" x2="22" y2="22"/>
-                  </svg>
-                </button>
-              </div>
-            </div>
-
-            <div class="field">
-              <label for="regPass2">Confirmation</label>
-              <div class="inputWrap">
-                <input id="regPass2" type="password" autocomplete="new-password" placeholder="Confirme ton mot de passe" />
-                <button id="toggleRegPass2" class="eyeBtn" type="button" aria-label="Afficher/masquer">
-                  <svg id="eyeReg2Open" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/>
-                    <circle cx="12" cy="12" r="3"/>
-                  </svg>
-                  <svg id="eyeReg2Off" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:none">
-                    <path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"/>
-                    <path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"/>
-                    <path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"/>
-                    <line x1="2" y1="2" x2="22" y2="22"/>
-                  </svg>
-                </button>
-              </div>
-            </div>
-
-            <button id="btnRegister" class="btn secondary" type="button">Créer un compte pilote</button>
-          </form>
-
-          <div id="msg" class="msg"></div>
-
         </div>
+
+        <div class="field">
+          <label class="srOnly" for="regPass2">Confirmation du mot de passe</label>
+          <div class="inputWrap">
+            <input id="regPass2" type="password" autocomplete="new-password" placeholder="Confirmation du mot de passe" />
+            <button id="toggleRegPass2" class="petBtn eyeBtn" type="button" aria-label="Afficher/masquer">
+              <svg id="eyeReg2Open" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/>
+                <circle cx="12" cy="12" r="3"/>
+              </svg>
+              <svg id="eyeReg2Off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:none">
+                <path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"/>
+                <path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"/>
+                <path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"/>
+                <line x1="2" y1="2" x2="22" y2="22"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        <button id="btnRegister" class="petBtn btn" type="button">Créer un compte pilote</button>
+        <button id="goLogin" class="authHelpLink authSwitch" type="button">Déjà un compte ? Se connecter</button>
+      </form>
+
+      <div id="msg" class="msg"></div>
       </div>
     </div>
-  </div>
+  </main>
 
   <script type="module" src="/PUBLIC/AUTH.js"></script>
 </body>

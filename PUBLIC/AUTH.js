@@ -30,12 +30,26 @@ const recoveryEmail = $("recoveryEmail");
 const recoveryEmailFields = $("recoveryEmailFields");
 const resetPasswordFields = $("resetPasswordFields");
 const recoverySubmit = $("recoverySubmit");
+const winTitle = $("winTitle");
 let recoveryMode = "";
 let recoveryToken = "";
+
+// Titre de la fenêtre : suit l'onglet actif ou la récupération ouverte.
+function syncWinTitle() {
+  if (!winTitle) return;
+  winTitle.textContent = recoveryMode ? "Récupération du compte"
+    : tabJoin?.classList.contains("active") ? "Inscription pilote" : "Connexion pilote";
+}
 
 function showMsg(text, ok) {
   msgEl.textContent = text || "";
   msgEl.className = "msg " + (ok ? "ok" : "err");
+}
+
+// Pas de message de progression ni de réussite : on efface juste l'ancien.
+function clearMsg() {
+  msgEl.textContent = "";
+  msgEl.className = "msg";
 }
 
 function goProfile() {
@@ -50,17 +64,24 @@ async function publicAuthApi(path, body) {
 function openRecovery(mode, token = "") {
   recoveryMode = mode;
   recoveryToken = token;
+  // La carte prend la place du formulaire de connexion (pas d'empilement).
+  formLogin?.classList.add("hidden");
+  msgEl.className = "msg";
+  msgEl.textContent = "";
+  if (recoveryPanel) recoveryPanel.dataset.mode = mode;
   recoveryPanel?.classList.remove("hidden");
   const reset = mode === "reset";
   recoveryEmailFields?.classList.toggle("hidden", reset);
   resetPasswordFields?.classList.toggle("hidden", !reset);
-  recoveryTitle.textContent = mode === "username" ? "Nom d'utilisateur oublié"
-    : reset ? "Choisir un nouveau mot de passe" : "Mot de passe oublié";
+  recoveryTitle.textContent = mode === "username" ? "Nom d'utilisateur oublié ?"
+    : reset ? "Choisir un nouveau mot de passe" : "Mot de passe oublié ?";
+  // Phrases courtes : elles tiennent sur une seule ligne.
   recoveryHint.textContent = mode === "username"
-    ? "Indique l'adresse email du compte : son nom d'utilisateur y sera envoyé."
-    : reset ? "Le lien est valable une heure et ne peut être utilisé qu'une fois."
-      : "Un lien sécurisé de réinitialisation sera envoyé à l'adresse du compte.";
+    ? "Ton nom d'utilisateur sera envoyé par email."
+    : reset ? "Lien valable une heure, utilisable une seule fois."
+      : "Un lien de réinitialisation sera envoyé par email.";
   recoverySubmit.textContent = reset ? "Réinitialiser le mot de passe" : "Envoyer l'email";
+  syncWinTitle();
   setTimeout(() => (reset ? $("resetPassword") : recoveryEmail)?.focus(), 0);
 }
 
@@ -68,6 +89,9 @@ function closeRecovery() {
   recoveryPanel?.classList.add("hidden");
   recoveryMode = "";
   recoveryToken = "";
+  // Retour au formulaire de connexion seulement si l'onglet Connexion est actif.
+  if (tabLogin?.classList.contains("active")) formLogin?.classList.remove("hidden");
+  syncWinTitle();
 }
 
 // Check if already logged in
@@ -77,13 +101,14 @@ if (cur) goProfile();
 // Multi : serveur de comptes joignable ? (sinon 100 % local comme avant)
 let netServer = false;
 try {
-  showMsg("Connexion…", true);
+  // Vérification silencieuse : un message n'apparaît que si le serveur est
+  // injoignable (sinon un cadre "Connexion…" clignotait sous le formulaire).
   netServer = await serverOnline(1500);
-  showMsg(netServer ? "Mode en ligne : comptes sur le serveur." : "Serveur injoignable. Connexion impossible.", netServer);
+  if (!netServer) showMsg("Serveur injoignable. Connexion impossible.", false);
   $("btnLogin").disabled = !netServer;
   $("btnRegister").disabled = !netServer;
-  setTimeout(() => { if (!msgEl.textContent.startsWith("⚠️") && !msgEl.textContent.startsWith("❌")) { msgEl.textContent = ""; msgEl.className = "msg"; } }, 2500);
 } catch {
+  showMsg("Serveur injoignable. Connexion impossible.", false);
   netServer = false;
   $("btnLogin").disabled = true;
   $("btnRegister").disabled = true;
@@ -92,6 +117,8 @@ try {
 // Tab switching
 function setTab(which, updateUrl = true) {
   const isLogin = which === "login";
+  // Les classes des formulaires reprennent la main sur le choix initial du <head>.
+  document.documentElement.classList.remove("routeJoin");
   tabLogin.classList.toggle("active", isLogin);
   tabJoin.classList.toggle("active", !isLogin);
   formLogin.classList.toggle("hidden", !isLogin);
@@ -112,9 +139,15 @@ function setTab(which, updateUrl = true) {
 
 tabLogin.addEventListener("click", () => setTab("login"));
 tabJoin.addEventListener("click", () => setTab("join"));
+$("goJoin")?.addEventListener("click", () => setTab("join"));
+$("goLogin")?.addEventListener("click", () => setTab("login"));
 $("forgotUsername")?.addEventListener("click", () => openRecovery("username"));
 $("forgotPassword")?.addEventListener("click", () => openRecovery("password"));
 $("recoveryClose")?.addEventListener("click", closeRecovery);
+$("recoveryBack")?.addEventListener("click", closeRecovery);
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && recoveryPanel && !recoveryPanel.classList.contains("hidden")) closeRecovery();
+});
 
 recoverySubmit?.addEventListener("click", async () => {
   recoverySubmit.disabled = true;
@@ -187,7 +220,7 @@ $("btnLogin").addEventListener("click", async (e) => {
       return;
     }
     if (netServer) {
-      showMsg("Connexion au serveur…", true);
+      clearMsg();
       $("btnLogin").disabled = true;
       try {
         const out = await apiLogin(pseudo, password);
@@ -199,8 +232,7 @@ $("btnLogin").addEventListener("click", async (e) => {
           if (rememberMe && rememberMe.checked) localStorage.setItem(REMEMBER_KEY, pseudo);
           else localStorage.removeItem(REMEMBER_KEY);
         } catch {}
-        showMsg("✅ Session active - Bienvenue pilote! (En ligne)", true);
-        setTimeout(goProfile, 800);
+        goProfile();
       } finally {
         $("btnLogin").disabled = false;
       }
@@ -245,7 +277,7 @@ $("btnRegister").addEventListener("click", async (e) => {
       return;
     }
     if (netServer) {
-      showMsg("Création du compte sur le serveur…", true);
+      clearMsg();
       $("btnRegister").disabled = true;
       try {
         // Migration unique : progression locale reprise si meme pseudo.
@@ -262,8 +294,7 @@ $("btnRegister").addEventListener("click", async (e) => {
           showMsg(out.message || "Compte créé. Confirme ton inscription avec l'email reçu.", true);
           return;
         }
-        showMsg(migrate ? "Compte créé - progression locale importée !" : "Compte pilote créé - session active !", true);
-        setTimeout(goProfile, 800);
+        goProfile();
       } finally {
         $("btnRegister").disabled = false;
       }
@@ -308,5 +339,7 @@ try {
     setTab("join", false);
   } else {
     setTab("login", false);
+    // setTab vide les messages : garder l'alerte serveur visible.
+    if (!netServer) showMsg("Serveur injoignable. Connexion impossible.", false);
   }
 } catch { showMsg("Lien invalide ou service indisponible.", false); }
