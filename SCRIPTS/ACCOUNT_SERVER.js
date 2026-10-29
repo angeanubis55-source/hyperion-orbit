@@ -32,6 +32,7 @@ import { isHalloweenEventActive } from "../NPC/NPC_HALLOWEEN.js";
 import { getPassShopOffer, PASS_MODULE_FORCED } from "../SRC/DATA/PASS_SHOP.js";
 import { SKYLAB_INSTANT_TRANSPORT_COST, SKYLAB_MAX_ROBOTS, SKYLAB_RESOURCE_IDS, SKYLAB_ROBOT_CREDIT_COST, SKYLAB_ROBOT_LIFETIME_MS, SKYLAB_TRANSPORT_COOLDOWN_SEC, canStartSkylabUpgrade, getSkylabModuleDef, isCollectorModule, normalizeSkylabState, skylabRobotCount, skylabStorageCap, tickSkylabState } from "../SRC/DATA/SKYLAB.js";
 import { deployBuiltGalaxyGate, normalizeGalaxyGateState, palladiumExchangeForEnergy, setGalaxyGateMultiplierArmed, spinGalaxyGate } from "../SRC/CORE/GALAXY_GATES.js";
+import { authLink, emailServiceReady, emailTemplate, sendAccountEmail } from "./EMAIL_SERVICE.js";
 
 const DB_DIR = resolve(process.env.ORBIT_DATA_DIR || resolve(process.cwd(), "SERVER_DATA"));
 const DB_PATH = join(DB_DIR, "orbit.db");
@@ -39,6 +40,8 @@ const DB_PATH = join(DB_DIR, "orbit.db");
 const FACTIONS = new Set(["mmo", "eic", "vru"]);
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/i;
 const TOKEN_TTL_MS = 30 * 24 * 3600 * 1000;
+const VERIFY_TTL_MS = 24 * 3600 * 1000;
+const RESET_TTL_MS = 60 * 60 * 1000;
 const BODY_LIMIT = 6_000_000;
 const STARTER_CREDITS = 55_000_000;
 
@@ -107,12 +110,47 @@ function uuid() {
   return `u_${randomBytes(8).toString("hex")}${Date.now().toString(16)}`;
 }
 
+const authTokenHash = token => sha256hex(`orbit-auth:${String(token || "")}`);
+function issueAccountToken(userId, kind, ttlMs) {
+  const raw = randomBytes(32).toString("base64url");
+  const now = Date.now();
+  db.prepare("DELETE FROM account_auth_tokens WHERE user_id = ? AND kind = ?").run(String(userId), String(kind));
+  db.prepare("INSERT INTO account_auth_tokens (token_hash, user_id, kind, created_at, expires_at, used_at) VALUES (?, ?, ?, ?, ?, 0)")
+    .run(authTokenHash(raw), String(userId), String(kind), now, now + ttlMs);
+  return raw;
+}
+function consumeAccountToken(raw, kind) {
+  const now = Date.now();
+  const hash = authTokenHash(raw);
+  const row = db.prepare("SELECT * FROM account_auth_tokens WHERE token_hash = ? AND kind = ? AND used_at = 0 AND expires_at > ?")
+    .get(hash, String(kind), now);
+  if (!row) return null;
+  const changed = db.prepare("UPDATE account_auth_tokens SET used_at = ? WHERE token_hash = ? AND used_at = 0").run(now, hash);
+  return Number(changed.changes) === 1 ? row : null;
+}
+function testEmailBypass(email) {
+  return /@[^@]+\.test$/i.test(String(email || "")) && !emailServiceReady();
+}
+const emailText = value => String(value || "").replace(/[&<>"']/g, char => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[char]));
+
+async function sendVerificationEmail(user, rawToken) {
+  const href = authLink({ verify: rawToken });
+  await sendAccountEmail({
+    to: user.email,
+    subject: "Confirme ton inscription Hyperion Orbit",
+    text: `Bonjour ${user.pseudo}, confirme ton inscription avec ce lien (valable 24 h) : ${href}`,
+    html: emailTemplate("Confirme ton inscription", `Bienvenue ${emailText(user.pseudo)}. Confirme ton adresse email pour activer ton compte. Ce lien expire dans 24 heures.`, "Activer mon compte", href),
+  });
+}
+
 // --- Base ---
 let db = null;
 export function initAccountDb() {
   if (db) return db;
   mkdirSync(DB_DIR, { recursive: true });
   db = new DatabaseSync(DB_PATH);
+  let hadEmailVerifiedColumn = false;
+  try { hadEmailVerifiedColumn = db.prepare("PRAGMA table_info(users)").all().some(row => row.name === "email_verified_at"); } catch {}
   db.exec(`
     CREATE TABLE IF NOT EXISTS users (
       id TEXT PRIMARY KEY,
@@ -124,7 +162,8 @@ export function initAccountDb() {
       data TEXT NOT NULL DEFAULT '{}',
       revision INTEGER NOT NULL DEFAULT 0,
       created_at INTEGER NOT NULL,
-      updated_at INTEGER NOT NULL
+      updated_at INTEGER NOT NULL,
+      email_verified_at INTEGER NOT NULL DEFAULT 0
     );
     CREATE UNIQUE INDEX IF NOT EXISTS idx_users_pseudo ON users(pseudo_norm);
     CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users(email);
@@ -135,6 +174,15 @@ export function initAccountDb() {
       expires_at INTEGER NOT NULL
     );
     CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
+    CREATE TABLE IF NOT EXISTS account_auth_tokens (
+      token_hash TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      kind TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      expires_at INTEGER NOT NULL,
+      used_at INTEGER NOT NULL DEFAULT 0
+    );
+    CREATE INDEX IF NOT EXISTS idx_account_auth_tokens_user ON account_auth_tokens(user_id, kind);
     CREATE TABLE IF NOT EXISTS account_save_tx (
       user_id TEXT NOT NULL,
       save_id TEXT NOT NULL,
@@ -246,9 +294,23 @@ export function initAccountDb() {
     );
     CREATE INDEX IF NOT EXISTS idx_clan_log_clan ON clan_log(clan_id, created_at);
   `);
+  try { db.exec("ALTER TABLE users ADD COLUMN email_verified_at INTEGER NOT NULL DEFAULT 0"); } catch {}
+  // Compatibilité : les comptes créés avant l'arrivée de la validation email
+  // restent utilisables. Cette migration ne s'exécute qu'une seule fois.
+  if (!hadEmailVerifiedColumn) {
+    try { db.exec("UPDATE users SET email_verified_at = created_at WHERE email_verified_at = 0"); } catch {}
+  }
   // Menage des sessions expirees (toutes les heures).
   const purge = () => {
     try { db.prepare("DELETE FROM sessions WHERE expires_at < ?").run(Date.now()); } catch {}
+    try { db.prepare("DELETE FROM account_auth_tokens WHERE expires_at < ? OR used_at > 0").run(Date.now()); } catch {}
+    try {
+      const stale = db.prepare("SELECT id FROM users WHERE email_verified_at = 0 AND created_at < ?").all(Date.now() - VERIFY_TTL_MS);
+      for (const row of stale) {
+        db.prepare("DELETE FROM account_auth_tokens WHERE user_id = ?").run(row.id);
+        db.prepare("DELETE FROM users WHERE id = ?").run(row.id);
+      }
+    } catch {}
     try { db.prepare("DELETE FROM npc_reward_tx WHERE created_at < ?").run(Date.now() - 7 * 24 * 3600_000); } catch {}
   };
   purge();
@@ -2730,8 +2792,27 @@ async function handleRegister(body, res) {
   } catch {
     return json(res, 409, { ok: false, error: "Pseudo ou email déjà utilisé." });
   }
-  const token = newSession(id);
-  return json(res, 200, { ok: true, token, user: rowToPublic({ id, pseudo, email, faction, data: JSON.stringify(data) }) });
+  const publicUser = rowToPublic({ id, pseudo, email, faction, data: JSON.stringify(data) });
+  // Les domaines .test sont réservés aux tests automatisés locaux. En
+  // production, aucun compte réel ne reçoit de session avant confirmation.
+  if (testEmailBypass(email)) {
+    db.prepare("UPDATE users SET email_verified_at = ? WHERE id = ?").run(now, id);
+    const token = newSession(id);
+    return json(res, 200, { ok: true, token, user: publicUser, testEmailBypass: true });
+  }
+  if (!emailServiceReady()) {
+    db.prepare("DELETE FROM users WHERE id = ?").run(id);
+    return json(res, 503, { ok: false, error: "Le service email n'est pas configuré. Inscription temporairement indisponible." });
+  }
+  const verification = issueAccountToken(id, "verify", VERIFY_TTL_MS);
+  try {
+    await sendVerificationEmail({ id, pseudo, email }, verification);
+  } catch {
+    db.prepare("DELETE FROM account_auth_tokens WHERE user_id = ?").run(id);
+    db.prepare("DELETE FROM users WHERE id = ?").run(id);
+    return json(res, 503, { ok: false, error: "L'email de confirmation n'a pas pu être envoyé. Réessaie plus tard." });
+  }
+  return json(res, 202, { ok: true, pendingVerification: true, message: "Compte créé. Consulte ta boîte email pour confirmer ton inscription." });
 }
 
 // POST /api/login { pseudoOrEmail, password }
@@ -2741,6 +2822,7 @@ async function handleLogin(body, res) {
   if (!key || !pass) return json(res, 400, { ok: false, error: "Champs manquants." });
   const u = db.prepare("SELECT * FROM users WHERE pseudo_norm = ? OR email = ?").get(key, key);
   if (!u || !await verifyPassword(u.password_hash, pass)) return json(res, 401, { ok: false, error: "Identifiants incorrects." });
+  if (!(Number(u.email_verified_at) > 0)) return json(res, 403, { ok: false, code: "EMAIL_UNVERIFIED", error: "Confirme ton inscription avec le lien reçu par email avant de te connecter." });
   // Migration clair -> hash.
   if (!String(u.password_hash || "").startsWith("v2$")) {
     const h = await hashPassword(pass);
@@ -2754,6 +2836,69 @@ async function handleLogin(body, res) {
   }
   const token = newSession(u.id);
   return json(res, 200, { ok: true, token, user: rowToPublic(u) });
+}
+
+async function handleVerifyEmail(body, res) {
+  const row = consumeAccountToken(String(body?.token || ""), "verify");
+  if (!row) return json(res, 400, { ok: false, error: "Lien de confirmation invalide ou expiré." });
+  const now = Date.now();
+  db.prepare("UPDATE users SET email_verified_at = ?, updated_at = ? WHERE id = ?").run(now, now, row.user_id);
+  return json(res, 200, { ok: true, message: "Adresse confirmée. Tu peux maintenant te connecter." });
+}
+
+async function handleForgotUsername(body, res) {
+  const email = norm(body?.email);
+  const generic = { ok: true, message: "Si cette adresse correspond à un compte, son nom d'utilisateur vient d'être envoyé." };
+  if (!EMAIL_RE.test(email)) return json(res, 200, generic);
+  const user = db.prepare("SELECT id, pseudo, email, email_verified_at FROM users WHERE email = ?").get(email);
+  if (user && Number(user.email_verified_at) > 0 && emailServiceReady()) {
+    try {
+      await sendAccountEmail({ to: user.email, subject: "Ton nom d'utilisateur Hyperion Orbit",
+        text: `Ton nom d'utilisateur est : ${user.pseudo}`,
+        html: emailTemplate("Nom d'utilisateur retrouvé", `Ton nom d'utilisateur Hyperion Orbit est : <strong>${emailText(user.pseudo)}</strong>`, "Retour à la connexion", authLink()) });
+    } catch {}
+  }
+  return json(res, 200, generic);
+}
+
+async function handleForgotPassword(body, res) {
+  const email = norm(body?.email);
+  const generic = { ok: true, message: "Si cette adresse correspond à un compte, un lien de réinitialisation vient d'être envoyé." };
+  if (!EMAIL_RE.test(email)) return json(res, 200, generic);
+  const user = db.prepare("SELECT id, pseudo, email, email_verified_at FROM users WHERE email = ?").get(email);
+  if (user && Number(user.email_verified_at) > 0 && emailServiceReady()) {
+    const raw = issueAccountToken(user.id, "password", RESET_TTL_MS);
+    const href = authLink({ reset: raw });
+    try {
+      await sendAccountEmail({ to: user.email, subject: "Réinitialise ton mot de passe Hyperion Orbit",
+        text: `Réinitialise ton mot de passe avec ce lien valable une heure : ${href}`,
+        html: emailTemplate("Réinitialisation du mot de passe", "Une demande de réinitialisation a été reçue. Ce lien expire dans une heure et ne fonctionne qu'une fois.", "Choisir un nouveau mot de passe", href) });
+    } catch { try { db.prepare("DELETE FROM account_auth_tokens WHERE user_id = ? AND kind = 'password'").run(user.id); } catch {} }
+  }
+  return json(res, 200, generic);
+}
+
+async function handleResetPassword(body, res) {
+  const raw = String(body?.token || "");
+  const password = String(body?.password || "");
+  if (password.length < 10) return json(res, 400, { ok: false, error: "Mot de passe trop court (10 caractères minimum)." });
+  const row = consumeAccountToken(raw, "password");
+  if (!row) return json(res, 400, { ok: false, error: "Lien de réinitialisation invalide ou expiré." });
+  const hash = await hashPassword(password);
+  const user = db.prepare("SELECT data FROM users WHERE id = ?").get(row.user_id);
+  if (!user) return json(res, 400, { ok: false, error: "Compte introuvable." });
+  let data = {};
+  try { data = JSON.parse(user.data || "{}") || {}; } catch {}
+  data.password = hash;
+  data.updatedAt = Date.now();
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    db.prepare("UPDATE users SET password_hash = ?, data = ?, updated_at = ? WHERE id = ?").run(hash, JSON.stringify(data), data.updatedAt, row.user_id);
+    db.prepare("DELETE FROM sessions WHERE user_id = ?").run(row.user_id);
+    db.prepare("DELETE FROM account_auth_tokens WHERE user_id = ?").run(row.user_id);
+    db.exec("COMMIT");
+  } catch (error) { try { db.exec("ROLLBACK"); } catch {} throw error; }
+  return json(res, 200, { ok: true, message: "Mot de passe réinitialisé. Tu peux maintenant te connecter." });
 }
 
 // Admin : ajoute/retire de l'EXP au compte et recalcule immediatement les
@@ -3310,7 +3455,8 @@ export function handleAccountApi(req, res) {
     return true;
   }
   if ((pathname === "/api/register" || pathname === "/api/login") && req.method === "POST") {
-    if (rateLimited(`${ip}:${pathname}`)) return json(res, 429, { ok: false, error: "Trop de tentatives, reessaie dans une minute." });
+    const authLimit = pathname === "/api/register" ? (process.env.NODE_TEST_CONTEXT ? 100 : 5) : 20;
+    if (rateLimited(`${ip}:${pathname}`, authLimit)) return json(res, 429, { ok: false, error: "Trop de tentatives, reessaie dans une minute." });
     readBody(req, res, (body) => {
       try {
         if (pathname === "/api/register") handleRegister(body, res).catch(() => { try { json(res, 500, { ok: false, error: "Erreur serveur." }); } catch {} });
@@ -3318,6 +3464,22 @@ export function handleAccountApi(req, res) {
       } catch {
         json(res, 500, { ok: false, error: "Erreur serveur." });
       }
+    });
+    return true;
+  }
+  const publicAuthHandlers = {
+    "/api/auth/verify-email": handleVerifyEmail,
+    "/api/auth/forgot-username": handleForgotUsername,
+    "/api/auth/forgot-password": handleForgotPassword,
+    "/api/auth/reset-password": handleResetPassword,
+  };
+  if (publicAuthHandlers[pathname] && req.method === "POST") {
+    const strictLimit = pathname.includes("forgot") ? 5 : 15;
+    if (rateLimited(`${ip}:${pathname}`, strictLimit)) return json(res, 429, { ok: false, error: "Trop de tentatives. Réessaie dans une minute." });
+    readBody(req, res, body => {
+      Promise.resolve(publicAuthHandlers[pathname](body, res)).catch(() => {
+        try { json(res, 500, { ok: false, error: "Erreur serveur." }); } catch {}
+      });
     });
     return true;
   }

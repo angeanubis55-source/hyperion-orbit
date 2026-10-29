@@ -376,6 +376,23 @@
       display: none;
     }
 
+    .authHelpLink{
+      display:inline-block; margin-top:8px; padding:0; border:0; background:none;
+      color:#68dcff; font-size:12px; cursor:pointer; text-decoration:underline;
+      text-underline-offset:3px;
+    }
+    .authHelpLink:hover{ color:#fff; }
+    .recoveryPanel{
+      margin-top:16px; padding:16px; border:1px solid rgba(100,200,255,.25);
+      border-radius:14px; background:rgba(0,8,20,.72); display:flex;
+      flex-direction:column; gap:13px;
+    }
+    .recoveryPanel.hidden{ display:none; }
+    .recoveryHead{ display:flex; align-items:flex-start; justify-content:space-between; gap:12px; }
+    .recoveryHead strong{ color:#fff; font-size:16px; }
+    .recoveryHead p{ color:var(--muted); font-size:12px; margin-top:4px; line-height:1.4; }
+    .recoveryClose{ border:0; background:none; color:#9fb7ca; cursor:pointer; font-size:20px; }
+
     /* Buttons */
     .btn{
       width: 100%;
@@ -561,6 +578,7 @@
               <div class="inputWrap">
                 <input id="loginUser" type="text" autocomplete="username" placeholder="Ton nom de pilote" />
               </div>
+              <button id="forgotUsername" class="authHelpLink" type="button">Nom d'utilisateur oublié ?</button>
             </div>
 
             <div class="field">
@@ -580,6 +598,7 @@
                   </svg>
                 </button>
               </div>
+              <button id="forgotPassword" class="authHelpLink" type="button">Mot de passe oublié ?</button>
             </div>
 
             <div class="rememberRow">
@@ -589,6 +608,22 @@
 
             <button id="btnLogin" class="btn primary" type="button">Connexion</button>
           </form>
+
+          <section id="recoveryPanel" class="recoveryPanel hidden" aria-live="polite">
+            <div class="recoveryHead">
+              <div><strong id="recoveryTitle">Récupération du compte</strong><p id="recoveryHint"></p></div>
+              <button id="recoveryClose" class="recoveryClose" type="button" aria-label="Fermer">×</button>
+            </div>
+            <div id="recoveryEmailFields" class="field">
+              <label for="recoveryEmail">Adresse email du compte</label>
+              <div class="inputWrap"><input id="recoveryEmail" type="email" autocomplete="email" placeholder="pilote@exemple.com" /></div>
+            </div>
+            <div id="resetPasswordFields" class="hidden">
+              <div class="field"><label for="resetPassword">Nouveau mot de passe</label><div class="inputWrap"><input id="resetPassword" type="password" autocomplete="new-password" placeholder="Minimum 10 caractères" /></div></div>
+              <div class="field"><label for="resetPasswordConfirm">Confirmation</label><div class="inputWrap"><input id="resetPasswordConfirm" type="password" autocomplete="new-password" placeholder="Répète le mot de passe" /></div></div>
+            </div>
+            <button id="recoverySubmit" class="btn secondary" type="button">Envoyer</button>
+          </section>
 
           <!-- JOIN FORM -->
           <form id="formJoin" class="form hidden" autocomplete="on">

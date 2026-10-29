@@ -50,3 +50,15 @@ npm run benchmark
 - interface de profil et boutique.
 
 Les cartes normales sont exclusivement multijoueur. Les Galaxy Gates restent des instances privées simulées localement, tout en conservant une session serveur active.
+
+# Emails de compte
+
+La confirmation d'inscription et la récupération de compte utilisent l'API Resend. Le serveur doit recevoir ces variables d'environnement :
+
+```text
+ORBIT_MAIL_API_KEY=re_...
+ORBIT_MAIL_FROM=Hyperion Orbit <noreply@votre-domaine.fr>
+ORBIT_PUBLIC_URL=https://votre-domaine.fr
+```
+
+`ORBIT_MAIL_FROM` doit être une adresse autorisée dans Resend. Sans cette configuration, les nouvelles inscriptions réelles sont refusées afin de ne jamais créer un compte impossible à confirmer. Les comptes existants restent validés lors de la migration.

@@ -23,6 +23,15 @@ const regEmail = $("regEmail");
 const regPass = $("regPass");
 const regPass2 = $("regPass2");
 const factionChoices = [...document.querySelectorAll('input[name="regFaction"]')];
+const recoveryPanel = $("recoveryPanel");
+const recoveryTitle = $("recoveryTitle");
+const recoveryHint = $("recoveryHint");
+const recoveryEmail = $("recoveryEmail");
+const recoveryEmailFields = $("recoveryEmailFields");
+const resetPasswordFields = $("resetPasswordFields");
+const recoverySubmit = $("recoverySubmit");
+let recoveryMode = "";
+let recoveryToken = "";
 
 function showMsg(text, ok) {
   msgEl.textContent = text || "";
@@ -31,6 +40,34 @@ function showMsg(text, ok) {
 
 function goProfile() {
   location.href = "/index.html";
+}
+
+async function publicAuthApi(path, body) {
+  const response = await fetch(path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body || {}) });
+  return { status: response.status, ...(await response.json().catch(() => ({}))) };
+}
+
+function openRecovery(mode, token = "") {
+  recoveryMode = mode;
+  recoveryToken = token;
+  recoveryPanel?.classList.remove("hidden");
+  const reset = mode === "reset";
+  recoveryEmailFields?.classList.toggle("hidden", reset);
+  resetPasswordFields?.classList.toggle("hidden", !reset);
+  recoveryTitle.textContent = mode === "username" ? "Nom d'utilisateur oublié"
+    : reset ? "Choisir un nouveau mot de passe" : "Mot de passe oublié";
+  recoveryHint.textContent = mode === "username"
+    ? "Indique l'adresse email du compte : son nom d'utilisateur y sera envoyé."
+    : reset ? "Le lien est valable une heure et ne peut être utilisé qu'une fois."
+      : "Un lien sécurisé de réinitialisation sera envoyé à l'adresse du compte.";
+  recoverySubmit.textContent = reset ? "Réinitialiser le mot de passe" : "Envoyer l'email";
+  setTimeout(() => (reset ? $("resetPassword") : recoveryEmail)?.focus(), 0);
+}
+
+function closeRecovery() {
+  recoveryPanel?.classList.add("hidden");
+  recoveryMode = "";
+  recoveryToken = "";
 }
 
 // Check if already logged in
@@ -61,6 +98,7 @@ function setTab(which) {
   formJoin.classList.toggle("hidden", isLogin);
   msgEl.className = "msg";
   msgEl.textContent = "";
+  closeRecovery();
 
   setTimeout(() => {
     (isLogin ? loginUser : regUser)?.focus();
@@ -69,6 +107,30 @@ function setTab(which) {
 
 tabLogin.addEventListener("click", () => setTab("login"));
 tabJoin.addEventListener("click", () => setTab("join"));
+$("forgotUsername")?.addEventListener("click", () => openRecovery("username"));
+$("forgotPassword")?.addEventListener("click", () => openRecovery("password"));
+$("recoveryClose")?.addEventListener("click", closeRecovery);
+
+recoverySubmit?.addEventListener("click", async () => {
+  recoverySubmit.disabled = true;
+  try {
+    if (recoveryMode === "reset") {
+      const password = $("resetPassword")?.value || "";
+      if (password.length < 10) return showMsg("Mot de passe trop court (10 caractères minimum).", false);
+      if (password !== ($("resetPasswordConfirm")?.value || "")) return showMsg("Les mots de passe ne correspondent pas.", false);
+      const out = await publicAuthApi("/api/auth/reset-password", { token: recoveryToken, password });
+      showMsg(out.message || out.error || "Réinitialisation impossible.", out.ok === true);
+      if (out.ok) { history.replaceState({}, "", location.pathname); closeRecovery(); }
+      return;
+    }
+    const email = recoveryEmail?.value.trim() || "";
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/i.test(email)) return showMsg("Entre une adresse email valide.", false);
+    const path = recoveryMode === "username" ? "/api/auth/forgot-username" : "/api/auth/forgot-password";
+    const out = await publicAuthApi(path, { email });
+    showMsg(out.message || out.error || "Demande envoyée.", out.ok === true);
+  } catch { showMsg("Erreur réseau. Réessaie plus tard.", false); }
+  finally { recoverySubmit.disabled = false; }
+});
 
 // Password toggle helper
 function attachToggle(btnId, inputId, eyeOnId, eyeOffId) {
@@ -190,7 +252,12 @@ $("btnRegister").addEventListener("click", async (e) => {
           showMsg(out?.error || "❌ Échec de création", false);
           return;
         }
-        showMsg(migrate ? "✅ Compte créé - progression locale importée! (En ligne)" : "✅ Compte pilote créé - Session active! (En ligne)", true);
+        if (out.pendingVerification) {
+          setTab("login");
+          showMsg(out.message || "Compte créé. Confirme ton inscription avec l'email reçu.", true);
+          return;
+        }
+        showMsg(migrate ? "Compte créé - progression locale importée !" : "Compte pilote créé - session active !", true);
         setTimeout(goProfile, 800);
       } finally {
         $("btnRegister").disabled = false;
@@ -218,3 +285,19 @@ regPass2.addEventListener("keydown", (e) => {
     $("btnRegister").click();
   }
 });
+
+// Les liens d'activation et de réinitialisation reviennent sur cette page.
+try {
+  const query = new URLSearchParams(location.search);
+  const verifyToken = query.get("verify");
+  const resetToken = query.get("reset");
+  if (verifyToken) {
+    const out = await publicAuthApi("/api/auth/verify-email", { token: verifyToken });
+    setTab("login");
+    showMsg(out.message || out.error || "Confirmation impossible.", out.ok === true);
+    history.replaceState({}, "", location.pathname);
+  } else if (resetToken) {
+    setTab("login");
+    openRecovery("reset", resetToken);
+  }
+} catch { showMsg("Lien invalide ou service indisponible.", false); }
