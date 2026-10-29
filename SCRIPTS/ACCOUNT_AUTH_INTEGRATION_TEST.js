@@ -48,6 +48,12 @@ test("inscription confirmée, identifiant oublié et réinitialisation sécuris�
       assert.equal(page.status, 200, `${route} doit être une route publique valide`);
       assert.match(page.headers.get("content-type") || "", /text\/html/);
     }
+    const legacyAuth = await fetch(origin + "/PUBLIC/AUTH.html?reset=test", { redirect: "manual" });
+    assert.equal(legacyAuth.status, 308);
+    assert.equal(legacyAuth.headers.get("location"), "/login?reset=test");
+    const legacyGame = await fetch(origin + "/index.html", { redirect: "manual" });
+    assert.equal(legacyGame.status, 308);
+    assert.equal(legacyGame.headers.get("location"), "/game");
     const registration = await api("/api/register", { pseudo: "PiloteRecup", email: "pilote@auth-example.com", password: "ancien-password-123", faction: "mmo" });
     assert.equal(registration.status, 202); assert.equal(registration.pendingVerification, true); assert.equal(registration.token, undefined);
     assert.equal((await api("/api/login", { pseudoOrEmail: "PiloteRecup", password: "ancien-password-123" })).code, "EMAIL_UNVERIFIED");

@@ -1436,7 +1436,21 @@ const server = createServer(async (request, response) => {
       response.end(JSON.stringify({ ok: false, error: "Erreur serveur." }));
       return;
     }
-    const pathname = decodeURIComponent(new URL(request.url, "http://localhost").pathname);
+    const publicUrl = new URL(request.url, "http://localhost");
+    const pathname = decodeURIComponent(publicUrl.pathname);
+    const canonicalRoutes = new Map([
+      ["/PUBLIC/AUTH.html", "/login"],
+      ["/index.html", "/game"],
+    ]);
+    const canonicalPath = canonicalRoutes.get(pathname);
+    if (canonicalPath) {
+      response.writeHead(308, {
+        location: `${canonicalPath}${publicUrl.search}`,
+        "cache-control": "no-store",
+      });
+      response.end();
+      return;
+    }
     const relative = publicRelativePath(pathname);
     const file = normalize(join(root, relative));
     if (file !== root && !file.startsWith(`${root}\\`) && !file.startsWith(`${root}/`)) throw new Error("Invalid path");
