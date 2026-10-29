@@ -26,7 +26,7 @@ function shipTypeName(shipId) {
 export function initGroupUI() {
   if (started) return;
   started = true;
-  const status = document.getElementById("groupStatus"), members = document.getElementById("groupMembers"), invites = document.getElementById("groupInvites"), notices = document.getElementById("groupNotices"), input = document.getElementById("groupInviteInput"), autoAccept = document.getElementById("groupAutoAccept"), autoAcceptRow = document.getElementById("groupAutoAcceptRow");
+  const status = document.getElementById("groupStatus"), members = document.getElementById("groupMembers"), invites = document.getElementById("groupInvites"), input = document.getElementById("groupInviteInput"), autoAccept = document.getElementById("groupAutoAccept"), autoAcceptRow = document.getElementById("groupAutoAcceptRow");
   if (!members || !invites) return;
   if (autoAccept) {
     autoAccept.checked = loadGroupAutoAccept();
@@ -81,7 +81,7 @@ export function initGroupUI() {
     if (inviteBtn) inviteBtn.disabled = invitesDisabled;
   }
 
-  let pendingInvites = [], pendingNotices = [];
+  let pendingInvites = [];
   function renderInvites() {
     let list = pendingInvites;
     pendingInvites = [];
@@ -111,19 +111,13 @@ export function initGroupUI() {
     }
     invites.querySelector(".groupEmpty")?.remove();
     for (const row of invites.querySelectorAll("[data-expires-at]")) { const left = Math.max(0, Math.ceil((Number(row.dataset.expiresAt) - Date.now()) / 1000)); const timer = row.querySelector(".groupInviteTimer"); if (timer) timer.textContent = `${left}s`; if (!left) row.remove(); }
-    if (!invites.children.length) invites.innerHTML = `<div class="groupEmpty">Aucune invitation. Invite un pilote ci-dessous pour former un groupe.</div>`;
+    if (!invites.children.length) invites.innerHTML = `<div class="groupEmpty">Aucune invitation.</div>`;
   }
 
+  // Messages d'information du serveur (« Pilote introuvable… », « Invitation
+  // envoyée… ») : consommés mais plus affichés dans la fenêtre.
   function pollNotices() {
-    try {
-      pendingNotices = pendingNotices.concat(drainNetGroupNoticeInbox())
-        .filter(notice => !notice.expiresAt || Number(notice.expiresAt) > Date.now()).slice(-5);
-      if (!shouldRefreshWindow("groupWindow")) return;
-      const received = pendingNotices;
-      pendingNotices = [];
-      for (const notice of received) { const row = document.createElement("div"); row.className = "groupNotice"; row.dataset.text = String(notice.text || ""); if (notice.expiresAt) row.dataset.expiresAt = String(notice.expiresAt); row.textContent = row.dataset.text; notices?.prepend(row); while (notices?.children.length > 5) notices.removeChild(notices.lastChild); }
-      for (const row of notices?.querySelectorAll("[data-expires-at]") || []) { const left = Math.max(0, Math.ceil((Number(row.dataset.expiresAt) - Date.now()) / 1000)); row.textContent = `${row.dataset.text} (${left}s)`; if (!left) row.remove(); }
-    } catch {}
+    try { drainNetGroupNoticeInbox(); } catch {}
   }
 
   let signature = "", syncAt = 0;

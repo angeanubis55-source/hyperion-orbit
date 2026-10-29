@@ -255,6 +255,9 @@ function broadcastChargedShot(room, state, hit, now) {
 function applyServerAbilityDamage(room, sim, victim, damage, pen, now, sourceId, sourceProfile = null, weaken = 0, secondary = false) {
   const context = {
     room, sourceProfile,
+    // Une présence dans la simulation NPC est la preuve serveur de la source.
+    // Un identifiant joueur ou station ne peut donc pas déclencher Assimilation.
+    npcSource: !!sim?.entries?.has(String(sourceId)),
     emit: event => emitAbilityEvent(room, event),
     allied: (a, b) => {
       const group = socialGroupOf(String(a.id));
@@ -474,8 +477,8 @@ function trackAbilityFx(state, profile, skill, msg, room, id, now, sim = null) {
     // même 3 s pour les rooms à faible cadence ? Non : snapshot seul.
     if (hasDuration || isToggle || movementEffect || key === "ability_solace") state._abilityFx[key] = fx;
   } catch {}
-  // Orcus Assimilation : la conversion 80 % dégâts -> PV doit valoir aussi
-  // contre les joueurs (le client n'adopte que les baisses serveur).
+  // Conserve l'aura Orcus dans l'état serveur. La conversion elle-même est
+  // limitée aux sources NPC dans applyServerAbilityDamage/abilityDamage.
   if (key === "ability_orcus_assimilate" || key === "ability_orcus-plus_assimilate") {
     try { state._orcusUntil = fx.until; } catch {}
   }
@@ -3134,10 +3137,7 @@ wss.on("connection", (ws) => {
         }
         const pen = Math.max(0, Math.min(1, Number(msg.pen ?? 0)));
         let applied = 0;
-        // Orcus Assimilation de la VICTIME : 80 % des dégâts PvP convertis
-        // en PV (plafond hpMax), 20 % restants appliqués normalement.
-        // Sans ça, la conversion locale (hurtPlayer) ne vaudrait que vs NPC
-        // car le client n'adopte que les baisses serveur.
+        // Les dégâts PvP passent normalement : Assimilation est réservée aux NPC.
         let debWeaken = 0, debDmgMult = 1, debPenBonus = 0;
         try {
           for (const [, pentry] of room) {

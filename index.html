@@ -1076,16 +1076,17 @@
 
     <div id="groupWindow" class="panel groupPanel">
       <div class="groupBody">
-        <section class="wikiCard groupCard">
-          <div id="groupStatus" class="wikiCardTitle">Groupe</div>
-          <div id="groupMembers" class="groupEntries"></div>
-          <div id="groupInvites" class="groupEntries"><div class="groupEmpty">Aucune invitation.</div></div>
-        </section>
-        <section class="wikiCard groupActions">
+        <div class="groupActions">
           <div class="groupInviteRow">
             <input id="groupInviteInput" type="text" placeholder="Pseudo à inviter…" maxlength="20" autocomplete="off" />
             <button id="groupInviteBtn" class="clanPrimary" type="button">Inviter</button>
           </div>
+          <label class="groupAutoAccept" id="groupAutoAcceptRow" for="groupAutoAccept"><input id="groupAutoAccept" type="checkbox" /><span><b>Accepter automatiquement les invitations</b></span></label>
+        </div>
+        <section class="wikiCard groupCard">
+          <div id="groupStatus" class="wikiCardTitle">Groupe</div>
+          <div id="groupMembers" class="groupEntries"></div>
+          <div id="groupInvites" class="groupEntries"><div class="groupEmpty">Aucune invitation.</div></div>
           <div class="groupControlRow">
             <button id="groupLeaveBtn" class="danger" type="button" style="display:none;">Quitter</button>
             <span class="groupLeaderControls">
@@ -1094,9 +1095,8 @@
               <button id="groupKickModeBtn" class="danger" type="button" style="display:none;">Exclure</button>
             </span>
           </div>
-          <label class="groupAutoAccept" id="groupAutoAcceptRow" for="groupAutoAccept"><input id="groupAutoAccept" type="checkbox" /><span><b>Accepter automatiquement les invitations</b><small>Rejoint directement sans cliquer Rejoindre.</small></span></label>
         </section>
-        <div id="groupNotices" class="groupNotices"></div>
+        <div id="groupNotices" class="groupNotices" hidden></div>
       </div>
     </div>
 

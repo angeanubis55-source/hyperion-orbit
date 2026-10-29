@@ -13,7 +13,7 @@ import vm from "node:vm";
 import { droneDesignCooldown } from "../DRONE/DRONE_DESIGNS.js";
 import { abilityFxCodeFor, abilityIdForFxCode, healSpecFor, ABILITY_FX_CODES } from "../SRC/CORE/ABILITY_FX.js";
 import { getAbilityInfo, ABILITY_IDS, abilityShipKeyFor } from "../SHIP/SHIP_ABILITIES.js";
-import { SHIP_PACKS } from "../SHIP/SHIP_PACKS.js";
+import { SHIP_PACKS, getShipDesignBaseId } from "../SHIP/SHIP_PACKS.js";
 import { ShipEngine } from "../SHIP/SHIP_ENGINE_RENDERER.js";
 import { CATALOG } from "../SRC/CORE/CATALOG.js";
 import { isHalloweenVariantType, isHalloweenBossVariant } from "../NPC/NPC_HALLOWEEN.js";
@@ -87,12 +87,14 @@ function visuals() {
   return { api: context, remotes, draws, sounds, halos, translations, floats, normalDraws, renderErrors, strokes, advance: ms => { now += ms; } };
 }
 
-test("Orcus / Plus : activation locale 20/24 s, annulation et recharge de 540 s", () => {
+test("Orcus / Plus : coques et designs activent 20/24 s, annulation et recharge de 540 s", () => {
   for (const [ship, skill, seconds] of [["orcus", "ability_orcus_assimilate", 20],
-    ["orcus_plus", "ability_orcus-plus_assimilate", 24]]) {
+    ["orcus_amor", "ability_orcus_assimilate", 20],
+    ["orcus_plus", "ability_orcus-plus_assimilate", 24],
+    ["orcus_plus_pearl_cyan", "ability_orcus-plus_assimilate", 24]]) {
     const v = visuals(), casts = [], persisted = [], loads = [];
     Object.assign(v.api, { started: true, ORCUS_PLUS_DURATION: 24, account: { user: {} },
-      getActiveHangarFromUser: () => ({ shipId: ship }), getShipDesignBaseId: id => id,
+      getActiveHangarFromUser: () => ({ shipId: ship }), getShipDesignBaseId,
       currentAbilityVariant: () => skill, reportAbilityCast: (...args) => casts.push(args),
       persistCdUntil: (...args) => persisted.push(args), loadImage: path => loads.push(path),
       showNotification() {}, formatAbilityCd: String });

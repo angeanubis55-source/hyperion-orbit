@@ -6276,9 +6276,65 @@ html body #profileOverlay .profileHeaderTop .profileTitle, html body #profileOve
   padding:0;
   gap:6px;
 }
-#groupWindow .groupActions {
-  padding:10px;
+/* Champ + bouton Inviter hors carte, case alignée sous le champ. */
+#groupWindow .groupActions,
+#groupWindow .groupActions.groupMemberMode,
+#groupWindow .groupActions.groupLeaderMode {
+  display:grid;
   gap:8px;
+  padding:0;
+}
+#groupWindow .groupInviteRow {
+  display:flex;
+  gap:8px;
+  align-items:center;
+}
+#groupWindow .groupInviteRow input {
+  height:30px;
+  padding:0 10px;
+  box-sizing:border-box;
+  border:1px solid rgba(124,240,255,.3);
+  border-radius:8px;
+  background:#051521;
+  color:#eaffff;
+  font:750 12px ui-sans-serif,system-ui;
+}
+#groupWindow .groupInviteRow input:focus {
+  border-color:#7cf0ff;
+  outline:none;
+}
+#groupWindow .groupInviteRow button {
+  height:30px;
+  padding:0 16px;
+  border:1px solid rgba(70,230,150,.55);
+  border-radius:8px;
+  background:linear-gradient(135deg,rgba(20,150,95,.5),rgba(10,80,55,.45));
+  color:#eaffff;
+  font:800 11px/1 ui-sans-serif,system-ui;
+  cursor:pointer;
+}
+#groupWindow .groupInviteRow button:hover {
+  border-color:rgba(110,255,180,.8);
+  background:rgba(20,150,95,.45);
+}
+#groupWindow .groupInviteRow :disabled {
+  opacity:.45;
+  cursor:default;
+}
+#groupWindow .groupAutoAccept {
+  display:flex;
+  align-items:center;
+  justify-self:start;
+  padding:0 0 0 2px;
+  cursor:pointer;
+}
+#groupWindow .groupCard .groupControlRow {
+  display:flex;
+  align-items:center;
+  gap:6px;
+}
+#groupWindow .groupCard .groupControlRow:not(:has(button:not([style*="display: none"]))) {
+  display:none;
 }
 #groupWindow .groupInviteRow input {
   flex:1 1 auto;

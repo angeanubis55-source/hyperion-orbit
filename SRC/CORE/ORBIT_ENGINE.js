@@ -2894,7 +2894,7 @@ function tryLastStand() {
   reportAbilityCast("ability_paladin_last-stand");
   return true;
 }
-// Orcus Assimilate : 80 % de TOUS les dégâts reçus (NPC + joueurs) convertis
+// Orcus Assimilate : 80 % des dégâts reçus des NPC uniquement sont convertis
 // en PV (+x verts). Sprite ORCUS_ASSIMILATE (42 frames) par-dessus nous.
 // JAMX branché plus tard (avec Spearhead). Durée 20 s, recharge 540 s.
 const ORCUS_DURATION = 20;
@@ -31651,11 +31651,10 @@ function hurtPlayer(amount, source = null) {
     return;
   }
 
-  // Orcus Assimilate : 80 % des dégâts NPC reçus convertis en PV (+x verts).
-  // Les 20 % restants passent normalement. Les dégâts de JOUEURS sont
-  // convertis côté serveur (pvpHit, _orcusUntil) car le client n'adopte
-  // que les baisses serveur.
-  if ((player.orcusT || 0) > 0) {
+  // Orcus Assimilate : uniquement lorsqu'un véritable NPC est la source.
+  // Les 20 % restants passent normalement. Les joueurs et dégâts sans source
+  // ne déclenchent ni réduction ni soin.
+  if ((player.orcusT || 0) > 0 && source && source.byPlayer !== true) {
     const conv = Math.max(0, Math.round(Number(amount) || 0) * ORCUS_ABSORB);
     if (conv > 0 && !player.dead) {
       const oldHp = Number(player.hp || 0);
@@ -36837,6 +36836,44 @@ function preloadActionDockIcons() {
   actionDockIconsPreloaded = true;
   for (const src of actionDockIconUrls()) { try { loadImage(String(src)); } catch {} }
 }
+
+// Icônes du dock du haut : le CSS n'en charge qu'un état (normal) ; les
+// variantes _hover / _select n'étaient téléchargées qu'au premier survol ou
+// clic, d'où un saut visible. On les précharge et décode toutes (lues dans
+// les feuilles de style, donc aucune liste à maintenir). Les Image restent
+// référencées pour ne pas être libérées.
+const menuDockIconImages = new Map();
+function preloadMenuDockIcons() {
+  const found = [];
+  const walk = (rules, base) => {
+    for (const rule of rules || []) {
+      if (rule.cssRules) walk(rule.cssRules, base);
+      const text = String(rule.cssText || "");
+      if (!text.includes("UI/MENU/")) continue;
+      for (const match of text.matchAll(/url\(\s*["']?([^"')]*UI\/MENU\/[^"')]+)["']?\s*\)/g)) {
+        try { found.push(new URL(match[1], base).href); } catch {}
+      }
+    }
+  };
+  for (const sheet of Array.from(document.styleSheets || [])) {
+    let rules = null;
+    try { rules = sheet.cssRules; } catch { continue; }
+    walk(rules, sheet.href || location.href);
+  }
+  for (const href of found) {
+    if (menuDockIconImages.has(href)) continue;
+    const img = new Image();
+    img.decoding = "async";
+    img.src = href;
+    try { img.decode?.().catch(() => {}); } catch {}
+    menuDockIconImages.set(href, img);
+  }
+}
+try {
+  preloadMenuDockIcons();
+  // Feuille encore en cours de chargement au démarrage : seconde passe.
+  if (document.readyState !== "complete") window.addEventListener("load", preloadMenuDockIcons, { once: true });
+} catch {}
 
 function preloadShipEffectBackground() {
   try {

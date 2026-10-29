@@ -54,8 +54,13 @@ export function abilityDamage(state, amount, penetration, now, context, secondar
     if (!secondary) context.reflect?.(state, damage * 0.7, penetration);
     damage *= 0.3;
   }
-  const assimilate = activeAbility(state, "ability_orcus-plus_assimilate", now) ? "ability_orcus-plus_assimilate"
-    : activeAbility(state, "ability_orcus_assimilate", now) ? "ability_orcus_assimilate" : null;
+  // Assimilation ne réagit qu'aux impacts provenant réellement d'un NPC.
+  // Les tirs de joueurs, stations et dégâts secondaires ne doivent ni être
+  // réduits ni générer de faux soins +X/+0.
+  const assimilate = context.npcSource === true
+    ? activeAbility(state, "ability_orcus-plus_assimilate", now) ? "ability_orcus-plus_assimilate"
+      : activeAbility(state, "ability_orcus_assimilate", now) ? "ability_orcus_assimilate" : null
+    : null;
   if (assimilate) {
     const before = state.hp;
     state.hp = Math.min(state.hpMax, state.hp + damage * 0.8);

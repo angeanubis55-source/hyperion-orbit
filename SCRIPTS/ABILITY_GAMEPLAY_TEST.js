@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import vm from "node:vm";
 import { readFileSync } from "node:fs";
 import { ABILITIES, ABILITY_IDS, getAbilityInfo, abilityShipKeyFor, HYPERION_QA_DAMAGE, HYPERION_QA_SALVOS } from "../SHIP/SHIP_ABILITIES.js";
-import { SHIP_PACKS } from "../SHIP/SHIP_PACKS.js";
+import { SHIP_PACKS, getShipDesignBaseId } from "../SHIP/SHIP_PACKS.js";
 import { isAbilityFxBroadcastable, healSpecFor, fxDebuffsOn, HEAL_MIN_INTERVAL_MS, EXEC_WINDOW_MS } from "../SRC/CORE/ABILITY_FX.js";
 import { ABILITY_DAMAGE_RULES, validateAbilityDamage, hostileAbility, unlimitedAbilityRange, abilitySpeedMult } from "../SRC/CORE/ABILITY_COMBAT_RULES.js";
 import { abilityDamage, activeAbility, tickAbilityStates, triggerPaladin, recordAbilityDamageDealt, recordAbilityNpcKill, applyEnergyLeech } from "./ABILITY_RUNTIME.js";
@@ -299,45 +299,62 @@ test("renvois : RVG integral vers l'attaquant, Spectrum Plus 70 %, aucune boucle
   }
 });
 
-test("Orcus / Plus : 80 % convertis en PV et 20 % subis, soin reel plafonne", () => {
+test("Orcus / Plus : un impact NPC convertit 80 %, un impact joueur ne soigne pas", () => {
   for (const skill of ["ability_orcus_assimilate", "ability_orcus-plus_assimilate"]) {
     const state = player(), events = []; state.hp = 900000;
     state._abilityFx = { [skill]: { from: NOW, until: NOW + 5000 } };
-    assert.equal(abilityDamage(state, 10000, 0, NOW, { emit: e => events.push(e) }).total, 2000);
+    assert.equal(abilityDamage(state, 10000, 0, NOW, { npcSource: true, emit: e => events.push(e) }).total, 2000);
     assert.equal(events[0].skill, skill, "le soin conserve la variante active");
     assert.equal(events[0].amount, 8000); assert.equal(state.hp, 907600);
     assert.equal(state.orcusHealAt, NOW, "flux victime ohAt alimenté");
     assert.equal(state.orcusHealAmt, 8000, "flux victime ohAmt alimenté");
     state.hp = state.hpMax;
-    abilityDamage(state, 10000, 0, NOW, { emit: e => events.push(e) });
+    abilityDamage(state, 10000, 0, NOW, { npcSource: true, emit: e => events.push(e) });
     assert.equal(events.at(-1).amount, 0);
     assert.equal(state.orcusHealAmt, 0, "plafond : aucun gain remonté");
+    const heals = events.length;
+    assert.equal(abilityDamage(state, 10000, 0, NOW, { npcSource: false, emit: e => events.push(e) }).total, 10000);
+    assert.equal(events.length, heals, "aucun soin sur dégâts joueur");
   }
 });
 
-test("Orcus / Plus : vrais impacts NPC et PvP, duree, expiration et soins sequences", () => {
+test("Orcus / Plus : toutes les coques et tous leurs designs héritent de la bonne Assimilation", () => {
+  const families = [
+    ["orcus", "ability_orcus_assimilate", "ability_orcus-plus_assimilate"],
+    ["orcus_plus", "ability_orcus-plus_assimilate", "ability_orcus_assimilate"],
+  ];
+  for (const [base, owned, foreign] of families) {
+    const ids = SHIP_PACKS.filter(pack => pack.id === base || getShipDesignBaseId(pack.id) === base).map(pack => pack.id);
+    assert.ok(ids.length > 1, `${base} possède bien des designs testables`);
+    for (const id of ids) {
+      assert.equal(shipOwnsAbility(id, owned), true, `${id} possède ${owned}`);
+      assert.equal(shipOwnsAbility(id, foreign), false, `${id} ne reçoit pas l'aptitude de l'autre coque`);
+    }
+  }
+});
+
+test("Orcus / Plus : vrais impacts NPC seulement, duree, expiration et soins sequences", () => {
   for (const [ship, skill, seconds] of [["orcus", "ability_orcus_assimilate", 20],
     ["orcus_plus", "ability_orcus-plus_assimilate", 24]]) {
     const f = fixture(ship);
     assert.equal(cast(f, skill), true);
     assert.equal(f.caster._abilityFx[skill].until, NOW + seconds * 1000);
     f.caster.hp = 900000;
-    for (const sourceId of ["npc_attacker", f.target.id]) {
-      const now = NOW + 1000;
-      const result = f.api.applyServerAbilityDamage(f.room, f.sim, f.caster, 10000, 0, now, sourceId);
-      assert.equal(result.total, 2000);
-      const heal = f.events.filter(e => e.phase === "heal").at(-1);
-      assert.equal(heal.skill, skill); assert.equal(heal.amount, 8000);
-      assert.equal(heal.target, f.caster.id); assert.ok(heal.healSeq > 0);
-    }
-    assert.equal(f.caster.hp, 915200);
-    assert.equal(f.events.filter(e => e.phase === "heal").at(-1).healSeq, 2);
+    f.sim.entries.set("npc_attacker", { id: "npc_attacker", hp: 100000 });
+    const result = f.api.applyServerAbilityDamage(f.room, f.sim, f.caster, 10000, 0, NOW + 1000, "npc_attacker");
+    assert.equal(result.total, 2000);
+    const heal = f.events.filter(e => e.phase === "heal").at(-1);
+    assert.equal(heal.skill, skill); assert.equal(heal.amount, 8000);
+    assert.equal(heal.target, f.caster.id); assert.ok(heal.healSeq > 0);
+    const healsAfterNpc = f.events.filter(e => e.phase === "heal").length;
+    assert.equal(f.api.applyServerAbilityDamage(f.room, f.sim, f.caster, 10000, 0, NOW + 1001, f.target.id).total, 10000);
+    assert.equal(f.events.filter(e => e.phase === "heal").length, healsAfterNpc, "PvP sans soin");
     f.caster.hp = f.caster.hpMax;
-    f.api.applyServerAbilityDamage(f.room, f.sim, f.caster, 10000, 0, NOW + seconds * 1000 - 1, f.target.id);
+    f.api.applyServerAbilityDamage(f.room, f.sim, f.caster, 10000, 0, NOW + seconds * 1000 - 1, "npc_attacker");
     assert.equal(f.events.filter(e => e.phase === "heal").at(-1).amount, 0);
     const heals = f.events.filter(e => e.phase === "heal").length;
     assert.equal(f.api.applyServerAbilityDamage(f.room, f.sim, f.caster, 10000, 0,
-      NOW + seconds * 1000, f.target.id).total, 10000);
+      NOW + seconds * 1000, "npc_attacker").total, 10000);
     assert.equal(f.events.filter(e => e.phase === "heal").length, heals);
   }
 });
