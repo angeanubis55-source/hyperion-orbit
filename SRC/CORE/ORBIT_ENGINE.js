@@ -1477,9 +1477,9 @@ const SPEED_BURST_SPEED = 900;
 const TECH_COOLDOWN = 300; // recharge de chaque tech (individuelle)
 const ENERGY_LEECH_CD_S = 900; // Energy Leech : 900 s au lieu de 300
 // Tech Chain Impulse : armée via l'onglet/le slot, déclenchée par le
-// prochain tir laser. Éclair (visuel lien HP du PET) sur tous les ennemis
-// dans un rayon de 700 autour du lanceur : -50 % vitesse pendant 2 s.
-// Joueurs + NPC, visible par tous (snapshot slow + skillFx chain).
+// prochain tir laser. Éclair (visuel lien HP du PET) sur 12 ennemis max
+// dans un rayon de 400 autour du lanceur : 30k dégâts, sans ralentissement.
+// Joueurs + NPC, visible par tous (skillFx chain).
 const CHAIN_IMPULSE_ID = "ability_tech_chain_impulse";
 const CHAIN_IMPULSE_RADIUS = 400;
 const CHAIN_IMPULSE_DAMAGE = 30000;
@@ -1519,7 +1519,6 @@ const NPC_BOMB_RADIUS = 700;
 const NPC_BOMB_TICK_SEC = 10;
 const NPC_BOMB_TICK_DMG = 100000;
 const NPC_BOMB_DURATION_MS = 60000;
-const NPC_BOMB_MAX_TARGETS = 30;
 // Tech Shield Backup : restauration instantanée de bouclier (150k / 300k),
 // +X visible par soi et les verrouilleurs (canal heal). Conditions serveur :
 // générateur de bouclier équipé, pas déjà au max.
@@ -1886,15 +1885,16 @@ const leechBeams = [];
 // Halo local du Frost Field (cyan clair, 2 s).
 // Ennemis autour du lanceur (NPC + joueurs de firme adverse, 700) : visuel
 // local + le serveur revalide et applique (positions serveur).
-function gatherTechVictims() {
+function gatherTechVictims(radius = CHAIN_IMPULSE_RADIUS) {
   const victims = [];
+  const r2 = radius * radius;
   try {
     for (const e of enemies) {
       if (!e || !(Number(e.hp) > 0)) continue;
       const uid = String(e._netUid || (techInLocalInstance() ? e.id : ""));
       if (!uid) continue;
       const dx = Number(e.x) - player.x, dy = Number(e.y) - player.y;
-      if (dx * dx + dy * dy > CHAIN_IMPULSE_RADIUS * CHAIN_IMPULSE_RADIUS) continue;
+      if (dx * dx + dy * dy > r2) continue;
       victims.push({ id: uid, x: Math.round(Number(e.x)), y: Math.round(Number(e.y)), entity: e });
       if (victims.length >= CHAIN_IMPULSE_MAX_TARGETS) break;
     }
@@ -1909,7 +1909,7 @@ function gatherTechVictims() {
         const rf = String(r.firm || "").toLowerCase();
         if (myFirm && rf && rf === myFirm) continue;
         const dx = Number(r.rx ?? r.x) - player.x, dy = Number(r.ry ?? r.y) - player.y;
-        if (dx * dx + dy * dy > CHAIN_IMPULSE_RADIUS * CHAIN_IMPULSE_RADIUS) continue;
+        if (dx * dx + dy * dy > r2) continue;
         victims.push({ id: String(rid), x: Math.round(Number(r.rx ?? r.x)), y: Math.round(Number(r.ry ?? r.y)) });
         if (victims.length >= CHAIN_IMPULSE_MAX_TARGETS) break;
       }
@@ -1931,8 +1931,7 @@ function fireChainImpulse() {
       for (const victim of victims) {
         const e = victim.entity;
         if (!e || !(Number(e.hp) > 0)) continue;
-        e.rocketSlowPct = Math.max(Number(e.rocketSlowPct || 0), 50);
-        e.rocketSlowT = Math.max(Number(e.rocketSlowT || 0), 2);
+        // Pas de ralentissement (comme le serveur) : c'est le rôle de Frost Field.
         damageEnemy(e, CHAIN_IMPULSE_DAMAGE, undefined, { chance: 0, mult: 1 }, { ability: CHAIN_IMPULSE_ID, fixedDamage: true });
       }
     }
@@ -1976,7 +1975,7 @@ function drawLeechBeamsFx(ox, oy) {
 // 700 pendant 2 s + slow serveur. Le serveur revalide et applique.
 function fireFrostField() {
   try {
-    const victims = gatherTechVictims();
+    const victims = gatherTechVictims(FROST_FIELD_RADIUS);
     if (!victims.length) {
       showToast("Aucun ennemi à portée.", 1.2);
       return;
@@ -29470,6 +29469,12 @@ function applyCollectableReward(c) {
   if (changed) {
     markProgressDirty();
     updateAmmoUI();
+    // Box de boss (rares, gros contenu) : sauvegarde immédiate au lieu
+    // d'attendre l'autosave de 15 s.
+    if (["Sun_Box", "Mindfire_Sun_Box", "Boss_Cucurbitor_Box"].includes(String(c?.type || ""))) {
+      try { saveProgressNow(); } catch {}
+      try { if (netActive()) flushNetUser().catch(() => {}); } catch {}
+    }
   }
 
   if (!cargoRefused) advanceQuestProgress("collect", c.type);
@@ -31193,10 +31198,11 @@ function damageEnemy(e, dmg, shieldPenetration, crit, opts = {}) {
   }
   // En Galaxy Gate il n'y a pas de serveur de combat pour confirmer le vol
   // de vie : applique exactement les 10 % sur les dégâts locaux validés.
+  // Mêmes règles que le serveur : PIB/CBO comptent, rien pendant Volt Back-up.
   if (typeof techInLocalInstance === "function" && techInLocalInstance()
     && techEnergyLeechActive() && result.total > 0 && opts.fromJpc !== true
-    && opts.fromPet !== true && opts.fromRedirect !== true && opts.nonLaser !== true
-    && !opts.rocket && !opts.ability && !player.dead) {
+    && opts.fromPet !== true && opts.fromRedirect !== true
+    && !opts.rocket && !opts.ability && !player.dead && (player.tempestBackupT || 0) <= 0) {
     const before = Number(player.hp) || 0;
     player.hp = Math.min(Number(player.hpMax) || 0, before + Math.floor(result.total * ENERGY_LEECH_PCT));
     showTechLocalHeal(Math.max(0, Math.round(player.hp - before)));
@@ -40512,6 +40518,10 @@ ui.stationRows?.addEventListener("click", (event) => {
 });
 
 function stationRefresh(reason = "") {
+  // La resync station (deflecteur toutes les 5 s, reparations...) relit le
+  // compte : sauver d'abord les gains encore dans le moteur (credits de box,
+  // munitions...), sinon le solde stocke les efface et annule le dirty.
+  try { if (started && account.user && account.dirty) saveProgressNow(); } catch {}
   try { syncPlayerFromAccount(); } catch {}
   renderStationWindow(reason);
   try { window.dispatchEvent(new CustomEvent("orbit:profile-progress")); } catch {}
@@ -43082,7 +43092,9 @@ function update(dt) {
     while (player.techRepairAcc >= 1) {
       player.techRepairAcc -= 1;
       const before = Number(player.hp) || 0;
-      player.hp = Math.min(Number(player.hpMax) || 0, before + Math.max(0, Number(player.techRepairAmount) || 0));
+      // Comme le serveur : tick consommé mais aucun soin pendant Volt Back-up.
+      const amount = (player.tempestBackupT || 0) > 0 ? 0 : Math.max(0, Number(player.techRepairAmount) || 0);
+      player.hp = Math.min(Number(player.hpMax) || 0, before + amount);
       showTechLocalHeal(Math.max(0, Math.round(player.hp - before)));
     }
   }
@@ -43090,11 +43102,7 @@ function update(dt) {
     const age = performance.now() - techNpcBombFrom;
     while (techNpcBombPulse < 6 && age >= (techNpcBombPulse + 1) * NPC_BOMB_TICK_SEC * 1000) {
       techNpcBombPulse += 1;
-      for (const e of enemies) {
-        if (!e || !(Number(e.hp) > 0) || e.isJpcBot === true) continue;
-        if (dist2(player.x, player.y, Number(e.x), Number(e.y)) > NPC_BOMB_RADIUS * NPC_BOMB_RADIUS) continue;
-        damageEnemy(e, NPC_BOMB_TICK_DMG, undefined, { chance: 0, mult: 1 }, { ability: NPC_BOMB_ID, fixedDamage: true });
-      }
+      fireNpcBombPulse();
     }
   }
   // Voyage Yamato : même effet, état séparé.
@@ -48603,6 +48611,11 @@ async function switchMapConfig(nextConfig, { mapId, spawnId = null } = {}) {
   try { clearNetplayGameplay(); } catch {}
   try { purgeNpcsForJump(); } catch {}
   addGameLog(`Entrée sur la carte ${mapId}`, "info");
+  // Energy Leech activé en Galaxy Gate (local, sans serveur) : au retour en
+  // multi, réannonce l'aura sinon le serveur ne rend jamais les 10 %.
+  try {
+    if (techEnergyLeechActive() && !techInLocalInstance()) player.energyLeechNeedsResync = true;
+  } catch {}
   window.__SPAWN_PORTAL_ID__ = spawnId;
   window.__ORBIT_MAP_TRANSITION__ = true;
   try {

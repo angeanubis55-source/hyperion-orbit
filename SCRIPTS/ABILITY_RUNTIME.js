@@ -108,13 +108,13 @@ export function abilityDamage(state, amount, penetration, now, context, secondar
 }
 
 // Un pulse de NPC Bomb (100k dégâts aux NPC dans 700 autour du lanceur,
-// ni joueurs ni JPC, max 30). Utilisé à l'activation ET par les 6 pulses.
+// ni joueurs ni JPC, sans limite de cibles). Utilisé à l'activation ET par
+// les 6 pulses.
 export function fireNpcBombPulse(state, sim, now, emit) {
   let n = 0;
   try {
     if (!sim || typeof sim.applyHit !== "function") return n;
     for (const [uid, npc] of sim.entries || []) {
-      if (n >= 30) break;
       if (!npc || npc.dead === true || !(Number(npc.hp) > 0)) continue;
       if (npc.jpc === true) continue;
       const dx = Number(npc.x) - Number(state.x), dy = Number(npc.y) - Number(state.y);
