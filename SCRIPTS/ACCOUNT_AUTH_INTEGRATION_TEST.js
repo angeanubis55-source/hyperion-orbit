@@ -47,6 +47,7 @@ test("inscription confirmée, identifiant oublié et réinitialisation sécuris�
       const page = await fetch(origin + route);
       assert.equal(page.status, 200, `${route} doit être une route publique valide`);
       assert.match(page.headers.get("content-type") || "", /text\/html/);
+      if (route !== "/game") assert.match(await page.text(), /src="\/PUBLIC\/AUTH\.js"/);
     }
     const legacyAuth = await fetch(origin + "/PUBLIC/AUTH.html?reset=test", { redirect: "manual" });
     assert.equal(legacyAuth.status, 308);
