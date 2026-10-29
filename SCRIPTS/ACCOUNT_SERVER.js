@@ -2849,14 +2849,20 @@ async function handleVerifyEmail(body, res) {
 async function handleForgotUsername(body, res) {
   const email = norm(body?.email);
   const generic = { ok: true, message: "Si cette adresse correspond à un compte, son nom d'utilisateur vient d'être envoyé." };
+  if (!emailServiceReady()) {
+    console.error("[auth] Récupération du nom impossible : service email non configuré.");
+    return json(res, 503, { ok: false, error: "Le service email est temporairement indisponible. Contacte un administrateur." });
+  }
   if (!EMAIL_RE.test(email)) return json(res, 200, generic);
   const user = db.prepare("SELECT id, pseudo, email, email_verified_at FROM users WHERE email = ?").get(email);
-  if (user && Number(user.email_verified_at) > 0 && emailServiceReady()) {
+  if (user && Number(user.email_verified_at) > 0) {
     try {
       await sendAccountEmail({ to: user.email, subject: "Ton nom d'utilisateur Hyperion Orbit",
         text: `Ton nom d'utilisateur est : ${user.pseudo}`,
         html: emailTemplate("Nom d'utilisateur retrouvé", `Ton nom d'utilisateur Hyperion Orbit est : <strong>${emailText(user.pseudo)}</strong>`, "Retour à la connexion", authLink()) });
-    } catch {}
+    } catch (error) {
+      console.error("[auth] Échec d'envoi de récupération du nom :", error?.message || error);
+    }
   }
   return json(res, 200, generic);
 }
@@ -2864,16 +2870,23 @@ async function handleForgotUsername(body, res) {
 async function handleForgotPassword(body, res) {
   const email = norm(body?.email);
   const generic = { ok: true, message: "Si cette adresse correspond à un compte, un lien de réinitialisation vient d'être envoyé." };
+  if (!emailServiceReady()) {
+    console.error("[auth] Réinitialisation impossible : service email non configuré.");
+    return json(res, 503, { ok: false, error: "Le service email est temporairement indisponible. Contacte un administrateur." });
+  }
   if (!EMAIL_RE.test(email)) return json(res, 200, generic);
   const user = db.prepare("SELECT id, pseudo, email, email_verified_at FROM users WHERE email = ?").get(email);
-  if (user && Number(user.email_verified_at) > 0 && emailServiceReady()) {
+  if (user && Number(user.email_verified_at) > 0) {
     const raw = issueAccountToken(user.id, "password", RESET_TTL_MS);
     const href = authLink({ reset: raw });
     try {
       await sendAccountEmail({ to: user.email, subject: "Réinitialise ton mot de passe Hyperion Orbit",
         text: `Réinitialise ton mot de passe avec ce lien valable une heure : ${href}`,
         html: emailTemplate("Réinitialisation du mot de passe", "Une demande de réinitialisation a été reçue. Ce lien expire dans une heure et ne fonctionne qu'une fois.", "Choisir un nouveau mot de passe", href) });
-    } catch { try { db.prepare("DELETE FROM account_auth_tokens WHERE user_id = ? AND kind = 'password'").run(user.id); } catch {} }
+    } catch (error) {
+      console.error("[auth] Échec d'envoi de réinitialisation :", error?.message || error);
+      try { db.prepare("DELETE FROM account_auth_tokens WHERE user_id = ? AND kind = 'password'").run(user.id); } catch {}
+    }
   }
   return json(res, 200, generic);
 }
