@@ -42,6 +42,12 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/i;
 const TOKEN_TTL_MS = 30 * 24 * 3600 * 1000;
 const VERIFY_TTL_MS = 24 * 3600 * 1000;
 const RESET_TTL_MS = 60 * 60 * 1000;
+// Pseudo du pilote / du P.E.T : un changement par 24 h (horloge serveur).
+const IDENTITY_COOLDOWN_MS = 24 * 3600 * 1000;
+// Liens de changement d'adresse email (ancienne puis nouvelle adresse).
+const EMAIL_CHANGE_TTL_MS = 24 * 3600 * 1000;
+const PET_RENAME_CREDIT_COST = 1_000_000;
+const PET_DEFAULT_NAME = "REX";
 const BODY_LIMIT = 6_000_000;
 const STARTER_CREDITS = 55_000_000;
 
@@ -61,9 +67,6 @@ function rateLimited(ip, limit = 20) {
 // --- Mots de passe : meme format que le client ("v1$salt$hex") ---
 function sha256hex(str) {
   return createHash("sha256").update(String(str ?? ""), "utf8").digest("hex");
-}
-function isHash(v) {
-  return typeof v === "string" && (v.startsWith("v1$") || v.startsWith("v2$"));
 }
 setInterval(() => {
   const now = Date.now();
@@ -105,6 +108,17 @@ async function verifyPassword(stored, candidate) {
 }
 
 const norm = (s) => String(s ?? "").trim().toLowerCase();
+// Pseudo tapé par un joueur ou un admin : correspondance exacte d'abord ; sans
+// tenir compte des majuscules seulement si un seul compte correspond (deux
+// pseudos peuvent ne différer que par la casse).
+function findUserRowByPseudo(raw) {
+  const exact = String(raw ?? "").trim();
+  if (!exact) return null;
+  const hit = db.prepare("SELECT * FROM users WHERE pseudo = ?").get(exact);
+  if (hit) return hit;
+  const rows = db.prepare("SELECT * FROM users WHERE pseudo_norm = ? LIMIT 2").all(norm(exact));
+  return rows.length === 1 ? rows[0] : null;
+}
 function uuid() {
   if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
   return `u_${randomBytes(8).toString("hex")}${Date.now().toString(16)}`;
@@ -165,7 +179,7 @@ export function initAccountDb() {
       updated_at INTEGER NOT NULL,
       email_verified_at INTEGER NOT NULL DEFAULT 0
     );
-    CREATE UNIQUE INDEX IF NOT EXISTS idx_users_pseudo ON users(pseudo_norm);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_users_pseudo_exact ON users(pseudo);
     CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users(email);
     CREATE TABLE IF NOT EXISTS sessions (
       token TEXT PRIMARY KEY,
@@ -295,6 +309,16 @@ export function initAccountDb() {
     CREATE INDEX IF NOT EXISTS idx_clan_log_clan ON clan_log(clan_id, created_at);
   `);
   try { db.exec("ALTER TABLE users ADD COLUMN email_verified_at INTEGER NOT NULL DEFAULT 0"); } catch {}
+  // Délais de renommage : colonnes serveur, jamais dans le blob sauvegardé
+  // par le client (qu'il pourrait réécrire pour contourner les 24 h).
+  try { db.exec("ALTER TABLE users ADD COLUMN pseudo_changed_at INTEGER NOT NULL DEFAULT 0"); } catch {}
+  try { db.exec("ALTER TABLE users ADD COLUMN pet_pseudo_changed_at INTEGER NOT NULL DEFAULT 0"); } catch {}
+  // Changement d'adresse en attente : confirmé sur l'ancienne puis la nouvelle.
+  db.exec(`CREATE TABLE IF NOT EXISTS account_email_change (
+    user_id TEXT PRIMARY KEY,
+    new_email TEXT NOT NULL,
+    created_at INTEGER NOT NULL
+  )`);
   // Compatibilité : les comptes créés avant l'arrivée de la validation email
   // restent utilisables. Cette migration ne s'exécute qu'une seule fois.
   if (!hadEmailVerifiedColumn) {
@@ -304,6 +328,7 @@ export function initAccountDb() {
   const purge = () => {
     try { db.prepare("DELETE FROM sessions WHERE expires_at < ?").run(Date.now()); } catch {}
     try { db.prepare("DELETE FROM account_auth_tokens WHERE expires_at < ? OR used_at > 0").run(Date.now()); } catch {}
+    try { db.prepare("DELETE FROM account_email_change WHERE created_at < ?").run(Date.now() - 2 * EMAIL_CHANGE_TTL_MS); } catch {}
     try {
       const stale = db.prepare("SELECT id FROM users WHERE email_verified_at = 0 AND created_at < ?").all(Date.now() - VERIFY_TTL_MS);
       for (const row of stale) {
@@ -357,8 +382,12 @@ export function initAccountDb() {
   // Migration : colonne pseudo_norm pour les bases existantes (casse affichee preservee).
   try { db.exec("ALTER TABLE users ADD COLUMN pseudo_norm TEXT NOT NULL DEFAULT ''"); } catch {}
   try { db.exec("UPDATE users SET pseudo_norm = lower(trim(pseudo)) WHERE pseudo_norm = '' OR pseudo_norm IS NULL"); } catch {}
+  // Pseudos uniques à la lettre près : "PiloteB" et "piloteb" sont deux
+  // comptes distincts. pseudo_norm (minuscules) ne sert plus qu'à la
+  // recherche tolérante (voir findUserRowByPseudo).
   try { db.exec("DROP INDEX IF EXISTS idx_users_pseudo"); } catch {}
-  try { db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_pseudo ON users(pseudo_norm)"); } catch {}
+  try { db.exec("CREATE INDEX IF NOT EXISTS idx_users_pseudo_lower ON users(pseudo_norm)"); } catch {}
+  try { db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_pseudo_exact ON users(pseudo)"); } catch {}
   return db;
 }
 
@@ -1126,7 +1155,7 @@ export function adminGiveCredits(pseudo, amount) {
     initAccountDb();
     const key = norm(pseudo);
     if (!key) return { ok: false, error: "Pseudo manquant." };
-    const row = db.prepare("SELECT * FROM users WHERE pseudo_norm = ?").get(key);
+    const row = findUserRowByPseudo(pseudo);
     if (!row) return { ok: false, error: "Compte introuvable." };
     const delta = Math.floor(Number(String(amount ?? "").replace(/[\s_]/g, "")) || 0);
     if (!Number.isFinite(delta) || delta === 0) return { ok: false, error: "Montant invalide (entier non nul)." };
@@ -1192,7 +1221,7 @@ export function adminDebugAccount(target) {
     const raw = String(target || "").trim();
     if (!raw) return { ok: false, error: "Compte manquant." };
     const accountId = raw.startsWith("u_") ? raw.slice(2) : raw;
-    const row = db.prepare("SELECT * FROM users WHERE id = ? OR pseudo_norm = ?").get(accountId, norm(raw));
+    const row = (db.prepare("SELECT * FROM users WHERE id = ?").get(accountId) || findUserRowByPseudo(raw));
     if (!row) return { ok: false, error: "Compte introuvable." };
     let data = {};
     try { data = JSON.parse(row.data || "{}") || {}; } catch { data = {}; }
@@ -1258,7 +1287,7 @@ export function adminGiveGalaxyGate(pseudo, gate) {
     initAccountDb();
     const key = norm(pseudo);
     if (!key) return { ok: false, error: "Pseudo manquant." };
-    const row = db.prepare("SELECT * FROM users WHERE pseudo_norm = ?").get(key);
+    const row = findUserRowByPseudo(pseudo);
     if (!row) return { ok: false, error: "Compte introuvable." };
     const id = String(gate || "").toLowerCase();
     const all = id === "all";
@@ -1302,7 +1331,7 @@ export function adminResetGalaxyGate(pseudo, gate) {
     initAccountDb();
     const key = norm(pseudo);
     if (!key) return { ok: false, error: "Pseudo manquant." };
-    const row = db.prepare("SELECT * FROM users WHERE pseudo_norm = ?").get(key);
+    const row = findUserRowByPseudo(pseudo);
     if (!row) return { ok: false, error: "Compte introuvable." };
     const id = String(gate || "").toLowerCase();
     const all = id === "all";
@@ -1344,7 +1373,7 @@ export function adminDeleteAccount(target) {
     const rawId = t.startsWith("u_") ? t.slice(2) : t;
     try { row = db.prepare("SELECT id, pseudo FROM users WHERE id = ?").get(rawId) || null; } catch {}
     if (!row) {
-      try { row = db.prepare("SELECT id, pseudo FROM users WHERE pseudo_norm = ?").get(norm(t)) || null; } catch {}
+      try { row = findUserRowByPseudo(t) || null; } catch {}
     }
     if (!row) return { ok: false, error: "Compte introuvable." };
     const uid = String(row.id);
@@ -1426,7 +1455,7 @@ function pseudoOf(userId) {
 export function findUserByPseudo(pseudo) {
   try {
     initAccountDb();
-    const row = db.prepare("SELECT id, pseudo FROM users WHERE pseudo_norm = ?").get(norm(pseudo));
+    const row = findUserRowByPseudo(pseudo);
     if (!row) return null;
     return { id: String(row.id), pseudo: String(row.pseudo || "Pilote").slice(0, 20) };
   } catch { return null; }
@@ -1605,7 +1634,7 @@ export function removeFriend(userId, target) {
     let fid = t;
     if (!fid.startsWith("u_") && fid.length < 60) {
       // Pseudo ou id brut : on tente les deux formes.
-      const row = db.prepare("SELECT id FROM users WHERE pseudo_norm = ? OR id = ?").get(norm(t), t);
+      const row = (findUserRowByPseudo(t) || db.prepare("SELECT id FROM users WHERE id = ?").get(t));
       if (row) fid = String(row.id);
     } else if (fid.startsWith("u_")) fid = fid.slice(2);
     db.prepare("DELETE FROM friends WHERE user_id = ? AND friend_id = ?").run(uid, fid);
@@ -2009,7 +2038,7 @@ export function clanBankWithdraw(actorId, pseudo, value) {
     const clanId = clanIdOfUser(uid);
     if (!clanId) return { ok: false, error: "NOCLAN" };
     if (!clanRightsOf(uid, clanId).bank) return { ok: false, error: "RIGHTS" };
-    const target = db.prepare("SELECT id, pseudo FROM users WHERE pseudo_norm = ?").get(norm(pseudo));
+    const target = findUserRowByPseudo(pseudo);
     if (!target) return { ok: false, error: "NOT_FOUND" };
     if (clanIdOfUser(target.id) !== clanId) return { ok: false, error: "NOMEMBER" };
     db.exec("BEGIN IMMEDIATE"); inTx = true;
@@ -2751,7 +2780,7 @@ async function handleRegister(body, res) {
   if (!EMAIL_RE.test(email)) return json(res, 400, { ok: false, error: "Adresse email invalide." });
   if (password.length < 10) return json(res, 400, { ok: false, error: "Mot de passe trop court (10 caractères minimum)." });
   const keyP = norm(pseudo), keyE = norm(email);
-  const clash = db.prepare("SELECT id FROM users WHERE pseudo_norm = ? OR email = ?").get(keyP, keyE);
+  const clash = db.prepare("SELECT id FROM users WHERE pseudo = ? OR email = ?").get(pseudo, keyE);
   if (clash) return json(res, 409, { ok: false, error: "Pseudo ou email déjà utilisé." });
 
   const id = uuid();
@@ -2820,7 +2849,7 @@ async function handleLogin(body, res) {
   const key = norm(body?.pseudoOrEmail);
   const pass = String(body?.password || "");
   if (!key || !pass) return json(res, 400, { ok: false, error: "Champs manquants." });
-  const u = db.prepare("SELECT * FROM users WHERE pseudo_norm = ? OR email = ?").get(key, key);
+  const u = db.prepare("SELECT * FROM users WHERE email = ?").get(key) || findUserRowByPseudo(body?.pseudoOrEmail);
   if (!u || !await verifyPassword(u.password_hash, pass)) return json(res, 401, { ok: false, error: "Identifiants incorrects." });
   if (!(Number(u.email_verified_at) > 0)) return json(res, 403, { ok: false, code: "EMAIL_UNVERIFIED", error: "Confirme ton inscription avec le lien reçu par email avant de te connecter." });
   // Migration clair -> hash.
@@ -2922,7 +2951,7 @@ export function adminGiveExperience(pseudo, amount) {
     initAccountDb();
     const key = norm(pseudo);
     if (!key) return { ok: false, error: "Pseudo manquant." };
-    const row = db.prepare("SELECT * FROM users WHERE pseudo_norm = ?").get(key);
+    const row = findUserRowByPseudo(pseudo);
     if (!row) return { ok: false, error: "Compte introuvable." };
     const delta = Math.floor(Number(String(amount ?? "").replace(/[\s_]/g, "")) || 0);
     if (!Number.isFinite(delta) || delta === 0) return { ok: false, error: "Montant invalide (entier non nul)." };
@@ -2951,7 +2980,7 @@ export function adminGiveHonor(pseudo, amount) {
     initAccountDb();
     const key = norm(pseudo);
     if (!key) return { ok: false, error: "Pseudo manquant." };
-    const row = db.prepare("SELECT * FROM users WHERE pseudo_norm = ?").get(key);
+    const row = findUserRowByPseudo(pseudo);
     if (!row) return { ok: false, error: "Compte introuvable." };
     const delta = Math.floor(Number(String(amount ?? "").replace(/[\s_]/g, "")) || 0);
     if (!Number.isFinite(delta) || delta === 0) return { ok: false, error: "Montant invalide (entier non nul)." };
@@ -2993,7 +3022,7 @@ export function adminGiveDroneDesign(pseudo, designId, count = 1) {
     initAccountDb();
     const key = norm(pseudo);
     if (!key) return { ok: false, error: "Pseudo manquant." };
-    const row = db.prepare("SELECT * FROM users WHERE pseudo_norm = ?").get(key);
+    const row = findUserRowByPseudo(pseudo);
     if (!row) return { ok: false, error: "Compte introuvable." };
     const design = getDroneDesign(designId);
     if (!design) return { ok: false, error: "Design inconnu." };
@@ -3041,7 +3070,7 @@ export function adminGiveModule(pseudo, shipId, stat, pct) {
     initAccountDb();
     const key = norm(pseudo);
     if (!key) return { ok: false, error: "Pseudo manquant." };
-    const row = db.prepare("SELECT * FROM users WHERE pseudo_norm = ?").get(key);
+    const row = findUserRowByPseudo(pseudo);
     if (!row) return { ok: false, error: "Compte introuvable." };
     const family = getShipFamilyId(shipId);
     if (!family || !getShipPackById(family)) return { ok: false, error: "Vaisseau inconnu." };
@@ -3216,7 +3245,7 @@ export function adminGiveTitle(pseudo, name, color) {
     initAccountDb();
     const key = norm(pseudo);
     if (!key) return { ok: false, error: "Pseudo manquant." };
-    const row = db.prepare("SELECT * FROM users WHERE pseudo_norm = ?").get(key);
+    const row = findUserRowByPseudo(pseudo);
     if (!row) return { ok: false, error: "Compte introuvable." };
     const cleanName = String(name || "").replace(/\s+/g, " ").trim();
     if (!cleanName) return { ok: false, error: "Texte vide." };
@@ -3247,56 +3276,203 @@ export function adminGiveTitle(pseudo, name, color) {
   } catch { return { ok: false, error: "Erreur serveur." }; }
 }
 
+const IDENTITY_NAME_RE = /^[\p{L}\p{N}_ -]+$/u;
+const linkedEmail = email => (String(email || "").endsWith("@local") ? "" : norm(email));
+// "pilote@exemple.com" -> "pi•••@exemple.com" (confirmations sans tout révéler).
+function maskEmail(email) {
+  const [name, domain] = String(email || "").split("@");
+  if (!domain) return "";
+  return `${name.slice(0, 2)}${"•".repeat(Math.max(1, Math.min(6, name.length - 2)))}@${domain}`;
+}
+function cooldownLeftMs(changedAt, now = Date.now()) {
+  return Math.max(0, Number(changedAt || 0) + IDENTITY_COOLDOWN_MS - now);
+}
+function cooldownMessage(leftMs, what) {
+  const hours = Math.floor(leftMs / 3600_000), minutes = Math.ceil((leftMs % 3600_000) / 60_000);
+  const wait = hours > 0 ? `${hours} h ${String(minutes % 60).padStart(2, "0")}` : `${Math.max(1, minutes)} min`;
+  return `Tu pourras changer ${what} dans ${wait}.`;
+}
+function petNameTaken(name, userId) {
+  return !!db.prepare(`SELECT 1 FROM users WHERE id != ? AND json_extract(data, '$.pet.owned') = 1
+    AND lower(trim(json_extract(data, '$.pet.pseudo'))) = ? LIMIT 1`).get(String(userId), norm(name));
+}
+
+// GET /api/account/status : délais restants et changement d'email en attente.
+function accountIdentityStatus(me) {
+  const now = Date.now();
+  const pending = db.prepare("SELECT new_email FROM account_email_change WHERE user_id = ?").get(me.id);
+  return {
+    ok: true,
+    pseudoNextAt: cooldownLeftMs(me.pseudo_changed_at, now) > 0 ? Number(me.pseudo_changed_at) + IDENTITY_COOLDOWN_MS : 0,
+    petPseudoNextAt: cooldownLeftMs(me.pet_pseudo_changed_at, now) > 0 ? Number(me.pet_pseudo_changed_at) + IDENTITY_COOLDOWN_MS : 0,
+    emailPending: pending ? maskEmail(pending.new_email) : "",
+  };
+}
+
 async function handleAccountIdentity(req, body, res, kind) {
   const me = authUser(req);
   if (!me) return json(res, 401, { ok: false, error: "Session invalide." });
-  const currentPassword = String(body?.currentPassword || "");
-  if (!await verifyPassword(me.password_hash, currentPassword)) {
-    return json(res, 403, { ok: false, error: "Mot de passe actuel incorrect." });
+  // Le renommage du P.E.T et l'envoi du lien de mot de passe n'exigent pas le
+  // mot de passe : le premier coûte des crédits, le second part sur l'adresse
+  // vérifiée du compte.
+  if (kind === "pseudo" || kind === "email") {
+    if (!await verifyPassword(me.password_hash, String(body?.currentPassword || ""))) {
+      return json(res, 403, { ok: false, error: "Mot de passe actuel incorrect." });
+    }
   }
   let data = {};
   try { data = JSON.parse(me.data || "{}") || {}; } catch {}
-  let pseudo = String(me.pseudo || "Pilote");
-  let email = norm(me.email);
-  let passwordHash = String(me.password_hash || "");
+  const now = Date.now();
+
   if (kind === "pseudo") {
+    const left = cooldownLeftMs(me.pseudo_changed_at, now);
+    if (left > 0) return json(res, 429, { ok: false, error: cooldownMessage(left, "de pseudo"), nextAt: now + left });
     const next = String(body?.value || "").trim();
-    if (next.length < 3 || next.length > 32 || !/^[\p{L}\p{N}_ -]+$/u.test(next)) {
+    if (next.length < 3 || next.length > 32 || !IDENTITY_NAME_RE.test(next)) {
       return json(res, 400, { ok: false, error: "Le pseudo doit contenir entre 3 et 32 caractères autorisés." });
     }
-    const clash = db.prepare("SELECT 1 FROM users WHERE pseudo_norm = ? AND id != ?").get(norm(next), me.id);
+    if (next === me.pseudo) return json(res, 400, { ok: false, error: "C'est déjà ton pseudo." });
+    const clash = db.prepare("SELECT 1 FROM users WHERE pseudo = ? AND id != ?").get(next, me.id);
     if (clash) return json(res, 409, { ok: false, error: "Ce pseudo est déjà utilisé." });
-    pseudo = next;
-  } else if (kind === "email") {
-    const next = norm(body?.value);
-    if (!EMAIL_RE.test(next)) return json(res, 400, { ok: false, error: "Adresse email invalide." });
-    const clash = db.prepare("SELECT 1 FROM users WHERE email = ? AND id != ?").get(next, me.id);
-    if (clash) return json(res, 409, { ok: false, error: "Cette adresse email est déjà utilisée." });
-    email = next;
-  } else if (kind === "password") {
-    const next = String(body?.value || "");
-    if (next.length < 10) return json(res, 400, { ok: false, error: "Le nouveau mot de passe doit contenir au moins 10 caractères." });
-    if (await verifyPassword(passwordHash, next)) return json(res, 400, { ok: false, error: "Choisis un mot de passe différent de l'ancien." });
-    passwordHash = await hashPassword(next);
-    // Un changement de mot de passe invalide toutes les autres sessions.
-    db.prepare("DELETE FROM sessions WHERE user_id = ?").run(me.id);
-    const bearer = bearerToken(req);
-    if (bearer) {
-      const now = Date.now();
-      db.prepare("INSERT OR REPLACE INTO sessions (token, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)")
-        .run(sessionKey(bearer), me.id, now, now + TOKEN_TTL_MS);
+    const revision = Math.max(0, Number(me.revision) || 0) + 1;
+    Object.assign(data, { id: me.id, pseudo: next, revision, updatedAt: now });
+    try {
+      db.prepare("UPDATE users SET pseudo = ?, pseudo_norm = ?, data = ?, revision = ?, updated_at = ?, pseudo_changed_at = ? WHERE id = ?")
+        .run(next, norm(next), JSON.stringify(data), revision, now, now, me.id);
+    } catch {
+      // Contrainte d'unicité : un autre pilote a pris ce pseudo entre-temps.
+      return json(res, 409, { ok: false, error: "Ce pseudo est déjà utilisé." });
     }
-  } else return json(res, 400, { ok: false, error: "Modification inconnue." });
-  const revision = Math.max(0, Number(me.revision) || 0) + 1;
-  data.id = me.id;
-  data.pseudo = pseudo;
-  data.email = email;
-  data.password = passwordHash;
-  data.revision = revision;
-  data.updatedAt = Date.now();
-  db.prepare("UPDATE users SET pseudo = ?, pseudo_norm = ?, email = ?, password_hash = ?, data = ?, revision = ?, updated_at = ? WHERE id = ?")
-    .run(pseudo, norm(pseudo), email, passwordHash, JSON.stringify(data), revision, data.updatedAt, me.id);
-  return json(res, 200, { ok: true, user: rowToPublic({ id: me.id, pseudo, email, faction: me.faction, data: JSON.stringify(data) }) });
+    return json(res, 200, { ok: true, nextAt: now + IDENTITY_COOLDOWN_MS,
+      user: rowToPublic({ id: me.id, pseudo: next, email: me.email, faction: me.faction, data: JSON.stringify(data) }) });
+  }
+
+  if (kind === "pet-pseudo") {
+    if (data.pet?.owned !== true) return json(res, 400, { ok: false, error: "P.E.T non possédé." });
+    const left = cooldownLeftMs(me.pet_pseudo_changed_at, now);
+    if (left > 0) return json(res, 429, { ok: false, error: cooldownMessage(left, "le pseudo du P.E.T"), nextAt: now + left });
+    const next = String(body?.value || "").trim();
+    if (next.length < 3 || next.length > 32 || !IDENTITY_NAME_RE.test(next)) {
+      return json(res, 400, { ok: false, error: "Le pseudo du P.E.T doit contenir entre 3 et 32 caractères autorisés." });
+    }
+    if (norm(next) === norm(data.pet.pseudo || PET_DEFAULT_NAME)) return json(res, 400, { ok: false, error: "C'est déjà le pseudo de ton P.E.T." });
+    if (petNameTaken(next, me.id)) return json(res, 409, { ok: false, error: "Ce pseudo de P.E.T est déjà utilisé." });
+    const credits = Math.max(0, Math.floor(Number(data.credits) || 0));
+    if (credits < PET_RENAME_CREDIT_COST) return json(res, 400, { ok: false, error: "Il faut 1 000 000 crédits pour renommer le P.E.T." });
+    const revision = Math.max(0, Number(me.revision) || 0) + 1;
+    data.credits = credits - PET_RENAME_CREDIT_COST;
+    data.pet.pseudo = next;
+    Object.assign(data, { id: me.id, revision, updatedAt: now });
+    db.prepare("UPDATE users SET data = ?, revision = ?, updated_at = ?, pet_pseudo_changed_at = ? WHERE id = ?")
+      .run(JSON.stringify(data), revision, now, now, me.id);
+    return json(res, 200, { ok: true, nextAt: now + IDENTITY_COOLDOWN_MS, creditsSpent: PET_RENAME_CREDIT_COST,
+      user: rowToPublic({ id: me.id, pseudo: me.pseudo, email: me.email, faction: me.faction, data: JSON.stringify(data) }) });
+  }
+
+  if (kind === "email") {
+    const current = linkedEmail(me.email);
+    const oldEmail = norm(body?.oldEmail);
+    const next = norm(body?.value);
+    if (current && oldEmail !== current) return json(res, 400, { ok: false, error: "L'ancienne adresse email ne correspond pas au compte." });
+    if (!EMAIL_RE.test(next)) return json(res, 400, { ok: false, error: "Nouvelle adresse email invalide." });
+    if (next === current) return json(res, 400, { ok: false, error: "La nouvelle adresse est identique à l'ancienne." });
+    if (db.prepare("SELECT 1 FROM users WHERE email = ? AND id != ?").get(next, me.id)) {
+      return json(res, 409, { ok: false, error: "Cette adresse email est déjà utilisée." });
+    }
+    if (!emailServiceReady()) return json(res, 503, { ok: false, error: "Le service email est temporairement indisponible. Contacte un administrateur." });
+    db.prepare("INSERT OR REPLACE INTO account_email_change (user_id, new_email, created_at) VALUES (?, ?, ?)").run(me.id, next, now);
+    try {
+      // Sans adresse liée, rien à confirmer côté ancienne adresse.
+      if (current) await sendEmailChangeOld(me, current);
+      else await sendEmailChangeNew(me, next);
+    } catch (error) {
+      console.error("[auth] Échec d'envoi du changement d'email :", error?.message || error);
+      db.prepare("DELETE FROM account_email_change WHERE user_id = ?").run(me.id);
+      return json(res, 502, { ok: false, error: "L'email de confirmation n'a pas pu être envoyé. Réessaie plus tard." });
+    }
+    return json(res, 200, { ok: true, step: current ? "old" : "new",
+      message: current ? `Confirme le changement avec le lien envoyé à ${maskEmail(current)}.`
+        : `Confirme ta nouvelle adresse avec le lien envoyé à ${maskEmail(next)}.` });
+  }
+
+  if (kind === "password") {
+    const current = linkedEmail(me.email);
+    if (!current) return json(res, 400, { ok: false, error: "Lie d'abord une adresse email au compte." });
+    if (!emailServiceReady()) return json(res, 503, { ok: false, error: "Le service email est temporairement indisponible. Contacte un administrateur." });
+    const raw = issueAccountToken(me.id, "password", RESET_TTL_MS);
+    const href = authLink({ reset: raw });
+    try {
+      await sendAccountEmail({ to: current, subject: "Change ton mot de passe Hyperion Orbit",
+        text: `Choisis un nouveau mot de passe avec ce lien valable une heure : ${href}`,
+        html: emailTemplate("Changement du mot de passe", "Tu as demandé à changer ton mot de passe. Ce lien expire dans une heure et ne fonctionne qu'une fois. Une fois le mot de passe changé, tu seras déconnecté partout.", "Choisir un nouveau mot de passe", href) });
+    } catch (error) {
+      console.error("[auth] Échec d'envoi du lien de mot de passe :", error?.message || error);
+      try { db.prepare("DELETE FROM account_auth_tokens WHERE user_id = ? AND kind = 'password'").run(me.id); } catch {}
+      return json(res, 502, { ok: false, error: "L'email n'a pas pu être envoyé. Réessaie plus tard." });
+    }
+    return json(res, 200, { ok: true, message: `Lien de changement envoyé à ${maskEmail(current)}.` });
+  }
+
+  return json(res, 400, { ok: false, error: "Modification inconnue." });
+}
+
+async function sendEmailChangeOld(me, oldEmail) {
+  const href = authLink({ emailOld: issueAccountToken(me.id, "email_old", EMAIL_CHANGE_TTL_MS) });
+  await sendAccountEmail({ to: oldEmail, subject: "Confirme le changement d'adresse email",
+    text: `Une demande de changement d'adresse email a été faite pour ${me.pseudo}. Confirme-la avec ce lien : ${href}`,
+    html: emailTemplate("Changement d'adresse email", `Une demande de changement d'adresse a été faite pour le compte <strong>${emailText(me.pseudo)}</strong>. Confirme-la depuis cette adresse ; un second email sera ensuite envoyé à la nouvelle adresse.`, "Confirmer le changement", href) });
+}
+async function sendEmailChangeNew(me, newEmail) {
+  const href = authLink({ emailNew: issueAccountToken(me.id, "email_new", EMAIL_CHANGE_TTL_MS) });
+  await sendAccountEmail({ to: newEmail, subject: "Confirme ta nouvelle adresse email",
+    text: `Confirme cette adresse pour le compte ${me.pseudo} avec ce lien : ${href}`,
+    html: emailTemplate("Nouvelle adresse email", `Confirme cette adresse pour le compte <strong>${emailText(me.pseudo)}</strong>. Une fois confirmée, tu seras déconnecté et devras te reconnecter.`, "Confirmer cette adresse", href) });
+}
+
+// Étape 1 (lien reçu sur l'ancienne adresse) : envoie la confirmation à la nouvelle.
+async function handleEmailChangeOld(body, res) {
+  const row = consumeAccountToken(String(body?.token || ""), "email_old");
+  if (!row) return json(res, 400, { ok: false, error: "Lien de confirmation invalide ou expiré." });
+  const pending = db.prepare("SELECT new_email FROM account_email_change WHERE user_id = ?").get(row.user_id);
+  const me = db.prepare("SELECT id, pseudo FROM users WHERE id = ?").get(row.user_id);
+  if (!pending || !me) return json(res, 400, { ok: false, error: "Aucun changement d'adresse en attente." });
+  if (db.prepare("SELECT 1 FROM users WHERE email = ? AND id != ?").get(pending.new_email, me.id)) {
+    db.prepare("DELETE FROM account_email_change WHERE user_id = ?").run(me.id);
+    return json(res, 409, { ok: false, error: "Cette adresse email est déjà utilisée." });
+  }
+  try { await sendEmailChangeNew(me, pending.new_email); } catch (error) {
+    console.error("[auth] Échec d'envoi à la nouvelle adresse :", error?.message || error);
+    return json(res, 502, { ok: false, error: "L'email de confirmation n'a pas pu être envoyé. Réessaie plus tard." });
+  }
+  return json(res, 200, { ok: true, message: `Confirme maintenant avec le lien envoyé à ${maskEmail(pending.new_email)}.` });
+}
+
+// Étape 2 (lien reçu sur la nouvelle adresse) : applique et déconnecte partout.
+async function handleEmailChangeNew(body, res) {
+  const row = consumeAccountToken(String(body?.token || ""), "email_new");
+  if (!row) return json(res, 400, { ok: false, error: "Lien de confirmation invalide ou expiré." });
+  const pending = db.prepare("SELECT new_email FROM account_email_change WHERE user_id = ?").get(row.user_id);
+  const user = db.prepare("SELECT data, revision FROM users WHERE id = ?").get(row.user_id);
+  if (!pending || !user) return json(res, 400, { ok: false, error: "Aucun changement d'adresse en attente." });
+  if (db.prepare("SELECT 1 FROM users WHERE email = ? AND id != ?").get(pending.new_email, row.user_id)) {
+    db.prepare("DELETE FROM account_email_change WHERE user_id = ?").run(row.user_id);
+    return json(res, 409, { ok: false, error: "Cette adresse email est déjà utilisée." });
+  }
+  let data = {};
+  try { data = JSON.parse(user.data || "{}") || {}; } catch {}
+  const now = Date.now();
+  const revision = Math.max(0, Number(user.revision) || 0) + 1;
+  Object.assign(data, { email: pending.new_email, revision, updatedAt: now });
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    db.prepare("UPDATE users SET email = ?, email_verified_at = ?, data = ?, revision = ?, updated_at = ? WHERE id = ?")
+      .run(pending.new_email, now, JSON.stringify(data), revision, now, row.user_id);
+    db.prepare("DELETE FROM account_email_change WHERE user_id = ?").run(row.user_id);
+    db.prepare("DELETE FROM sessions WHERE user_id = ?").run(row.user_id);
+    db.prepare("DELETE FROM account_auth_tokens WHERE user_id = ?").run(row.user_id);
+    db.exec("COMMIT");
+  } catch (error) { try { db.exec("ROLLBACK"); } catch {} throw error; }
+  return json(res, 200, { ok: true, message: "Adresse email modifiée. Reconnecte-toi pour continuer." });
 }
 
 // Le blob accepte ne differe de la requete que par ces champs serveur.
@@ -3323,12 +3499,8 @@ function protectServerModuleDailyRolls(serverData, incomingData) {
 
 // POST /api/save { user } — plein blob, revision strictement croissante.
 async function handleSave(req, body, res) {
-  // Hash d'un mot de passe en clair calcule AVANT toute lecture : aucun
-  // await ne doit separer le controle de revision de l'UPDATE (sinon deux
-  // sauvegardes concurrentes pourraient s'ecraser).
-  const rawPassword = body?.user?.password;
-  const prehashedPassword = typeof rawPassword === "string" && rawPassword.length >= 10 && !isHash(rawPassword)
-    ? await hashPassword(rawPassword) : null;
+  // Aucun await entre la lecture du compte et l'UPDATE : deux sauvegardes
+  // concurrentes ne peuvent pas s'écraser.
   const me = authUser(req);
   if (!me) return json(res, 401, { ok: false, error: "Session invalide." });
   const blob = body?.user;
@@ -3377,25 +3549,12 @@ async function handleSave(req, body, res) {
     // Client en retard (autre PC/onglet plus recent) : on renvoie le canon.
     return json(res, 409, { ok: false, stale: true, error: "Sauvegarde perimee.", user: rowToPublic(me) });
   }
-  // Unicite pseudo/email (hors soi). La casse d'affichage est preservee,
-  // seule la forme normalisee est unique.
-  const newPseudoRaw = String(blob.pseudo ?? me.pseudo).trim() || String(me.pseudo);
-  const newPseudo = norm(newPseudoRaw);
-  const newEmail = norm(blob.email) || norm(me.email);
-  if (!newPseudo || !newEmail || !EMAIL_RE.test(newEmail)) {
-    return json(res, 400, { ok: false, error: "Pseudo/email invalide." });
-  }
-  if (newPseudoRaw.length > 64) {
-    return json(res, 400, { ok: false, error: "Pseudo trop long." });
-  }
-  const clash = db.prepare("SELECT id FROM users WHERE (pseudo_norm = ? OR email = ?) AND id != ?").get(newPseudo, newEmail, me.id);
-  let finalPseudo = newPseudoRaw, finalEmail = newEmail, conflict = false;
-  if (clash) {
-    // Conflit : on garde les valeurs serveur, on applique le reste.
-    finalPseudo = me.pseudo;
-    finalEmail = norm(me.email);
-    conflict = true;
-  }
+  // Identité verrouillée : pseudo, email et mot de passe ne changent que par
+  // /api/account/* (délai de 24 h, confirmations email). Une sauvegarde de
+  // jeu, entièrement contrôlée par le client, ne peut jamais les modifier.
+  const finalPseudo = String(me.pseudo);
+  const finalEmail = norm(me.email);
+  const conflict = false;
   const faction = FACTIONS.has(norm(blob.faction)) ? norm(blob.faction) : norm(me.faction);
   // blob sort tout juste de JSON.parse (readBody) et n'est utilise que par
   // cette requete : le re-cloner (stringify+parse) coutait ~6 ms sur un gros
@@ -3409,6 +3568,11 @@ async function handleSave(req, body, res) {
   data.faction = faction;
   data.revision = incomingRev;
   data.updatedAt = Date.now();
+  // Nom du P.E.T : seul /api/account/pet-pseudo le change une fois le P.E.T
+  // possédé côté serveur (le premier nom est choisi à l'achat).
+  if (serverData.pet?.owned === true && data.pet && typeof data.pet === "object") {
+    data.pet.pseudo = String(serverData.pet.pseudo || PET_DEFAULT_NAME);
+  }
   // Les tirages sont validés par /api/modules. Une sauvegarde de jeu créée
   // juste avant un tirage ne doit jamais pouvoir remettre un ancien compteur.
   const moduleRollsCorrected = protectServerModuleDailyRolls(serverData, data);
@@ -3425,13 +3589,9 @@ async function handleSave(req, body, res) {
       capServerHistory(data);
     }
   } catch {}
-  // Mot de passe : le hash colonne fait foi. Un clair entrant = changement
-  // volontaire -> on le re-hache. Un hash entrant est ignore.
-  let pwHash = me.password_hash;
-  if (typeof data.password === "string" && data.password && !isHash(data.password)) {
-    if (data.password.length < 10) return json(res, 400, { ok: false, error: "Mot de passe trop court (10 caractères minimum)." });
-    pwHash = prehashedPassword || await hashPassword(data.password);
-  }
+  // Mot de passe : le hash colonne fait foi, toute valeur entrante est ignorée
+  // (changement uniquement par le lien envoyé par email).
+  const pwHash = me.password_hash;
   data.password = pwHash;
   try {
     db.exec("BEGIN IMMEDIATE");
@@ -3485,6 +3645,8 @@ export function handleAccountApi(req, res) {
     "/api/auth/forgot-username": handleForgotUsername,
     "/api/auth/forgot-password": handleForgotPassword,
     "/api/auth/reset-password": handleResetPassword,
+    "/api/auth/email-change-old": handleEmailChangeOld,
+    "/api/auth/email-change-new": handleEmailChangeNew,
   };
   if (publicAuthHandlers[pathname] && req.method === "POST") {
     const strictLimit = pathname.includes("forgot") ? 5 : 15;
@@ -3507,6 +3669,12 @@ export function handleAccountApi(req, res) {
     const me = authUser(req);
     if (!me) return json(res, 401, { ok: false, error: "Session invalide." });
     return json(res, 200, { ok: true, user: rowToPublic(me) });
+  }
+  // Vérification légère de la session (le jeu l'appelle régulièrement pour
+  // se déconnecter tout seul après un changement d'email ou de mot de passe).
+  if (pathname === "/api/session" && req.method === "GET") {
+    const me = authUser(req);
+    return me ? json(res, 200, { ok: true }) : json(res, 401, { ok: false, error: "Session invalide." });
   }
   if (pathname === "/api/rankings" && req.method === "GET") {
     // Classement GENERAL public : tous les comptes (grade + pseudo +
@@ -3604,9 +3772,8 @@ export function handleAccountApi(req, res) {
     let pseudo = "";
     try { pseudo = String(new URL(req.url, "http://localhost").searchParams.get("pseudo") || "").trim(); } catch {}
     if (pseudo.length < 3 || pseudo.length > 32) return json(res, 200, { ok: true, free: false });
-    const key = norm(pseudo);
-    if (key === norm(me.pseudo)) return json(res, 200, { ok: true, free: true, yours: true });
-    const clash = db.prepare("SELECT id FROM users WHERE pseudo_norm = ?").get(key);
+    if (pseudo === me.pseudo) return json(res, 200, { ok: true, free: false, yours: true });
+    const clash = db.prepare("SELECT id FROM users WHERE pseudo = ?").get(pseudo);
     return json(res, 200, { ok: true, free: !clash });
   }
   if (pathname === "/api/galaxy-gates" && req.method === "POST") {
@@ -3930,7 +4097,13 @@ export function handleAccountApi(req, res) {
     });
     return true;
   }
-  const identityMatch = /^\/api\/account\/(pseudo|email|password)$/.exec(pathname);
+  if (pathname === "/api/account/status" && req.method === "GET") {
+    if (rateLimited(`${ip}:${pathname}`, 60)) return json(res, 429, { ok: false, error: "Trop de tentatives, reessaie dans une minute." });
+    const me = authUser(req);
+    if (!me) return json(res, 401, { ok: false, error: "Session invalide." });
+    return json(res, 200, accountIdentityStatus(me));
+  }
+  const identityMatch = /^\/api\/account\/(pseudo|pet-pseudo|email|password)$/.exec(pathname);
   if (identityMatch && req.method === "POST") {
     if (rateLimited(`${ip}:${pathname}`, 10)) return json(res, 429, { ok: false, error: "Trop de tentatives, reessaie dans une minute." });
     readBody(req, res, (body) => {

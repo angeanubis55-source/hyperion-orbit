@@ -606,6 +606,7 @@ export function bootNetFromCache() {
       setTimeout(() => { refreshNetUser().catch(() => {}); }, 0);
     }
     installPageLeaveFlush();
+    installSessionWatch();
     return true;
   } catch {
     return false;
@@ -635,6 +636,22 @@ function installPageLeaveFlush() {
   window.addEventListener("pageshow", () => { pageLeaving = false; });
 }
 
+// Session révoquée côté serveur (email ou mot de passe changé, depuis ce PC
+// ou un autre) : détectée en ~30 s, puis retour à la connexion.
+let sessionWatchInstalled = false;
+function installSessionWatch() {
+  // Hors navigateur (tests en bac à sable) : pas de minuterie ni de document.
+  if (sessionWatchInstalled || typeof setInterval !== "function" || typeof document === "undefined") return;
+  sessionWatchInstalled = true;
+  setInterval(async () => {
+    if (!netActive() || document.visibilityState === "hidden") return;
+    const token = memToken;
+    let out;
+    try { out = await api("/api/session", { token, timeout: 5000 }); } catch { return; }
+    if (out?.status === 401 && netActive() && memToken === token) enterLocalFallback();
+  }, 30_000);
+}
+
 export function enterNetMode(token, user) {
   memToken = String(token || "");
   memUser = user && typeof user === "object" ? user : null;
@@ -657,6 +674,7 @@ export function enterNetMode(token, user) {
     setTimeout(() => { refreshNetUser().catch(() => {}); }, 0);
   }
   installPageLeaveFlush();
+  installSessionWatch();
   return true;
 }
 
@@ -749,11 +767,19 @@ export async function apiPseudoFree(pseudo) {
   }
 }
 
-export async function apiAccountIdentity(kind, value, currentPassword) {
+// Délais de renommage restants et changement d'email en attente.
+export async function apiAccountStatus() {
+  if (!netActive()) return { ok: false };
+  try { return (await api("/api/account/status", { token: memToken, timeout: 5000 })) || { ok: false }; }
+  catch { return { ok: false }; }
+}
+
+// extra : champs propres à une modification (ancienne adresse email...).
+export async function apiAccountIdentity(kind, value, currentPassword, extra = {}) {
   if (!netActive()) return { ok: false, error: "Session serveur inactive." };
   const token = memToken;
   const userId = memUser.id;
-  const allowed = new Set(["pseudo", "email", "password"]);
+  const allowed = new Set(["pseudo", "pet-pseudo", "email", "password"]);
   const key = String(kind || "").toLowerCase();
   if (!allowed.has(key)) return { ok: false, error: "Modification inconnue." };
   const busy = accountWriteNotice();
@@ -772,7 +798,7 @@ export async function apiAccountIdentity(kind, value, currentPassword) {
     clearTimeout(saveTimer); saveTimer = null;
     const out = await api(`/api/account/${key}`, {
       method: "POST",
-      body: { value, currentPassword },
+      body: { ...extra, value, currentPassword },
       token,
     });
     if (!netActive() || memToken !== token || memUser.id !== userId) return { ok: false, ignored: true };

@@ -23405,6 +23405,21 @@ body #hangarOverlay .hangarListItem .tileActions button:disabled {
 #settingsWindow .settingsPage[data-settings-page="account"] .accountField {
   gap:4px !important;
 }
+/* Délai de renommage restant / changement d'email en attente. */
+#settingsWindow .settingsPage[data-settings-page="account"] .accountCooldown {
+  margin:0 !important;
+  color:#ffd477 !important;
+  font-size:10px !important;
+  font-weight:700 !important;
+  line-height:1.4 !important;
+}
+#settingsWindow .settingsPage[data-settings-page="account"] .accountCooldown[hidden] {
+  display:none !important;
+}
+#settingsWindow .settingsPage[data-settings-page="account"] .accountNote {
+  color:rgba(232,244,255,.62) !important;
+  font-weight:600 !important;
+}
 #settingsWindow .settingsPage[data-settings-page="account"] .accountField > span {
   color:#7cecff !important;
   font-size:9px !important;

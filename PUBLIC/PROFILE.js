@@ -24,10 +24,6 @@ import {
   getFitPresets,
   saveFitPreset,
   deleteFitPreset,
-  updateCurrentUserEmail,
-  updateCurrentUserPseudo,
-  updateCurrentUserPetPseudo,
-  changeCurrentUserPassword,
   changeCurrentUserFaction,
   setCurrentUserDroneFormation,
   getDroneFit,
@@ -35,7 +31,7 @@ import {
 } from "../SRC/CORE/ACCOUNT.js";
 
 import { measureGameTask } from "../SRC/CORE/PERFORMANCE_TIMINGS.js";
-import { apiAccountIdentity, apiPseudoFree, flushNetUser, netActive, netList, noteServerModuleQuota } from "../SRC/CORE/ACCOUNT_NET.js";
+import { apiAccountIdentity, apiAccountStatus, apiPseudoFree, flushNetUser, netActive, netList, noteServerModuleQuota } from "../SRC/CORE/ACCOUNT_NET.js";
 
 import { CATALOG, findCatalogItem } from "../SRC/CORE/CATALOG.js";
 import { SHIP_PACKS, getShipFamilyId, getShipFamilyIds, getShipFamilyMembers, getShipFamilyName, getShipDesignBaseId, getShipDesignIds, getShipPackById } from "../SHIP/SHIP_PACKS.js";
@@ -113,13 +109,15 @@ const btnSavePseudo = $("btnSavePseudo");
 const accountPetPseudo = $("accountPetPseudo");
 const accountPetPseudoStatus = $("accountPetPseudoStatus");
 const btnSavePetPseudo = $("btnSavePetPseudo");
+const accountPseudoCooldown = $("accountPseudoCooldown");
+const accountPetPseudoCooldown = $("accountPetPseudoCooldown");
+const accountEmailOld = $("accountEmailOld");
+const accountEmailOldField = $("accountEmailOldField");
 const accountEmail = $("accountEmail");
 const accountEmailStatus = $("accountEmailStatus");
+const accountEmailPending = $("accountEmailPending");
 const emailCurrentPassword = $("emailCurrentPassword");
 const btnSaveEmail = $("btnSaveEmail");
-const passwordCurrent = $("passwordCurrent");
-const passwordNew = $("passwordNew");
-const passwordConfirm = $("passwordConfirm");
 const btnChangePassword = $("btnChangePassword");
 const accountFaction = $("accountFaction");
 const accountFactionStatus = $("accountFactionStatus");
@@ -1991,8 +1989,12 @@ function renderAccount(u) {
   if (accountEmailStatus) {
     accountEmailStatus.textContent = linkedEmail ? `Adresse liée : ${linkedEmail}` : "Aucune adresse email liée";
   }
-  if (accountEmail && document.activeElement !== accountEmail) accountEmail.value = linkedEmail;
-  if (btnSaveEmail) btnSaveEmail.textContent = linkedEmail ? "Modifier l'adresse" : "Lier cette adresse";
+  // Champs vides : l'ancienne adresse doit être retapée (pas pré-remplie).
+  // Sans adresse liée, il n'y a pas d'ancienne adresse à confirmer.
+  if (accountEmailOldField) accountEmailOldField.hidden = !linkedEmail;
+  if (btnSaveEmail) btnSaveEmail.textContent = linkedEmail ? "Changer d'adresse email" : "Lier cette adresse";
+  paintAccountIdentity();
+  refreshAccountIdentity();
   const faction = getFaction(u.faction);
   if (accountFactionStatus) accountFactionStatus.textContent = `Firme actuelle : ${faction.shortName}`;
   if (accountFaction) {
@@ -2003,24 +2005,62 @@ function renderAccount(u) {
   }
 }
 
+// Délais de renommage (horloge serveur) et changement d'email en attente,
+// relus à l'ouverture de l'onglet Compte et après chaque modification.
+let accountIdentity = { pseudoNextAt: 0, petPseudoNextAt: 0, emailPending: "" };
+let accountIdentityFetchedAt = 0;
+function formatWait(ms) {
+  const totalMin = Math.max(1, Math.ceil(ms / 60_000));
+  const hours = Math.floor(totalMin / 60), minutes = totalMin % 60;
+  return hours > 0 ? `${hours} h ${String(minutes).padStart(2, "0")}` : `${minutes} min`;
+}
+function paintCooldown(el, button, nextAt, label) {
+  const left = Number(nextAt || 0) - Date.now();
+  if (el) {
+    el.hidden = !(left > 0);
+    el.textContent = left > 0 ? `Prochain changement ${label} dans ${formatWait(left)}.` : "";
+  }
+  if (button && left > 0) button.disabled = true;
+}
+function paintAccountIdentity() {
+  if (btnSavePseudo) btnSavePseudo.disabled = false;
+  paintCooldown(accountPseudoCooldown, btnSavePseudo, accountIdentity.pseudoNextAt, "de pseudo");
+  if (btnSavePetPseudo) btnSavePetPseudo.disabled = user?.pet?.owned !== true;
+  paintCooldown(accountPetPseudoCooldown, btnSavePetPseudo, accountIdentity.petPseudoNextAt, "du pseudo du P.E.T");
+  if (accountEmailPending) {
+    accountEmailPending.hidden = !accountIdentity.emailPending;
+    accountEmailPending.textContent = accountIdentity.emailPending
+      ? `Changement vers ${accountIdentity.emailPending} en attente de confirmation par email.` : "";
+  }
+}
+async function refreshAccountIdentity(force = false) {
+  if (!netActive() || (!force && Date.now() - accountIdentityFetchedAt < 5000)) return;
+  accountIdentityFetchedAt = Date.now();
+  const out = await apiAccountStatus();
+  if (!out?.ok) return;
+  accountIdentity = { pseudoNextAt: Number(out.pseudoNextAt) || 0, petPseudoNextAt: Number(out.petPseudoNextAt) || 0,
+    emailPending: String(out.emailPending || "") };
+  paintAccountIdentity();
+}
+setInterval(() => { if (settingsAccountVisible()) paintAccountIdentity(); }, 30_000);
+
 function wireAccountSettingsOnce() {
+  const needServer = () => { setMsg("Connexion au serveur requise.", false); };
+
   btnSavePseudo?.addEventListener("click", async () => {
+    if (!netActive()) return needServer();
     const pseudo = accountPseudo?.value.trim() || "";
     const currentPassword = pseudoCurrentPassword?.value || "";
-    // En ligne : le controle local ne voit que mon compte, on demande au
-    // serveur si le pseudo est libre avant d'appliquer (anti-doublon).
+    // Le serveur revérifie tout (délai, doublon) ; ce contrôle évite juste
+    // de demander le mot de passe pour un pseudo déjà pris.
     try {
-      if (netActive()) {
-        setMsg("Vérification du pseudo…", true);
-        const check = await apiPseudoFree(pseudo);
-        if (check && check.ok && check.free === false) {
-          return setMsg("Ce pseudo est déjà utilisé par un autre pilote.", false);
-        }
-      }
+      const check = await apiPseudoFree(pseudo);
+      if (check?.ok && check.yours) return setMsg("C'est déjà ton pseudo.", false);
+      if (check?.ok && check.free === false) return setMsg("Ce pseudo est déjà utilisé par un autre pilote.", false);
     } catch {}
-    const out = netActive()
-      ? await apiAccountIdentity("pseudo", pseudo, currentPassword)
-      : updateCurrentUserPseudo(pseudo, currentPassword);
+    const out = await apiAccountIdentity("pseudo", pseudo, currentPassword);
+    if (out?.nextAt) accountIdentity.pseudoNextAt = Number(out.nextAt) || 0;
+    paintAccountIdentity();
     if (!out?.ok) return out?.silent ? undefined : setMsg(out?.error || "Impossible de changer le pseudo.", false);
 
     if (pseudoCurrentPassword) pseudoCurrentPassword.value = "";
@@ -2031,14 +2071,17 @@ function wireAccountSettingsOnce() {
   });
 
   btnSavePetPseudo?.addEventListener("click", () => {
+    if (!netActive()) return needServer();
     const pseudo = accountPetPseudo?.value.trim() || "";
     if (!user?.pet || user.pet.owned !== true) return setMsg("P.E.T non possédé.", false);
     showConfirm(
       "Renommer le REX",
-      `Renommer ton REX en "${pseudo}" coûtera 1 000 000 crédits. Cette opération est immédiate.`,
-      () => {
-        const out = updateCurrentUserPetPseudo(pseudo);
-        if (!out?.ok) return setMsg(out?.error || "Impossible de renommer le REX.", false);
+      `Renommer ton REX en "${pseudo}" coûtera 1 000 000 crédits. Prochain renommage possible dans 24 h.`,
+      async () => {
+        const out = await apiAccountIdentity("pet-pseudo", pseudo, "");
+        if (out?.nextAt) accountIdentity.petPseudoNextAt = Number(out.nextAt) || 0;
+        paintAccountIdentity();
+        if (!out?.ok) return out?.silent ? undefined : setMsg(out?.error || "Impossible de renommer le REX.", false);
         user = getCurrentUserFull();
         renderHeader(user);
         renderStats(user);
@@ -2050,36 +2093,30 @@ function wireAccountSettingsOnce() {
   });
 
   btnSaveEmail?.addEventListener("click", async () => {
+    if (!netActive()) return needServer();
+    const oldEmail = accountEmailOld?.value.trim() || "";
     const email = accountEmail?.value.trim() || "";
     const currentPassword = emailCurrentPassword?.value || "";
-    const out = netActive()
-      ? await apiAccountIdentity("email", email, currentPassword)
-      : updateCurrentUserEmail(email, currentPassword);
+    if (accountEmailOldField && !accountEmailOldField.hidden && !oldEmail) return setMsg("Entre ton ancienne adresse email.", false);
+    if (!email) return setMsg("Entre la nouvelle adresse email.", false);
+    const out = await apiAccountIdentity("email", email, currentPassword, { oldEmail });
     if (!out?.ok) return out?.silent ? undefined : setMsg(out?.error || "Impossible de modifier l'adresse email.", false);
 
-    if (emailCurrentPassword) emailCurrentPassword.value = "";
-    user = getCurrentUserFull();
-    renderHeader(user);
-    renderStats(user);
-    setMsg("Adresse email enregistrée.", true);
+    for (const field of [accountEmailOld, accountEmail, emailCurrentPassword]) if (field) field.value = "";
+    refreshAccountIdentity(true);
+    setMsg(out.message || "Email de confirmation envoyé.", true);
   });
 
   btnChangePassword?.addEventListener("click", async () => {
-    const currentPassword = passwordCurrent?.value || "";
-    const nextPassword = passwordNew?.value || "";
-    if (nextPassword !== (passwordConfirm?.value || "")) {
-      return setMsg("Les nouveaux mots de passe ne correspondent pas.", false);
+    if (!netActive()) return needServer();
+    btnChangePassword.disabled = true;
+    try {
+      const out = await apiAccountIdentity("password", "", "");
+      if (!out?.ok) return out?.silent ? undefined : setMsg(out?.error || "Impossible d'envoyer le lien.", false);
+      setMsg(out.message || "Lien de changement envoyé par email.", true);
+    } finally {
+      btnChangePassword.disabled = false;
     }
-
-    const out = netActive()
-      ? await apiAccountIdentity("password", nextPassword, currentPassword)
-      : changeCurrentUserPassword(currentPassword, nextPassword);
-    if (!out?.ok) return out?.silent ? undefined : setMsg(out?.error || "Impossible de changer le mot de passe.", false);
-
-    if (passwordCurrent) passwordCurrent.value = "";
-    if (passwordNew) passwordNew.value = "";
-    if (passwordConfirm) passwordConfirm.value = "";
-    setMsg("Mot de passe modifié avec succès.", true);
   });
   btnChangeFaction?.addEventListener("click", () => {
     if (btnChangeFaction.dataset.confirmed !== "yes") {

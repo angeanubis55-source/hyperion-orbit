@@ -486,6 +486,7 @@
               <span>Mot de passe actuel</span>
               <input id="pseudoCurrentPassword" type="password" autocomplete="current-password" placeholder="••••••••" />
             </label>
+            <p id="accountPseudoCooldown" class="accountCooldown" hidden></p>
             <button id="btnSavePseudo" class="settingsResetBtn" type="button">Changer de pseudo</button>
           </article>
 
@@ -506,6 +507,7 @@
                 <li><strong>1 000 000 crédits</strong></li>
               </ul>
             </div>
+            <p id="accountPetPseudoCooldown" class="accountCooldown" hidden></p>
             <button id="btnSavePetPseudo" class="settingsResetBtn" type="button">Changer le pseudo du PET</button>
           </article>
 
@@ -516,39 +518,31 @@
                 <small id="accountEmailStatus">Aucune adresse liée</small>
               </div>
             </div>
+            <label id="accountEmailOldField" class="accountField">
+              <span>Ancienne adresse email</span>
+              <input id="accountEmailOld" type="email" autocomplete="off" inputmode="email" placeholder="Ancienne adresse email" />
+            </label>
             <label class="accountField">
               <span>Nouvelle adresse email</span>
-              <input id="accountEmail" type="email" autocomplete="email" inputmode="email" placeholder="pilote@exemple.com" />
+              <input id="accountEmail" type="email" autocomplete="off" inputmode="email" placeholder="Nouvelle adresse email" />
             </label>
             <label class="accountField">
               <span>Mot de passe actuel</span>
               <input id="emailCurrentPassword" type="password" autocomplete="current-password" placeholder="••••••••" />
             </label>
-            <button id="btnSaveEmail" class="settingsResetBtn" type="button">Lier cette adresse</button>
+            <p id="accountEmailPending" class="accountCooldown" hidden></p>
+            <button id="btnSaveEmail" class="settingsResetBtn" type="button">Changer d'adresse email</button>
           </article>
 
           <article class="settingsCard accountCard accountSecurityCard">
             <div class="settingsCardHead">
               <div>
-                <b>Sécurité du compte</b>
-                <small>Modifie ton mot de passe de connexion</small>
+                <b>Mot de passe</b>
+                <small>Un lien de changement est envoyé à l'adresse du compte</small>
               </div>
             </div>
-            <div class="passwordFields">
-              <label class="accountField">
-                <span>Mot de passe actuel</span>
-                <input id="passwordCurrent" type="password" autocomplete="current-password" placeholder="••••••••" />
-              </label>
-              <label class="accountField">
-                <span>Nouveau mot de passe</span>
-                <input id="passwordNew" type="password" autocomplete="new-password" placeholder="10 caractères minimum" />
-              </label>
-              <label class="accountField">
-                <span>Confirmation</span>
-                <input id="passwordConfirm" type="password" autocomplete="new-password" placeholder="Répète le nouveau mot de passe" />
-              </label>
-            </div>
-            <button id="btnChangePassword" class="settingsResetBtn" type="button">Changer le mot de passe</button>
+            <p class="accountCooldown accountNote">Comme pour un mot de passe oublié : tu choisis le nouveau mot de passe depuis le lien reçu, puis tu es déconnecté et dois te reconnecter.</p>
+            <button id="btnChangePassword" class="settingsResetBtn" type="button">Recevoir le lien par email</button>
           </article>
 
           <article class="settingsCard accountCard factionAccountCard">

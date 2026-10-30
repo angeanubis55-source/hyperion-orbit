@@ -95,8 +95,12 @@ function closeRecovery() {
 }
 
 // Check if already logged in
+// Sauf lien reçu par email (confirmation, réinitialisation, changement
+// d'adresse) : il doit être traité ici même si une session est ouverte.
+const AUTH_LINK_PARAMS = ["verify", "reset", "emailOld", "emailNew"];
+const hasAuthLink = AUTH_LINK_PARAMS.some(key => new URLSearchParams(location.search).has(key));
 const cur = getCurrentUserPublic();
-if (cur) goProfile();
+if (cur && !hasAuthLink) goProfile();
 
 // Multi : serveur de comptes joignable ? (sinon 100 % local comme avant)
 let netServer = false;
@@ -327,7 +331,16 @@ try {
   const query = new URLSearchParams(location.search);
   const verifyToken = query.get("verify");
   const resetToken = query.get("reset");
-  if (verifyToken) {
+  // Changement d'adresse : lien de l'ancienne adresse puis de la nouvelle.
+  const emailOldToken = query.get("emailOld");
+  const emailNewToken = query.get("emailNew");
+  if (emailOldToken || emailNewToken) {
+    const out = await publicAuthApi(emailOldToken ? "/api/auth/email-change-old" : "/api/auth/email-change-new",
+      { token: emailOldToken || emailNewToken });
+    setTab("login");
+    showMsg(out.message || out.error || "Confirmation impossible.", out.ok === true);
+    history.replaceState({}, "", location.pathname);
+  } else if (verifyToken) {
     const out = await publicAuthApi("/api/auth/verify-email", { token: verifyToken });
     setTab("login");
     showMsg(out.message || out.error || "Confirmation impossible.", out.ok === true);

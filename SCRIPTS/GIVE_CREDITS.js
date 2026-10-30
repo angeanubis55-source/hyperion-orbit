@@ -40,7 +40,9 @@ try {
 try {
   db.exec("PRAGMA busy_timeout = 5000");
 
-  let row = db.prepare("SELECT * FROM users WHERE pseudo_norm = ?").get(norm(target));
+  // Pseudo exact d'abord (deux pseudos peuvent ne différer que par la casse).
+  let row = db.prepare("SELECT * FROM users WHERE pseudo = ?").get(String(target).trim())
+    || db.prepare("SELECT * FROM users WHERE pseudo_norm = ?").get(norm(target));
   if (!row) row = db.prepare("SELECT * FROM users WHERE id = ?").get(target);
   if (!row) {
     console.error(`Compte introuvable : "${target}".`);
