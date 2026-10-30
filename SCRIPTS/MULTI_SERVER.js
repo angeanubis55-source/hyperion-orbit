@@ -225,6 +225,37 @@ function relayAbilityHealFx(state, skill, msg, room, id, now) {
   return true;
 }
 
+// Zone de non-agression décidée par le serveur (le client ne fait que
+// signaler qu'il est dans un cercle protégé, safeClaim) :
+// - attaquer (toucher un joueur ou un NPC) retire la protection 5 s ;
+// - base / contrôleurs de missions : protection immédiate ;
+// - portail : 5 s sans tir de joueur reçu (chaque tir relance) et, si un
+//   NPC nous touchait juste avant d'entrer, 5 s après l'entrée (les tirs
+//   NPC suivants ne relancent rien).
+const ZNA_COMBAT_LOCK_MS = 5000;
+function playerZna(s, sim, now) {
+  if (!s || s.safeClaim !== true || s.pvpDead === true || !(Number(s.hp) > 0)) { if (s) s._znaPortalAt = 0; return false; }
+  const kind = typeof sim?.safeKindAt === "function" ? sim.safeKindAt(s.x, s.y) : null;
+  if (kind !== "portal") s._znaPortalAt = 0;
+  if (!kind || now < Number(s._znaAttackAt || 0) + ZNA_COMBAT_LOCK_MS) return false;
+  if (kind === "base") return true;
+  if (!s._znaPortalAt) {
+    s._znaPortalAt = now;
+    s._znaNpcLock = now < Number(s._znaNpcHitAt || 0) + ZNA_COMBAT_LOCK_MS;
+  }
+  return now >= s._znaPortalAt + (s._znaNpcLock ? ZNA_COMBAT_LOCK_MS : 0)
+    && now >= Number(s._znaPlayerHitAt || 0) + ZNA_COMBAT_LOCK_MS;
+}
+// Origine d'un coup pour la ZNA : joueur (ou bot JPC, faux joueur) ou NPC.
+function noteZnaHit(victim, room, sim, sourceId, now) {
+  if (!victim) return;
+  const id = String(sourceId ?? "");
+  const shooter = room?.get?.(id)?.state;
+  if (shooter || sim?.entries?.get?.(id)?.jpc === true) victim._znaPlayerHitAt = now;
+  else victim._znaNpcHitAt = now;
+  if (shooter) shooter._znaAttackAt = now;
+}
+
 function hyperionSafeBlocked(state, target, sim, targetIsPlayer) {
   // Seule la cible compte : protégée -> intouchable. Un attaquant protégé
   // peut toujours tirer (il perd sa ZNA en attaquant, parité client
@@ -264,9 +295,12 @@ function applyServerAbilityDamage(room, sim, victim, damage, pen, now, sourceId,
       return group ? socialGroupOf(String(b.id)) === group : !!a.firm && a.firm === b.firm;
     },
   };
+  // ZNA : tout coup subi (joueur, bot JPC ou NPC) est daté selon sa source.
+  noteZnaHit(victim, room, sim, sourceId, now);
   const secondaryHit = (target, amount, penetration, by) => {
     if (!target || target.safe || !(target.hp > 0)) return;
     const result = abilityDamage(target, amount, penetration, now, context, true);
+    if (room.has(String(by))) target._znaPlayerHitAt = now;
     target.pvpAt = now;
     target.pvpFrom = String(by);
     target.dmgBlockUntil = now + 500;
@@ -2701,6 +2735,8 @@ wss.on("connection", (ws) => {
           syncDisruptorEffects(rooms.get(mapId), sim, now);
           if (laserDisrupted(shooter, msg, now)) return;
           const appliedHit = Number(sim.applyHit(id, msg)) || 0;
+          // ZNA : attaquer un NPC retire la protection 5 s (parité client).
+          shooter._znaAttackAt = now;
           if (appliedHit > 0) { recordAbilityDamageDealt(shooter, appliedHit, now); try { audOf(shooter).dmg += appliedHit; } catch {} }
           if (msg.kind !== "sab" && !msg.rocket && !msg.ability && msg.pet !== true) {
             applyEnergyLeech(shooter, appliedHit, now,
@@ -4009,7 +4045,10 @@ wss.on("connection", (ws) => {
         }
         state.cloaked = msg.cloaked && nowCloak >= Number(state._jamUntil || 0) && nowCloak < Number(state._cloakUntil || 0);
       }
-      if (typeof msg.safe === "boolean") state.safe = msg.safe;
+      // Le client signale seulement sa présence dans un cercle protégé ; la
+      // protection effective (state.safe, lue par tout le combat) est serveur.
+      if (typeof msg.safe === "boolean") state.safeClaim = msg.safe;
+      state.safe = playerZna(state, npcSims.get(mapId), Date.now());
       if (Number.isFinite(Number(msg.hpPct))) state.hpPct = Math.max(0, Math.min(1, Number(msg.hpPct)));
       if (Number.isFinite(Number(msg.shPct))) state.shPct = Math.max(0, Math.min(1, Number(msg.shPct)));
       if (typeof msg.collectUid === "string") state.collectUid = String(msg.collectUid).slice(0, 64);
@@ -4546,8 +4585,10 @@ setInterval(() => {
           // = ignoré par la simu NPC (ni poursuite ni ciblage).
           // Refresh : le fantôme en grâce n'est ni poursuivi ni ciblé.
           if (s && s._posOk === true && !(Number(s._graceUntil || 0) > now)) {
-            const serverSafe = typeof sim.inSafe === "function" ? sim.inSafe(s.x, s.y) : false;
-            s.serverSafe = serverSafe && s.safe === true;
+            // ZNA réévaluée à chaque tick : les délais de 5 s expirent sans
+            // attendre le prochain paquet de position du joueur.
+            s.safe = playerZna(s, sim, now);
+            s.serverSafe = s.safe;
             const serverDead = s.pvpDead === true || !(Number(s.hp) > 0);
             sim.setPlayer(pid, s.x, s.y, { dead: serverDead, safe: s.serverSafe, untargetableUntil: Number(s.iemUntil) || 0, cloaked: s.cloaked === true || s.cloakCpu === true, shipId: s.shipId, lockedTarget: s.lockedTarget, shPct: s.shPct });
           }

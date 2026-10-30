@@ -171,7 +171,7 @@ export class ZoneNpcSim {
           const z = mods?.zone;
           if (z && String(z.kind || "circle") === "circle" && Number.isFinite(Number(z.r))) {
             // Marge +50 : parité solo (z.r + SAFE_ZONE_MARGIN côté client).
-            safe = [{ x: Number(z.x) || 0, y: Number(z.y) || 0, r: Number(z.r) + 50 }];
+            safe = [{ x: Number(z.x) || 0, y: Number(z.y) || 0, r: Number(z.r) + 50, kind: "base" }];
           }
           // Modules autonomes (controleurs de missions x-4 / x-5). Les x-5
           // n'ont volontairement aucune `zone` globale : leur `safeRadius`
@@ -183,6 +183,7 @@ export class ZoneNpcSim {
               x: Number(module.x) || 0,
               y: Number(module.y) || 0,
               r: radius,
+              kind: "base",
             });
           }
         }
@@ -193,7 +194,7 @@ export class ZoneNpcSim {
             // Les portails de Galaxy Gates ne fournissent jamais de zone sure.
             if (["alpha", "beta", "gamma", "delta", "epsilon", "zeta", "kappa", "lambda", "kronos", "awakened"].includes(destination)) continue;
             // Rayon 500 : parité solo (450 + SAFE_ZONE_MARGIN côté client).
-            safe.push({ x: Number(portal.x) || 0, y: Number(portal.y) || 0, r: 500 });
+            safe.push({ x: Number(portal.x) || 0, y: Number(portal.y) || 0, r: 500, kind: "portal" });
           }
         }
       } catch {}
@@ -284,6 +285,29 @@ export class ZoneNpcSim {
       if (dx * dx + dy * dy <= z.r * z.r) return true;
     }
     return false;
+  }
+
+  // Bot JPC à l'abri : même règle que les joueurs. Tirer (joueur ou NPC)
+  // retire la protection 5 s ; au portail, chaque tir de joueur reçu la
+  // retire aussi 5 s. La base protège dès que le bot ne tire plus.
+  jpcSheltered(e, nowMs = Date.now()) {
+    if (!e || e.jpc !== true) return false;
+    const kind = this.safeKindAt(Number(e.x) || 0, Number(e.y) || 0);
+    if (!kind || nowMs < Number(e.jpcAttackAt || 0) + 5000) return false;
+    return kind === "base" || nowMs >= Number(e.jpcPlayerHitAt || 0) + 5000;
+  }
+
+  // Type de zone protégée au point : "base" (base, contrôleurs de missions)
+  // prioritaire sur "portal" ; null hors de toute zone.
+  safeKindAt(x, y) {
+    let kind = null;
+    for (const z of this.safe || []) {
+      const dx = Number(x) - z.x, dy = Number(y) - z.y;
+      if (dx * dx + dy * dy > z.r * z.r) continue;
+      if (z.kind !== "portal") return "base";
+      kind = "portal";
+    }
+    return kind;
   }
 
   // Repousse un point hors des cercles de non-agression (+marge).
@@ -1246,6 +1270,7 @@ export class ZoneNpcSim {
       if (!ishing && nowMs >= Number(e.jpcShootT || 0) && d <= jpcEngageRange(e)
         && nowMs >= Number(e.freezeUntil || 0) && nowMs >= Number(e._redirectSilenceUntil || 0)) {
         e.jpcShootT = nowMs + JPC_LASER.interval * 1000;
+        e.jpcAttackAt = nowMs; // farmer un NPC retire aussi la protection ZNA
         const bursting = nowMs < Number(e.jpcX6Until || 0);
         const missed = Math.random() < jpcMissChance(e.jpcSkill);
         const dmg = Math.max(1, Math.round(Number(e.bulletDmg || 500) * (bursting ? 1.5 : 1) * jpcFarmDmgMult(this.mapId) * (0.9 + Math.random() * 0.2)));
@@ -1325,6 +1350,7 @@ export class ZoneNpcSim {
     const missed = Math.random() < jpcMissChance(e.jpcSkill);
     const mult = toPlayer ? jpcRiposteMultForSkill(e.jpcSkill) : 1;
     const dmg = Math.max(1, Math.round(jpcRocketDamage(rocketId, tierIdx) * mult * (0.9 + Math.random() * 0.2)));
+    e.jpcAttackAt = nowMs; // tirer retire la protection ZNA (jpcSheltered)
     if (toPlayer) {
       if (!missed) {
         this.playerHits.push({ playerId: String(target.id), npcUid: e.uid, damage: dmg, kind: "rocket" });
@@ -1778,7 +1804,9 @@ drainPlayerHits() {
     // à l'abri ne prend rien et ne donne rien (ni lock, ni aggro) — pas de
     // vol de kill au portail pendant sa réparation.
     if (entry.jpc === true) {
-      try { if (this.inSafe(Number(entry.x) || 0, Number(entry.y) || 0)) return 0; } catch {}
+      try { if (this.jpcSheltered(entry)) return 0; } catch {}
+      // Tir de joueur sur le bot : relance son délai au portail.
+      if (this.players.has(String(clientId))) entry.jpcPlayerHitAt = Date.now();
     }
     const shooter = this.players.get(String(clientId));
     // La zone sure empeche le PvP, mais le gameplay actuel autorise encore
@@ -2529,6 +2557,7 @@ drainPlayerHits() {
               : 1;
             const damage = Math.max(1, Math.round(e.bulletDmg * jpcMult * (0.95 + Math.random() * 0.1)));
             this.playerHits.push({ playerId: String(chase.id), npcUid: e.uid, damage, kind: "laser" });
+            if (e.jpc) e.jpcAttackAt = nowMs; // tirer retire la protection ZNA
           }
           // Roquette standard toutes les secondes en riposte, comme les
           // vrais joueurs.
@@ -2640,7 +2669,7 @@ drainPlayerHits() {
           // (pseudo, drones, formation, bulle ISH).
           ...(e.jpc === true ? {
             jpc: 1,
-            jpSafe: this.inSafe(e.x, e.y),
+            jpSafe: this.jpcSheltered(e, nowMs),
             jpVx: Number(e.vx) || 0, jpVy: Number(e.vy) || 0, jpSpeed: e.speed,
             jpMode: e.jpcMode,
             jpPseudo: String(e.jpcPseudo || "JPC"),

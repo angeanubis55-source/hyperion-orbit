@@ -34786,6 +34786,30 @@ function getCurrentZoneMapId() {
   return String(window.__CURRENT_MAP_ID__ || rules?.mapLabel || "").trim().toLowerCase();
 }
 
+// ZNA portail (miroir de playerZna côté serveur, qui reste seul juge) :
+// 5 s sans tir de joueur reçu (chaque tir relance) et, si un NPC nous
+// touchait juste avant d'entrer, 5 s après l'entrée (sans relance).
+// La base reste immédiate.
+const ZNA_COMBAT_LOCK_MS = 5000;
+let znaPortalAt = 0;
+let znaPortalNpcLock = false;
+let znaPlayerHitAt = -Infinity;
+let znaNpcHitAt = -Infinity;
+function noteZnaHitLocal(source) {
+  if (source === "player") znaPlayerHitAt = performance.now();
+  else znaNpcHitAt = performance.now();
+}
+function portalZnaReady(portal) {
+  const now = performance.now();
+  if (!portal) { znaPortalAt = 0; return false; }
+  if (!znaPortalAt) {
+    znaPortalAt = now;
+    znaPortalNpcLock = now < znaNpcHitAt + ZNA_COMBAT_LOCK_MS;
+  }
+  return now >= znaPortalAt + (znaPortalNpcLock ? ZNA_COMBAT_LOCK_MS : 0)
+    && now >= znaPlayerHitAt + ZNA_COMBAT_LOCK_MS;
+}
+
 function portalProvidesSafety(portal, forJpc = false) {
   const mapId = getCurrentZoneMapId();
   if (/^4-[123]$/.test(mapId) || mapId === "4-4" || mapId === "4-5") return false;
@@ -44311,6 +44335,7 @@ if (movementLocked) {
     }
     if (self && Number(self.pvpAt) > 0 && Number(self.pvpAt) !== lastPvpAdoptAt) {
       lastPvpAdoptAt = Number(self.pvpAt);
+      try { noteZnaHitLocal("player"); } catch {}
       const beforeHp = player.hp, beforeSh = player.sh;
       if (player.hpMax > 0 && Number.isFinite(Number(self.hp))) {
         player.hp = Math.max(0, Math.min(player.hp, Math.min(player.hpMax, Number(self.hp))));
@@ -44384,6 +44409,11 @@ if (movementLocked) {
     )) {
       lastNpcDamageAdoptAt = Number(self.npcAt);
       lastNpcDamageAdoptSeq = npcDamageSeq;
+      // ZNA : un bot JPC compte comme un joueur (relance le délai).
+      try {
+        const fromJpc = enemies.some(e => e?.isJpcBot === true && String(e._netUid || "") === String(self.npcFrom || ""));
+        noteZnaHitLocal(fromJpc ? "player" : "npc");
+      } catch {}
       const npcHpDamage = Math.max(0, Number(self.npcHpDamage) || 0);
       const npcShDamage = Math.max(0, Number(self.npcShDamage) || 0);
       const beforeHp = player.hp, beforeSh = player.sh;
@@ -44545,6 +44575,9 @@ if (movementLocked) {
       }
     }
 
+    // Délai de combat du portail (aucun effet sur la base ni sur les sauts).
+    const portalReady = portalZnaReady(safePortal);
+
     if (near) {
       if (safePortal) {
         safeZoneX = safePortal.x;
@@ -44555,7 +44588,7 @@ if (movementLocked) {
         safeZoneY = near.y;
         safeZoneR = DEFAULT_PORTAL_RADIUS;
       }
-      safeZoneActive = !!safePortal && noCombatForSafe;
+      safeZoneActive = !!safePortal && noCombatForSafe && portalReady;
 
       if (
   near.autoOpen &&
@@ -44611,7 +44644,7 @@ if (
       safeZoneX = safePortal.x;
       safeZoneY = safePortal.y;
       safeZoneR = DEFAULT_PORTAL_RADIUS + SAFE_ZONE_MARGIN;
-      safeZoneActive = noCombatForSafe;
+      safeZoneActive = noCombatForSafe && portalReady;
       if (safeZoneActive) showToastFixed("Zone de Non-Agression");
       else if (toast?.fixed && toast.text === "Zone de Non-Agression") clearToastFixed();
     } else {
@@ -44654,6 +44687,7 @@ for (const ptl of zonePortals) {
     }
   } else {
     safeZoneActive = false;
+    portalZnaReady(null);
     if (toast?.fixed && toast.text === "Zone de Non-Agression") clearToastFixed();
   }
 
