@@ -1883,10 +1883,17 @@ function clanStatsOfData(raw) {
   const stats = data.stats || {};
   const exp = Math.max(0, Math.floor(Number(stats.exp) || 0));
   const honor = Math.floor(Number(stats.honor) || 0);
+  // Kills NPC = somme du détail par type (incrémenté par le serveur à chaque
+  // kill, comme la fiche "NPC & Grades"). lifetimeKills vient de la
+  // sauvegarde client et a pu inclure des kills PvP : repli seulement.
+  const byType = stats.npcKills && typeof stats.npcKills === "object" && !Array.isArray(stats.npcKills) ? stats.npcKills : null;
+  const npcKills = byType
+    ? Object.values(byType).reduce((total, count) => total + Math.max(0, Math.floor(Number(count) || 0)), 0)
+    : Math.max(0, Math.floor(Number(stats.lifetimeKills) || 0));
   return {
     exp, honor,
     rankPoints: calculateRankPoints({ exp, honor }),
-    npcKills: Math.max(0, Math.floor(Number(stats.lifetimeKills) || 0)),
+    npcKills,
   };
 }
 

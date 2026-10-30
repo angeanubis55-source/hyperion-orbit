@@ -35837,13 +35837,9 @@ function syncNetNpcs(dt) {
     for (const k of kills) {
       const gainedXp = awardExperience(Math.max(0, k.exp || 0), "pvp")?.gained ?? 0;
       const gainedHo = awardHonor(Math.max(0, k.honneur || 0))?.gained ?? 0;
-      try {
-        if (account.user) {
-          account.user.stats ||= { honor: 0, exp: 0, rankPoints: 0, lifetimeKills: 0 };
-          account.user.stats.lifetimeKills = Math.max(0, Number(account.user.stats.lifetimeKills || 0)) + 1;
-          markProgressDirty();
-        }
-      } catch {}
+      // Pas de +1 sur lifetimeKills : c'est le total des kills NPC (classement
+      // des clans). Les kills PvP sont comptés par le serveur (pvp_stats).
+      try { if (account.user) markProgressDirty(); } catch {}
       const farmed = Number(k.mult) > 0 && Number(k.mult) < 1 ? " (rendement réduit : même victime)" : "";
       showToast(`Vaisseau de ${k.victim} détruit : +${formatInteger(gainedHo)} honneur, +${formatInteger(gainedXp)} XP${farmed}`, 3.2);
       try { advanceQuestProgress("pvp", "pvp"); } catch {}
