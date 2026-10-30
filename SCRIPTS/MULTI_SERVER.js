@@ -2442,10 +2442,15 @@ server.on("upgrade", (request, socket, head) => {
   });
 });
 
+// Débit des messages par socket : 250/s en continu, plus une réserve pour la
+// file envoyée d'un coup au retour d'une coupure réseau (téléphone : jusqu'à
+// 30 s de positions à 20 Hz avant que le client ne déclare la liaison morte).
+// Une fenêtre fixe de 250/s coupait la connexion après ~13 s de coupure.
+const MESSAGE_RATE = 250, MESSAGE_BURST = 1500;
 wss.on("connection", (ws) => {
   ws.lastHeardAt = Date.now();
   let messageRateAt = ws.lastHeardAt;
-  let messageRateCount = 0;
+  let messageTokens = MESSAGE_BURST;
   // Invite par defaut ; le hello authentifie (token compte) et fige
   // l'identite stable `u_<accountId>` (meme id apres refresh/restart).
   let id = `p${nextId++}`;
@@ -2507,12 +2512,9 @@ wss.on("connection", (ws) => {
   ws.on("message", (raw) => {
     if (authed && accountSockets.get(id) !== ws) return;
     const rateNow = Date.now();
-    if (rateNow - messageRateAt >= 1000) {
-      messageRateAt = rateNow;
-      messageRateCount = 0;
-    }
-    messageRateCount++;
-    if (messageRateCount > 250) {
+    messageTokens = Math.min(MESSAGE_BURST, messageTokens + Math.max(0, rateNow - messageRateAt) * MESSAGE_RATE / 1000);
+    messageRateAt = rateNow;
+    if (--messageTokens < 0) {
       try { ws.close(1008, "Message rate exceeded"); } catch {}
       return;
     }
