@@ -691,10 +691,13 @@
           <div style="padding:10px 16px"><button class="btn sm ghost" type="button" id="fLogMore" hidden>Plus ancien…</button></div>
         </div>`
       + `<div data-panel="account">
-          <div class="section"><h3>Compte</h3><p class="muted" style="margin:0 0 10px;font-size:12px">Le joueur est déconnecté s'il est en ligne, pour recharger son compte.</p>
-            <div class="actions"><button class="btn" type="button" data-fiche="home">Renvoyer à la base</button><button class="btn" type="button" data-fiche="rename">Changer le pseudo…</button><button class="btn" type="button" data-fiche="faction">Changer de firme…</button><button class="btn warn" type="button" data-fiche="password">Réinitialiser le mot de passe…</button></div>
+          <div class="section"><h3>Position</h3><p class="muted" style="margin:0 0 10px;font-size:12px">En ligne : déplacé aussitôt, sans reconnexion. Hors ligne : appliqué à sa prochaine connexion.</p>
+            <div class="actions"><button class="btn" type="button" data-fiche="teleport">Téléporter…</button><button class="btn" type="button" data-fiche="home">Renvoyer à la base</button><button class="btn warn" type="button" data-fiche="debug">Base en Phoenix vide (debug)…</button></div>
           </div>
-          <div class="section danger"><h3>Zone dangereuse</h3><div class="actions"><button class="btn danger" type="button" data-fiche="debug">Débloquer le compte…</button><button class="btn danger" type="button" data-fiche="delete">Supprimer le compte…</button></div></div>
+          <div class="section"><h3>Compte</h3><p class="muted" style="margin:0 0 10px;font-size:12px">Le joueur est déconnecté s'il est en ligne, pour recharger son compte.</p>
+            <div class="actions"><button class="btn" type="button" data-fiche="rename">Changer le pseudo…</button><button class="btn" type="button" data-fiche="faction">Changer de firme…</button><button class="btn warn" type="button" data-fiche="password">Réinitialiser le mot de passe…</button></div>
+          </div>
+          <div class="section danger"><h3>Zone dangereuse</h3><div class="actions"><button class="btn danger" type="button" data-fiche="delete">Supprimer le compte…</button></div></div>
         </div>`);
     showFicheTab(ficheTab);
     if (p.guest) return;
@@ -973,8 +976,9 @@
     if (act === "debug") return openDebugModal(p);
     if (act === "delete") return openDeleteModal(p);
     if (act === "hold") return openHoldModal(p);
-    if (act === "home") return openConfirmModal(`Renvoyer ${p.pseudo} à sa base ?`, "Le vaisseau actif est replacé sur la carte x-1 de sa firme.", "Renvoyer", false,
-      async () => { const out = ok(await post("/api/admin/teleport-home", { id: p.id })); return `${out.pseudo} renvoyé en ${out.map}${out.disconnected ? " (déconnecté)" : ""}.`; });
+    if (act === "home") return openConfirmModal(`Renvoyer ${p.pseudo} à sa base ?`, p.online ? "Il est déplacé aussitôt à la base de sa firme, sans reconnexion. Son vaisseau et son équipement ne changent pas." : "Hors ligne : il apparaîtra à la base de sa firme à sa prochaine connexion.", "Renvoyer", false,
+      async () => teleportResult(ok(await post("/api/admin/teleport-home", { id: p.id, pseudo: p.pseudo })), "à sa base"));
+    if (act === "teleport") return openTeleportModal(p);
     if (act === "rename") return openRenameModal(p);
     if (act === "faction") return openFactionModal(p);
     if (act === "password") return openPasswordModal(p);
@@ -1107,12 +1111,45 @@
       } }],
     });
   }
+  // where : "à sa base", "près de X" ou vide (carte choisie).
+  function teleportResult(out, where = "") {
+    const dest = `${where ? `${where}, ` : ""}en ${out.map}`;
+    return out.live ? `${out.pseudo} téléporté ${dest} (${fmtN(out.x)} / ${fmtN(out.y)}), sans déconnexion.`
+      : `${out.pseudo} est hors ligne : il apparaîtra ${dest} à sa prochaine connexion.`;
+  }
+  function openTeleportModal(p) {
+    let mode = "map";
+    const maps = catalog?.maps || [];
+    const others = allPlayers().filter((x) => x.online && x.id !== p.id && !x.instance);
+    openModal({
+      title: `Téléporter ${p.pseudo}`,
+      sub: p.online ? "Déplacé aussitôt, sans reconnexion (refusé s'il est dans une Galaxy Gate ou détruit)." : "Hors ligne : la position est appliquée à sa prochaine connexion.",
+      body: `<div class="chips" id="tpModes"><button class="chip sel" type="button" data-mode="map">Carte et coordonnées</button><button class="chip" type="button" data-mode="player"${others.length ? "" : " disabled"}>Vers un joueur</button></div>
+        <div id="tpMap"><select id="tpMapSel" class="input" style="width:100%;margin-bottom:10px">${maps.map((m) => `<option value="${esc(m.id)}"${m.id === (p.map || "") ? " selected" : ""}>${esc(m.id)} (${fmtN(m.w)} × ${fmtN(m.h)})</option>`).join("")}</select>
+          <div style="display:flex;gap:8px"><input id="tpX" class="input" type="number" placeholder="X (centre si vide)" style="margin:0"><input id="tpY" class="input" type="number" placeholder="Y (centre si vide)" style="margin:0"></div></div>
+        <div id="tpPlayer" hidden><select id="tpPlayerSel" class="input" style="width:100%">${others.map((o) => `<option value="${esc(o.id)}">${esc(o.pseudo)} · ${esc(o.map || "?")}</option>`).join("")}</select><p class="muted" style="font-size:12px;margin:0">Arrive juste à côté de ce joueur, sur sa carte.</p></div>`,
+      actions: [{ label: "Annuler" }, { label: "Téléporter", primary: true, run: async () => {
+        const body = mode === "player" ? { id: p.id, pseudo: p.pseudo, toPlayer: $("tpPlayerSel").value }
+          : { id: p.id, pseudo: p.pseudo, map: $("tpMapSel").value, x: $("tpX").value, y: $("tpY").value };
+        if (mode === "player" && !body.toPlayer) throw new Error("Aucun joueur cible.");
+        const target = mode === "player" ? `près de ${others.find((o) => o.id === body.toPlayer)?.pseudo || "?"}` : "";
+        return teleportResult(ok(await post("/api/admin/teleport", body)), target);
+      } }],
+    });
+    $("tpModes").querySelectorAll("[data-mode]").forEach((b) => { b.onclick = () => {
+      if (b.disabled) return;
+      mode = b.dataset.mode;
+      $("tpModes").querySelectorAll(".chip").forEach((c) => c.classList.toggle("sel", c === b));
+      $("tpMap").hidden = mode !== "map";
+      $("tpPlayer").hidden = mode !== "player";
+    }; });
+  }
   function openDebugModal(p) {
     openModal({
-      title: `Débloquer ${p.pseudo} ?`,
-      sub: "Le compte est replacé en Phoenix sur sa map mère. Les deux configurations du vaisseau, des drones et du P.E.T sont vidées ; les objets restent dans l'inventaire. Le joueur est déconnecté s'il est en ligne.",
+      title: `Renvoyer ${p.pseudo} à la base en Phoenix vide ?`,
+      sub: "Debug : le compte est replacé en Phoenix sur sa map mère. Les deux configurations du vaisseau, des drones et du P.E.T sont vidées ; les objets restent dans l'inventaire. Le vaisseau change : le joueur est déconnecté s'il est en ligne et doit se reconnecter.",
       danger: true,
-      actions: [{ label: "Annuler" }, { label: "Débloquer", kind: "danger", primary: true, run: async () => {
+      actions: [{ label: "Annuler" }, { label: "Renvoyer en Phoenix vide", kind: "danger", primary: true, run: async () => {
         const out = ok(await post("/api/admin/debug-account", { id: p.id, pseudo: p.pseudo }));
         return `${out.pseudo} replacé en ${out.map} avec un Phoenix vide.`;
       } }],
@@ -1323,7 +1360,7 @@
 
   /* ---------- Historique des actions admin ---------- */
   const ACTION_LABELS = { give: "Crédits", "give-exp": "EXP", "give-honor": "Honneur", "give-module": "Module", "give-title": "Titre", "give-gg": "GG ajoutée", "reset-gg": "GG retirée",
-    "give-drone-design": "Design de drone", "give-item": "Objet donné", "adjust-stock": "Stock ajusté", "remove-owned": "Objet retiré", "teleport-home": "Renvoi à la base",
+    "give-drone-design": "Design de drone", "give-item": "Objet donné", "adjust-stock": "Stock ajusté", "remove-owned": "Objet retiré", "teleport-home": "Renvoi à la base", teleport: "Téléportation",
     rename: "Pseudo changé", "set-faction": "Firme changée", "reset-password": "Mot de passe réinitialisé", kick: "Kick", mute: "Mute", ban: "Ban", unban: "Débannissement / libération",
     "cheat-hold": "Gel anticheat", "debug-account": "Déblocage", delete: "Suppression", broadcast: "Message / annonce" };
   let adminLog = [], adminLogMore = false;

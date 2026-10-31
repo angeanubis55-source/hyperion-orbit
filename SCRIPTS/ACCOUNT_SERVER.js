@@ -4699,22 +4699,23 @@ export function adminRemoveOwned(target, kind, id) {
   } catch { return { ok: false, error: "Erreur serveur." }; }
 }
 
-// Renvoie le vaisseau actif à la base de sa firme (map x-1).
-export function adminTeleportHome(target) {
+// Place le vaisseau actif sur une carte (joueur hors ligne : appliqué à sa
+// prochaine connexion). La carte et les coordonnées sont validées par
+// l'appelant (MULTI_SERVER connaît les dimensions des cartes).
+export function adminSetPosition(target, map, x, y) {
   try {
     initAccountDb();
     const row = adminFindRow(target);
     if (!row) return { ok: false, error: "Compte introuvable." };
+    const mapId = String(map || "").toLowerCase().slice(0, 32);
+    if (!mapId || !Number.isFinite(Number(x)) || !Number.isFinite(Number(y))) return { ok: false, error: "Position invalide." };
     const data = adminParseData(row);
-    const faction = FACTIONS.has(norm(data.faction || row.faction)) ? norm(data.faction || row.faction) : "mmo";
-    const map = `${getFaction(faction).sector}-1`;
-    const pos = getFactionBaseSpawn(faction);
-    // Compte jamais joué : pas encore de hangar, il apparaîtra déjà à sa base.
+    // Compte jamais joué : pas encore de hangar, rien à déplacer.
     const hangar = (data.hangars || []).find((h) => h?.active) || (data.hangars || [])[0];
-    if (hangar) Object.assign(hangar, { lastMap: map, lastPos: { x: pos.x, y: pos.y } });
+    if (hangar) Object.assign(hangar, { lastMap: mapId, lastPos: { x: Number(x), y: Number(y) } });
     if (data.eternalGate && typeof data.eternalGate === "object") data.eternalGate.inRun = false;
     const revision = adminWriteData(row, data);
-    return { ok: true, ...adminWho(row), map, revision };
+    return { ok: true, ...adminWho(row), map: mapId, x: Number(x), y: Number(y), revision };
   } catch { return { ok: false, error: "Erreur serveur." }; }
 }
 

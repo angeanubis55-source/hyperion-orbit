@@ -27,7 +27,7 @@ const {
 } = AC;
 import { tickLowRaid, getLowRaidState } from "./LOW_RAID.js";
 import { damagePlayerLayers } from "../COMBAT/COMBAT_RULES.js";
-import { handleAccountApi, getAccountGameplayData, verifyWsToken, recordPvpKill, recordPvpPetKill, awardNpcKill, grantSundayModule, grantSundayTickets, grantSundayAmmo, listFriends, friendFollowers, findUserByPseudo, hasFriendRequest, isBlockedBy, clanIdOfUser, clanTagOfUser, clanMemberUserIds, setClanPresenceProvider, setClanBasesProvider, recordClanWarKill, adminGiveCredits, adminGiveExperience, adminGiveHonor, adminGiveModule, adminGiveTitle, adminListAccounts, adminDebugAccount, adminDeleteAccount, adminResetGalaxyGate, adminGiveGalaxyGate, adminDroneDesigns, adminGiveDroneDesign, adminShipFamilies, adminCatalog, adminInventory, adminGiveItem, adminAdjustStock, adminRemoveOwned, adminTeleportHome, adminRename, adminSetFaction, adminResetPassword, appendPlayerLogs, adminPlayerLogs, adminLogAction, adminActionLog, adminStats } from "./ACCOUNT_SERVER.js";
+import { handleAccountApi, getAccountGameplayData, verifyWsToken, recordPvpKill, recordPvpPetKill, awardNpcKill, grantSundayModule, grantSundayTickets, grantSundayAmmo, listFriends, friendFollowers, findUserByPseudo, hasFriendRequest, isBlockedBy, clanIdOfUser, clanTagOfUser, clanMemberUserIds, setClanPresenceProvider, setClanBasesProvider, recordClanWarKill, adminGiveCredits, adminGiveExperience, adminGiveHonor, adminGiveModule, adminGiveTitle, adminListAccounts, adminDebugAccount, adminDeleteAccount, adminResetGalaxyGate, adminGiveGalaxyGate, adminDroneDesigns, adminGiveDroneDesign, adminShipFamilies, adminCatalog, adminInventory, adminGiveItem, adminAdjustStock, adminRemoveOwned, adminSetPosition, adminRename, adminSetFaction, adminResetPassword, appendPlayerLogs, adminPlayerLogs, adminLogAction, adminActionLog, adminStats } from "./ACCOUNT_SERVER.js";
 import { combatProfile, validateCombatHit, syncDeclaredFormation, accountWithFormation } from "./COMBAT_PROFILE.js";
 import { profileAbilityCooldown } from "../DRONE/DRONE_DESIGNS.js";
 import { selectNpcSnapshot } from "./NPC_SNAPSHOT.js";
@@ -906,6 +906,47 @@ function adminDisconnect(pid, reason) {
   return !!victimWs;
 }
 
+// Connexions qui savent téléporter leur joueur (voir adminMove), par socket.
+const adminMovers = new Map();
+function findAdminMover(pid) {
+  for (const mover of adminMovers.values()) if (mover.id() === pid) return mover;
+  return null;
+}
+function adminClampToMap(map, x, y) {
+  const world = serverMaps.get(map)?.world;
+  if (!world) return null;
+  const clamp = (v, max, fallback) => Math.round(Math.max(40, Math.min(max - 40, Number.isFinite(Number(v)) && String(v).trim() !== "" ? Number(v) : fallback)));
+  return { x: clamp(x, world.w, world.w / 2), y: clamp(y, world.h, world.h / 2) };
+}
+async function adminTeleportRequest(body, home) {
+  const pid = String(body.id || "");
+  const mover = findAdminMover(pid);
+  let map, x, y;
+  if (home) {
+    const faction = mover?.faction() || adminInventory(pid || body.pseudo)?.faction;
+    map = getFactionHomeMap(faction);
+    ({ x, y } = baseArrival(serverMaps, map, faction));
+  } else if (body.toPlayer) {
+    const target = findAdminMover(String(body.toPlayer))?.state;
+    if (!target) return { ok: false, error: "Le joueur cible n'est pas connecté." };
+    if (target.instance === true) return { ok: false, error: "Le joueur cible est dans une Galaxy Gate." };
+    map = String(target.serverMap || "").toLowerCase();
+    x = Number(target.x) + 120; y = Number(target.y);
+  } else {
+    map = String(body.map || "").toLowerCase();
+    x = body.x; y = body.y;
+  }
+  const spot = adminClampToMap(map, x, y);
+  if (!spot) return { ok: false, error: "Carte inconnue." };
+  if (mover) {
+    const res = mover.move(map, spot.x, spot.y);
+    return res.ok ? { ...res, ok: true, pseudo: String(mover.state.pseudo || ""), live: true } : res;
+  }
+  // Hors ligne : position enregistrée dans le compte, appliquée à la connexion.
+  const res = adminSetPosition(pid || body.pseudo, map, spot.x, spot.y);
+  return res.ok ? { ...res, live: false } : res;
+}
+
 // Joueurs connectés par carte (statistiques du panneau).
 function adminLivePerMap() {
   const perMap = {};
@@ -922,7 +963,8 @@ const ADMIN_TOOL_POSTS = {
   "/api/admin/give-item": (b) => adminGiveItem(b.id || b.pseudo, b.itemId, b.quantity),
   "/api/admin/adjust-stock": (b) => adminAdjustStock(b.id || b.pseudo, b.kind, b.key, b.delta),
   "/api/admin/remove-owned": (b) => adminRemoveOwned(b.id || b.pseudo, b.kind, b.key),
-  "/api/admin/teleport-home": (b) => adminTeleportHome(b.id || b.pseudo),
+  "/api/admin/teleport-home": (b) => adminTeleportRequest(b, true),
+  "/api/admin/teleport": (b) => adminTeleportRequest(b, false),
   "/api/admin/rename": (b) => adminRename(b.id || b.pseudo, b.value),
   "/api/admin/set-faction": (b) => adminSetFaction(b.id || b.pseudo, b.faction),
   "/api/admin/reset-password": (b) => adminResetPassword(b.id || b.pseudo),
@@ -930,7 +972,6 @@ const ADMIN_TOOL_POSTS = {
 // Ces actions changent ce que le jeu connecté garde en mémoire : le joueur
 // est déconnecté pour recharger son compte.
 const ADMIN_TOOL_KICK = {
-  "/api/admin/teleport-home": "Renvoyé à ta base par l'admin. Reconnecte-toi.",
   "/api/admin/rename": "Ton pseudo a été changé par l'admin. Reconnecte-toi.",
   "/api/admin/set-faction": "Ta firme a été changée par l'admin. Reconnecte-toi.",
   "/api/admin/reset-password": "Ton mot de passe a été réinitialisé par l'admin.",
@@ -939,7 +980,12 @@ function handleAdminToolsApi(request, response, pathname) {
   const url = new URL(request.url || "/", "http://admin.local");
   const query = (key) => url.searchParams.get(key) || "";
   if (request.method === "GET") {
-    if (pathname === "/api/admin/catalog") { adminJson(response, 200, { ok: true, ...adminCatalog() }); return true; }
+    if (pathname === "/api/admin/catalog") {
+      const maps = [...serverMaps.entries()].map(([id, m]) => ({ id, w: Number(m?.world?.w) || 0, h: Number(m?.world?.h) || 0 }))
+        .filter((m) => m.w > 0).sort((a, b) => a.id.localeCompare(b.id, "fr", { numeric: true }));
+      adminJson(response, 200, { ok: true, ...adminCatalog(), maps });
+      return true;
+    }
     if (pathname === "/api/admin/inventory") { const res = adminInventory(query("id")); adminJson(response, res.ok ? 200 : 404, res); return true; }
     if (pathname === "/api/admin/player-logs") {
       const res = adminPlayerLogs(query("id"), { before: query("before"), q: query("q"), type: query("type"), limit: query("limit") });
@@ -2573,6 +2619,32 @@ wss.on("connection", (ws) => {
     if (ws.readyState === 1) ws.send(JSON.stringify({ t: "stateCorrection", map: mapId, x: state.x, y: state.y, seq: state._corrSeq }));
   };
   const movementTarget = key => rooms.get(mapId)?.get(String(key))?.state || npcSims.get(mapId)?.entries?.get(String(key)) || null;
+  // Téléportation admin en direct (sans reconnexion) : même arrivée validée
+  // qu'un saut stellaire, puis une correction de position que le jeu
+  // applique (changement de carte compris). Les positions encore en vol
+  // portent l'ancien numéro de correction : ignorées, sans violation.
+  const adminMove = (map, x, y) => {
+    const now = Date.now();
+    if (state.instance === true) return { ok: false, error: "Le joueur est dans une Galaxy Gate." };
+    if (state.pvpDead === true || !(state.hp > 0)) return { ok: false, error: "Le joueur est détruit : attends sa réparation." };
+    state._arrival = { x, y, until: now + 15000 };
+    Object.assign(state, { x, y, vx: 0, vy: 0, moving: false, motionBlocked: false,
+      teleportSeq: (Number(state.teleportSeq) || 0) + 1, moveBuck: 0, moveBuckT: now,
+      serverMap: map, portalCdUntil: now + 5000, updatedAt: now, _rejPos: null });
+    if (map !== mapId) {
+      removeFromAllRooms(id);
+      mapId = map;
+      roomFor(map).set(id, { ws, state });
+      ensureNpcSim(map);
+      sendBoxSync(ws, map);
+    }
+    state._correctionAt = now;
+    state._corrSeq = (Number(state._corrSeq) || 0) + 1;
+    if (ws.readyState === 1) ws.send(JSON.stringify({ t: "stateCorrection", map, x, y, seq: state._corrSeq }));
+    return { ok: true, map, x, y };
+  };
+  // L'id change à l'authentification (invité -> u_xxx) : il est relu à la demande.
+  adminMovers.set(ws, { id: () => id, move: adminMove, state, faction: () => state._account?.faction });
   const changeMap = (nextMap, instance = false) => {
     if (nextMap === mapId && instance === (state.instance === true)) return true;
     if (!authed || !accountId) return false;
@@ -4406,6 +4478,7 @@ wss.on("connection", (ws) => {
   };
   ws.on("close", (code, reason) => {
     allWs.delete(ws);
+    adminMovers.delete(ws);
     if (code !== 1000 && code !== 1001) {
       console.log(`[multi:connection] ${id} closed ${code}: ${String(reason).slice(0, 120)}`);
     }
