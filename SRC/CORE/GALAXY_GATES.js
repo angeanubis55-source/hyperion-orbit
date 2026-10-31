@@ -116,6 +116,10 @@ export const GALAXY_SPIN_CREDIT_COST = 125000;
 // permanence (test) ; les tests automatiques le coupent pour fixer l'heure.
 export const GALAXY_SPIN_DISCOUNT = 0.25;
 export const GALAXY_SPIN_DISCOUNT_FORCED = false;
+// Fenêtre de l'event : dimanche, minutes depuis minuit (00h01 → 23h59 inclus).
+export const GALAXY_EVENT_WEEKDAY = 0;
+export const GALAXY_EVENT_START_MINUTES = 1;
+export const GALAXY_EVENT_END_MINUTES = 23 * 60 + 59;
 let galaxyEventForced = GALAXY_SPIN_DISCOUNT_FORCED;
 export function setGalaxyEventForced(value) { galaxyEventForced = value === true; }
 export function isGalaxySpinDiscountTime(now = Date.now()) {
@@ -124,7 +128,7 @@ export function isGalaxySpinDiscountTime(now = Date.now()) {
     const parts = Object.fromEntries(new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/Paris", weekday: "short", hour: "2-digit", minute: "2-digit", hourCycle: "h23" })
       .formatToParts(new Date(now)).map(part => [part.type, part.value]));
     const minutes = Number(parts.hour) * 60 + Number(parts.minute);
-    return parts.weekday === "Sun" && minutes >= 1 && minutes <= 23 * 60 + 59;
+    return parts.weekday === "Sun" && minutes >= GALAXY_EVENT_START_MINUTES && minutes <= GALAXY_EVENT_END_MINUTES;
   } catch { return false; }
 }
 // Même promo : récompense finale x2 (tout sauf les crédits) pour une GG

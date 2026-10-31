@@ -2,7 +2,7 @@
 
 // Event Halloween : entre x-3 et x-8 uniquement (1-3..1-8, 2-3..2-8,
 // 3-3..3-8 — jamais x-1/x-2, BL, GG, maps spéciales, 4-x, 5-2), du 16/10
-// 22h50 au 01/11 23h59 (heure de Paris, chaque année).
+// 23h59 au 01/11 23h59 (heure de Paris, chaque année).
 //
 // Mécanique par map : des Curcubitors spawnent en continu avec des stats
 // calibrées à la map. Quand 50 sont tués, tous les normaux sont purgés et
@@ -50,7 +50,7 @@ export const HALLOWEEN_DROP_BOSS_RATE = 1;
 export const HALLOWEEN_DROP_NORMAL_RATE = 1;
 
 export const HALLOWEEN_TIME_ZONE = "Europe/Paris";
-export const HALLOWEEN_START = Object.freeze({ month: 9, day: 16, hour: 22, minute: 50 }); // TEST : remettre 23h59 apres essai
+export const HALLOWEEN_START = Object.freeze({ month: 9, day: 16, hour: 23, minute: 59 });
 export const HALLOWEEN_END = Object.freeze({ month: 10, day: 1, hour: 23, minute: 59 });
 
 const halloweenDateFormat = new Intl.DateTimeFormat("en-GB", {

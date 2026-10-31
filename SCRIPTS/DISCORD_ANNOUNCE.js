@@ -5,97 +5,142 @@
 //   l'event de 20h30). Ne poste que si le serveur tourne à ce moment-là.
 // - Test manuel : DISCORD_UFONIT_WEBHOOK=<url> node SCRIPTS/DISCORD_ANNOUNCE.js --test
 //   (vérifie le webhook sans @everyone ; --test-ufonit poste la vraie annonce)
+import { HALLOWEEN_END, HALLOWEEN_START } from "../NPC/NPC_HALLOWEEN.js";
+import { SUNDAY_END_MINUTES, SUNDAY_START_MINUTES, SUNDAY_WEEKDAY } from "../NPC/NPC_SUNDAY.js";
+import { GALAXY_EVENT_END_MINUTES, GALAXY_EVENT_START_MINUTES, GALAXY_EVENT_WEEKDAY } from "../SRC/CORE/GALAXY_GATES.js";
+
 const PARIS_TZ = "Europe/Paris";
+// Annonce de début : 1 h avant l'événement ; annonce de fin : à l'heure de fin.
+// Horaires lus dans les fichiers des événements : annonces et jeu restent alignés.
+export const ANNOUNCE_LEAD_MINUTES = 60;
 
-export const UFONIT_MESSAGE = `@everyone **__:alien: ÉVÉNEMENT UFONIT :alien:__**
-**Tous les dimanches de __20h30__ à __22h30__**
+const pad = (n) => String(n).padStart(2, "0");
+const hm = (minutes) => `${pad(Math.floor(minutes / 60))}h${pad(minutes % 60)}`;
+// HALLOWEEN_START/END : mois 0-11, comme dans NPC_HALLOWEEN.js.
+const dayAt = (at) => `${pad(at.day)}/${pad(at.month + 1)} à ${hm(at.hour * 60 + at.minute)}`;
 
-**__:space_invader: L'UFONIT RÔDE__**
-Il apparaît sur 4-1 / 4-2 / 4-3 / 4-4 (une seule map à la fois)
-Il n'attaque pas et riposte pas, il ne fait que se balader
-Tué ? Il respawn instantanément ailleurs, un seul à la fois
+// Toutes les annonces suivent le même modèle :
+// - début : @everyone, titre "# E ÉVÉNEMENT NOM E", ligne :clock3: (quand,
+//   heure de Paris), phrase d'accroche, sections "E **Titre**" en citations,
+//   mot de la fin ;
+// - fin : @everyone, titre "# E FIN DE L'ÉVÉNEMENT NOM E", remerciement,
+//   ligne :calendar: du prochain rendez-vous.
+export const UFONIT_MESSAGE = `@everyone
+# :alien: ÉVÉNEMENT UFONIT :alien:
+:clock3: **Ce soir de ${hm(SUNDAY_START_MINUTES)} à ${hm(SUNDAY_END_MINUTES)} (heure de Paris)**
+L'UFONIT débarque dans le secteur 4 !
 
-**__:package: LA LOTERIE__**
-Aucune soute, aucune récompense classique
-10 Joueurs tirées aléatoirement gagnerons une récompense aléatoire
+:satellite: **Où le trouver**
+> Sur **4-1, 4-2, 4-3 et 4-4**, une seule map à la fois
+> Il n'attaque pas et ne riposte pas
+> Vos dégâts sur lui sont multipliés par **x15**
+> Détruit, il réapparaît aussitôt ailleurs
 
-**__:ticket: BONNE CHASSE__**
-Que le meilleur gagne :four_leaf_clover:`;
+:slot_machine: **La loterie**
+> À chaque UFONIT détruit, les **10 joueurs qui lui ont fait le plus de dégâts** tentent leur chance
+> **25 %** : un module (commun ou rare)
+> **25 %** : un ticket de relance de module
+> **10 %** : **50 000** munitions X4
+> **40 %** : rien cette fois
 
-export const UFONIT_END_MESSAGE = `@everyone **__:alien: ÉVÉNEMENT UFONIT TERMINEE :alien:__**`;
+Bonne chasse à tous ! :rocket:`;
 
-export const HALLOWEEN_MESSAGE = `@everyone **__:jack_o_lantern: ÉVÉNEMENT HALLOWEEN :jack_o_lantern:__**
-**Du 16/10 à 23h59 au 01/11 à 23h59**
+export const UFONIT_END_MESSAGE = `@everyone
+# :alien: FIN DE L'ÉVÉNEMENT UFONIT :alien:
+L'UFONIT a quitté le secteur. Merci à tous d'avoir participé !
 
-**__:space_invader: LES CURCUBITORS INVAHISSENT__**
-Ils apparaissent sur toutes les maps **x-3 à x-8**
-16 Curcubitors en continu, calibrés selon la map
-Tuez-en **50** et **3 Boss Curcubitors** apparaissent
-Éliminez les 3 boss et le cycle recommence
+:calendar: **Prochain rendez-vous : dimanche prochain de ${hm(SUNDAY_START_MINUTES)} à ${hm(SUNDAY_END_MINUTES)}**`;
 
-**__:package: LES BOX__**
-**Pumpkin Box** sur toutes les maps (comme les bonus box)
-Énergie GG x5, munitions x2, crédits, bonbons rares
-**Box de Cucurbitors** et **Box de Boss Cucurbitors** en drop
-Bonbons classiques et **dorés** à l'intérieur
+export const HALLOWEEN_MESSAGE = `@everyone
+# :jack_o_lantern: ÉVÉNEMENT HALLOWEEN :jack_o_lantern:
+:clock3: **Du ${dayAt(HALLOWEEN_START)} au ${dayAt(HALLOWEEN_END)} (heure de Paris)**
+Les Curcubitors envahissent les maps x-3 à x-8 !
 
-**__:candy: LES BONBONS__**
-À collecter partout, à dépenser à l'assemblage
-Tout les bonbons / bonbons dorée non utilisée pendant l'évènements ne sont pas réinitialisée et conservée  
+:space_invader: **Les Curcubitors**
+> **16** Curcubitors en continu par map, adaptés à chaque map
+> Tuez-en **50** et **3 Boss Curcubitors** apparaissent
+> Éliminez les 3 boss et le cycle recommence
 
-**__:ticket: PASSE DE COMBAT__**
-**47 objectifs** à paliers : kills, dégâts, bonbons, box
-Gagnez des **clés du passe**
-**Boutique du passe** : modules commun → légendaire, ressources, **laser Xénocide**`;
+:package: **Les box**
+> **Pumpkin Box** sur toutes ces maps : énergie GG x5, munitions x2, crédits et bonbons rares
+> **Box de Cucurbitors** et **Box de Boss Cucurbitors** sur les NPC : bonbons classiques et **dorés**
 
-export const HALLOWEEN_END_MESSAGE = `@everyone **__:jack_o_lantern: ÉVÉNEMENT HALLOWEEN TERMINEE :jack_o_lantern:__**`;
+:candy: **Les bonbons**
+> À dépenser à l'**assemblage**
+> Les bonbons non utilisés sont **conservés** après l'événement
 
-export const GG_SUNDAY_MESSAGE = `@everyone # :cyclone: LE DIMANCHE GALAXY GATES :cyclone:
+:ticket: **Le passe de combat**
+> **47 objectifs** à paliers : kills, dégâts, bonbons, box
+> Gagnez des **clés du passe**
+> Boutique du passe : modules (commun à légendaire), ressources et **laser Xénocide**
 
-**Tous les dimanches de 00h01 à 23h59 (heure de Paris)**, les Galaxy Gates sont en promo ! :fire:
+Bonne chasse à tous ! :rocket:`;
+
+export const HALLOWEEN_END_MESSAGE = `@everyone
+# :jack_o_lantern: FIN DE L'ÉVÉNEMENT HALLOWEEN :jack_o_lantern:
+Les Curcubitors ont disparu. Merci à tous d'avoir participé !
+> Vos bonbons restants sont **conservés** pour l'an prochain
+
+:calendar: **Prochain rendez-vous : le ${pad(HALLOWEEN_START.day)}/${pad(HALLOWEEN_START.month + 1)} de l'année prochaine**`;
+
+export const GG_SUNDAY_MESSAGE = `@everyone
+# :cyclone: ÉVÉNEMENT DIMANCHE GALAXY GATES :cyclone:
+:clock3: **Ce dimanche de ${hm(GALAXY_EVENT_START_MINUTES)} à ${hm(GALAXY_EVENT_END_MINUTES)} (heure de Paris)**
+Les Galaxy Gates classiques sont en promo toute la journée !
 
 :moneybag: **Spins à -25 %**
-Le spin passe de ~~125 000~~ à **93 750 crédits** sur toutes les GG classiques.
+> Le spin passe de ~~125 000~~ à **93 750 crédits**
 
 :gift: **Récompenses finales x2**
-Terminez une GG pendant le dimanche et recevez **le double** de :
-> XP • Honneur • UCB-100 • Xénomit • Ressources
-> Designs de drones et équipements (si vous les obtenez)
-*Les crédits de la récompense finale restent inchangés.*
+> XP, honneur, UCB-100, Xénomit et ressources **doublés**
+> Designs de drones et équipements doublés si vous les obtenez
+> Les crédits restent inchangés
+> C'est **l'heure de fin de la GG** qui compte
 
-:white_check_mark: GG concernées : **Alpha, Beta, Gamma, Delta, Epsilon, Zeta, Kappa, Lambda et Awakened**
-:x: Kronos n'est pas concernée.
+:white_check_mark: **GG concernées**
+> Alpha, Beta, Gamma, Delta, Epsilon, Zeta, Kappa, Lambda et Awakened
+> Kronos n'est pas concernée
 
-:alarm_clock: Ce qui compte, c'est **le moment où vous terminez la GG** : une gate commencée samedi soir et finie dimanche donne bien le x2 !
+Bonne chasse à tous ! :rocket:`;
 
-Repérez le badge **-25%** dans la fenêtre Galaxy Gates pour savoir quand la promo est active. Bon farm à tous ! :rocket:`;
+export const GG_SUNDAY_END_MESSAGE = `@everyone
+# :cyclone: FIN DE L'ÉVÉNEMENT DIMANCHE GALAXY GATES :cyclone:
+Les spins et les récompenses reviennent à la normale. Merci à tous d'avoir participé !
 
-export const GG_SUNDAY_END_MESSAGE = `@everyone # :crescent_moon: FIN DU DIMANCHE GALAXY GATES
+:calendar: **Prochain rendez-vous : dimanche prochain dès ${hm(GALAXY_EVENT_START_MINUTES)}**`;
 
-La promo est terminée pour cette semaine ! Merci à tous ceux qui ont farmé les gates aujourd'hui :muscle:
+// Créneau hebdomadaire (jour 0 = dimanche, minutes depuis minuit) décalé de
+// `offset` minutes ; passe au jour précédent si besoin (00h01 - 1 h = samedi 23h01).
+function weekly(weekday, minutes, offset = 0) {
+  const week = 7 * 1440;
+  const total = (((weekday * 1440 + minutes + offset) % week) + week) % week;
+  return { weekday: Math.floor(total / 1440), hour: Math.floor((total % 1440) / 60), minute: total % 60 };
+}
+// Créneau annuel (mois 0-11) décalé de `offset` minutes ; mois 1-12 en sortie.
+function yearly(at, offset = 0) {
+  const d = new Date(Date.UTC(2001, at.month, at.day, at.hour, at.minute + offset));
+  return { month: d.getUTCMonth() + 1, day: d.getUTCDate(), hour: d.getUTCHours(), minute: d.getUTCMinutes() };
+}
 
-Les spins repassent à **125 000 crédits** et les récompenses finales reviennent à la normale.
-
-:calendar: **Rendez-vous dimanche prochain dès 00h01** pour :
-> :moneybag: Spins à **-25 %**
-> :gift: Récompenses finales **x2** (hors crédits)
-
-À dimanche ! :rocket:`;
-
-// Planification (heures de Paris) :
-// - UFONIT : chaque dimanche 20h00 (rappel) + 22h30 (fin).
-// - Dimanche Galaxy Gates : chaque dimanche 00h01 (début) + 23h59 (fin),
-//   mêmes horaires que la promo (SRC/CORE/GALAXY_GATES.js).
-// - HALLOWEEN : chaque 15 octobre à 20h00.
-// Même webhook pour tous.
+// Planification (heures de Paris), même webhook pour tous :
+// - Dimanche Galaxy Gates : samedi 23h01 (1 h avant 00h01) + dimanche 23h59.
+// - UFONIT : dimanche 19h30 (1 h avant 20h30) + 22h30.
+// - Halloween : 1 h avant HALLOWEEN_START + à HALLOWEEN_END.
 const SCHEDULES = [
-  { key: "gg_sunday_start", weekday: 0, hour: 0, minute: 1, message: () => GG_SUNDAY_MESSAGE, label: "début Dimanche GG" },
-  { key: "gg_sunday_end", weekday: 0, hour: 23, minute: 59, message: () => GG_SUNDAY_END_MESSAGE, label: "fin Dimanche GG" },
-  { key: "ufonit_start", weekday: 0, hour: 20, minute: 0, message: () => UFONIT_MESSAGE, label: "rappel UFONIT" },
-  { key: "ufonit_end", weekday: 0, hour: 22, minute: 30, message: () => UFONIT_END_MESSAGE, label: "fin UFONIT" },
-  { key: "halloween_start", month: 10, day: 15, hour: 20, minute: 0, message: () => HALLOWEEN_MESSAGE, label: "Halloween" },
-  { key: "halloween_end", month: 11, day: 1, hour: 23, minute: 59, message: () => HALLOWEEN_END_MESSAGE, label: "fin Halloween" },
+  { key: "gg_sunday_start", ...weekly(GALAXY_EVENT_WEEKDAY, GALAXY_EVENT_START_MINUTES, -ANNOUNCE_LEAD_MINUTES), message: () => GG_SUNDAY_MESSAGE, label: "début Dimanche GG" },
+  { key: "gg_sunday_end", ...weekly(GALAXY_EVENT_WEEKDAY, GALAXY_EVENT_END_MINUTES), message: () => GG_SUNDAY_END_MESSAGE, label: "fin Dimanche GG" },
+  { key: "ufonit_start", ...weekly(SUNDAY_WEEKDAY, SUNDAY_START_MINUTES, -ANNOUNCE_LEAD_MINUTES), message: () => UFONIT_MESSAGE, label: "UFONIT" },
+  { key: "ufonit_end", ...weekly(SUNDAY_WEEKDAY, SUNDAY_END_MINUTES), message: () => UFONIT_END_MESSAGE, label: "fin UFONIT" },
+  { key: "halloween_start", ...yearly(HALLOWEEN_START, -ANNOUNCE_LEAD_MINUTES), message: () => HALLOWEEN_MESSAGE, label: "Halloween" },
+  { key: "halloween_end", ...yearly(HALLOWEEN_END), message: () => HALLOWEEN_END_MESSAGE, label: "fin Halloween" },
 ];
+
+// Horaires d'envoi lisibles (journal de démarrage, tests).
+export function announcementSchedule() {
+  const days = ["dimanche", "lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi"];
+  return SCHEDULES.map((slot) => ({ key: slot.key,
+    when: `${slot.month != null ? `${pad(slot.day)}/${pad(slot.month)}` : days[slot.weekday]} ${pad(slot.hour)}h${pad(slot.minute)}` }));
+}
 
 // Annonces à poster à cette minute (heure de Paris vue par parisNow).
 export function dueAnnouncementKeys(now) {
@@ -187,6 +232,6 @@ if (invoked.endsWith("/SCRIPTS/DISCORD_ANNOUNCE.js") || invoked.endsWith("DISCOR
     });
   } else {
     startDiscordAnnounce();
-    console.log("[discord] Planificateur actif (UFONIT, Dimanche GG, Halloween).");
+    console.log(`[discord] Planificateur actif : ${announcementSchedule().map((a) => `${a.key} ${a.when}`).join(", ")}.`);
   }
 }

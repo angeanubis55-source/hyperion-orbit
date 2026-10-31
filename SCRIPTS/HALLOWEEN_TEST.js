@@ -49,14 +49,14 @@ test(`Curcubitor ${role} : caps du wiki et crédits x1.5 sur les 18 cartes, clie
 });
 }
 
-const beforeStart = Date.parse("2026-10-16T20:49:59Z");
-const start = Date.parse("2026-10-16T20:50:00Z"); // 22h50 à Paris (UTC+2).
+const beforeStart = Date.parse("2026-10-16T21:58:59Z");
+const start = Date.parse("2026-10-16T21:59:00Z"); // 23h59 à Paris (UTC+2).
 const end = Date.parse("2026-11-01T22:59:59Z"); // 23h59 à Paris (UTC+1).
 
 test("Halloween : bornes en heure de Paris et fin après le changement d'heure", () => {
   assert.equal(isHalloweenEventActive(beforeStart), false);
   assert.equal(isHalloweenEventActive(start), true);
-  assert.equal(isHalloweenEventActive("2026-10-16T20:54:27Z"), true, "heure du déploiement VPS");
+  assert.equal(isHalloweenEventActive("2026-10-16T20:54:27Z"), false, "22h54 : pas encore commencé");
   assert.equal(isHalloweenEventActive("2026-10-25T01:30:00Z"), true);
   assert.equal(isHalloweenEventActive(end), true);
   assert.equal(isHalloweenEventActive(end + 1), false);
@@ -70,8 +70,8 @@ test("Halloween : bornes en heure de Paris et fin après le changement d'heure",
 
 test("Halloween : calendrier annuel, dates invalides et cache entre années", () => {
   for (const year of [2026, 2027, 2026]) {
-    assert.equal(isHalloweenEventActive(`${year}-10-16T20:50:00Z`), true);
-    assert.equal(halloweenEventEnd(`${year}-10-16T20:50:00Z`).toISOString(), `${year}-11-01T22:59:59.000Z`);
+    assert.equal(isHalloweenEventActive(`${year}-10-16T21:59:00Z`), true);
+    assert.equal(halloweenEventEnd(`${year}-10-16T21:59:00Z`).toISOString(), `${year}-11-01T22:59:59.000Z`);
   }
   assert.equal(halloweenEventEnd("2026-12-31T23:30:00Z").getUTCFullYear(), 2027);
   assert.equal(isHalloweenEventActive("invalide"), false);
