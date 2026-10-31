@@ -47987,16 +47987,29 @@ async function prepareGameAssets() {
     playerImgs = ACTIVE_SHIP._imgs;
     playerImgsReady = true;
     if (ui.loadingStatus) ui.loadingStatus.textContent = "Secteur prêt.";
-    if (ui.loadingStartBtn) {
-      ui.loadingStartBtn.disabled = false;
-      ui.loadingStartBtn.textContent = "DÉPART";
-    }
-    if (ui.loadingOverlay) ui.loadingOverlay.classList.add("isReady");
+    setLoadingStartBtn("go");
   } finally {
     stopProgress();
   }
   // startGame programme les ressources secondaires après DÉPART.
   if (GAME_SETTINGS.autoStart) await startGame();
+}
+
+// Bouton DÉPART de l'écran de chargement : texte, clic et couleur (data-state,
+// voir style.css) : go = vert, wait/retry = orange, refused = rouge.
+const LOADING_START_BTN_STATES = {
+  go: { text: "DÉPART", enabled: true },
+  wait: { text: "CONNEXION…", enabled: false },
+  refused: { text: "REFUSÉ", enabled: false },
+  retry: { text: "RÉESSAYER", enabled: true },
+};
+function setLoadingStartBtn(state) {
+  const btn = ui.loadingStartBtn, cfg = LOADING_START_BTN_STATES[state];
+  if (!btn || !cfg) return;
+  btn.dataset.state = state;
+  btn.textContent = cfg.text;
+  btn.disabled = !cfg.enabled;
+  ui.loadingOverlay?.classList.add("isReady");
 }
 
 async function startGame() {
@@ -48013,10 +48026,7 @@ async function startGame() {
     } catch {}
   };
   try {
-    if (ui.loadingStartBtn) {
-      ui.loadingStartBtn.disabled = true;
-      ui.loadingStartBtn.textContent = "CONNEXION…";
-    }
+    setLoadingStartBtn("wait");
     setDepartStatus("Connexion au serveur…");
     try {
       // Au boot direct dans une Gate, le tout premier hello doit deja porter
@@ -48026,12 +48036,13 @@ async function startGame() {
     } catch {}
     const linked = await waitNetLink(15000);
     if (!linked) {
-      starting = false;
-      if (ui.loadingStartBtn) {
-        ui.loadingStartBtn.disabled = false;
-        ui.loadingStartBtn.textContent = "RÉESSAYER";
-      }
+      // Refus affiché en rouge un instant, puis RÉESSAYER (orange).
+      setLoadingStartBtn("refused");
       setDepartStatus("Serveur injoignable. Relance le serveur puis réessaie.");
+      setTimeout(() => {
+        starting = false;
+        setLoadingStartBtn("retry");
+      }, 1500);
       return;
     }
     setDepartStatus("Connecté. Apparition…");
@@ -50414,10 +50425,7 @@ renderStarMap();
 prepareGameAssets().catch((error) => {
   console.error("Erreur de préparation:", error);
   if (ui.loadingStatus) ui.loadingStatus.textContent = "Chargement incomplet. Tu peux tout de même démarrer.";
-  if (ui.loadingStartBtn) {
-    ui.loadingStartBtn.disabled = false;
-    ui.loadingStartBtn.textContent = "DÉPART";
-  }
+  setLoadingStartBtn("go");
 });
 
 setCenterMsg(false);

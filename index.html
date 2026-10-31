@@ -27,7 +27,7 @@
     // Fenêtre de départ à chaque refresh : pas de bypass session (la classe
     // orbitSessionReady n'est plus posée, l'overlay reste visible avec DÉPART).
     </script>
-  <link rel="stylesheet" href="style.css?v=phone-add-btn-14" />
+  <link rel="stylesheet" href="style.css?v=loading-ui-23" />
 </head>
 <body>
 <canvas id="game"></canvas>
@@ -75,14 +75,19 @@
 <div id="orbitNotifications" class="orbitNotifications" aria-live="polite"></div>
 
 <div id="loadingOverlay" class="loadingOverlay" role="dialog" aria-modal="true" aria-labelledby="loadingTitle">
-  <img class="loadingLogo" src="ASSETS/UI/LOGO.png" alt="Hyperion Orbit" draggable="false" />
+  <img class="loadingLogo" src="ASSETS/UI/LOGO.png" alt="Hyperion Orbit" draggable="false" onload="this.classList.add('isLoaded')" onerror="this.classList.add('isLoaded')" />
   <div class="loadingBottom">
-    <h1 id="loadingTitle">Chargement du jeu</h1>
-    <p id="loadingStatus" class="loadingHint">Préparation du secteur…</p>
-    <div class="loadingTrack" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
-      <i id="loadingFill"></i>
-      <strong id="loadingPercent">0 %</strong>
-      <button id="loadingStartBtn" class="loadingStartBtn" type="button" disabled>DEPART</button>
+    <div class="loadingPanel">
+      <h1 id="loadingTitle">Chargement du jeu</h1>
+      <p id="loadingStatus" class="loadingHint" aria-live="polite">Préparation du secteur…</p>
+      <!-- La barre se remplit avec le pourcentage, puis DÉPART la recouvre. -->
+      <div class="loadingGauge">
+        <div class="loadingTrack" role="progressbar" aria-labelledby="loadingTitle" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+          <i id="loadingFill"></i>
+          <strong id="loadingPercent">0 %</strong>
+        </div>
+        <button id="loadingStartBtn" class="loadingStartBtn" type="button" disabled>DÉPART</button>
+      </div>
     </div>
   </div>
 </div>
