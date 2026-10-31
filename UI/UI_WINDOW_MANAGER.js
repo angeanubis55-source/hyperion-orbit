@@ -75,6 +75,11 @@ function saveWindowOpenState(id, open) {
   } catch {}
 }
 
+// Fenêtres dont la largeur vient toujours du CSS : la largeur mesurée au
+// premier déplacement n'est ni restaurée ni figée en inline (sinon un
+// changement de largeur dans style.css ne s'applique jamais).
+const CSS_WIDTH_WINDOWS = new Set(["dpsWindow", "questOfferWindow"]);
+
 function loadWindowPosition(id) {
   try {
     const raw = localStorage.getItem(posKey(id));
@@ -146,8 +151,8 @@ function applySavedWindowPosition(id, card) {
   // DPS : fenetre compacte auto-ajustee. On n'applique jamais une largeur
   // sauvegardee (souvent ~300px fige au premier drag) : elle empecherait
   // de retrecir meme apres une reduction du CSS. Le CSS reprend la main.
-  const isDpsWindow = id === "dpsWindow" || card?.id === "dpsWindow";
-  const effectiveWidth = isDpsWindow ? null : width;
+  const cssWidthOnly = CSS_WIDTH_WINDOWS.has(id) || CSS_WIDTH_WINDOWS.has(card?.id);
+  const effectiveWidth = cssWidthOnly ? null : width;
 
   // Le viewport est borne apres application de la largeur sauvegardee.
   // Mesurer ici forcerait une mise en page avec l'ancienne geometrie.
@@ -461,7 +466,7 @@ function prepareFloating(card, r = card.getBoundingClientRect()) {
 
   // DPS : on ne verrouille jamais la largeur en inline (ca ecraserait
   // le max-width CSS et empecherait la fenetre de retrecir).
-  if (card?.id === "dpsWindow") {
+  if (CSS_WIDTH_WINDOWS.has(card?.id)) {
     card.style.width = "";
     card.style.minWidth = "";
     card.style.maxWidth = "";

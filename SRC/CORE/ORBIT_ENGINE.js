@@ -179,7 +179,7 @@ import {
   tickPortalVisualTransitions,
   updatePortalProximity,
 } from "./PORTAL_SYSTEM.js";
-import { buildQuestJournalView, buildQuestTerminalView } from "../../QUEST/QUEST_PRESENTATION.js";
+import { buildQuestJournalView, buildQuestTerminalView, getQuestTerminalStatus } from "../../QUEST/QUEST_PRESENTATION.js";
 import { loadNpcLocationIndex, loadPortalIndex } from "../../QUEST/QUEST_LOCATIONS.js";
 import {
   drawMoveTargetMarker,
@@ -18925,11 +18925,6 @@ function fitQuestWindowToContent() {
 }
 
 window.addEventListener("resize", fitQuestWindowToContent);
-let questTreeResizeFrame = 0;
-window.addEventListener("resize", () => {
-  cancelAnimationFrame(questTreeResizeFrame);
-  questTreeResizeFrame = requestAnimationFrame(drawQuestTreeEdges);
-});
 const questWindowElement = document.getElementById("questWindow");
 if (questWindowElement) {
   new MutationObserver(() => {
@@ -18941,116 +18936,6 @@ let selectedQuestOfferId = null;
 let questTerminalSearch = "";
 let questTerminalFilter = "open";
 let questNpcLocations = {};
-let questTreeZoom = 1;
-let selectedQuestLineage = new Set();
-
-// Lignée de la quête sélectionnée : ancêtres jusqu'aux racines +
-// descendants jusqu'aux feuilles. Sert à éclairer toute la chaîne en jaune.
-function computeQuestLineage(selectedId) {
-  const lineage = new Set();
-  const canvas = document.getElementById("questTreeCanvas");
-  if (!canvas || !selectedId) return lineage;
-  const parentsOf = new Map();
-  const childrenOf = new Map();
-  for (const node of canvas.querySelectorAll("[data-quest-offer]")) {
-    const id = node.dataset.questOffer;
-    const parents = String(node.dataset.questParents || "").split(",").map(s => s.trim()).filter(Boolean);
-    parentsOf.set(id, parents);
-    for (const p of parents) {
-      if (!childrenOf.has(p)) childrenOf.set(p, []);
-      childrenOf.get(p).push(id);
-    }
-  }
-  if (!parentsOf.has(selectedId)) return lineage;
-  lineage.add(selectedId);
-  const up = [...(parentsOf.get(selectedId) || [])];
-  while (up.length) {
-    const id = up.pop();
-    if (lineage.has(id)) continue;
-    lineage.add(id);
-    for (const p of parentsOf.get(id) || []) up.push(p);
-  }
-  const down = [...(childrenOf.get(selectedId) || [])];
-  while (down.length) {
-    const id = down.pop();
-    if (lineage.has(id)) continue;
-    lineage.add(id);
-    for (const c of childrenOf.get(id) || []) down.push(c);
-  }
-  return lineage;
-}
-
-function applyQuestTreeZoom() {
-  const canvas = document.getElementById("questTreeCanvas");
-  if (!canvas) return;
-  const zoom = Math.min(1.6, Math.max(0.5, Number(questTreeZoom) || 1));
-  questTreeZoom = zoom;
-  // `zoom` CSS plutôt que `transform: scale` : le scroll horizontal/vertical
-  // suit la vraie taille (le transform ne change pas la zone scrollable).
-  canvas.style.transform = "";
-  try { canvas.style.zoom = zoom === 1 ? "" : String(zoom); } catch {}
-  // Le bouton reset affiche le % réel (sinon il reste bloqué sur "100%").
-  try {
-    const label = ui.questOfferList?.querySelector('[data-quest-zoom="reset"]');
-    if (label) {
-      const pct = `${Math.round(zoom * 100)}%`;
-      if (label.textContent !== pct) label.textContent = pct;
-      label.title = `Zoom ${pct} — cliquer pour réinitialiser`;
-    }
-  } catch {}
-}
-
-function drawQuestTreeEdges(retry = 0) {
-  const scroll = document.getElementById("questTreeScroll");
-  const canvas = document.getElementById("questTreeCanvas");
-  const svg = document.getElementById("questTreeEdges");
-  if (!scroll || !canvas || !svg) return;
-  const canvasRect = canvas.getBoundingClientRect();
-  if (!canvasRect.width || !canvasRect.height) {
-    // Fenêtre cachée ou en cours d'animation d'ouverture : les mesures sont
-    // à zéro. On réessaye sur les frames suivantes au lieu d'abandonner
-    // (sinon les fils restent vides/mal placés jusqu'au prochain clic).
-    if (retry < 10) requestAnimationFrame(() => drawQuestTreeEdges(retry + 1));
-    return;
-  }
-  const byOffer = new Map();
-  for (const node of canvas.querySelectorAll("[data-quest-offer]")) byOffer.set(node.dataset.questOffer, node);
-  let paths = "";
-  for (const node of byOffer.values()) {
-    const parents = String(node.dataset.questParents || "").split(",").map(s => s.trim()).filter(Boolean).slice(0, 8);
-    if (!parents.length) continue;
-    const target = node.getBoundingClientRect();
-    const x2 = target.left - canvasRect.left;
-    const y2 = target.top - canvasRect.top + target.height / 2;
-    for (const parentId of parents) {
-      const parent = byOffer.get(parentId);
-      if (!parent) continue;
-      const source = parent.getBoundingClientRect();
-      const x1 = source.right - canvasRect.left;
-      const y1 = source.top - canvasRect.top + source.height / 2;
-      if (x2 - x1 < 4) continue;
-      const midX = (x1 + x2) / 2;
-      // Jaune sur toute la lignée (racines → sélection → feuilles),
-      // pas seulement sur l'arête d'arrivée.
-      const inLineage = selectedQuestLineage.has(parentId) && selectedQuestLineage.has(node.dataset.questOffer);
-      const cls = inLineage ? "isActive" : parent.classList.contains("completed") ? "isDone" : "";
-      paths += `<path class="${cls}" d="M ${x1.toFixed(1)} ${y1.toFixed(1)} C ${midX.toFixed(1)} ${y1.toFixed(1)}, ${midX.toFixed(1)} ${y2.toFixed(1)}, ${x2.toFixed(1)} ${y2.toFixed(1)}"/>`;
-    }
-  }
-  // viewBox = dimensions visuelles (getBoundingClientRect), PAS scrollWidth :
-  // avec le zoom CSS les deux diffèrent et les fils se détachent des nœuds.
-  // Les coords ci-dessus sont déjà dans cet espace visuel → alignement à tout zoom.
-  svg.setAttribute("viewBox", `0 0 ${Math.max(1, canvasRect.width)} ${Math.max(1, canvasRect.height)}`);
-  svg.innerHTML = paths;
-}
-
-function centerQuestTreeOn(id) {
-  const scroll = document.getElementById("questTreeScroll");
-  if (!scroll || !id) return;
-  const node = scroll.querySelector(`[data-quest-offer="${CSS.escape(String(id))}"]`);
-  if (!node) return;
-  try { node.scrollIntoView({ block: "center", inline: "center", behavior: "smooth" }); } catch { node.scrollIntoView(); }
-}
 
 function renderQuestTerminal() {
   if (!shouldRefreshWindow("questOfferWindow")) { questTerminalRenderPending = true; return; }
@@ -19063,10 +18948,11 @@ function renderQuestTerminal() {
     const pilot = account.user || getCurrentUserFull();
     pilotSector = getFaction(pilot?.faction)?.sector ?? null;
   } catch {}
-  const prevScroll = (() => {
-    const scroll = document.getElementById("questTreeScroll");
-    return scroll ? { left: scroll.scrollLeft, top: scroll.scrollTop } : null;
-  })();
+  // Le re-rendu remplace la liste et la fiche : on garde leur défilement
+  // (la fiche repart en haut seulement quand la mission change).
+  const previousId = selectedQuestOfferId;
+  const rowsScroll = document.getElementById("questTerminalRows")?.scrollTop || 0;
+  const detailScroll = ui.questOfferDetail.querySelector(".qtDetailScroll")?.scrollTop || 0;
   const view = buildQuestTerminalView({
     questState,
     selectedId: selectedQuestOfferId,
@@ -19081,13 +18967,17 @@ function renderQuestTerminal() {
   selectedQuestOfferId = view.selectedQuestId;
   ui.questOfferList.innerHTML = view.listHtml;
   ui.questOfferDetail.innerHTML = view.detailHtml;
-  selectedQuestLineage = computeQuestLineage(selectedQuestOfferId);
-  applyQuestTreeZoom();
-  if (prevScroll) {
-    const scroll = document.getElementById("questTreeScroll");
-    if (scroll) { scroll.scrollLeft = prevScroll.left; scroll.scrollTop = prevScroll.top; }
-  }
-  requestAnimationFrame(() => { applyQuestTreeZoom(); drawQuestTreeEdges(); });
+  const rows = document.getElementById("questTerminalRows");
+  if (rows) rows.scrollTop = rowsScroll;
+  const detail = ui.questOfferDetail.querySelector(".qtDetailScroll");
+  if (detail && previousId === selectedQuestOfferId) detail.scrollTop = detailScroll;
+}
+
+// Amène la mission sélectionnée dans la partie visible de la liste.
+function revealSelectedQuestOffer() {
+  if (!selectedQuestOfferId) return;
+  const row = ui.questOfferList?.querySelector(`[data-quest-offer="${CSS.escape(String(selectedQuestOfferId))}"]`);
+  try { row?.scrollIntoView({ block: "nearest" }); } catch {}
 }
 
 loadNpcLocationIndex().then(locations => {
@@ -19107,15 +18997,7 @@ function openQuestTerminal() {
   if (!hasQuestTerminalAccess()) return;
   renderQuestTerminal();
   window.GameWindowManager?.restore("questOfferWindow");
-  // Double rAF : dessine après que la fenêtre soit réellement affichée
-  // (le restore peut être animé). Redraws différés : rattrapent la fin
-  // d'animation et le chargement des images qui décalent les nœuds.
-  requestAnimationFrame(() => requestAnimationFrame(() => {
-    centerQuestTreeOn(selectedQuestOfferId);
-    drawQuestTreeEdges();
-  }));
-  setTimeout(() => drawQuestTreeEdges(), 150);
-  setTimeout(() => drawQuestTreeEdges(), 500);
+  requestAnimationFrame(revealSelectedQuestOffer);
 }
 
 function closeQuestTerminal() {
@@ -19132,46 +19014,21 @@ function closeQuestTerminal() {
 }
 
 ui.questOfferList?.addEventListener("click", event => {
-  const zoomBtn = event.target.closest("[data-quest-zoom]");
-  if (zoomBtn) {
-    const mode = zoomBtn.dataset.questZoom;
-    if (mode === "in") questTreeZoom = Math.min(1.6, (Number(questTreeZoom) || 1) + 0.1);
-    else if (mode === "out") questTreeZoom = Math.max(0.5, (Number(questTreeZoom) || 1) - 0.1);
-    else questTreeZoom = 1;
-    applyQuestTreeZoom();
-    requestAnimationFrame(drawQuestTreeEdges);
-    return;
-  }
-  const chip = event.target.closest("[data-quest-filter]");
-  if (chip) {
-    questTerminalFilter = chip.dataset.questFilter;
+  const tab = event.target.closest("[data-quest-filter]");
+  if (tab) {
+    if (tab.dataset.questFilter === questTerminalFilter) return;
+    questTerminalFilter = tab.dataset.questFilter;
     selectedQuestOfferId = null;
     renderQuestTerminal();
-    requestAnimationFrame(() => {
-      const first = document.querySelector("#questTreeCanvas .questTreeNode:not(.dimmed)");
-      centerQuestTreeOn(first?.dataset?.questOffer || selectedQuestOfferId);
-      drawQuestTreeEdges();
-    });
+    const rows = document.getElementById("questTerminalRows");
+    if (rows) rows.scrollTop = 0;
     return;
   }
   const offer = event.target.closest("[data-quest-offer]");
-  if (!offer) return;
+  if (!offer || offer.dataset.questOffer === selectedQuestOfferId) return;
   selectedQuestOfferId = offer.dataset.questOffer;
   renderQuestTerminal();
-  requestAnimationFrame(() => { centerQuestTreeOn(selectedQuestOfferId); drawQuestTreeEdges(); });
 });
-
-// Le layout peut bouger après le dessin (images/polices chargées, resize,
-// zoom) : revalide les fils sans boucle (le SVG est absolu, il ne resize rien).
-try {
-  if (typeof ResizeObserver !== "undefined" && ui.questOfferList) {
-    new ResizeObserver(() => {
-      if (!document.getElementById("questTreeCanvas")) return;
-      cancelAnimationFrame(questTreeResizeFrame);
-      questTreeResizeFrame = requestAnimationFrame(() => drawQuestTreeEdges());
-    }).observe(ui.questOfferList);
-  }
-} catch {}
 
 ui.questOfferList?.addEventListener("input", event => {
   const search = event.target.closest("[data-quest-search]");
@@ -19189,6 +19046,16 @@ ui.questOfferList?.addEventListener("input", event => {
 });
 
 ui.questOfferDetail?.addEventListener("click", event => {
+  // Mission requise : on l'ouvre dans son onglet, recherche effacée.
+  const prerequisite = event.target.closest("[data-quest-offer]");
+  if (prerequisite) {
+    selectedQuestOfferId = prerequisite.dataset.questOffer;
+    questTerminalFilter = getQuestTerminalStatus(questState, selectedQuestOfferId);
+    questTerminalSearch = "";
+    renderQuestTerminal();
+    requestAnimationFrame(revealSelectedQuestOffer);
+    return;
+  }
   if (event.target.closest("[data-quest-terminal-close]")) {
     closeQuestTerminal();
     return;
