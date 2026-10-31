@@ -26,7 +26,7 @@ const {
 import { tickLowRaid, getLowRaidState } from "./LOW_RAID.js";
 import { damagePlayerLayers } from "../COMBAT/COMBAT_RULES.js";
 import { handleAccountApi, getAccountGameplayData, verifyWsToken, recordPvpKill, recordPvpPetKill, awardNpcKill, grantSundayModule, grantSundayTickets, grantSundayAmmo, listFriends, friendFollowers, findUserByPseudo, hasFriendRequest, isBlockedBy, clanIdOfUser, clanTagOfUser, clanMemberUserIds, setClanPresenceProvider, setClanBasesProvider, recordClanWarKill, adminGiveCredits, adminGiveExperience, adminGiveHonor, adminGiveModule, adminGiveTitle, adminListAccounts, adminDebugAccount, adminDeleteAccount, adminResetGalaxyGate, adminGiveGalaxyGate, adminDroneDesigns, adminGiveDroneDesign, adminShipFamilies } from "./ACCOUNT_SERVER.js";
-import { combatProfile, validateCombatHit } from "./COMBAT_PROFILE.js";
+import { combatProfile, validateCombatHit, syncDeclaredFormation, accountWithFormation } from "./COMBAT_PROFILE.js";
 import { profileAbilityCooldown } from "../DRONE/DRONE_DESIGNS.js";
 import { selectNpcSnapshot } from "./NPC_SNAPSHOT.js";
 import { updateClockGuard, stopRejectedMotion } from "./CLOCK_GUARD.js";
@@ -613,12 +613,14 @@ function refreshCombatProfile(state, accountId, map, message = {}) {
     state._accountAt = now;
   }
   if (!state._account) return null;
+  syncDeclaredFormation(state, message, now);
   if (requestedConfig && requestedConfig !== state._config && now >= Number(state._configCdUntil || 0)) {
     state._config = requestedConfig;
     state._configCdUntil = now + 5000;
   }
   if (!state._combat || state._combatRev !== state._account.revision || state._combatMap !== map
     || (state._config && state._combat.config !== state._config)
+    || state._combatFormation !== (state._declaredFormation || null)
     || now - Number(state._combatAt || 0) >= 1000) {
     const groupBoosters = {};
     for (const peer of socialDescribeGroup(state.id, { describe: describePeer })?.members || []) {
@@ -636,12 +638,13 @@ function refreshCombatProfile(state, accountId, map, message = {}) {
       + "|" + Object.entries(groupBoosters).sort(([a], [b]) => a.localeCompare(b)).map(([id, count]) => `${id}:${count}`).join(",");
     if (state._combat && state._combatRev === state._account.revision && state._combatMap === map
       && (!state._config || state._combat.config === state._config)
+      && state._combatFormation === (state._declaredFormation || null)
       && state._combatBoosterSignature === boosterSignature) {
       state._combatAt = now;
       state.hswap = swapFxRemaining(state, now);
       return state._combat;
     }
-    const profile = combatProfile(state._account, map, state._config, groupBoosters);
+    const profile = combatProfile(accountWithFormation(state._account, state._declaredFormation), map, state._config, groupBoosters);
     if (!profile) return null;
     const prior = state._combat;
     const shields = state._configShields || (state._configShields = {});
@@ -678,6 +681,7 @@ function refreshCombatProfile(state, accountId, map, message = {}) {
     state._combatMap = map;
     state._combatAt = now;
     state._combatBoosterSignature = boosterSignature;
+    state._combatFormation = state._declaredFormation || null;
     state.shipId = profile.shipId;
     state.absorb = profile.absorb;
     state.evade = profile.evade;
@@ -4015,6 +4019,19 @@ wss.on("connection", (ws) => {
           state.x = mv.x;
           state.y = mv.y;
           movementAccepted = mv.accepted;
+          // Diagnostic (affichage admin seulement, aucun droit accordé) : la
+          // vitesse et la formation que le client croit avoir, face à celles
+          // du compte serveur. Un écart constant désigne une désynchro de
+          // compte (formation, minerai de vitesse) plutôt qu'une triche.
+          const lastViolation = state._security?.last;
+          if (!mv.accepted && lastViolation?.at === nowMove && lastViolation.kind === "movement") {
+            const clientVmax = Number(msg.vmax);
+            if (Number.isFinite(clientVmax)) lastViolation.clientSpeed = Math.round(clientVmax);
+            if (typeof msg.dform === "string") lastViolation.clientFormation = String(msg.dform).slice(0, 32);
+            lastViolation.serverFormation = String(profile.formationId || "standard");
+            const speedUpgrade = state._account?.upgrades?.speed;
+            lastViolation.serverSpeedOre = Number(speedUpgrade?.stock) > 0 ? String(speedUpgrade.ore || "") : "";
+          }
         }
       }
       if (movementAccepted === false) { stopRejectedMotion(state); correctState(); }

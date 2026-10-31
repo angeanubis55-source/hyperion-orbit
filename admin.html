@@ -850,6 +850,11 @@
     if (event.distance != null) parts.push(`distance ${fmtN(event.distance)} u`);
     if (event.allowedDistance != null) parts.push(`budget ${fmtN(event.allowedDistance)} u`);
     if (event.speed != null) parts.push(`vitesse autorisée ${fmtN(event.speed)} u/s`);
+    if (event.clientSpeed != null) parts.push(`vitesse client ${fmtN(event.clientSpeed)} u/s`);
+    if (event.clientFormation != null && event.clientFormation !== event.serverFormation) {
+      parts.push(`formation client ${event.clientFormation} / serveur ${event.serverFormation || "?"}`);
+    }
+    if (event.serverSpeedOre != null) parts.push(`minerai vitesse serveur ${event.serverSpeedOre || "aucun"}`);
     if (event.elapsedMs != null) parts.push(`intervalle ${fmtN(event.elapsedMs)} ms`);
     if (event.ability) parts.push(`aptitude ${event.ability}`);
     if (event.scale != null) parts.push(`×${Number(event.scale).toFixed(1)} (déclaration client, sans sanction automatique)`);

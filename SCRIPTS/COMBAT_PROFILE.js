@@ -16,6 +16,29 @@ import { isAbilityDamage, validateAbilityDamage } from "../SRC/CORE/ABILITY_COMB
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, Number(v) || 0));
 const pct = (v) => 1 + Math.max(0, Number(v) || 0) / 100;
 
+// Formation de drones : le client change la sienne tout de suite, le compte
+// serveur ne l'apprend qu'a la sauvegarde suivante (parfois plus d'une
+// minute). Le paquet pos porte la formation active (dform) : on l'adopte si
+// le compte la possede, au plus une fois toutes les 2 s (meme delai que le
+// jeu). Elle s'applique a tout le profil (bonus et malus) : rien a gagner a
+// mentir, c'est une formation que le joueur pouvait equiper.
+const FORMATION_DECLARE_COOLDOWN_MS = 2000;
+export function syncDeclaredFormation(state, message, now) {
+  if (typeof message?.dform !== "string") return;
+  const declared = String(message.dform).slice(0, 32);
+  if (declared === state._declaredFormation) return;
+  const owned = state._account?.drones?.formations;
+  if (declared !== "standard" && !(Array.isArray(owned) && owned.includes(declared))) return;
+  if (now - Number(state._declaredFormationAt || 0) < FORMATION_DECLARE_COOLDOWN_MS) return;
+  state._declaredFormation = declared;
+  state._declaredFormationAt = now;
+}
+
+export function accountWithFormation(account, formationId) {
+  if (!formationId || account?.drones?.activeFormation === formationId) return account;
+  return { ...account, drones: { ...(account.drones || {}), activeFormation: formationId } };
+}
+
 export function combatProfile(user, mapId, configNo = null, groupBoosters = {}) {
   const saved = user?.hangars?.find(h => h?.active) || user?.hangars?.[0];
   if (!saved) return null;

@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { acMoveTake, acBucket, acPoolResize, acHealTake, acAuditWindow, acAuditScore, acRecordViolation, acRecordCollection } from "./ANTICHEAT.js";
-import { combatProfile, validateCombatHit } from "./COMBAT_PROFILE.js";
+import { combatProfile, validateCombatHit, syncDeclaredFormation, accountWithFormation } from "./COMBAT_PROFILE.js";
 import { loadServerMaps, mapTransition, validArrival, reviveArrival } from "./MAP_RULES.js";
 import { damageEnemyLayers } from "../COMBAT/COMBAT_RULES.js";
 import { CATALOG } from "../SRC/CORE/CATALOG.js";
@@ -250,7 +250,7 @@ test("le changement de configuration serveur conserve les PV et les boucliers dÃ
   let now = 10000;
   const context = vm.createContext({ state: { id: "u_test" }, message: {}, Date: { now: () => now },
     getAccountGameplayData: () => user, socialDescribeGroup: () => null, describePeer: () => null,
-    findPeerState: () => null, combatProfile, acPoolResize, SERVER_VMAX: 1500, GROUP_BOOSTER_BONUS, activeAbility, syncDisarrayShield,
+    findPeerState: () => null, combatProfile, syncDeclaredFormation, accountWithFormation, acPoolResize, SERVER_VMAX: 1500, GROUP_BOOSTER_BONUS, activeAbility, syncDisarrayShield,
     swapFxRemaining: () => 0 });
   vm.runInContext(source.slice(start, end + 2), context);
   vm.runInContext('refreshCombatProfile(state, "test", "1-1", message)', context);
@@ -309,7 +309,7 @@ test("le poll serveur ne reconstruit pas le profil inchange mais suit compte, bo
     getAccountGameplayData: () => user,
     socialDescribeGroup: () => ({ members: [{ id: 'other', online: true, map: '1-1' }] }),
     describePeer() {}, findPeerState: () => member,
-    combatProfile: (...args) => { builds++; return combatProfile(...args); }, acPoolResize, GROUP_BOOSTER_BONUS, activeAbility, syncDisarrayShield,
+    combatProfile: (...args) => { builds++; return combatProfile(...args); }, syncDeclaredFormation, accountWithFormation, acPoolResize, GROUP_BOOSTER_BONUS, activeAbility, syncDisarrayShield,
     swapFxRemaining: () => 0,
   });
   vm.runInContext(source.slice(start, end + 2), c);
@@ -324,6 +324,25 @@ test("le poll serveur ne reconstruit pas le profil inchange mais suit compte, bo
   member._account.boosters.active.dmg2 = 50000; now += 1000;
   refresh(); assert.equal(builds, 4, 'nouveau bonus de groupe');
   now = 51000; refresh(); assert.equal(builds, 5, 'expiration du bonus partage');
+});
+
+test("la formation declaree par le client s'applique si le compte la possede, au plus toutes les 2 s", () => {
+  const account = { drones: { activeFormation: "ring", formations: ["standard", "ring", "drill"], items: Array(10).fill({}) } };
+  const state = { _account: account };
+  syncDeclaredFormation(state, { dform: "drill" }, 10000);
+  assert.equal(state._declaredFormation, "drill", "formation possedee adoptee");
+  syncDeclaredFormation(state, { dform: "standard" }, 11000);
+  assert.equal(state._declaredFormation, "drill", "pas plus d'un changement toutes les 2 s");
+  syncDeclaredFormation(state, { dform: "standard" }, 12000);
+  assert.equal(state._declaredFormation, "standard");
+  syncDeclaredFormation(state, { dform: "wheel" }, 20000);
+  assert.equal(state._declaredFormation, "standard", "formation non possedee refusee");
+  syncDeclaredFormation(state, {}, 30000);
+  assert.equal(state._declaredFormation, "standard", "paquet sans formation : derniere declaration conservee");
+  const patched = accountWithFormation(account, "drill");
+  assert.equal(patched.drones.activeFormation, "drill");
+  assert.equal(account.drones.activeFormation, "ring", "le compte serveur n'est pas modifie");
+  assert.equal(accountWithFormation(account, null), account);
 });
 
 test("le cache gameplay verifie la revision et ne sert pas un autre compte ou un compte supprime", () => {
