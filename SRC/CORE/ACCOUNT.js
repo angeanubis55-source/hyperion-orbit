@@ -62,7 +62,7 @@ import { getPetVitalLimits } from "../../PET/PET_VITALS.js";
 import { normalizeTitlesState, getTitleById } from "../DATA/TITLES.js";
 import { computeHangarStats } from "../../SHIP/SHIP_HANGARS.js";
 import { getDroneDesign, getDroneFitForHangar } from "../../DRONE/DRONE_DESIGNS.js";
-import { GALAXY_GATE_DRONE_DESIGN_DROPS, rollGalaxyGateDroneDesignReward } from "./GALAXY_GATES.js";
+import { applyGalaxyGateRewardEvent, GALAXY_GATE_DRONE_DESIGN_DROPS, rollGalaxyGateDroneDesignReward } from "./GALAXY_GATES.js";
 
 // Clés historiques réservées aux tests Node et à la migration d'anciens comptes.
 const USERS_KEY = "orbit_users";
@@ -2584,9 +2584,10 @@ export function completeCurrentUserGalaxyGate(gateId, currentUser = null, option
   if (!result.ok) return { ok: false, error: "Aucune Galaxy Gate active correspondante." };
   const baseReward = GALAXY_GATE_DEFINITIONS[String(gateId || "").toLowerCase()]?.completion;
   const rng = typeof options.rng === "function" ? options.rng : Math.random;
-  const reward = baseReward ? { ...baseReward, resources: rollGalaxyGateResourceRewards(baseReward.resources, rng),
+  // Event du dimanche : x2 sur tout sauf les crédits (voir GALAXY_GATES.js).
+  const reward = baseReward ? applyGalaxyGateRewardEvent({ ...baseReward, resources: rollGalaxyGateResourceRewards(baseReward.resources, rng),
     droneDesign: rollGalaxyGateDroneDesignReward(GALAXY_GATE_DRONE_DESIGN_DROPS[String(gateId || "").toLowerCase()], rng),
-    equipment: rollGalaxyGateEquipmentReward(GALAXY_GATE_EQUIPMENT_DROPS[String(gateId || "").toLowerCase()], rng) } : null;
+    equipment: rollGalaxyGateEquipmentReward(GALAXY_GATE_EQUIPMENT_DROPS[String(gateId || "").toLowerCase()], rng) }, gateId, options.now ?? Date.now()) : null;
   u.galaxyGates = result.state;
   // Le moteur GG affiche un premier decompte avant le message de recompense.
   // Dans ce mode, on valide la Gate maintenant mais il distribuera le gain

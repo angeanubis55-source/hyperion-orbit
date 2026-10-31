@@ -105,6 +105,9 @@ import {
   GALAXY_GATE_BUILD_LIMIT,
   normalizeGalaxyGateWave, GALAXY_GATE_DEFINITIONS,
   GALAXY_SPIN_CREDIT_COST,
+  getGalaxySpinCreditCost,
+  applyGalaxyGateRewardEvent,
+  isGalaxySpinDiscountTime,
   KRONOS_PARTS_BY_GATE,
   normalizeGalaxyGateState,
   rollGalaxyGateResourceRewards,
@@ -1100,6 +1103,7 @@ const ui = {
   ggTabs: document.getElementById("ggTabs"),
   ggParts: document.getElementById("ggParts"),
   ggPortalImage: document.getElementById("ggPortalImage"),
+  ggDiscountBadge: document.getElementById("ggDiscountBadge"),
   ggRewards: document.getElementById("ggRewards"),
   ggMultiplier: document.getElementById("ggMultiplier"),
   ggMultiplierBtn: document.getElementById("ggMultiplierBtn"),
@@ -1108,6 +1112,7 @@ const ui = {
   ggLives: document.getElementById("ggLives"),
   ggWave: document.getElementById("ggWave"),
   ggCreditCost: document.getElementById("ggCreditCost"),
+  ggCreditCostOld: document.getElementById("ggCreditCostOld"),
   ggResult: document.getElementById("ggResult"),
   ggHistory: document.getElementById("ggHistory"),
   ggSpinControls: document.getElementById("ggSpinControls"),
@@ -17413,7 +17418,33 @@ const ETERNAL_GATE_INFO = Object.freeze({
   ]),
 });
 
+// Badge -25 % centré entre le "?" et le bouton Multiplicateur (réduit si
+// la place manque) ; sur écran trop étroit, il reste sous le "?" (CSS).
+// Zone visible de l'image (hors marges transparentes) : 25,62 → 153,105.
+const GG_DISCOUNT_VISIBLE = { cx: 89, cy: 83.5, w: 129 };
+function placeGalaxyDiscountBadge() {
+  const badge = ui.ggDiscountBadge;
+  if (!badge || badge.hidden) return;
+  const help = document.getElementById("ggRewardsHelp")?.getBoundingClientRect();
+  const multiplier = document.getElementById("ggMultiplierBtn")?.getBoundingClientRect();
+  const parent = badge.offsetParent?.getBoundingClientRect();
+  if (!help?.width || !multiplier?.width || !parent) return;
+  const gap = multiplier.left - help.right;
+  const scale = Math.min(1, (gap - 16) / GG_DISCOUNT_VISIBLE.w);
+  if (scale < 0.5) {
+    badge.style.left = badge.style.top = badge.style.transform = "";
+    return;
+  }
+  badge.style.transformOrigin = `${GG_DISCOUNT_VISIBLE.cx}px ${GG_DISCOUNT_VISIBLE.cy}px`;
+  badge.style.transform = `scale(${scale.toFixed(3)})`;
+  badge.style.left = `${help.right + gap / 2 - parent.left - GG_DISCOUNT_VISIBLE.cx}px`;
+  badge.style.top = `${(help.top + help.bottom) / 2 - parent.top - GG_DISCOUNT_VISIBLE.cy}px`;
+}
+window.addEventListener("resize", placeGalaxyDiscountBadge);
+if (typeof ResizeObserver === "function" && ui.galaxyGateWindow) new ResizeObserver(placeGalaxyDiscountBadge).observe(ui.galaxyGateWindow);
+
 function renderEternalGatePanel(user, state) {
+  if (ui.ggDiscountBadge) ui.ggDiscountBadge.hidden = true;
   ui.ggEnergy.textContent = formatInteger(state.energy);
   ui.ggCredits.textContent = formatInteger(user.credits);
   ui.ggPortalImage.src = ETERNAL_GATE_INFO.image;
@@ -17426,7 +17457,6 @@ function renderEternalGatePanel(user, state) {
     + `<span>Entrée : ${ETERNAL_GATE_INFO.entryResourceCost} ${escapeHtml(getResourceName(ETERNAL_GATE_INFO.entryResource))}</span>`
     + `<span>En stock : ${formatInteger(owned)}</span>`
     + `<span>Portail permanent au centre des maps X-1</span>`;
-  ui.ggNpcRewardScale.innerHTML = `Récompenses des NPC <em>×1</em>`;
   ui.ggParts.textContent = "—";
   ui.ggBuilt.textContent = "Portail Eternal Classique unique";
   if (ui.ggCompleted) ui.ggCompleted.textContent = "—";
@@ -17510,15 +17540,24 @@ function renderGalaxyGateWindow(message = "") {
   ui.ggParts.textContent = `${formatInteger(displayedParts)} / ${formatInteger(gate.requiredParts)}`;
   ui.ggPortalImage.src = gate.image;
   ui.ggPortalImage.alt = `Portail ${gate.name}`;
-  const completion = gate.completion;
-  const materials = Object.entries(completion.resources || {}).map(([id, amount]) =>
-    `<span>${Array.isArray(amount) ? `${formatInteger(amount[0])}–${formatInteger(amount[1])}` : formatInteger(amount)} ${getResourceName(id)}</span>`).join("");
+  // Promo du dimanche (sauf Kronos) : badge et ancien prix barré.
+  const discount = gate.id !== "kronos" && isGalaxySpinDiscountTime();
+  if (ui.ggDiscountBadge) ui.ggDiscountBadge.hidden = !discount;
+  requestAnimationFrame(placeGalaxyDiscountBadge);
+  // Event du dimanche : montant de base barré puis montant x2 (comme le
+  // prix du spin) ; les crédits ne changent pas.
+  const base = gate.completion;
+  const completion = discount ? applyGalaxyGateRewardEvent(base, gate.id) : base;
+  const amount = value => Array.isArray(value) ? `${formatInteger(value[0])}–${formatInteger(value[1])}` : formatInteger(value);
+  const was = (before, after) => amount(before) === amount(after) ? amount(after) : `<s class="ggRewardOld">${amount(before)}</s>${amount(after)}`;
+  const materials = Object.entries(completion.resources || {}).map(([id, value]) =>
+    `<span>${was(base.resources?.[id], value)} ${getResourceName(id)}</span>`).join("");
   const designDrop = GALAXY_GATE_DRONE_DESIGN_DROPS[gate.id];
-  const designReward = designDrop ? `<span>${Math.round(designDrop.chance * 100)}% Design de drones ( ${getDroneDesign(designDrop.itemId).name.toLowerCase()} )</span>` : '';
+  const dropCount = discount ? `${was(1, 2)}x ` : "";
+  const designReward = designDrop ? `<span>${Math.round(designDrop.chance * 100)}% ${dropCount}Design de drones ( ${getDroneDesign(designDrop.itemId).name.toLowerCase()} )</span>` : '';
   const equipmentDrop = GALAXY_GATE_EQUIPMENT_DROPS[gate.id];
-  const equipmentReward = equipmentDrop ? `<span>${Math.round(equipmentDrop.chance * 100)}% ${findCatalogItem(equipmentDrop.itemId).name.replace(/^laser /i, "")}</span>` : '';
-  ui.ggRewards.innerHTML = `<strong>Récompenses finales</strong><span>${formatInteger(completion.exp)} XP</span><span>${formatInteger(completion.honor)} honneur</span><span>${formatInteger(completion.credits)} crédits</span><span>${formatInteger(completion.x4)} UCB-100</span><span>${formatInteger(completion.xenomit)} Xénomit</span>${Number(completion.energy) > 0 ? `<span>${formatInteger(completion.energy)} énergies Galaxy</span>` : ""}${materials}${designReward}${equipmentReward}`;
-  ui.ggNpcRewardScale.innerHTML = `Récompenses des NPC <em>×${gate.rewardScale}</em>`;
+  const equipmentReward = equipmentDrop ? `<span>${Math.round(equipmentDrop.chance * 100)}% ${dropCount}${findCatalogItem(equipmentDrop.itemId).name.replace(/^laser /i, "")}</span>` : '';
+  ui.ggRewards.innerHTML = `<strong>Récompenses finales</strong><span>${was(base.exp, completion.exp)} XP</span><span>${was(base.honor, completion.honor)} honneur</span><span>${amount(completion.credits)} crédits</span><span>${was(base.x4, completion.x4)} UCB-100</span><span>${was(base.xenomit, completion.xenomit)} Xénomit</span>${Number(completion.energy) > 0 ? `<span>${was(base.energy, completion.energy)} énergies Galaxy</span>` : ""}${materials}${designReward}${equipmentReward}`;
   // ✅ multiplicateur affiché/armé par groupe de spin (ABG vs Delta isolés).
   const ggSpinGroup = gate.group || gate.id;
   const ggGroupMultiplier = Math.min(5, Math.max(1, Number(state.multipliers?.[ggSpinGroup]) || 1));
@@ -17547,7 +17586,11 @@ function renderGalaxyGateWindow(message = "") {
     : Math.min(gate.maxWaves, Math.max(0, Number(state.waves?.[gate.id]) || 0));
   ui.ggWave.textContent = `${activeWave} / ${gate.maxWaves}`;
   const selectedSpinCount = Math.max(1, Number(ui.ggSpinCount?.value || 1));
-  ui.ggCreditCost.textContent = formatInteger(GALAXY_SPIN_CREDIT_COST * selectedSpinCount);
+  ui.ggCreditCost.textContent = formatInteger(getGalaxySpinCreditCost() * selectedSpinCount);
+  if (ui.ggCreditCostOld) {
+    ui.ggCreditCostOld.hidden = !discount;
+    ui.ggCreditCostOld.textContent = formatInteger(GALAXY_SPIN_CREDIT_COST * selectedSpinCount);
+  }
   const isKronos = gate.id === "kronos";
   // ✅ vue Kronos : masque le bouton multiplicateur, remonte le bloc construit.
   ui.galaxyGateWindow?.classList.toggle("kronosView", isKronos);

@@ -10,7 +10,7 @@ export const GALAXY_GATE_EQUIPMENT_DROPS = Object.freeze({
 export function rollGalaxyGateEquipmentReward(drop, rng = Math.random) {
   const item = findCatalogItem(drop?.itemId);
   if (!item?.module) return null;
-  if (typeof drop.amount === "number") return { itemId: item.id, amount: drop.amount > 0 ? 1 : 0 };
+  if (typeof drop.amount === "number") return { itemId: item.id, amount: Math.max(0, Math.floor(drop.amount)) };
   const chance = Math.max(0, Math.min(1, Number(drop.chance) || 0));
   const amount = chance >= 1 || (chance > 0 && Number(rng()) < chance) ? 1 : 0;
   return { itemId: item.id, amount };
@@ -19,7 +19,7 @@ export function rollGalaxyGateEquipmentReward(drop, rng = Math.random) {
 export function galaxyGateEquipmentRewardMessage(reward) {
   const item = findCatalogItem(reward?.itemId);
   if (!item?.module) return null;
-  return reward.amount > 0 ? `1x ${item.name.replace(/^laser /i, "")} reçu` : "Aucun équipement reçu";
+  return reward.amount > 0 ? `${reward.amount}x ${item.name.replace(/^laser /i, "")} reçu` : "Aucun équipement reçu";
 }
 
 export const GALAXY_GATE_DRONE_DESIGN_DROPS = Object.freeze({
@@ -33,7 +33,7 @@ export const GALAXY_GATE_DRONE_DESIGN_DROPS = Object.freeze({
 export function rollGalaxyGateDroneDesignReward(drop, rng = Math.random) {
   const design = getDroneDesign(drop?.itemId);
   if (!design) return null;
-  if (typeof drop.amount === "number") return { itemId: design.itemId, amount: drop.amount > 0 ? 1 : 0 };
+  if (typeof drop.amount === "number") return { itemId: design.itemId, amount: Math.max(0, Math.floor(drop.amount)) };
   const chance = Math.max(0, Math.min(1, Number(drop.chance) || 0));
   const amount = chance >= 1 || (chance > 0 && Number(rng()) < chance) ? 1 : 0;
   return { itemId: design.itemId, amount };
@@ -42,7 +42,7 @@ export function rollGalaxyGateDroneDesignReward(drop, rng = Math.random) {
 export function galaxyGateDroneDesignRewardMessage(reward) {
   const design = getDroneDesign(reward?.itemId);
   if (!design) return null;
-  return reward.amount > 0 ? `1x Design de drones ${design.name.toLowerCase()} reçu` : "Aucun Design de drones reçu";
+  return reward.amount > 0 ? `${reward.amount}x Design de drones ${design.name.toLowerCase()} reçu` : "Aucun Design de drones reçu";
 }
 
 export function galaxyGateXenomitForCredits(credits) {
@@ -90,9 +90,9 @@ export const GALAXY_GATE_DEFINITIONS = Object.freeze({
   lambda: Object.freeze({ id: "lambda", name: "Lambda", group: "lambda", requiredParts: 45, maxWaves: 7, maxLives: 5, image: "ASSETS/LAMBDA_PORTAL/DESACTIVE.png", completion: defineCompletionReward({ exp: 4125000, honor: 150000, credits: 15000000, x4: 15000 }), rewardScale: 1 }),
   // ✅ Kronos : PAS de roue (construction fidèle via complétions des autres gates), 21 pièces / 13 vagues Saturn.
   kronos: Object.freeze({ id: "kronos", name: "Kronos", group: null, requiredParts: 21, maxWaves: 13, maxLives: 5, image: "ASSETS/KRONOS_PORTAL/DESACTIVE.png", completion: defineCompletionReward({ exp: 75000000, honor: 1000000, credits: 75000000, x4: 100000, energy: 300 }), rewardScale: 1 }),
-  // ✅ Awakened : roue de spin isolée (groupe "awakened"), 67 pièces / 17 vagues.
-  // Récompense finale = x10 Kronos.
-  awakened: Object.freeze({ id: "awakened", name: "Awakened", group: "awakened", requiredParts: 67, maxWaves: 17, maxLives: 1, image: "ASSETS/PORTAL/AWAKENED/DESACTIVE.png", completion: defineCompletionReward({ exp: 750000000, honor: 10000000, credits: 750000000, x4: 1000000, energy: 3000 }), rewardScale: 1 }),
+  // ✅ Awakened : roue de spin isolée (groupe "awakened"), 666 pièces / 17 vagues.
+  // Récompense finale = x5 Kappa (Xénomit et ressources suivent les crédits).
+  awakened: Object.freeze({ id: "awakened", name: "Awakened", group: "awakened", requiredParts: 666, maxWaves: 17, maxLives: 1, image: "ASSETS/PORTAL/AWAKENED/DESACTIVE.png", completion: defineCompletionReward({ exp: 67500000, honor: 2437500, credits: 300000000, x4: 225000 }), rewardScale: 1 }),
 });
 
 // Groupes de spin : "ensemble" (Alpha/Beta/Gamma, une seule roue), "delta",
@@ -111,6 +111,41 @@ export function getGalaxyGateSpinGroup(gateId) {
 }
 
 export const GALAXY_SPIN_CREDIT_COST = 125000;
+// Promo du dimanche : spin -25 % de 00:01 à 23:59 (heure de Paris), sur le
+// serveur comme à l'affichage. GALAXY_SPIN_DISCOUNT_FORCED l'active en
+// permanence (test) ; les tests automatiques le coupent pour fixer l'heure.
+export const GALAXY_SPIN_DISCOUNT = 0.25;
+export const GALAXY_SPIN_DISCOUNT_FORCED = false;
+let galaxyEventForced = GALAXY_SPIN_DISCOUNT_FORCED;
+export function setGalaxyEventForced(value) { galaxyEventForced = value === true; }
+export function isGalaxySpinDiscountTime(now = Date.now()) {
+  if (galaxyEventForced) return true;
+  try {
+    const parts = Object.fromEntries(new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/Paris", weekday: "short", hour: "2-digit", minute: "2-digit", hourCycle: "h23" })
+      .formatToParts(new Date(now)).map(part => [part.type, part.value]));
+    const minutes = Number(parts.hour) * 60 + Number(parts.minute);
+    return parts.weekday === "Sun" && minutes >= 1 && minutes <= 23 * 60 + 59;
+  } catch { return false; }
+}
+// Même promo : récompense finale x2 (tout sauf les crédits) pour une GG
+// classique terminée pendant l'event, Kronos exclue. Les quantités déjà
+// tirées (ressources, design, équipement) sont doublées telles quelles.
+export const GALAXY_GATE_EVENT_REWARD_MULTIPLIER = 2;
+export function isGalaxyGateRewardEventActive(gateId, now = Date.now()) {
+  const id = String(gateId || "").toLowerCase();
+  return id !== "kronos" && Boolean(GALAXY_GATE_DEFINITIONS[id]) && isGalaxySpinDiscountTime(now);
+}
+export function applyGalaxyGateRewardEvent(reward, gateId, now = Date.now()) {
+  if (!reward || !isGalaxyGateRewardEventActive(gateId, now)) return reward;
+  const times = (value) => Array.isArray(value) ? value.map(times) : Math.max(0, Math.floor(Number(value) || 0)) * GALAXY_GATE_EVENT_REWARD_MULTIPLIER;
+  const drop = (item) => item && typeof item.amount === "number" ? { ...item, amount: times(item.amount) } : item;
+  return { ...reward, exp: times(reward.exp), honor: times(reward.honor), x4: times(reward.x4), energy: times(reward.energy),
+    xenomit: times(reward.xenomit), resources: Object.fromEntries(Object.entries(reward.resources || {}).map(([id, value]) => [id, times(value)])),
+    droneDesign: drop(reward.droneDesign), equipment: drop(reward.equipment), eventMultiplier: GALAXY_GATE_EVENT_REWARD_MULTIPLIER };
+}
+export function getGalaxySpinCreditCost(now = Date.now()) {
+  return isGalaxySpinDiscountTime(now) ? Math.round(GALAXY_SPIN_CREDIT_COST * (1 - GALAXY_SPIN_DISCOUNT)) : GALAXY_SPIN_CREDIT_COST;
+}
 export const GALAXY_GATE_BUILD_LIMIT = 1;
 
 // Échange Palladium -> énergie Galaxy (comptoir pirate 5-2). 10:1.
@@ -249,7 +284,7 @@ export function normalizeGalaxyGateState(raw) {
   return state;
 }
 
-export function spinGalaxyGate(stateInput, gateId, count = 1, credits = 0, rng = Math.random) {
+export function spinGalaxyGate(stateInput, gateId, count = 1, credits = 0, rng = Math.random, now = Date.now()) {
   const state = normalizeGalaxyGateState(stateInput);
   const gate = GALAXY_GATE_DEFINITIONS[String(gateId || "").toLowerCase()];
   if (!gate) return { ok: false, error: "Galaxy Gate inconnue.", state, credits };
@@ -257,6 +292,7 @@ export function spinGalaxyGate(stateInput, gateId, count = 1, credits = 0, rng =
   if (gate.id === "kronos") return { ok: false, error: "Kronos se construit en terminant les autres Galaxy Gates.", state, credits };
   const spins = Math.min(100, Math.max(1, Math.floor(Number(count) || 1)));
   let balance = Math.max(0, Math.floor(Number(credits) || 0));
+  const spinCost = getGalaxySpinCreditCost(now);
   const rewards = {
     parts: 0,
     partsByGate: Object.fromEntries(Object.keys(GALAXY_GATE_DEFINITIONS).map(id => [id, 0])),
@@ -301,7 +337,7 @@ export function spinGalaxyGate(stateInput, gateId, count = 1, credits = 0, rng =
 
   for (let i = 0; i < spins; i++) {
     if (state.energy > 0) state.energy--;
-    else if (balance >= GALAXY_SPIN_CREDIT_COST) balance -= GALAXY_SPIN_CREDIT_COST;
+    else if (balance >= spinCost) balance -= spinCost;
     else break;
 
     performed++;
@@ -371,7 +407,7 @@ export function spinGalaxyGate(stateInput, gateId, count = 1, credits = 0, rng =
     }
   }
 
-  if (!performed) return { ok: false, error: `Énergie insuffisante et ${GALAXY_SPIN_CREDIT_COST.toLocaleString("fr-FR")} crédits requis par spin.`, state, credits: balance };
+  if (!performed) return { ok: false, error: `Énergie insuffisante et ${spinCost.toLocaleString("fr-FR")} crédits requis par spin.`, state, credits: balance };
   state.lastOpenedGate = gate.id;
   state.energy += rewards.energy;
   balance += rewards.credits;

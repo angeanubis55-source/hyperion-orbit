@@ -4921,9 +4921,24 @@ html body #profileOverlay .profileHeaderTop .profileTitle, html body #profileOve
   filter:drop-shadow(0 0 14px rgba(69,211,255,.38));
   pointer-events:none;
 }
+/* Badge du dimanche (GG classiques) : sous le "?", taille réelle de
+   l'image (décalée de ses marges transparentes pour aligner le texte), posé par-dessus sans décaler le reste. */
+.ggPortalPreview .ggDiscountBadge {
+  position:absolute;
+  left:-26px;
+  top:calc(100% - 42px);
+  transform:none;
+  width:180px;
+  height:163px;
+  aspect-ratio:auto;
+  object-fit:contain;
+  filter:none;
+}
+.ggPortalPreview .ggDiscountBadge[hidden] { display:none; }
 .ggPreviewTop {
   position:relative;
   z-index:5;
+  justify-self:start;
   display:grid;
   grid-template-columns:auto minmax(0,1fr);
   align-items:center;
@@ -5027,15 +5042,15 @@ html body #profileOverlay .profileHeaderTop .profileTitle, html body #profileOve
   top:-1px;
   left:-1px;
   z-index:10;
-  width:18px;
-  height:18px;
+  width:26px;
+  height:26px;
   display:grid;
   place-items:center;
   border:1px solid rgba(124,240,255,.4);
   border-radius:50%;
   background:rgba(3,20,33,.85);
   color:#8fcddd;
-  font-size:11px;
+  font-size:15px;
   font-weight:900;
   cursor:help;
 }
@@ -5315,6 +5330,24 @@ html body #profileOverlay .profileHeaderTop .profileTitle, html body #profileOve
   font-weight:800;
   line-height:1.4;
 }
+/* Event du dimanche : montant de base barré (même style que le spin). */
+.ggRewards .ggRewardOld {
+  position:relative;
+  margin-right:8px;
+  color:#e8e4da;
+  font-weight:400;
+  text-decoration:none;
+}
+.ggRewards .ggRewardOld::after {
+  content:"";
+  position:absolute;
+  left:-2px;
+  right:-2px;
+  top:50%;
+  height:1px;
+  background:#ff3b3b;
+  transform:rotate(-12deg);
+}
 .ggCost {
   text-align:center;
   color:rgba(214,238,248,.7);
@@ -5473,6 +5506,27 @@ html body #profileOverlay .profileHeaderTop .profileTitle, html body #profileOve
 #ggSpinBtn {
   grid-template-columns:0.35fr auto 1fr;
 }
+/* Promo du dimanche : ancien prix (plus petit) barré d'un trait rouge. */
+#ggSpinBtn > span:last-child { white-space:nowrap; }
+#ggSpinBtn .ggCreditOld {
+  position:relative;
+  margin-right:18px;
+  color:#e8e4da;
+  font-weight:400;
+  text-decoration:none;
+  font-variant-numeric:tabular-nums;
+}
+#ggSpinBtn .ggCreditOld::after {
+  content:"";
+  position:absolute;
+  left:-2px;
+  right:-2px;
+  top:50%;
+  height:1px;
+  background:#ff3b3b;
+  transform:rotate(-12deg);
+}
+#ggSpinBtn .ggCreditOld[hidden] { display:none; }
 #ggSpinBtn.is-spinning {
   animation:ggSpinPending .45s ease-in-out infinite;
 }

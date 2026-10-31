@@ -6,7 +6,13 @@ import { getCurrentUserFull, buyItem, sellCurrentUserOre, setPetMode, updateCurr
   loadSkylabFromShip, chargeShipUpgradesAutomatically, craftCurrentUserRecipe, completeCurrentUserGalaxyGate,
   saveUser, saveHangarLoadout, saveCurrentUserDroneFits, getDroneFit, normalizeEternalGateState } from "../SRC/CORE/ACCOUNT.js";
 import { createDrone } from '../DRONE/DRONE_TYPES.js';
-import { GALAXY_GATE_DEFINITIONS, normalizeGalaxyGateState } from "../SRC/CORE/GALAXY_GATES.js";
+import { GALAXY_GATE_DEFINITIONS, getGalaxySpinCreditCost, normalizeGalaxyGateState, setGalaxyEventForced } from "../SRC/CORE/GALAXY_GATES.js";
+
+// Event du dimanche (spin -25 %, récompense finale x2) : heure fixée, mode
+// test du jeu coupé. 1er novembre 2026 = dimanche (heure de Paris = UTC+1).
+setGalaxyEventForced(false);
+const MONDAY = Date.UTC(2026, 10, 2, 11);
+const SUNDAY = Date.UTC(2026, 10, 1, 11);
 import { GALAXY_GATE_DRONE_DESIGN_DROPS } from '../SRC/CORE/GALAXY_GATES.js';
 import { CATALOG } from "../SRC/CORE/CATALOG.js";
 import { ORE_SELL_PRICES } from "../SRC/DATA/RESOURCES.js";
@@ -212,7 +218,7 @@ test('Kronos : progression par source sauvegardee et aucune piece sur une comple
   const { ctx } = session(t);
   const user = ctx.account.user;
   user.galaxyGates = normalizeGalaxyGateState({ active: 'alpha' });
-  const result = completeCurrentUserGalaxyGate('alpha', user, { deferReward: true });
+  const result = completeCurrentUserGalaxyGate('alpha', user, { deferReward: true, now: MONDAY });
   assert.equal(result.ok, true);
   assert.equal(result.user.galaxyGates.kronosParts.alpha, 1);
   assert.equal(getCurrentUserFull().galaxyGates.kronosParts.alpha, 1);
@@ -220,6 +226,31 @@ test('Kronos : progression par source sauvegardee et aucune piece sur une comple
   assert.equal(completeCurrentUserGalaxyGate('alpha', result.user).ok, false);
   assert.equal(getCurrentUserFull().galaxyGates.kronosParts.alpha, 1);
 });
+
+test("event du dimanche : spin -25 % de 00:01 à 23:59 (heure de Paris), lundi plein tarif", () => {
+  assert.equal(getGalaxySpinCreditCost(SUNDAY), 93750);
+  assert.equal(getGalaxySpinCreditCost(MONDAY), 125000);
+  assert.equal(getGalaxySpinCreditCost(Date.UTC(2026, 9, 31, 23, 0, 30)), 125000, "dimanche 00:00 : pas encore");
+  assert.equal(getGalaxySpinCreditCost(Date.UTC(2026, 10, 1, 22, 59, 30)), 93750, "dimanche 23:59 : encore");
+});
+
+for (const gateId of ["zeta", "kronos"]) {
+  test(`event du dimanche : ${gateId}, récompense finale ${gateId === "kronos" ? "normale (Kronos exclue)" : "x2 sauf crédits"}`, t => {
+    const { ctx } = session(t);
+    const user = ctx.account.user;
+    user.boosters = {};
+    user.galaxyGates = normalizeGalaxyGateState({ active: gateId });
+    const base = GALAXY_GATE_DEFINITIONS[gateId].completion;
+    const factor = gateId === "kronos" ? 1 : 2;
+    const result = completeCurrentUserGalaxyGate(gateId, user, { deferReward: true, now: SUNDAY, rng: () => 0 });
+    assert.equal(result.ok, true);
+    assert.equal(result.reward.credits, base.credits, "crédits jamais doublés");
+    for (const key of ["exp", "honor", "x4", "xenomit"]) assert.equal(result.reward[key], base[key] * factor, key);
+    assert.equal(result.reward.energy || 0, (base.energy || 0) * factor);
+    for (const [id, amount] of Object.entries(base.resources)) assert.equal(result.reward.resources[id], amount * factor, id);
+    if (gateId === "zeta") assert.equal(result.reward.droneDesign.amount, 2, "design tiré : x2");
+  });
+}
 
 for (const gate of Object.values(GALAXY_GATE_DEFINITIONS)) for (const deferred of [false, true]) {
   test(`${gate.id} : Xénomit proportionnel aux crédits, gain ${deferred ? 'différé' : 'immédiat'} et unique`, t => {
@@ -229,7 +260,7 @@ for (const gate of Object.values(GALAXY_GATE_DEFINITIONS)) for (const deferred o
     user.inventory.resources = { prometium: 3000, xenomit: 17, kyhalon: 11, tetrathrin: 12, bifenon: 13, schism: 14, diametrion: 15 };
     user.galaxyGates = normalizeGalaxyGateState({ active: gate.id, energy: 17 });
     const before = { credits: user.credits, exp: user.stats.exp, honor: user.stats.honor, x4: user.ammo.x4 };
-    const result = completeCurrentUserGalaxyGate(gate.id, user, { deferReward: deferred });
+    const result = completeCurrentUserGalaxyGate(gate.id, user, { deferReward: deferred, now: MONDAY });
     const xenomit = gate.completion.credits / 40000;
     assert.equal(result.ok, true, gate.id);
     const energy = gate.completion.energy || 0;
@@ -267,7 +298,7 @@ for (const deferred of [false, true]) for (const roll of [0.499, 0.5]) {
     user.galaxyGates = normalizeGalaxyGateState({ active: 'epsilon' });
     user.inventory.counts.laser_lf5al = 2;
     let draws = 0;
-    const result = completeCurrentUserGalaxyGate('epsilon', user, { deferReward: deferred, rng: () => { draws++; return roll; } });
+    const result = completeCurrentUserGalaxyGate('epsilon', user, { deferReward: deferred, now: MONDAY, rng: () => { draws++; return roll; } });
     const amount = roll < 0.5 ? 1 : 0;
     assert.equal(result.ok, true);
     assert.equal(draws, 1);
@@ -296,7 +327,7 @@ for (const [gateId, drop] of Object.entries(GALAXY_GATE_DRONE_DESIGN_DROPS)) for
     const user = ctx.account.user;
     user.galaxyGates = normalizeGalaxyGateState({ active: gateId });
     user.inventory.counts[drop.itemId] = 4;
-    const result = completeCurrentUserGalaxyGate(gateId, user, { deferReward: deferred, rng: () => roll });
+    const result = completeCurrentUserGalaxyGate(gateId, user, { deferReward: deferred, now: MONDAY, rng: () => roll });
     const amount = roll < drop.chance ? 1 : 0;
     assert.equal(result.ok, true);
     assert.deepEqual(result.reward.droneDesign, { itemId: drop.itemId, amount });

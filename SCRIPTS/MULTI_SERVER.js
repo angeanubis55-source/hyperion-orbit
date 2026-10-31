@@ -6,7 +6,7 @@ import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, extname, join, normalize, resolve } from "node:path";
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import { WebSocketServer } from "ws";
-import { startDiscordAnnounce } from "./DISCORD_ANNOUNCE.js";
+import { discordWebhookUrl, startDiscordAnnounce } from "./DISCORD_ANNOUNCE.js";
 import { ZoneNpcSim, syncSundayEvent } from "./NPC_ROOM.js";
 import {
   ANTICHEAT as AC,
@@ -5170,7 +5170,8 @@ server.listen(PORT, "0.0.0.0", () => {
   if (process.env.ORBIT_ADMIN_PASS) console.log("[multi] Panneau admin : /admin.html (pass ORBIT_ADMIN_PASS)");
   else console.log(`[multi] Panneau admin : /admin.html (mot de passe généré${ADMIN_PASS_PERSISTED ? " dans SERVER_DATA/.admin_pass" : ""}, valeur non affichée)`);
   try { startDiscordAnnounce(); } catch {}
-  if (!process.env.DISCORD_UFONIT_WEBHOOK) console.log("[discord] Annonces UFONIT inactives (DISCORD_UFONIT_WEBHOOK non défini).");
+  console.log(discordWebhookUrl() ? "[discord] Annonces automatiques actives (UFONIT, Dimanche GG, Halloween)."
+    : "[discord] Annonces automatiques inactives : webhook non défini (DISCORD_UFONIT_WEBHOOK ou DISCORD_WEBHOOK).");
 });
 
 let shuttingDown = false;
