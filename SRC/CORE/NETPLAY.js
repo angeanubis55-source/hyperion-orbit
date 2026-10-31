@@ -246,10 +246,26 @@ export function sendPing() {
   if (!ws || ws.readyState !== 1) return false;
   try {
     ws.send(JSON.stringify({ t: "ping", t0: Date.now() }));
+    flushGameLogOutbox();
     return true;
   } catch {
     return false;
   }
+}
+// Journal du jeu : une copie part au serveur (lecture par l'admin), par
+// paquets de 50 avec le battement de cœur. Hors ligne, les 500 dernières
+// lignes attendent la reconnexion.
+const gameLogOutbox = [];
+export function queueGameLogForServer(text, type, at) {
+  const value = String(text ?? "").trim().slice(0, 300);
+  if (!value) return;
+  gameLogOutbox.push({ text: value, type: String(type || "info").slice(0, 16), at: Number(at) || Date.now() });
+  if (gameLogOutbox.length > 500) gameLogOutbox.splice(0, gameLogOutbox.length - 500);
+}
+function flushGameLogOutbox() {
+  if (!gameLogOutbox.length || !ws || ws.readyState !== 1) return;
+  const list = gameLogOutbox.splice(0, 50);
+  try { ws.send(JSON.stringify({ t: "glog", list })); } catch { gameLogOutbox.unshift(...list); }
 }
 // Reconnexion volontaire (sas / écran de reconnexion) : casse le socket
 // douteux puis relance le cycle (hello auto à l'ouverture).

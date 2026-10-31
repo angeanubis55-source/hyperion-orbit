@@ -11,7 +11,7 @@ import { mkdirSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { computeHangarStats } from "../SHIP/SHIP_HANGARS.js";
-import { activeBoosterMults, getBooster } from "../SRC/DATA/BOOSTERS.js";
+import { activeBoosterMults, BOOSTERS, getBooster } from "../SRC/DATA/BOOSTERS.js";
 import { pilotSkillMults } from "../SRC/DATA/PILOT_SKILLS.js";
 import { calculateRankPoints } from "../SRC/CORE/PROGRESSION.js";
 import { getShipDesignBaseId, getShipFamilyId, getShipFamilyIds, getShipFamilyName, getShipPackById } from "../SHIP/SHIP_PACKS.js";
@@ -22,10 +22,10 @@ import { npcMapCreditMultiplier, resolveNpcReward } from "../NPC/NPC_BALANCE.js"
 import { rollNpcAssemblyDirect } from "../NPC/NPC_ASSEMBLY.js";
 import { MODULE_ALL_STATS, MODULE_DAILY_ROLL_LIMIT, MODULE_DMG_STATS, MODULE_PCT_BAN, MODULE_ROLL_COST, MODULE_SELL_PRICES, MODULE_SPC_STATS, MODULE_STAT_FAMILY, MODULE_TIER_MALUS, getModuleRarity, getStatMaxPct } from "../SRC/DATA/MODULE_DROPS.js";
 import { generateShipModule } from "../SRC/DATA/MODULE_GEN.js";
-import { findCatalogItem } from "../SRC/CORE/CATALOG.js";
+import { CATALOG, findCatalogItem } from "../SRC/CORE/CATALOG.js";
 import { createDrone, DRONE_FORMATIONS, DRONE_TYPES, getIrisPrice, SPECIAL_DRONE_PRICE } from "../DRONE/DRONE_TYPES.js";
 import { getFaction, getFactionBaseSpawn } from "../SRC/CORE/FACTIONS.js";
-import { CARGO_CAPACITY, cargoAdd, getRefineryRecipe, ORE_SELL_PRICES, planAutoUpgradeCharges, REFINERY_RECIPES, refineOreOutput, upgradeOreCapacity } from "../SRC/DATA/RESOURCES.js";
+import { CARGO_CAPACITY, RESOURCE_TYPES, cargoAdd, getRefineryRecipe, ORE_SELL_PRICES, planAutoUpgradeCharges, REFINERY_RECIPES, refineOreOutput, upgradeOreCapacity } from "../SRC/DATA/RESOURCES.js";
 import { getPetTradeBonusPct } from "../PET/PET_GEARS.js";
 import { CRAFTING_ENABLED, getCraftingRecipe } from "../SRC/DATA/CRAFTING.js";
 import { isHalloweenEventActive } from "../NPC/NPC_HALLOWEEN.js";
@@ -4448,4 +4448,428 @@ export function handleAccountApi(req, res) {
     return true;
   }
   return false;
+}
+
+// =========================================================================
+// Outils du panneau admin : inventaire, dons/retraits d'objets, actions de
+// compte, journal des joueurs, historique des actions admin, statistiques.
+// Chaque écriture bumpe la révision : le client adopte la version serveur
+// à sa prochaine synchro (comme adminGiveCredits).
+// =========================================================================
+const PLAYER_LOG_KEEP = 3000;
+const ADMIN_LOG_KEEP = 20000;
+let adminTablesReady = false;
+function ensureAdminTables() {
+  initAccountDb();
+  if (adminTablesReady) return;
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS player_logs (
+      user_id TEXT NOT NULL,
+      at INTEGER NOT NULL,
+      type TEXT NOT NULL,
+      text TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_player_logs_user ON player_logs(user_id, at);
+    CREATE TABLE IF NOT EXISTS admin_log (
+      at INTEGER NOT NULL,
+      action TEXT NOT NULL,
+      target TEXT NOT NULL,
+      detail TEXT NOT NULL,
+      ok INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_admin_log_at ON admin_log(at);
+  `);
+  adminTablesReady = true;
+}
+
+// Compte visé par id ("u_xxx" ou id brut) ou par pseudo.
+function adminFindRow(target) {
+  const raw = String(target ?? "").trim();
+  if (!raw) return null;
+  const accountId = raw.startsWith("u_") ? raw.slice(2) : raw;
+  return db.prepare("SELECT * FROM users WHERE id = ?").get(accountId) || findUserRowByPseudo(raw);
+}
+function adminParseData(row) {
+  try { return JSON.parse(row.data || "{}") || {}; } catch { return {}; }
+}
+function adminWriteData(row, data, extraSql = "", extraArgs = []) {
+  const now = Date.now();
+  const revision = Math.max(Math.floor(Number(data.revision) || 0), Number(row.revision) || 0) + 1;
+  data._adminWriteToken = randomBytes(12).toString("hex");
+  data.revision = revision;
+  data.updatedAt = now;
+  db.prepare(`UPDATE users SET data = ?, revision = ?, updated_at = ?${extraSql} WHERE id = ?`)
+    .run(JSON.stringify(data), revision, now, ...extraArgs, row.id);
+  return revision;
+}
+const adminWho = (row) => ({ id: String(row.id), pid: `u_${String(row.id)}`, pseudo: String(row.pseudo || "Pilote").slice(0, 20) });
+const adminInt = (value) => Math.floor(Number(String(value ?? "").replace(/[\s_  ]/g, "")) || 0);
+
+// Catalogue pour les listes du panneau (noms lisibles, catégories).
+let adminCatalogCache = null;
+export function adminCatalog() {
+  if (adminCatalogCache) return adminCatalogCache;
+  const items = [];
+  const ammo = [], rockets = [];
+  for (const [category, list] of Object.entries(CATALOG)) {
+    if (!Array.isArray(list)) continue;
+    for (const item of list) {
+      if (!item?.id) continue;
+      items.push({ id: String(item.id), name: String(item.name || item.id), category,
+        unique: !!(item.ship?.id || item.design?.id || item.pet?.id || item.drone || item.formation) });
+      for (const id of Object.keys(item.give?.ammo || {})) if (id !== "x1") ammo.push({ id, name: String(item.code || item.name || id) });
+      for (const id of Object.keys(item.give?.rockets || {})) rockets.push({ id, name: String(item.name || id).replace(/^Roquette\s+/i, "") });
+    }
+  }
+  adminCatalogCache = {
+    items,
+    ammo: [{ id: "x1", name: "LCB-10" }, ...ammo],
+    rockets,
+    resources: Object.values(RESOURCE_TYPES).map((r) => ({ id: r.id, name: r.name })),
+    boosters: BOOSTERS.map((b) => ({ id: b.id, name: `${b.name}${b.code ? ` (${b.code})` : ""}` })),
+    formations: DRONE_FORMATIONS.map((f) => ({ id: f.id, name: f.name })),
+    droneTypes: Object.entries(DRONE_TYPES).map(([id, d]) => ({ id, name: d.name || id })),
+  };
+  return adminCatalogCache;
+}
+
+// Lecture seule : ce que possède le joueur, sans secrets (mot de passe,
+// email, jetons).
+export function adminInventory(target) {
+  try {
+    initAccountDb();
+    const row = adminFindRow(target);
+    if (!row) return { ok: false, error: "Compte introuvable." };
+    const d = adminParseData(row);
+    const inv = d.inventory || {};
+    const positive = (obj) => Object.fromEntries(Object.entries(obj || {})
+      .filter(([, v]) => Number(v) !== 0 && Number.isFinite(Number(v))).map(([k, v]) => [k, Math.floor(Number(v))]));
+    const fitOf = (fit) => ({
+      lasers: (fit?.lasers || []).filter(Boolean), gens: (fit?.gens || []).filter(Boolean),
+      extras: (fit?.extras || []).filter(Boolean), shipMods: (fit?.shipMods || []).filter(Boolean).length,
+    });
+    const now = Date.now();
+    return {
+      ok: true, ...adminWho(row),
+      faction: String(row.faction || d.faction || ""), email: row.email ? maskEmail(row.email) : "",
+      createdAt: Number(row.created_at) || 0, updatedAt: Number(row.updated_at) || 0, revision: Number(row.revision) || 0,
+      credits: Math.max(0, Math.floor(Number(d.credits) || 0)),
+      stats: { exp: Math.floor(Number(d.stats?.exp) || 0), honor: Math.floor(Number(d.stats?.honor) || 0),
+        rankPoints: Math.floor(Number(d.stats?.rankPoints) || 0), kills: Math.floor(Number(d.stats?.lifetimeKills) || 0) },
+      activeShip: String(d.ship || ""),
+      ships: Array.isArray(inv.ships) ? inv.ships.map(String) : [],
+      designs: Array.isArray(inv.shipDesigns) ? inv.shipDesigns.map(String) : [],
+      hangars: (Array.isArray(d.hangars) ? d.hangars : []).filter((h) => h && typeof h === "object").map((h) => ({
+        id: String(h.id || ""), shipId: String(h.shipId || ""), active: h.active === true,
+        activeConfig: Number(h.activeConfig) === 2 ? 2 : 1, lastMap: String(h.lastMap || ""),
+        fits: { 1: fitOf(h.fits?.["1"] || h.fit), 2: fitOf(h.fits?.["2"]) },
+      })),
+      counts: positive(inv.counts),
+      shipModules: (Array.isArray(inv.shipModules) ? inv.shipModules : []).map((m) => ({
+        id: String(m?.id || ""), shipId: String(m?.shipId || ""), tier: String(m?.tier || ""), rarity: String(m?.rarity || ""),
+        bonuses: (m?.bonuses || []).map((b) => ({ stat: String(b?.stat || ""), pct: Number(b?.pct) || 0 })),
+      })),
+      ammo: positive(d.ammo && Object.fromEntries(Object.entries(d.ammo).filter(([k]) => k !== "active"))),
+      rockets: positive(d.rockets),
+      resources: positive(inv.resources),
+      boosters: {
+        stock: positive(d.boosters?.stock),
+        active: Object.fromEntries(Object.entries(d.boosters?.active || {}).filter(([, until]) => Number(until) > now).map(([k, v]) => [k, Number(v)])),
+      },
+      upgrades: d.upgrades || {},
+      drones: {
+        activeFormation: String(d.drones?.activeFormation || "standard"),
+        formations: Array.isArray(d.drones?.formations) ? d.drones.formations.map(String) : [],
+        items: (Array.isArray(d.drones?.items) ? d.drones.items : []).map((x) => ({ id: String(x?.id || ""), type: String(x?.type || ""), level: Number(x?.level) || 1 })),
+      },
+      pet: d.pet?.owned ? { id: String(d.pet.id || ""), pseudo: String(d.pet.pseudo || ""), level: getPetLevel(d.pet.exp), fuel: Math.floor(Number(d.pet.fuel) || 0) } : null,
+      galaxyGates: { energy: Math.floor(Number(d.galaxyGates?.energy) || 0), completed: positive(d.galaxyGates?.completed) },
+      titles: Array.isArray(d.titles?.unlocked) ? d.titles.unlocked.map(String) : [],
+    };
+  } catch { return { ok: false, error: "Erreur serveur." }; }
+}
+
+// Don d'un objet du catalogue : même effet qu'un achat en boutique (vaisseau
+// avec son hangar, P.E.T, drone, formation, booster, munitions...), gratuit.
+export function adminGiveItem(target, itemId, quantity = 1) {
+  try {
+    initAccountDb();
+    const row = adminFindRow(target);
+    if (!row) return { ok: false, error: "Compte introuvable." };
+    const item = findCatalogItem(String(itemId || ""));
+    if (!item) return { ok: false, error: "Objet introuvable." };
+    const qty = Math.max(1, Math.min(1_000_000, adminInt(quantity) || 1));
+    const data = adminParseData(row);
+    if (item.droneDesign?.id) {
+      data.inventory ||= {}; data.inventory.counts ||= {};
+      data.inventory.counts[item.id] = Math.max(0, Math.floor(Number(data.inventory.counts[item.id]) || 0)) + qty;
+    } else {
+      const credits = Math.max(0, Math.floor(Number(data.credits) || 0));
+      data.credits = Number.MAX_SAFE_INTEGER;
+      const result = applyCatalogPurchase(data, item, qty);
+      data.credits = credits;
+      if (result?.error) return { ok: false, error: result.error };
+    }
+    const revision = adminWriteData(row, data);
+    return { ok: true, ...adminWho(row), itemId: item.id, name: String(item.name || item.id), quantity: qty, revision };
+  } catch { return { ok: false, error: "Erreur serveur." }; }
+}
+
+// Ajuste un stock chiffré (positif = ajoute, négatif = retire, jamais < 0).
+const ADMIN_STOCK_KINDS = {
+  count: (d) => ((d.inventory ||= {}).counts ||= {}),
+  ammo: (d) => (d.ammo ||= {}),
+  rocket: (d) => (d.rockets ||= {}),
+  resource: (d) => ((d.inventory ||= {}).resources ||= {}),
+  boosterStock: (d) => ((d.boosters ||= {}).stock ||= {}),
+};
+export function adminAdjustStock(target, kind, id, delta) {
+  try {
+    initAccountDb();
+    const row = adminFindRow(target);
+    if (!row) return { ok: false, error: "Compte introuvable." };
+    const bag = ADMIN_STOCK_KINDS[kind];
+    const key = String(id || "").slice(0, 64);
+    const change = adminInt(delta);
+    if (!bag || !key || key === "active") return { ok: false, error: "Paramètres invalides." };
+    if (!change || Math.abs(change) > 1e12) return { ok: false, error: "Quantité invalide." };
+    const data = adminParseData(row);
+    const store = bag(data);
+    const before = Math.max(0, Math.floor(Number(store[key]) || 0));
+    const after = Math.max(0, before + change);
+    if (after > 0) store[key] = after; else delete store[key];
+    // Un module de vaisseau vendu/retiré sort aussi de la liste "connue".
+    if (kind === "count" && after <= 0 && Array.isArray(data.inventory?.modules)) {
+      data.inventory.modules = data.inventory.modules.filter((value) => value !== key);
+    }
+    const revision = adminWriteData(row, data);
+    return { ok: true, ...adminWho(row), kind, id: key, before, after, revision };
+  } catch { return { ok: false, error: "Erreur serveur." }; }
+}
+
+// Retire un objet unique (vaisseau, design, formation, drone, module de
+// vaisseau). Le vaisseau actif ne peut pas être retiré.
+export function adminRemoveOwned(target, kind, id) {
+  try {
+    initAccountDb();
+    const row = adminFindRow(target);
+    if (!row) return { ok: false, error: "Compte introuvable." };
+    const key = String(id || "").slice(0, 128);
+    const data = adminParseData(row);
+    data.inventory ||= {};
+    let removed = false;
+    if (kind === "ship") {
+      const active = (data.hangars || []).find((h) => h?.active);
+      if (active && String(active.shipId) === key) return { ok: false, error: "Vaisseau actif : change d'abord de vaisseau (ou utilise Débloquer)." };
+      const ships = Array.isArray(data.inventory.ships) ? data.inventory.ships : [];
+      data.inventory.ships = ships.filter((s) => String(s) !== key);
+      data.hangars = (data.hangars || []).filter((h) => String(h?.shipId) !== key);
+      removed = data.inventory.ships.length !== ships.length;
+    } else if (kind === "design") {
+      const list = Array.isArray(data.inventory.shipDesigns) ? data.inventory.shipDesigns : [];
+      data.inventory.shipDesigns = list.filter((s) => String(s) !== key);
+      removed = data.inventory.shipDesigns.length !== list.length;
+    } else if (kind === "formation") {
+      if (key === "standard") return { ok: false, error: "La formation standard ne se retire pas." };
+      const list = Array.isArray(data.drones?.formations) ? data.drones.formations : [];
+      if (data.drones) {
+        data.drones.formations = list.filter((s) => String(s) !== key);
+        if (data.drones.activeFormation === key) data.drones.activeFormation = "standard";
+        removed = data.drones.formations.length !== list.length;
+      }
+    } else if (kind === "drone") {
+      const list = Array.isArray(data.drones?.items) ? data.drones.items : [];
+      if (data.drones) {
+        data.drones.items = list.filter((x) => String(x?.id) !== key);
+        removed = data.drones.items.length !== list.length;
+      }
+    } else if (kind === "shipModule") {
+      const list = Array.isArray(data.inventory.shipModules) ? data.inventory.shipModules : [];
+      data.inventory.shipModules = list.filter((m) => String(m?.id) !== key);
+      removed = data.inventory.shipModules.length !== list.length;
+      if (removed) for (const hangar of data.hangars || []) {
+        for (const fit of [hangar?.fit, hangar?.fits?.["1"], hangar?.fits?.["2"]]) {
+          if (Array.isArray(fit?.shipMods)) fit.shipMods = fit.shipMods.map((m) => (m === key ? null : m));
+        }
+      }
+    } else return { ok: false, error: "Type invalide." };
+    if (!removed) return { ok: false, error: "Objet non possédé." };
+    const revision = adminWriteData(row, data);
+    return { ok: true, ...adminWho(row), kind, id: key, revision };
+  } catch { return { ok: false, error: "Erreur serveur." }; }
+}
+
+// Renvoie le vaisseau actif à la base de sa firme (map x-1).
+export function adminTeleportHome(target) {
+  try {
+    initAccountDb();
+    const row = adminFindRow(target);
+    if (!row) return { ok: false, error: "Compte introuvable." };
+    const data = adminParseData(row);
+    const faction = FACTIONS.has(norm(data.faction || row.faction)) ? norm(data.faction || row.faction) : "mmo";
+    const map = `${getFaction(faction).sector}-1`;
+    const pos = getFactionBaseSpawn(faction);
+    // Compte jamais joué : pas encore de hangar, il apparaîtra déjà à sa base.
+    const hangar = (data.hangars || []).find((h) => h?.active) || (data.hangars || [])[0];
+    if (hangar) Object.assign(hangar, { lastMap: map, lastPos: { x: pos.x, y: pos.y } });
+    if (data.eternalGate && typeof data.eternalGate === "object") data.eternalGate.inRun = false;
+    const revision = adminWriteData(row, data);
+    return { ok: true, ...adminWho(row), map, revision };
+  } catch { return { ok: false, error: "Erreur serveur." }; }
+}
+
+// Renommage par l'admin : mêmes règles que le joueur, sans délai ni mot de passe.
+export function adminRename(target, value) {
+  try {
+    initAccountDb();
+    const row = adminFindRow(target);
+    if (!row) return { ok: false, error: "Compte introuvable." };
+    const next = String(value || "").trim();
+    if (next.length < 3 || next.length > 32 || !IDENTITY_NAME_RE.test(next)) return { ok: false, error: "Pseudo invalide (3 à 32 caractères autorisés)." };
+    if (next === row.pseudo) return { ok: false, error: "C'est déjà son pseudo." };
+    if (db.prepare("SELECT 1 FROM users WHERE pseudo = ? AND id != ?").get(next, row.id)) return { ok: false, error: "Ce pseudo est déjà utilisé." };
+    const data = adminParseData(row);
+    const before = String(row.pseudo || "");
+    data.pseudo = next;
+    try {
+      adminWriteData(row, data, ", pseudo = ?, pseudo_norm = ?", [next, norm(next)]);
+    } catch { return { ok: false, error: "Ce pseudo est déjà utilisé." }; }
+    return { ok: true, id: String(row.id), pid: `u_${String(row.id)}`, before, pseudo: next };
+  } catch { return { ok: false, error: "Erreur serveur." }; }
+}
+
+// Changement de firme : le vaisseau actif repart à la base de la nouvelle firme.
+export function adminSetFaction(target, faction) {
+  try {
+    initAccountDb();
+    const row = adminFindRow(target);
+    if (!row) return { ok: false, error: "Compte introuvable." };
+    const next = norm(faction);
+    if (!FACTIONS.has(next)) return { ok: false, error: "Firme invalide." };
+    const data = adminParseData(row);
+    const before = norm(data.faction || row.faction);
+    if (before === next) return { ok: false, error: "Déjà dans cette firme." };
+    data.faction = next;
+    if (data.pet && typeof data.pet === "object") data.pet.faction = next;
+    const hangar = (data.hangars || []).find((h) => h?.active) || (data.hangars || [])[0];
+    if (hangar) Object.assign(hangar, { lastMap: `${getFaction(next).sector}-1`, lastPos: getFactionBaseSpawn(next) });
+    adminWriteData(row, data, ", faction = ?", [next]);
+    return { ok: true, ...adminWho(row), before, faction: next };
+  } catch { return { ok: false, error: "Erreur serveur." }; }
+}
+
+// Mot de passe temporaire (affiché une seule fois à l'admin) ; toutes les
+// sessions du compte sont fermées.
+export async function adminResetPassword(target) {
+  try {
+    initAccountDb();
+    const row = adminFindRow(target);
+    if (!row) return { ok: false, error: "Compte introuvable." };
+    const temp = `orbit-${randomBytes(5).toString("hex")}`;
+    const hash = await hashPassword(temp);
+    const data = adminParseData(row);
+    if ("password" in data) data.password = hash;
+    adminWriteData(row, data, ", password_hash = ?", [hash]);
+    db.prepare("DELETE FROM sessions WHERE user_id = ?").run(row.id);
+    return { ok: true, ...adminWho(row), password: temp };
+  } catch { return { ok: false, error: "Erreur serveur." }; }
+}
+
+// --- Journal des joueurs (copie serveur de la fenêtre "journal" du jeu) ---
+let playerLogWrites = 0;
+export function appendPlayerLogs(accountId, entries) {
+  try {
+    ensureAdminTables();
+    const uid = String(accountId || "");
+    if (!uid || !Array.isArray(entries) || !entries.length) return 0;
+    const insert = db.prepare("INSERT INTO player_logs (user_id, at, type, text) VALUES (?, ?, ?, ?)");
+    const now = Date.now();
+    let count = 0;
+    for (const entry of entries.slice(0, 50)) {
+      const text = String(entry?.text ?? "").replace(/\s+/g, " ").trim().slice(0, 300);
+      if (!text) continue;
+      // Horodatage client accepté s'il est plausible (file d'attente hors ligne).
+      const at = Number(entry?.at);
+      const stamp = Number.isFinite(at) && at <= now + 60_000 && at >= now - 86_400_000 ? Math.floor(at) : now;
+      insert.run(uid, stamp, String(entry?.type || "info").slice(0, 16), text);
+      count++;
+    }
+    playerLogWrites += count;
+    if (playerLogWrites >= 500) {
+      playerLogWrites = 0;
+      db.prepare(`DELETE FROM player_logs WHERE rowid IN (SELECT rowid FROM player_logs WHERE user_id = ? ORDER BY at DESC LIMIT -1 OFFSET ${PLAYER_LOG_KEEP})`).run(uid);
+    }
+    return count;
+  } catch { return 0; }
+}
+export function adminPlayerLogs(target, { before = 0, limit = 200, q = "", type = "" } = {}) {
+  try {
+    ensureAdminTables();
+    const row = adminFindRow(target);
+    if (!row) return { ok: false, error: "Compte introuvable." };
+    const where = ["user_id = ?"], args = [String(row.id)];
+    if (Number(before) > 0) { where.push("at < ?"); args.push(Math.floor(Number(before))); }
+    if (type) { where.push("type = ?"); args.push(String(type).slice(0, 16)); }
+    if (q) { where.push("text LIKE ?"); args.push(`%${String(q).slice(0, 60).replace(/[%_]/g, "")}%`); }
+    const size = Math.max(1, Math.min(500, Math.floor(Number(limit) || 200)));
+    const logs = db.prepare(`SELECT at, type, text FROM player_logs WHERE ${where.join(" AND ")} ORDER BY at DESC LIMIT ${size}`).all(...args);
+    return { ok: true, ...adminWho(row), logs, more: logs.length === size };
+  } catch { return { ok: false, error: "Erreur serveur." }; }
+}
+
+// --- Historique des actions admin ---
+export function adminLogAction(action, target, detail, ok) {
+  try {
+    ensureAdminTables();
+    db.prepare("INSERT INTO admin_log (at, action, target, detail, ok) VALUES (?, ?, ?, ?, ?)")
+      .run(Date.now(), String(action || "").slice(0, 40), String(target || "").slice(0, 40), String(detail || "").slice(0, 500), ok ? 1 : 0);
+    if (Math.random() < 0.01) db.prepare(`DELETE FROM admin_log WHERE rowid IN (SELECT rowid FROM admin_log ORDER BY at DESC LIMIT -1 OFFSET ${ADMIN_LOG_KEEP})`).run();
+  } catch {}
+}
+export function adminActionLog({ before = 0, limit = 200, q = "" } = {}) {
+  try {
+    ensureAdminTables();
+    const where = [], args = [];
+    if (Number(before) > 0) { where.push("at < ?"); args.push(Math.floor(Number(before))); }
+    if (q) { where.push("(target LIKE ? OR action LIKE ? OR detail LIKE ?)"); const like = `%${String(q).slice(0, 60).replace(/[%_]/g, "")}%`; args.push(like, like, like); }
+    const size = Math.max(1, Math.min(500, Math.floor(Number(limit) || 200)));
+    const list = db.prepare(`SELECT at, action, target, detail, ok FROM admin_log ${where.length ? `WHERE ${where.join(" AND ")}` : ""} ORDER BY at DESC LIMIT ${size}`).all(...args);
+    return { ok: true, list: list.map((r) => ({ ...r, ok: r.ok === 1 })), more: list.length === size };
+  } catch { return { ok: false, error: "Erreur serveur." }; }
+}
+
+// --- Statistiques globales (lecture de tous les comptes) ---
+export function adminStats() {
+  try {
+    initAccountDb();
+    const rows = db.prepare("SELECT id, pseudo, faction, data, created_at, updated_at FROM users").all();
+    const now = Date.now(), day = 86_400_000;
+    const factions = {}, ships = {}, createdByDay = {}, activeByDay = {};
+    const players = [];
+    let credits = 0, exp = 0, honor = 0;
+    for (const r of rows) {
+      const d = adminParseData(r);
+      const p = { pseudo: String(r.pseudo || ""), id: `u_${r.id}`,
+        credits: Math.max(0, Math.floor(Number(d.credits) || 0)), exp: Math.floor(Number(d.stats?.exp) || 0),
+        honor: Math.floor(Number(d.stats?.honor) || 0), kills: Math.floor(Number(d.stats?.lifetimeKills) || 0) };
+      players.push(p);
+      credits += p.credits; exp += p.exp; honor += p.honor;
+      const f = norm(r.faction || d.faction) || "?";
+      factions[f] = (factions[f] || 0) + 1;
+      const ship = String((d.hangars || []).find((h) => h?.active)?.shipId || d.ship || "?");
+      const base = String(getShipDesignBaseId(ship) || ship);
+      ships[base] = (ships[base] || 0) + 1;
+      const created = Number(r.created_at) || 0, updated = Number(r.updated_at) || 0;
+      if (now - created < 14 * day) { const k = new Date(created).toISOString().slice(0, 10); createdByDay[k] = (createdByDay[k] || 0) + 1; }
+      if (now - updated < 14 * day) { const k = new Date(updated).toISOString().slice(0, 10); activeByDay[k] = (activeByDay[k] || 0) + 1; }
+    }
+    const top = (field) => [...players].sort((a, b) => b[field] - a[field]).slice(0, 10);
+    return {
+      ok: true, accounts: rows.length, active24h: rows.filter((r) => now - Number(r.updated_at || 0) < day).length,
+      active7d: rows.filter((r) => now - Number(r.updated_at || 0) < 7 * day).length,
+      totals: { credits, exp, honor }, factions, ships: Object.entries(ships).sort((a, b) => b[1] - a[1]).slice(0, 12),
+      createdByDay, activeByDay,
+      top: { credits: top("credits"), exp: top("exp"), honor: top("honor"), kills: top("kills") },
+    };
+  } catch { return { ok: false, error: "Erreur serveur." }; }
 }

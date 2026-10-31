@@ -1,3 +1,5 @@
+// En premier : capture la console (journal serveur du panneau admin).
+import { readServerLog } from "./SERVER_LOG.js";
 import { createServer } from "node:http";
 import { readFile, stat, mkdir, writeFile, rename } from "node:fs/promises";
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
@@ -25,7 +27,7 @@ const {
 } = AC;
 import { tickLowRaid, getLowRaidState } from "./LOW_RAID.js";
 import { damagePlayerLayers } from "../COMBAT/COMBAT_RULES.js";
-import { handleAccountApi, getAccountGameplayData, verifyWsToken, recordPvpKill, recordPvpPetKill, awardNpcKill, grantSundayModule, grantSundayTickets, grantSundayAmmo, listFriends, friendFollowers, findUserByPseudo, hasFriendRequest, isBlockedBy, clanIdOfUser, clanTagOfUser, clanMemberUserIds, setClanPresenceProvider, setClanBasesProvider, recordClanWarKill, adminGiveCredits, adminGiveExperience, adminGiveHonor, adminGiveModule, adminGiveTitle, adminListAccounts, adminDebugAccount, adminDeleteAccount, adminResetGalaxyGate, adminGiveGalaxyGate, adminDroneDesigns, adminGiveDroneDesign, adminShipFamilies } from "./ACCOUNT_SERVER.js";
+import { handleAccountApi, getAccountGameplayData, verifyWsToken, recordPvpKill, recordPvpPetKill, awardNpcKill, grantSundayModule, grantSundayTickets, grantSundayAmmo, listFriends, friendFollowers, findUserByPseudo, hasFriendRequest, isBlockedBy, clanIdOfUser, clanTagOfUser, clanMemberUserIds, setClanPresenceProvider, setClanBasesProvider, recordClanWarKill, adminGiveCredits, adminGiveExperience, adminGiveHonor, adminGiveModule, adminGiveTitle, adminListAccounts, adminDebugAccount, adminDeleteAccount, adminResetGalaxyGate, adminGiveGalaxyGate, adminDroneDesigns, adminGiveDroneDesign, adminShipFamilies, adminCatalog, adminInventory, adminGiveItem, adminAdjustStock, adminRemoveOwned, adminTeleportHome, adminRename, adminSetFaction, adminResetPassword, appendPlayerLogs, adminPlayerLogs, adminLogAction, adminActionLog, adminStats } from "./ACCOUNT_SERVER.js";
 import { combatProfile, validateCombatHit, syncDeclaredFormation, accountWithFormation } from "./COMBAT_PROFILE.js";
 import { profileAbilityCooldown } from "../DRONE/DRONE_DESIGNS.js";
 import { selectNpcSnapshot } from "./NPC_SNAPSHOT.js";
@@ -849,9 +851,26 @@ function adminAuthed(request) {
 function adminJson(response, code, obj) {
   response.writeHead(code, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
   response.end(JSON.stringify(obj));
+  if (response._adminAction) recordAdminAction(response, code, obj);
+}
+// Historique des actions admin : action, cible, paramètres (sans secrets) et
+// résultat. Le corps de la requête est noté par readJsonBody.
+const ADMIN_LOG_SKIP_FIELDS = new Set(["password", "token"]);
+function recordAdminAction(response, code, obj) {
+  const action = response._adminAction;
+  response._adminAction = null;
+  const body = response._adminBody && typeof response._adminBody === "object" ? response._adminBody : {};
+  const target = String(obj?.pseudo || body.pseudo || body.id || body.key || "").slice(0, 40);
+  const params = Object.entries(body).filter(([k]) => !ADMIN_LOG_SKIP_FIELDS.has(k) && k !== "id")
+    .map(([k, v]) => `${k}=${typeof v === "object" ? JSON.stringify(v) : String(v)}`).join(" ");
+  const ok = code < 400 && obj?.ok !== false;
+  const detail = ok ? params : `${params}${params ? " · " : ""}échec : ${String(obj?.error || code)}`;
+  adminLogAction(action, target, detail, ok);
 }
 function readJsonBody(request) {
   return new Promise((resolve) => {
+    const done = resolve;
+    resolve = (body) => { if (request._adminResponse) request._adminResponse._adminBody = body; done(body); };
     let size = 0;
     const chunks = [];
     request.on("data", (c) => {
@@ -866,10 +885,101 @@ function readJsonBody(request) {
     request.on("error", () => resolve(null));
   });
 }
+// Déconnecte un joueur en ligne (fiche admin modifiée : il doit recharger
+// son compte depuis le serveur). Retourne true s'il était connecté.
+function adminDisconnect(pid, reason) {
+  let victimWs = null;
+  for (const [, room] of rooms) {
+    const entry = room.get(pid);
+    if (entry?.ws) { victimWs = entry.ws; break; }
+  }
+  if (!victimWs) victimWs = instancePeers.get(pid)?.ws || null;
+  if (pid) {
+    peerNoGrace.set(pid, Date.now());
+    removeFromAllRooms(pid);
+    securityStates.delete(pid);
+  }
+  if (victimWs) {
+    try { victimWs.send(JSON.stringify({ t: "adminKick", reason })); } catch {}
+    setTimeout(() => { try { victimWs.close(); } catch {} }, 400);
+  }
+  return !!victimWs;
+}
+
+// Joueurs connectés par carte (statistiques du panneau).
+function adminLivePerMap() {
+  const perMap = {};
+  for (const [map, room] of rooms) if (room.size) perMap[map] = room.size;
+  for (const [, entry] of instancePeers) {
+    const map = String(entry?.mapId || entry?.state?.map || "gate");
+    perMap[map] = (perMap[map] || 0) + 1;
+  }
+  return perMap;
+}
+
+// Outils du panneau : inventaire, objets, actions de compte, journaux, stats.
+const ADMIN_TOOL_POSTS = {
+  "/api/admin/give-item": (b) => adminGiveItem(b.id || b.pseudo, b.itemId, b.quantity),
+  "/api/admin/adjust-stock": (b) => adminAdjustStock(b.id || b.pseudo, b.kind, b.key, b.delta),
+  "/api/admin/remove-owned": (b) => adminRemoveOwned(b.id || b.pseudo, b.kind, b.key),
+  "/api/admin/teleport-home": (b) => adminTeleportHome(b.id || b.pseudo),
+  "/api/admin/rename": (b) => adminRename(b.id || b.pseudo, b.value),
+  "/api/admin/set-faction": (b) => adminSetFaction(b.id || b.pseudo, b.faction),
+  "/api/admin/reset-password": (b) => adminResetPassword(b.id || b.pseudo),
+};
+// Ces actions changent ce que le jeu connecté garde en mémoire : le joueur
+// est déconnecté pour recharger son compte.
+const ADMIN_TOOL_KICK = {
+  "/api/admin/teleport-home": "Renvoyé à ta base par l'admin. Reconnecte-toi.",
+  "/api/admin/rename": "Ton pseudo a été changé par l'admin. Reconnecte-toi.",
+  "/api/admin/set-faction": "Ta firme a été changée par l'admin. Reconnecte-toi.",
+  "/api/admin/reset-password": "Ton mot de passe a été réinitialisé par l'admin.",
+};
+function handleAdminToolsApi(request, response, pathname) {
+  const url = new URL(request.url || "/", "http://admin.local");
+  const query = (key) => url.searchParams.get(key) || "";
+  if (request.method === "GET") {
+    if (pathname === "/api/admin/catalog") { adminJson(response, 200, { ok: true, ...adminCatalog() }); return true; }
+    if (pathname === "/api/admin/inventory") { const res = adminInventory(query("id")); adminJson(response, res.ok ? 200 : 404, res); return true; }
+    if (pathname === "/api/admin/player-logs") {
+      const res = adminPlayerLogs(query("id"), { before: query("before"), q: query("q"), type: query("type"), limit: query("limit") });
+      adminJson(response, res.ok ? 200 : 404, res);
+      return true;
+    }
+    if (pathname === "/api/admin/admin-log") { adminJson(response, 200, adminActionLog({ before: query("before"), q: query("q") })); return true; }
+    if (pathname === "/api/admin/server-log") {
+      adminJson(response, 200, { ok: true, ...readServerLog({ since: query("since"), level: query("level"), q: query("q") }) });
+      return true;
+    }
+    if (pathname === "/api/admin/stats") {
+      const res = adminStats();
+      adminJson(response, res.ok ? 200 : 500, { ...res, livePerMap: adminLivePerMap(), uptimeSec: Math.round(process.uptime()),
+        memoryMb: Math.round(process.memoryUsage().rss / 1048576) });
+      return true;
+    }
+    return false;
+  }
+  const run = ADMIN_TOOL_POSTS[pathname];
+  if (!run || request.method !== "POST") return false;
+  readJsonBody(request).then(async (body) => {
+    try {
+      const res = await run(body && typeof body === "object" ? body : {});
+      if (res?.ok === true && ADMIN_TOOL_KICK[pathname]) res.disconnected = adminDisconnect(String(res.pid || ""), ADMIN_TOOL_KICK[pathname]);
+      adminJson(response, res?.ok === true ? 200 : res?.error === "Compte introuvable." ? 404 : 400, res || { ok: false, error: "Échec." });
+    } catch { adminJson(response, 500, { ok: false, error: "Erreur serveur." }); }
+  });
+  return true;
+}
+
 function handleAdminApi(request, response, pathname) {
   if (!pathname.startsWith("/api/admin/")) return false;
   if (!adminAuthed(request)) { adminJson(response, 401, { ok: false, error: "Non autorise." }); return true; }
   const now = Date.now();
+  if (request.method === "POST") {
+    response._adminAction = pathname.slice("/api/admin/".length).slice(0, 40);
+    request._adminResponse = response;
+  }
+  if (handleAdminToolsApi(request, response, pathname)) return true;
   if (pathname === "/api/admin/peers" && request.method === "GET") {
     const peers = [];
     for (const [map, room] of rooms) {
@@ -1030,22 +1140,7 @@ function handleAdminApi(request, response, pathname) {
             adminJson(response, res?.error === "Compte introuvable." ? 404 : 400, res || { ok: false, error: "Correction impossible." });
             return;
           }
-          const pid = String(res.pid || "");
-          let victimWs = null;
-          for (const [, room] of rooms) {
-            const entry = room.get(pid);
-            if (entry?.ws) { victimWs = entry.ws; break; }
-          }
-          if (!victimWs) victimWs = instancePeers.get(pid)?.ws || null;
-          if (pid) {
-            peerNoGrace.set(pid, Date.now());
-            removeFromAllRooms(pid);
-            securityStates.delete(pid);
-          }
-          if (victimWs) {
-            try { victimWs.send(JSON.stringify({ t: "adminKick", reason: "Compte remis en etat par l'admin. Reconnecte-toi." })); } catch {}
-            setTimeout(() => { try { victimWs.close(); } catch {} }, 400);
-          }
+          adminDisconnect(String(res.pid || ""), "Compte remis en etat par l'admin. Reconnecte-toi.");
           adminJson(response, 200, res);
           return;
         }
@@ -3733,6 +3828,15 @@ wss.on("connection", (ws) => {
           if (ws.readyState === 1) ws.send(JSON.stringify({ t: "clanTag", tag: String(tag || "") }));
         } catch {}
       }
+      return;
+    }
+    if (msg.t === "glog") {
+      // Copie du journal du jeu (lecture admin). 50 lignes par paquet,
+      // seau de 600 lignes rechargé à 20/s : un client ne peut pas noyer la base.
+      if (!authed || !accountId || !Array.isArray(msg.list)) return;
+      const list = msg.list.slice(0, 50);
+      if (!acBucket(state, "GlogN", Date.now(), 600, 20, list.length)) return;
+      appendPlayerLogs(accountId, list);
       return;
     }
     if (msg.t === "chat") {

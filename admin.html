@@ -5,128 +5,370 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Hyperion Orbit — Admin</title>
 <style>
-  :root { color-scheme: dark; }
+  :root {
+    color-scheme: dark;
+    --bg: #03080e;
+    --panel: rgba(8, 20, 32, .78);
+    --panel-2: rgba(124, 240, 255, .04);
+    --line: rgba(124, 240, 255, .12);
+    --line-2: rgba(124, 240, 255, .24);
+    --text: #dcf4fb;
+    --muted: #6f9aa8;
+    --accent: #7cf0ff;
+    --ok: #4dffa1;
+    --warn: #ffa63c;
+    --danger: #ff5c68;
+    --gold: #ffd66a;
+  }
   * { box-sizing: border-box; }
-  body { margin: 0; min-height: 100vh; padding: 24px; background: radial-gradient(1200px 800px at 50% -10%, #0a2a3a 0%, #040d14 60%, #020608 100%); color: #cfeef7; font: 14px/1.45 system-ui, "Segoe UI", sans-serif; }
-  h1 { margin: 0 0 4px; font-size: 20px; letter-spacing: .5px; color: #effcff; }
-  .sub { margin: 0 0 18px; color: #5d96a5; font-size: 12px; }
-  .card { margin: 0 0 16px; padding: 16px 18px; border: 1px solid rgba(124,240,255,.22); border-radius: 12px; background: rgba(4,18,28,.75); box-shadow: 0 0 24px rgba(0,217,255,.06); }
-  .card h2 { margin: 0 0 10px; font-size: 14px; text-transform: uppercase; letter-spacing: 1px; color: #75e8ff; }
-  input[type=password], input[type=text], input[type=number] { height: 34px; padding: 0 10px; border: 1px solid rgba(124,240,255,.3); border-radius: 8px; background: #051521; color: #effcff; font-size: 13px; outline: 0; }
-  input:focus { border-color: #69e9ff; }
-  select { height: 26px; padding: 0 6px; border: 1px solid rgba(124,240,255,.3); border-radius: 8px; background: #051521; color: #effcff; font-size: 12px; outline: 0; max-width: 130px; }
-  select:focus { border-color: #69e9ff; }
-  .modCell { display: flex; gap: 4px; align-items: center; flex-wrap: wrap; }
-  .modCell input[type=number] { height: 26px; width: 64px; padding: 0 6px; font-size: 12px; }
-  button { height: 34px; padding: 0 16px; border: 1px solid rgba(124,240,255,.38); border-radius: 8px; background: linear-gradient(135deg, rgba(0,145,190,.38), rgba(0,70,100,.34)); color: #eaffff; font-weight: 800; font-size: 13px; cursor: pointer; }
-  button:hover { border-color: rgba(124,240,255,.62); background: rgba(0,140,185,.3); }
-  button.danger { border-color: rgba(255,110,120,.5); background: linear-gradient(135deg, rgba(190,30,40,.4), rgba(100,20,30,.35)); }
-  button.small { height: 26px; padding: 0 10px; font-size: 12px; }
-  button:disabled { opacity: .4; cursor: default; }
-  table { width: 100%; border-collapse: collapse; font-size: 13px; }
-  th { text-align: left; padding: 6px 8px; color: #5d96a5; font-size: 11px; text-transform: uppercase; letter-spacing: .5px; border-bottom: 1px solid rgba(124,240,255,.16); }
-  td { padding: 6px 8px; border-bottom: 1px solid rgba(124,240,255,.07); }
-  tr.me td { color: #ffd36b; }
-  .badge { display: inline-block; padding: 1px 8px; border-radius: 20px; font-size: 11px; font-weight: 800; }
-  .badge.ok { background: rgba(70,210,105,.15); color: #7be495; border: 1px solid rgba(70,210,105,.4); }
-  .badge.guest { background: rgba(255,211,107,.12); color: #ffd36b; border: 1px solid rgba(255,211,107,.4); }
-  .badge.muted { background: rgba(255,110,120,.15); color: #ff9aa5; border: 1px solid rgba(255,110,120,.4); }
-  .badge.dead { background: rgba(120,120,120,.15); color: #999; border: 1px solid rgba(120,120,120,.4); }
-  .badge.gate { background: rgba(180,120,255,.15); color: #cfa8ff; border: 1px solid rgba(180,120,255,.4); }
-  .badge.off { background: rgba(120,120,120,.15); color: #aaa; border: 1px solid rgba(120,120,120,.4); }
-  .searchRow { display: flex; gap: 8px; margin-bottom: 10px; }
-  .searchRow input { flex: 1; }
+  html, body { height: 100%; }
+  body { margin: 0; background: radial-gradient(1200px 700px at 70% -10%, #0b2433 0%, var(--bg) 60%); color: var(--text); font: 13.5px/1.45 ui-sans-serif, system-ui, "Segoe UI", sans-serif; }
+  button, input, select { font: inherit; color: inherit; }
+  [hidden] { display: none !important; }
+
+  /* ---------- Contrôles ---------- */
+  .btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 32px; padding: 0 14px; border: 1px solid color-mix(in srgb, var(--c, var(--accent)) 45%, transparent); border-radius: 8px; background: color-mix(in srgb, var(--c, var(--accent)) 12%, transparent); color: #fff; font-weight: 700; font-size: 12.5px; cursor: pointer; white-space: nowrap; transition: background-color .15s, border-color .15s; }
+  .btn:hover:not(:disabled) { border-color: color-mix(in srgb, var(--c, var(--accent)) 85%, transparent); background: color-mix(in srgb, var(--c, var(--accent)) 24%, transparent); }
+  .btn:disabled { opacity: .4; cursor: default; }
+  .btn.sm { height: 26px; padding: 0 10px; font-size: 12px; }
+  .btn.danger { --c: var(--danger); }
+  .btn.warn { --c: var(--warn); }
+  .btn.ok { --c: var(--ok); }
+  .btn.ghost { --c: #8fb3bf; background: transparent; }
+  .input, select.input { height: 32px; padding: 0 10px; border: 1px solid var(--line-2); border-radius: 8px; background: rgba(0, 0, 0, .3); color: #effcff; font-size: 13px; outline: 0; min-width: 0; }
+  .input:focus { border-color: rgba(124, 240, 255, .6); }
+  .input::placeholder { color: rgba(207, 231, 239, .4); }
+  select.input { padding: 0 6px; }
+  .badge { display: inline-flex; align-items: center; gap: 4px; padding: 1px 8px; border-radius: 999px; border: 1px solid color-mix(in srgb, var(--c, #9ab) 45%, transparent); background: color-mix(in srgb, var(--c, #9ab) 12%, transparent); color: var(--c, #9ab); font-size: 10.5px; font-weight: 800; letter-spacing: .03em; text-transform: uppercase; white-space: nowrap; }
+  .badge.ok { --c: var(--ok); }
+  .badge.warn { --c: var(--warn); }
+  .badge.danger { --c: var(--danger); }
+  .badge.accent { --c: var(--accent); }
+  .badge.violet { --c: #c9a2ff; }
+  .badge.gold { --c: var(--gold); }
+  .dot { width: 8px; height: 8px; border-radius: 50%; flex: 0 0 auto; background: #4a6470; }
+  .dot.on { background: var(--ok); box-shadow: 0 0 6px var(--ok); }
   .num { text-align: right; font-variant-numeric: tabular-nums; }
-  .row { display: flex; gap: 8px; }
-  .row input { flex: 1; }
-  .chatLog { max-height: 220px; overflow-y: auto; display: grid; align-content: start; gap: 3px; padding: 9px 11px; margin-bottom: 8px; border: 1px solid rgba(124,240,255,.14); border-radius: 8px; background: rgba(2,10,17,.6); font-size: 13px; }
-  .chatLog .chatEmpty { color: #5d96a5; }
-  .chatLog .chatTime { color: #5d96a5; font-size: 11px; margin-right: 4px; }
-  .chatLog .chatFrom { color: #75e8ff; font-weight: 800; }
-  .chatLog .chatAdmin .chatFrom { color: #ff7b8a; }
-  .chatLog .chatAdmin .chatText { color: #ffe9ec; font-weight: 700; }
-  .msg { min-height: 20px; margin: 8px 0 0; font-size: 13px; }
-  .msg.err { color: #ff9aa5; }
-  .msg.ok { color: #7be495; }
-  #loginBox { max-width: 420px; margin: 8vh auto; }
-  #loginBox .row { margin-top: 10px; }
-  #app { display: none; }
-  .mutedRow { opacity: .55; }
-  /* --- Modale custom + toast (remplace prompt/alert natifs) --- */
-  #modalOverlay { display: none; position: fixed; inset: 0; z-index: 50; background: rgba(1,6,10,.72); backdrop-filter: blur(2px); align-items: center; justify-content: center; padding: 16px; }
+  .muted { color: var(--muted); }
+  .empty { padding: 28px 12px; text-align: center; color: var(--muted); }
+
+  /* ---------- Connexion ---------- */
+  #loginBox { width: min(380px, calc(100vw - 32px)); margin: 14vh auto 0; padding: 26px; border: 1px solid var(--line-2); border-radius: 14px; background: var(--panel); backdrop-filter: blur(6px); }
+  #loginBox h1 { margin: 0 0 4px; font-size: 18px; letter-spacing: .04em; }
+  #loginBox p { margin: 0 0 16px; color: var(--muted); font-size: 12px; }
+  #loginBox .row { display: flex; gap: 8px; }
+  #loginBox .input { flex: 1; height: 38px; }
+  #loginBox .btn { height: 38px; }
+  #loginMsg { min-height: 18px; margin: 10px 0 0; color: #ff9aa5; font-size: 12px; }
+
+  /* ---------- Structure ---------- */
+  #app { display: grid; grid-template-columns: 210px minmax(0, 1fr); height: 100vh; }
+  .side { display: flex; flex-direction: column; gap: 4px; padding: 18px 12px; border-right: 1px solid var(--line); background: rgba(0, 0, 0, .25); }
+  .brand { padding: 0 8px 16px; }
+  .brand b { display: block; color: #fff; font-size: 15px; letter-spacing: .12em; }
+  .brand span { display: flex; align-items: center; gap: 6px; margin-top: 4px; color: var(--muted); font-size: 12px; }
+  .navBtn { display: flex; align-items: center; gap: 10px; width: 100%; height: 38px; padding: 0 10px; border: 1px solid transparent; border-radius: 8px; background: transparent; color: #a9c8d2; font-weight: 650; cursor: pointer; text-align: left; transition: background-color .15s, color .15s; }
+  .navBtn svg { width: 17px; height: 17px; flex: 0 0 auto; }
+  .navBtn:hover { background: rgba(124, 240, 255, .05); color: #fff; }
+  .navBtn.active { border-color: rgba(124, 240, 255, .3); background: rgba(124, 240, 255, .1); color: #fff; }
+  .navBtn .count { margin-left: auto; min-width: 20px; padding: 0 6px; border-radius: 999px; background: rgba(255, 255, 255, .08); color: #cfe3ea; font-size: 11px; font-weight: 800; text-align: center; }
+  .navBtn .count.alert { background: var(--danger); color: #fff; }
+  .side .spacer { flex: 1; }
+  .main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+  .viewHead { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 18px 24px 14px; border-bottom: 1px solid var(--line); }
+  .viewHead h1 { margin: 0; font-size: 18px; color: #fff; }
+  .viewHead .sub { color: var(--muted); font-size: 12.5px; }
+  .viewHead .tools { margin-left: auto; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .viewBody { flex: 1; min-height: 0; overflow: auto; padding: 18px 24px 24px; }
+  .card { border: 1px solid var(--line); border-radius: 12px; background: var(--panel); }
+  .card > h2 { display: flex; align-items: center; gap: 8px; margin: 0; padding: 12px 16px; border-bottom: 1px solid var(--line); color: var(--accent); font-size: 11px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; }
+  .card > h2 .link { margin-left: auto; padding: 0; border: 0; background: none; color: var(--muted); font-size: 11px; letter-spacing: 0; text-transform: none; cursor: pointer; }
+  .card > h2 .link:hover { color: #fff; }
+  .card > .pad { padding: 14px 16px; }
+  .note { margin: 0 0 14px; color: var(--muted); font-size: 12px; }
+
+  /* ---------- Vue d'ensemble ---------- */
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 16px; }
+  .tile { padding: 14px 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); text-align: left; cursor: pointer; transition: border-color .15s; }
+  .tile:hover { border-color: var(--line-2); }
+  .tile span { display: block; color: var(--muted); font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+  .tile b { display: block; margin-top: 4px; color: #fff; font-size: 26px; font-weight: 800; font-variant-numeric: tabular-nums; }
+  .tile.alert b { color: var(--danger); }
+  .grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 16px; }
+
+  /* ---------- Joueurs ---------- */
+  .players { display: grid; grid-template-columns: minmax(280px, 380px) minmax(0, 1fr); gap: 16px; height: 100%; min-height: 0; }
+  .playerList { display: flex; flex-direction: column; min-height: 0; }
+  .playerList .filters { display: flex; gap: 6px; padding: 10px 12px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+  .chip { height: 26px; padding: 0 10px; border: 1px solid var(--line); border-radius: 999px; background: transparent; color: #a9c8d2; font-size: 12px; font-weight: 650; cursor: pointer; }
+  .chip:hover { color: #fff; }
+  .chip.sel { border-color: rgba(124, 240, 255, .5); background: rgba(124, 240, 255, .12); color: #fff; }
+  .rows { flex: 1; min-height: 0; overflow-y: auto; padding: 6px; }
+  .pRow { display: grid; grid-template-columns: 8px minmax(0, 1fr) auto; gap: 10px; align-items: center; width: 100%; padding: 8px 10px; border: 1px solid transparent; border-radius: 8px; background: transparent; text-align: left; cursor: pointer; }
+  .pRow:hover { background: rgba(124, 240, 255, .05); }
+  .pRow.sel { border-color: rgba(124, 240, 255, .4); background: rgba(124, 240, 255, .1); }
+  .pRow .name { display: flex; align-items: center; gap: 6px; min-width: 0; }
+  .pRow .name b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #effcff; font-weight: 700; }
+  .pRow small { display: block; color: var(--muted); font-size: 11.5px; }
+  .pRow .right { text-align: right; color: var(--muted); font-size: 11.5px; font-variant-numeric: tabular-nums; }
+
+  /* ---------- Fiche joueur ---------- */
+  .fiche { min-height: 0; overflow-y: auto; }
+  .ficheHead { display: flex; align-items: flex-start; gap: 14px; padding: 18px 20px; border-bottom: 1px solid var(--line); }
+  .avatar { display: grid; place-items: center; width: 52px; height: 52px; flex: 0 0 auto; border: 1px solid var(--line-2); border-radius: 12px; background: rgba(124, 240, 255, .07); color: var(--accent); font-size: 20px; font-weight: 800; }
+  .ficheHead h2 { margin: 0 0 6px; color: #fff; font-size: 20px; }
+  .ficheHead .badges { display: flex; gap: 6px; flex-wrap: wrap; }
+  .ficheHead .meta { margin-top: 8px; color: var(--muted); font-size: 12px; }
+  .back { display: none; }
+  .section { padding: 16px 20px; border-bottom: 1px solid var(--line); }
+  .section:last-child { border-bottom: 0; }
+  .section h3 { margin: 0 0 10px; color: var(--accent); font-size: 11px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; }
+  .section.danger h3 { color: var(--danger); }
+  .actions { display: flex; gap: 8px; flex-wrap: wrap; }
+  .res { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; }
+  .resBox { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel-2); }
+  .resBox span { display: block; color: var(--muted); font-size: 11px; }
+  .resBox b { color: var(--gold); font-size: 15px; font-variant-numeric: tabular-nums; }
+  .formRow { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }
+  .formRow label { width: 70px; color: var(--muted); font-size: 12px; }
+  .formRow .input { height: 30px; }
+  .gates { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+  .gate { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 4px 0 10px; border: 1px solid rgba(201, 162, 255, .4); border-radius: 999px; background: rgba(201, 162, 255, .1); color: #e5d4ff; font-size: 12px; font-weight: 650; }
+  .gate button { display: grid; place-items: center; width: 20px; height: 20px; padding: 0; border: 0; border-radius: 50%; background: rgba(255, 255, 255, .08); color: #fff; cursor: pointer; }
+  .gate button:hover { background: var(--danger); }
+  .alertBox { padding: 10px 12px; border: 1px solid rgba(255, 92, 104, .35); border-radius: 10px; background: rgba(255, 92, 104, .08); font-size: 12.5px; }
+  .alertBox.warn { border-color: rgba(255, 166, 60, .35); background: rgba(255, 166, 60, .08); }
+
+  /* ---------- Tables ---------- */
+  table { width: 100%; border-collapse: collapse; }
+  th { padding: 8px 12px; color: var(--muted); font-size: 11px; font-weight: 700; letter-spacing: .05em; text-align: left; text-transform: uppercase; border-bottom: 1px solid var(--line); }
+  td { padding: 9px 12px; border-bottom: 1px solid rgba(124, 240, 255, .06); vertical-align: top; }
+  tr:last-child td { border-bottom: 0; }
+  .linkName { padding: 0; border: 0; background: none; color: #effcff; font-weight: 700; cursor: pointer; }
+  .linkName:hover { color: var(--accent); text-decoration: underline; }
+  details summary { margin-top: 4px; color: var(--accent); font-size: 12px; cursor: pointer; }
+  details ul { margin: 6px 0 0; padding-left: 18px; color: #b6d3dc; font-size: 12px; }
+  details li { margin: 2px 0; }
+
+  /* ---------- Tchat ---------- */
+  .chatLog { display: grid; align-content: start; gap: 4px; max-height: 340px; overflow-y: auto; padding: 12px 16px; font-size: 13px; }
+  .chatLog.tall { max-height: none; height: calc(100vh - 290px); min-height: 220px; }
+  .chatLog .t { margin-right: 6px; color: var(--muted); font-size: 11px; }
+  .chatLog .f { color: var(--accent); font-weight: 700; }
+  .chatLog .adm .f { color: #ff7b8a; }
+  .chatLog .adm .x { color: #ffe9ec; font-weight: 700; }
+  .composer { display: flex; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--line); }
+  .composer .input { flex: 1; }
+
+  /* ---------- Modale + toast ---------- */
+  #modalOverlay { position: fixed; inset: 0; z-index: 50; display: none; align-items: center; justify-content: center; padding: 16px; background: rgba(1, 6, 10, .7); backdrop-filter: blur(3px); }
   #modalOverlay.open { display: flex; }
-  #modalBox { width: 100%; max-width: 440px; padding: 18px; border: 1px solid rgba(124,240,255,.3); border-radius: 12px; background: #06141f; box-shadow: 0 0 40px rgba(0,217,255,.12); }
-  #modalBox.danger { border-color: rgba(255,110,120,.5); box-shadow: 0 0 40px rgba(255,60,70,.12); }
-  #modalTitle { margin: 0 0 4px; font-size: 16px; color: #effcff; }
-  #modalSub { margin: 0 0 12px; font-size: 12px; color: #5d96a5; }
-  #modalBody input[type=text], #modalBody input[type=number] { width: 100%; margin-bottom: 10px; }
-  #modalBody .bigInput { height: 42px; font-size: 16px; font-weight: 800; }
+  #modalBox { width: 100%; max-width: 440px; padding: 20px; border: 1px solid var(--line-2); border-radius: 14px; background: #06131d; box-shadow: 0 20px 60px rgba(0, 0, 0, .6); }
+  #modalBox.danger { border-color: rgba(255, 92, 104, .5); }
+  #modalTitle { margin: 0 0 4px; color: #fff; font-size: 16px; }
+  #modalSub { margin: 0 0 14px; color: var(--muted); font-size: 12px; }
+  #modalBody .input { width: 100%; margin-bottom: 10px; }
+  #modalBody .big { height: 42px; font-size: 16px; font-weight: 800; }
   .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
-  .chips button { height: 26px; padding: 0 10px; font-size: 12px; }
-  .chips button.sel { border-color: #7be495; color: #7be495; }
-  #modalActions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 12px; }
-  #modalErr { min-height: 18px; margin: 4px 0 0; font-size: 12px; color: #ff9aa5; }
-  #toast { position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%) translateY(20px); z-index: 60; max-width: 90vw; padding: 10px 18px; border-radius: 10px; font-size: 13px; font-weight: 700; opacity: 0; pointer-events: none; transition: opacity .2s, transform .2s; border: 1px solid rgba(124,240,255,.35); background: rgba(4,18,28,.95); color: #eaffff; }
-  #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
-  #toast.ok { border-color: rgba(70,210,105,.5); color: #7be495; }
-  #toast.err { border-color: rgba(255,110,120,.5); color: #ff9aa5; }
+  #modalErr { min-height: 18px; margin: 4px 0 0; color: #ff9aa5; font-size: 12px; }
+  #modalActions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 10px; }
+  #toast { position: fixed; left: 50%; bottom: 22px; z-index: 60; max-width: 90vw; padding: 10px 18px; border: 1px solid var(--line-2); border-radius: 10px; background: rgba(4, 18, 28, .96); color: #eaffff; font-size: 13px; font-weight: 700; opacity: 0; pointer-events: none; transform: translate(-50%, 20px); transition: opacity .2s, transform .2s; }
+  #toast.show { opacity: 1; transform: translate(-50%, 0); }
+  #toast.ok { border-color: rgba(77, 255, 161, .5); color: var(--ok); }
+  #toast.err { border-color: rgba(255, 92, 104, .5); color: #ff9aa5; }
+
+  /* ---------- Onglets, inventaire, journaux, statistiques ---------- */
+  .tabs { display: flex; gap: 2px; padding: 0 14px; border-bottom: 1px solid var(--line); overflow-x: auto; }
+  .tab { height: 40px; padding: 0 12px; border: 0; border-bottom: 2px solid transparent; background: none; color: #a9c8d2; font-weight: 650; cursor: pointer; white-space: nowrap; }
+  .tab:hover { color: #fff; }
+  .tab.sel { border-bottom-color: var(--accent); color: #fff; }
+  .invGrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 12px; }
+  .invBox { border: 1px solid var(--line); border-radius: 10px; background: var(--panel-2); min-width: 0; }
+  .invBox h4 { display: flex; justify-content: space-between; margin: 0; padding: 8px 12px; border-bottom: 1px solid var(--line); color: var(--accent); font-size: 10.5px; letter-spacing: .1em; text-transform: uppercase; }
+  .invBox ul { max-height: 260px; margin: 0; padding: 6px 0; overflow-y: auto; list-style: none; }
+  .invBox li { display: flex; align-items: center; gap: 8px; padding: 3px 12px; font-size: 12.5px; }
+  .invBox li span:first-child { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .invBox li b { color: #effcff; font-variant-numeric: tabular-nums; }
+  .iconBtn { flex: 0 0 auto; width: 22px; height: 22px; padding: 0; border: 1px solid var(--line); border-radius: 6px; background: transparent; color: #a9c8d2; cursor: pointer; }
+  .iconBtn:hover { border-color: var(--line-2); color: #fff; }
+  .iconBtn.danger:hover { border-color: var(--danger); background: var(--danger); }
+  .toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 10px 16px; border-bottom: 1px solid var(--line); }
+  .logList { font: 12px/1.5 ui-monospace, Consolas, monospace; }
+  .logList > div { display: flex; gap: 10px; padding: 2px 16px; border-bottom: 1px solid rgba(124, 240, 255, .04); }
+  .logList time { flex: 0 0 auto; color: var(--muted); }
+  .logList .lv { flex: 0 0 52px; color: var(--muted); font-weight: 700; }
+  .logList .warn .lv, .logList .reward .lv { color: var(--gold); }
+  .logList .error { background: rgba(255, 92, 104, .06); }
+  .logList .error .lv { color: var(--danger); }
+  .logList .x { min-width: 0; white-space: pre-wrap; word-break: break-word; }
+  .logList .empty { display: block; font-family: inherit; }
+  #serverLogList { height: calc(100vh - 220px); min-height: 240px; overflow-y: auto; }
+  .bars { display: grid; gap: 7px; }
+  .bar { display: grid; grid-template-columns: minmax(70px, 140px) minmax(0, 1fr) auto; gap: 10px; align-items: center; font-size: 12.5px; }
+  .bar span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .bar .track { height: 8px; border-radius: 4px; background: rgba(255, 255, 255, .05); }
+  .bar i { display: block; height: 100%; border-radius: 4px; background: var(--accent); opacity: .8; }
+  .cols { display: flex; align-items: flex-end; gap: 4px; height: 130px; }
+  .cols > div { display: flex; flex: 1; flex-direction: column; align-items: center; justify-content: flex-end; gap: 3px; height: 100%; color: var(--muted); font-size: 10px; }
+  .cols i { width: 100%; max-width: 26px; min-height: 2px; border-radius: 4px 4px 0 0; background: var(--accent); opacity: .8; }
+  .cols b { color: #cfe3ea; font-size: 10px; }
+  .secret { padding: 12px; border: 1px dashed var(--gold); border-radius: 8px; color: var(--gold); font: 700 18px ui-monospace, Consolas, monospace; text-align: center; user-select: all; }
+
+  /* ---------- Petits écrans ---------- */
+  @media (max-width: 900px) {
+    #app { grid-template-columns: 1fr; grid-template-rows: auto minmax(0, 1fr); }
+    .side { flex-direction: row; align-items: center; overflow-x: auto; padding: 8px 10px; border-right: 0; border-bottom: 1px solid var(--line); }
+    .brand, .side .spacer { display: none; }
+    .navBtn { width: auto; flex: 0 0 auto; }
+    .navBtn .label { display: none; }
+    .viewHead, .viewBody { padding-left: 14px; padding-right: 14px; }
+    .players { grid-template-columns: 1fr; }
+    .players.showFiche .playerList { display: none; }
+    .players:not(.showFiche) .fiche { display: none; }
+    .back { display: inline-flex; }
+  }
 </style>
 </head>
 <body>
-<div id="loginBox" class="card">
+<div id="loginBox">
   <h1>Hyperion Orbit — Admin</h1>
-  <p class="sub">Mot de passe du panneau (ORBIT_ADMIN_PASS ou console serveur).</p>
-  <div class="row"><input id="passInput" type="password" placeholder="Mot de passe admin" autocomplete="off"><button id="loginBtn" type="button">Entrer</button></div>
-  <p id="loginMsg" class="msg"></p>
+  <p>Mot de passe du panneau (ORBIT_ADMIN_PASS ou console serveur).</p>
+  <div class="row"><input id="passInput" class="input" type="password" placeholder="Mot de passe admin" autocomplete="off"><button id="loginBtn" class="btn" type="button">Entrer</button></div>
+  <p id="loginMsg"></p>
 </div>
-<div id="app">
-  <div class="card">
-    <h1>Hyperion Orbit — Admin <span id="peerCount" class="badge ok">0</span></h1>
-    <p class="sub">Actualisation auto toutes les 3 s. Ne partage jamais ce mot de passe.</p>
-  </div>
-  <div class="card">
-    <h2>Tchat en direct</h2>
-    <div id="adminChatLog" class="chatLog"><div class="chatEmpty">Aucun message.</div></div>
-    <div class="row"><input id="chatReplyInput" type="text" placeholder="Répondre dans le tchat (visible par tous)…" maxlength="200" autocomplete="off"><button id="chatReplyBtn" type="button">Répondre</button></div>
-    <p id="chatReplyMsg" class="msg"></p>
-  </div>
-  <div class="card">
-    <h2>Annonce globale</h2>
-    <div class="row"><input id="bcInput" type="text" placeholder="Annonce in game (bannière à l'écran)…" maxlength="200" autocomplete="off"><button id="bcBtn" type="button">Envoyer</button></div>
-    <p id="bcMsg" class="msg"></p>
-  </div>
-  <div class="card">
-    <h2>Joueurs <span id="accountCount" class="badge off">0</span></h2>
-    <div class="searchRow"><input id="accountSearch" type="text" placeholder="Rechercher un pseudo…" maxlength="20" autocomplete="off"></div>
-    <table>
-      <thead><tr><th>Pseudo</th><th>Statut</th><th>Map</th><th>Crédits</th><th>EXP</th><th>Honneur</th><th>Actions</th><th>Module</th><th>GG</th></tr></thead>
-      <tbody id="accountRows"><tr><td colspan="9">Chargement…</td></tr></tbody>
-    </table>
-  </div>
-  <div class="card">
-    <h2>Bannis</h2>
-    <table>
-      <thead><tr><th>Pseudo</th><th>Motif</th><th>Jusqu'au</th><th>Actions</th></tr></thead>
-      <tbody id="banRows"><tr><td colspan="4">Aucun bannissement.</td></tr></tbody>
-    </table>
-  </div>
-  <div class="card">
-    <h2>Anticheat — dossiers en examen</h2>
-    <p class="sub">Gel automatique (kick + compte gelé, JAMAIS de ban auto). Libérer = innocent. Bannir définitif = triche avérée.</p>
-    <table>
-      <thead><tr><th>Pseudo</th><th>Détecté le</th><th>Preuves (fenêtre 10 s)</th><th>Actions</th></tr></thead>
-      <tbody id="cheatRows"><tr><td colspan="4">Aucun dossier.</td></tr></tbody>
-    </table>
-  </div>
-  <div class="card">
-    <h2>Anticheat — suspects live</h2>
-    <p class="sub">Anomalies récentes et scores d'audit. Un rejet isolé ou une déclaration du client ne prouve pas une triche. Les rejets répétés sur plusieurs secondes augmentent le score ; gel à 100.</p>
-    <table>
-      <thead><tr><th>Pseudo</th><th>Score</th><th>Signalements</th><th>Dernier signalement</th><th>Actions</th></tr></thead>
-      <tbody id="suspectRows"><tr><td colspan="5">Aucun suspect.</td></tr></tbody>
-    </table>
-  </div>
+
+<div id="app" hidden>
+  <nav class="side">
+    <div class="brand"><b>HYPERION</b><span><i class="dot on"></i><span id="onlineLabel">0 en ligne</span></span></div>
+    <button class="navBtn" type="button" data-view="overview"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg><span class="label">Vue d'ensemble</span></button>
+    <button class="navBtn" type="button" data-view="players"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="8" r="4"/><path d="M2 21c0-4 3-7 7-7s7 3 7 7"/><path d="M16 4a4 4 0 0 1 0 8M22 21c0-3-2-5.5-5-6.5"/></svg><span class="label">Joueurs</span><span class="count" id="navPlayers">0</span></button>
+    <button class="navBtn" type="button" data-view="cheat"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><path d="M12 8v5M12 16.5v.5"/></svg><span class="label">Anticheat</span><span class="count" id="navCheat">0</span></button>
+    <button class="navBtn" type="button" data-view="bans"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M5.6 5.6l12.8 12.8"/></svg><span class="label">Bannis</span><span class="count" id="navBans">0</span></button>
+    <button class="navBtn" type="button" data-view="chat"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 5h16v11H9l-5 4z"/></svg><span class="label">Tchat & annonces</span></button>
+    <button class="navBtn" type="button" data-view="stats"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg><span class="label">Statistiques</span></button>
+    <button class="navBtn" type="button" data-view="serverlog"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 9l3 3-3 3M13 15h4"/></svg><span class="label">Journal serveur</span></button>
+    <button class="navBtn" type="button" data-view="adminlog"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg><span class="label">Historique admin</span></button>
+    <div class="spacer"></div>
+    <button class="navBtn" type="button" id="logoutBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 4h4v16h-4M10 8l-4 4 4 4M6 12h10"/></svg><span class="label">Se déconnecter</span></button>
+  </nav>
+
+  <main class="main">
+    <!-- Vue d'ensemble -->
+    <section class="view" data-view="overview">
+      <header class="viewHead"><h1>Vue d'ensemble</h1><span class="sub">Actualisation automatique toutes les 3 s.</span></header>
+      <div class="viewBody">
+        <div class="tiles">
+          <button class="tile" type="button" data-goto="players" data-filter="online"><span>En ligne</span><b id="tOnline">0</b></button>
+          <button class="tile" type="button" data-goto="players" data-filter="all"><span>Comptes</span><b id="tAccounts">0</b></button>
+          <button class="tile" type="button" data-goto="cheat" id="tileCheat"><span>À examiner</span><b id="tCheat">0</b></button>
+          <button class="tile" type="button" data-goto="bans"><span>Bannis</span><b id="tBans">0</b></button>
+        </div>
+        <div class="grid2">
+          <div class="card">
+            <h2>Anticheat <button class="link" type="button" data-goto="cheat">Tout voir →</button></h2>
+            <div id="ovCheat"></div>
+          </div>
+          <div class="card">
+            <h2>Tchat en direct <button class="link" type="button" data-goto="chat">Ouvrir →</button></h2>
+            <div class="chatLog" id="ovChat"></div>
+            <div class="composer"><input class="input" data-chat-input type="text" maxlength="200" placeholder="Répondre dans le tchat (visible par tous)…" autocomplete="off"><button class="btn" type="button" data-chat-send>Envoyer</button></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Joueurs -->
+    <section class="view" data-view="players" hidden>
+      <header class="viewHead"><h1>Joueurs</h1><span class="sub" id="playersSub"></span>
+        <div class="tools"><input id="playerSearch" class="input" type="search" placeholder="Rechercher un pseudo…" maxlength="20" autocomplete="off" style="width:220px"></div>
+      </header>
+      <div class="viewBody" style="overflow:hidden">
+        <div class="players" id="playersLayout">
+          <div class="card playerList">
+            <div class="filters" id="playerFilters">
+              <button class="chip sel" type="button" data-filter="all">Tous</button>
+              <button class="chip" type="button" data-filter="online">En ligne</button>
+              <button class="chip" type="button" data-filter="banned">Bannis</button>
+              <button class="chip" type="button" data-filter="muted">Mutés</button>
+              <button class="chip" type="button" data-filter="guests">Invités</button>
+            </div>
+            <div class="rows" id="playerRows"></div>
+          </div>
+          <div class="card fiche" id="fiche"><div class="empty">Sélectionne un joueur dans la liste.</div></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Anticheat -->
+    <section class="view" data-view="cheat" hidden>
+      <header class="viewHead"><h1>Anticheat</h1><span class="sub">Aucune sanction automatique : tu décides de chaque kick, gel ou ban.</span></header>
+      <div class="viewBody">
+        <div class="card" style="margin-bottom:16px">
+          <h2>Dossiers gelés</h2>
+          <p class="note pad" style="margin:0;padding:10px 16px 0">Libérer = innocent. Bannir définitif = triche avérée.</p>
+          <div id="holdList"></div>
+        </div>
+        <div class="card">
+          <h2>Suspects</h2>
+          <p class="note" style="margin:0;padding:10px 16px 0">Un rejet isolé ou une déclaration du client ne prouve pas une triche. Les rejets répétés sur plusieurs secondes augmentent le score ; « à examiner » à 100.</p>
+          <div id="suspectList"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Bannis -->
+    <section class="view" data-view="bans" hidden>
+      <header class="viewHead"><h1>Bannis</h1></header>
+      <div class="viewBody"><div class="card" id="banList"></div></div>
+    </section>
+
+    <!-- Tchat -->
+    <section class="view" data-view="chat" hidden>
+      <header class="viewHead"><h1>Tchat & annonces</h1></header>
+      <div class="viewBody">
+        <div class="card" style="margin-bottom:16px">
+          <h2>Annonce globale</h2>
+          <div class="composer" style="border-top:0"><input id="bcInput" class="input" type="text" maxlength="200" placeholder="Bannière affichée à l'écran de tous les joueurs…" autocomplete="off"><button id="bcBtn" class="btn warn" type="button">Diffuser</button></div>
+        </div>
+        <div class="card">
+          <h2>Tchat en direct</h2>
+          <div class="chatLog tall" id="chatFull"></div>
+          <div class="composer"><input class="input" data-chat-input type="text" maxlength="200" placeholder="Répondre dans le tchat (visible par tous)…" autocomplete="off"><button class="btn" type="button" data-chat-send>Envoyer</button></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Statistiques -->
+    <section class="view" data-view="stats" hidden>
+      <header class="viewHead"><h1>Statistiques</h1><span class="sub">Recalculées toutes les 15 s.</span><div class="tools"><button class="btn sm" type="button" id="statsReload">Actualiser</button></div></header>
+      <div class="viewBody" id="statsBody"><div class="empty">Chargement…</div></div>
+    </section>
+
+    <!-- Journal serveur -->
+    <section class="view" data-view="serverlog" hidden>
+      <header class="viewHead"><h1>Journal serveur</h1><span class="sub">Console du serveur en direct (3 000 dernières lignes depuis le démarrage).</span></header>
+      <div class="viewBody" style="padding-top:12px">
+        <div class="card">
+          <div class="toolbar"><div id="serverLogLevels" style="display:flex;gap:6px"><button class="chip sel" type="button" data-level="">Tout</button><button class="chip" type="button" data-level="warn">Alertes</button><button class="chip" type="button" data-level="error">Erreurs</button></div><input class="input" id="serverLogSearch" type="search" placeholder="Filtrer (pseudo, anticheat…)" style="flex:1;min-width:160px" autocomplete="off"><button class="btn sm" type="button" id="serverLogPause">Pause</button></div>
+          <div class="logList" id="serverLogList"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Historique admin -->
+    <section class="view" data-view="adminlog" hidden>
+      <header class="viewHead"><h1>Historique admin</h1><span class="sub">Chaque action faite depuis ce panneau.</span></header>
+      <div class="viewBody" style="padding-top:12px">
+        <div class="card">
+          <div class="toolbar"><input class="input" id="adminLogSearch" type="search" placeholder="Filtrer par pseudo, action, détail…" style="flex:1;min-width:160px" autocomplete="off"><button class="btn sm" type="button" id="adminLogReload">Actualiser</button></div>
+          <div id="adminLogList"></div>
+          <div style="padding:10px 16px"><button class="btn sm ghost" type="button" id="adminLogMore" hidden>Plus ancien…</button></div>
+        </div>
+      </div>
+    </section>
+  </main>
 </div>
+
 <div id="modalOverlay"><div id="modalBox">
   <h3 id="modalTitle"></h3>
   <p id="modalSub"></p>
@@ -135,704 +377,778 @@
   <div id="modalActions"></div>
 </div></div>
 <div id="toast"></div>
+
 <script>
 (function () {
   "use strict";
   const $ = (id) => document.getElementById(id);
   const esc = (v) => String(v ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");
   const fmtN = (v) => Number(v || 0).toLocaleString("fr-FR");
+  const fmtTime = (at) => { const d = new Date(Number(at) || Date.now()); return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`; };
+  const fmtDateTime = (at) => { const d = new Date(Number(at) || 0); return d.getTime() > 0 ? d.toLocaleString("fr-FR") : "—"; };
+  const fmtDate = (at) => { const d = new Date(Number(at) || 0); return d.getTime() > 0 ? d.toLocaleDateString("fr-FR") : "—"; };
+  const fmtDuration = (sec) => { const s = Math.max(0, Number(sec) || 0); if (s < 60) return `${s} s`; if (s < 3600) return `${Math.floor(s / 60)} min`; return `${Math.floor(s / 3600)} h ${String(Math.floor(s % 3600 / 60)).padStart(2, "0")}`; };
+  const fmtDmgShort = (v) => { const n = Math.max(0, Math.floor(Number(v) || 0)); return n >= 1e9 ? `${(n / 1e9).toFixed(1)} Md` : n >= 1e6 ? `${Math.round(n / 1e6)} M` : fmtN(n); };
+  const FACTIONS = { mmo: "MMO", eic: "EIC", vru: "VRU" };
+  const GG_NAMES = { alpha: "Alpha", beta: "Beta", gamma: "Gamma", delta: "Delta", epsilon: "Epsilon", zeta: "Zeta", kappa: "Kappa", lambda: "Lambda", kronos: "Kronos", awakened: "Awakened" };
+  const MODULE_STATS = [["damage", "Dégâts"], ["hp", "PV"], ["shield", "Bouclier"], ["speed", "Vitesse"], ["penetration", "Pénétration"], ["laser_hit", "Précision laser"], ["rocket_hit", "Précision roquette"], ["evasion", "Évasion"], ["exp", "EXP"], ["honor", "Honneur"]];
+
+  /* ---------- Session ---------- */
   let token = "";
   try { token = sessionStorage.getItem("orbit_admin_token") || ""; } catch {}
-  const headers = () => ({ "content-type": "application/json", "x-admin-token": token });
   async function call(path, opts) {
-    const res = await fetch(path, { ...(opts || {}), headers: headers() });
+    const res = await fetch(path, { ...(opts || {}), headers: { "content-type": "application/json", "x-admin-token": token } });
     const out = await res.json().catch(() => ({}));
     if (res.status === 401) { logout(); throw new Error("Mot de passe invalide."); }
     return out;
   }
+  const post = (path, body) => call(path, { method: "POST", body: JSON.stringify(body) });
   function logout() {
     token = "";
     try { sessionStorage.removeItem("orbit_admin_token"); } catch {}
-    $("app").style.display = "none";
-    $("loginBox").style.display = "block";
+    $("app").hidden = true;
+    $("loginBox").hidden = false;
   }
   async function login() {
-    token = $("passInput").value.trim();
+    token = token || $("passInput").value.trim();
     $("loginMsg").textContent = "";
-    $("loginMsg").className = "msg";
     if (!token) return;
     try {
       const out = await call("/api/admin/accounts");
       if (!out || out.ok !== true) throw new Error("Refusé.");
       try { sessionStorage.setItem("orbit_admin_token", token); } catch {}
-      $("loginBox").style.display = "none";
-      $("app").style.display = "block";
-      try { ensureShips(); } catch {}
-      try { ensureDroneDesigns(); } catch {}
+      $("loginBox").hidden = true;
+      $("app").hidden = false;
+      ensureCatalogs();
+      showView(location.hash.slice(1) || "overview");
       refresh();
     } catch (e) {
+      token = "";
       $("loginMsg").textContent = e?.message || "Erreur.";
-      $("loginMsg").className = "msg err";
     }
   }
-  /* ---------- Toast (remplace alert) ---------- */
+
+  /* ---------- Toast + modale ---------- */
   let toastT = 0;
   function toast(msg, kind) {
     const el = $("toast");
     el.textContent = String(msg || "");
-    el.className = "show " + (kind === "ok" ? "ok" : kind === "err" ? "err" : "");
+    el.className = "show " + (kind || "");
     clearTimeout(toastT);
     toastT = setTimeout(() => { el.className = ""; }, 3500);
   }
-  /* ---------- Modale custom (remplace prompt) ---------- */
   function closeModal() {
     $("modalOverlay").classList.remove("open");
-    $("modalBox").classList.remove("danger");
     $("modalBody").innerHTML = "";
     $("modalActions").innerHTML = "";
-    $("modalErr").textContent = "";
   }
-  function openModal({ title, sub, bodyHTML, danger, actions }) {
-    $("modalTitle").textContent = String(title || "");
-    $("modalSub").textContent = String(sub || "");
-    $("modalBody").innerHTML = bodyHTML || "";
+  function modalError(msg) { $("modalErr").textContent = String(msg || "Erreur."); }
+  // actions : [{ label, kind, id, disabled, primary, run }] ; run peut lever
+  // une erreur (affichée dans la modale) ou retourner un message de succès.
+  function openModal({ title, sub, body, danger, actions }) {
+    $("modalTitle").textContent = title || "";
+    $("modalSub").textContent = sub || "";
+    $("modalBody").innerHTML = body || "";
     $("modalErr").textContent = "";
     $("modalBox").classList.toggle("danger", danger === true);
     const box = $("modalActions");
     box.innerHTML = "";
-    for (const a of (actions || [])) {
+    for (const a of actions || [{ label: "Fermer" }]) {
       const b = document.createElement("button");
       b.type = "button";
+      b.className = "btn " + (a.kind || (a.run ? "" : "ghost"));
       b.textContent = a.label;
-      if (a.danger) b.className = "danger";
-      if (a.disabled) b.disabled = true;
       if (a.id) b.id = a.id;
-      b.onclick = () => { try { a.onClick && a.onClick(); } catch (e) { modalError(e?.message || "Erreur."); } };
+      b.disabled = a.disabled === true;
+      if (a.primary) b.dataset.primary = "1";
+      b.onclick = async () => {
+        if (!a.run) { closeModal(); return; }
+        b.disabled = true;
+        try {
+          const msg = await a.run();
+          closeModal();
+          if (msg) toast(msg, "ok");
+          refresh();
+        } catch (e) { modalError(e?.message || "Erreur."); b.disabled = false; }
+      };
       box.appendChild(b);
     }
     $("modalOverlay").classList.add("open");
-    const first = $("modalBody").querySelector("input");
-    if (first) { try { first.focus(); first.select && first.select(); } catch {} }
+    const first = $("modalBody").querySelector("input, select");
+    if (first) { try { first.focus(); first.select?.(); } catch {} }
+    $("modalBody").querySelectorAll("input").forEach((input) => input.addEventListener("keydown", (e) => {
+      if (e.key !== "Enter") return;
+      const primary = box.querySelector("[data-primary]");
+      if (primary && !primary.disabled) primary.click();
+    }));
   }
-  function modalError(msg) { $("modalErr").textContent = String(msg || "Erreur."); }
   $("modalOverlay").addEventListener("mousedown", (e) => { if (e.target === $("modalOverlay")) closeModal(); });
-  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && $("modalOverlay").classList.contains("open")) closeModal(); });
-  function mkBtn(label, danger) {
-    const b = document.createElement("button");
-    b.type = "button"; b.className = "small" + (danger ? " danger" : ""); b.textContent = label;
-    b.style.marginLeft = "6px";
-    return b;
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeModal(); });
+  const ok = (out, fallback) => { if (!out || out.ok !== true) throw new Error(out?.error || fallback || "Échec."); return out; };
+
+  /* ---------- Données ---------- */
+  const data = { accounts: [], guests: [], onlineCount: 0, bans: [], holds: [], suspects: [], chat: [] };
+  let ships = [], designs = [];
+  async function ensureCatalogs() {
+    try { const out = await call("/api/admin/ships"); ships = out?.ok === true && Array.isArray(out.ships) ? out.ships : []; } catch {}
+    try { const out = await call("/api/admin/drone-designs"); designs = out?.ok === true && Array.isArray(out.designs) ? out.designs : []; } catch {}
+    try { const out = await call("/api/admin/catalog"); if (out?.ok === true) { catalog = out; indexCatalog(); } } catch {}
+    fillCatalogSelects();
   }
-  /* ---------- Crédits / EXP / Honneur : vraie box + montants rapides ---------- */
+  let refreshing = false;
+  async function refresh() {
+    if ($("app").hidden || refreshing) return;
+    refreshing = true;
+    try {
+      const [acc, bans, cheat, chat] = await Promise.all([
+        call("/api/admin/accounts").catch(() => null),
+        call("/api/admin/bans").catch(() => null),
+        call("/api/admin/cheat").catch(() => null),
+        call("/api/admin/chat").catch(() => null),
+      ]);
+      if (acc) {
+        data.accounts = Array.isArray(acc.accounts) ? acc.accounts : [];
+        data.guests = Array.isArray(acc.guests) ? acc.guests : [];
+        data.onlineCount = Number(acc.onlineCount) || 0;
+      }
+      if (bans) data.bans = Array.isArray(bans.bans) ? bans.bans : [];
+      if (cheat) {
+        data.holds = Array.isArray(cheat.holds) ? cheat.holds : [];
+        data.suspects = Array.isArray(cheat.suspects) ? cheat.suspects : [];
+      }
+      if (chat) data.chat = Array.isArray(chat.list) ? chat.list : [];
+      render();
+    } finally { refreshing = false; }
+  }
+
+  /* ---------- Navigation ---------- */
+  let view = "overview";
+  function showView(next) {
+    if (!document.querySelector(`.view[data-view="${next}"]`)) next = "overview";
+    view = next;
+    document.querySelectorAll(".view").forEach((el) => { el.hidden = el.dataset.view !== next; });
+    document.querySelectorAll(".navBtn[data-view]").forEach((el) => el.classList.toggle("active", el.dataset.view === next));
+    try { history.replaceState(null, "", "#" + next); } catch {}
+    if (next === "adminlog") loadAdminLog(false);
+    if (next === "serverlog") setTimeout(renderServerLog, 0);
+    render();
+  }
+  document.querySelectorAll(".navBtn[data-view]").forEach((b) => { b.onclick = () => showView(b.dataset.view); });
+  $("logoutBtn").onclick = logout;
+  document.addEventListener("click", (e) => {
+    const go = e.target.closest("[data-goto]");
+    if (go) {
+      if (go.dataset.filter) setFilter(go.dataset.filter);
+      showView(go.dataset.goto);
+      return;
+    }
+    const open = e.target.closest("[data-open-player]");
+    if (open) openPlayer(open.dataset.openPlayer);
+  });
+
+  /* ---------- Rendu ---------- */
+  const flaggedSuspects = () => data.suspects.filter((s) => s.flagged);
+  function render() {
+    const accounts = data.accounts;
+    const cheatCount = data.holds.length + flaggedSuspects().length;
+    $("onlineLabel").textContent = `${fmtN(data.onlineCount)} en ligne`;
+    $("navPlayers").textContent = fmtN(data.onlineCount);
+    $("navCheat").textContent = fmtN(cheatCount);
+    $("navCheat").classList.toggle("alert", cheatCount > 0);
+    $("navBans").textContent = fmtN(data.bans.length);
+    if (view === "overview") renderOverview(cheatCount);
+    if (view === "players") { renderPlayerList(); renderFiche(); }
+    if (view === "cheat") renderCheat();
+    if (view === "bans") renderBans();
+    if (view === "chat") renderChat($("chatFull"), 200);
+    if (view === "stats") { if (stats) renderStats(); loadStats(false); }
+    if (view === "serverlog") loadServerLog();
+    $("playersSub").textContent = `${fmtN(accounts.length)} comptes · ${fmtN(data.onlineCount)} en ligne`;
+  }
+
+  function renderOverview(cheatCount) {
+    $("tOnline").textContent = fmtN(data.onlineCount);
+    $("tAccounts").textContent = fmtN(data.accounts.length);
+    $("tCheat").textContent = fmtN(cheatCount);
+    $("tileCheat").classList.toggle("alert", cheatCount > 0);
+    $("tBans").textContent = fmtN(data.bans.length);
+    const top = [...data.suspects].sort((a, b) => Number(!!b.flagged) - Number(!!a.flagged) || b.score - a.score).slice(0, 6);
+    $("ovCheat").innerHTML = data.holds.length || top.length
+      ? `<table><tbody>${data.holds.map((h) => `<tr><td><button class="linkName" type="button" data-goto="cheat">${esc(h.pseudo)}</button> <span class="badge danger">gelé</span></td><td class="muted">${esc(fmtDateTime(h.at))}</td></tr>`).join("")}${top.map((s) => `<tr><td>${playerLink(s.id, s.pseudo)}${s.flagged ? ` <span class="badge warn">à examiner</span>` : ""}</td><td class="num">score ${fmtN(s.score)}</td></tr>`).join("")}</tbody></table>`
+      : `<div class="empty">Rien à signaler.</div>`;
+    renderChat($("ovChat"), 12);
+  }
+
+  function renderChat(box, limit) {
+    const atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 30;
+    const list = data.chat.slice(-limit);
+    box.innerHTML = list.length
+      ? list.map((m) => `<div class="${String(m.from || "") === "[ADMIN]" ? "adm" : ""}"><span class="t">${esc(fmtTime(m.at))}</span><span class="f">${esc(m.from)}</span> : <span class="x">${esc(m.text)}</span></div>`).join("")
+      : `<div class="muted">Aucun message.</div>`;
+    if (atBottom) box.scrollTop = box.scrollHeight;
+  }
+
+  function playerLink(id, pseudo) {
+    const known = data.accounts.some((a) => a.id === id) || data.guests.some((g) => g.id === id);
+    return known ? `<button class="linkName" type="button" data-open-player="${esc(id)}">${esc(pseudo)}</button>` : `<b>${esc(pseudo)}</b>`;
+  }
+
+  /* ---------- Liste des joueurs ---------- */
+  let filter = "all", selectedId = null;
+  function setFilter(next) {
+    filter = next;
+    document.querySelectorAll("#playerFilters .chip").forEach((c) => c.classList.toggle("sel", c.dataset.filter === next));
+  }
+  $("playerFilters").addEventListener("click", (e) => {
+    const chip = e.target.closest("[data-filter]");
+    if (!chip) return;
+    setFilter(chip.dataset.filter);
+    renderPlayerList();
+  });
+  $("playerSearch").addEventListener("input", () => renderPlayerList());
+  function allPlayers() {
+    const guests = data.guests.map((g) => ({ ...g, guest: true, online: true }));
+    return [...data.accounts, ...guests];
+  }
+  // Les gels anticheat sont aussi des entrées de bannissement : la fiche les
+  // affiche à part (dossier gelé), pas comme un ban.
+  function findBan(p) {
+    return data.bans.find((b) => !b.cheatHold && (b.key === p.id || String(b.pseudo).toLowerCase() === String(p.pseudo).toLowerCase())) || null;
+  }
+  function findPlayer(id) { return allPlayers().find((p) => p.id === id) || null; }
+  function renderPlayerList() {
+    const q = $("playerSearch").value.trim().toLowerCase();
+    const list = allPlayers().filter((p) => {
+      if (q && !String(p.pseudo || "").toLowerCase().includes(q)) return false;
+      if (filter === "online") return p.online;
+      if (filter === "banned") return p.banned;
+      if (filter === "muted") return p.muted;
+      if (filter === "guests") return p.guest;
+      return true;
+    }).sort((a, b) => Number(!!b.online) - Number(!!a.online) || String(a.pseudo).localeCompare(String(b.pseudo), "fr"));
+    const box = $("playerRows");
+    const scroll = box.scrollTop;
+    box.innerHTML = list.length ? list.map((p) => {
+      const tags = [p.guest ? `<span class="badge gold">invité</span>` : "", p.banned ? `<span class="badge danger">banni</span>` : "", p.muted ? `<span class="badge warn">muté</span>` : ""].join("");
+      const sub = p.online ? `${esc(p.map || "?")}${p.instance ? " · gate" : ""}${p.dead ? " · mort" : ""}` : "hors ligne";
+      return `<button class="pRow${p.id === selectedId ? " sel" : ""}" type="button" data-open-player="${esc(p.id)}"><i class="dot${p.online ? " on" : ""}"></i><span><span class="name"><b>${esc(p.pseudo)}</b>${tags}</span><small>${sub}</small></span><span class="right">${p.guest ? "" : `${FACTIONS[p.faction] || ""}<br>${fmtN(p.credits)} cr.`}</span></button>`;
+    }).join("") : `<div class="empty">Aucun joueur.</div>`;
+    box.scrollTop = scroll;
+  }
+
+  /* ---------- Fiche joueur ---------- */
+  // En-tête + Résumé : réécrits toutes les 3 s. Inventaire et Journal :
+  // chargés à l'ouverture de l'onglet et après chaque action. Les
+  // formulaires (Objets, Compte) sont construits une fois par joueur pour
+  // ne pas perdre la saisie.
+  const FICHE_TABS = [["summary", "Résumé"], ["inventory", "Inventaire"], ["items", "Objets"], ["log", "Journal"], ["account", "Compte"]];
+  let ficheTab = "summary";
+  let inventory = null, inventoryFor = null;
+  let playerLog = { for: null, logs: [], more: false };
+  function openPlayer(id) {
+    if (view !== "players") showView("players");
+    if (selectedId !== id) {
+      selectedId = id;
+      inventory = null;
+      playerLog = { for: null, logs: [], more: false };
+      buildFiche();
+    }
+    $("playersLayout").classList.add("showFiche");
+    renderPlayerList();
+    renderFiche();
+  }
+  function buildFiche() {
+    const p = findPlayer(selectedId);
+    const fiche = $("fiche");
+    if (!p) { fiche.innerHTML = `<div class="empty">Sélectionne un joueur dans la liste.</div>`; return; }
+    if (p.guest && ficheTab !== "summary") ficheTab = "summary";
+    const tabs = p.guest ? [["summary", "Résumé"]] : FICHE_TABS;
+    const opts = (list) => list.map((i) => `<option value="${esc(i.id)}">${esc(i.name)}</option>`).join("");
+    const statOpts = MODULE_STATS.map(([v, l]) => `<option value="${v}">${esc(l)}</option>`).join("");
+    fiche.innerHTML = `<div id="ficheHead"></div>`
+      + `<div class="tabs" id="ficheTabs">${tabs.map(([id, label]) => `<button class="tab${id === ficheTab ? " sel" : ""}" type="button" data-tab="${id}">${label}</button>`).join("")}</div>`
+      + `<div data-panel="summary" id="ficheSummary"></div>`
+      + (p.guest ? "" : `<div data-panel="inventory" id="ficheInventory"></div>`
+      + `<div data-panel="items">
+          <div class="section"><h3>Donner un objet du catalogue</h3>
+            <p class="muted" style="margin:0 0 10px;font-size:12px">Même effet qu'un achat en boutique, gratuit (vaisseau avec son hangar, P.E.T, drone, formation, booster, pack de munitions…).</p>
+            <div class="formRow"><input class="input" id="fItemSearch" type="search" placeholder="Filtrer le catalogue…" style="flex:1;min-width:160px" autocomplete="off"><select class="input" id="fItemCat" style="max-width:150px"><option value="">Toutes catégories</option>${Object.entries(CATEGORY_NAMES).map(([k, l]) => `<option value="${k}">${esc(l)}</option>`).join("")}</select></div>
+            <div class="formRow"><select class="input" id="fItem" style="flex:1;min-width:200px"></select><input class="input" id="fItemQty" type="number" min="1" value="1" style="width:90px" title="Quantité"><button class="btn sm ok" type="button" id="fItemGive">Donner</button></div>
+          </div>
+          <div class="section"><h3>Ajuster un stock</h3>
+            <p class="muted" style="margin:0 0 10px;font-size:12px">Quantité exacte à ajouter (négatif = retirer). Jamais en dessous de zéro.</p>
+            <div class="formRow"><select class="input" id="fStockKind"><option value="ammo">Munitions</option><option value="rocket">Roquettes</option><option value="resource">Ressources</option><option value="boosterStock">Boosters (stock)</option><option value="count">Objet en stock</option></select><select class="input" id="fStockKey" style="flex:1;min-width:160px"></select><input class="input" id="fStockDelta" type="text" inputmode="numeric" value="1000" style="width:120px"><button class="btn sm" type="button" id="fStockApply">Appliquer</button></div>
+          </div>
+          <div class="section"><h3>Module, design, titre</h3>
+            <div class="formRow"><label>Module</label><select class="input" id="fModShip" data-catalog="ships">${opts(ships)}</select><select class="input" id="fModStat">${statOpts}</select><input class="input" id="fModPct" type="number" min="-8" max="100" value="30" style="width:70px" title="Pourcentage (-8 à 100)"><span class="muted">%</span><button class="btn sm" type="button" id="fModGive">Donner</button></div>
+            <div class="formRow"><label>Design</label><select class="input" id="fDesign" data-catalog="designs">${opts(designs)}</select><input class="input" id="fDesignQty" type="number" min="1" max="99" value="1" style="width:70px" title="Quantité (1 à 99)"><button class="btn sm" type="button" id="fDesignGive">Donner</button></div>
+            <div class="formRow"><label>Titre</label><button class="btn sm" type="button" id="fTitle">Offrir un titre…</button></div>
+          </div>
+        </div>`
+      + `<div data-panel="log">
+          <div class="toolbar"><input class="input" id="fLogSearch" type="search" placeholder="Rechercher dans le journal…" style="flex:1;min-width:160px" autocomplete="off"><select class="input" id="fLogType"><option value="">Tous les types</option><option value="info">Info</option><option value="reward">Récompenses</option><option value="error">Erreurs</option></select><button class="btn sm" type="button" id="fLogReload">Actualiser</button></div>
+          <div class="logList" id="fLogList"></div>
+          <div style="padding:10px 16px"><button class="btn sm ghost" type="button" id="fLogMore" hidden>Plus ancien…</button></div>
+        </div>`
+      + `<div data-panel="account">
+          <div class="section"><h3>Compte</h3><p class="muted" style="margin:0 0 10px;font-size:12px">Le joueur est déconnecté s'il est en ligne, pour recharger son compte.</p>
+            <div class="actions"><button class="btn" type="button" data-fiche="home">Renvoyer à la base</button><button class="btn" type="button" data-fiche="rename">Changer le pseudo…</button><button class="btn" type="button" data-fiche="faction">Changer de firme…</button><button class="btn warn" type="button" data-fiche="password">Réinitialiser le mot de passe…</button></div>
+          </div>
+          <div class="section danger"><h3>Zone dangereuse</h3><div class="actions"><button class="btn danger" type="button" data-fiche="debug">Débloquer le compte…</button><button class="btn danger" type="button" data-fiche="delete">Supprimer le compte…</button></div></div>
+        </div>`);
+    showFicheTab(ficheTab);
+    if (p.guest) return;
+    fillItemSelect();
+    fillStockKeys();
+    $("fItemSearch").addEventListener("input", fillItemSelect);
+    $("fItemCat").addEventListener("change", fillItemSelect);
+    $("fStockKind").addEventListener("change", fillStockKeys);
+    $("fStockDelta").addEventListener("input", () => {
+      const el = $("fStockDelta"), raw = String(el.value || "");
+      const clean = (raw.trim().startsWith("-") ? "-" : "") + raw.replace(/[^0-9]/g, "").slice(0, 13);
+      if (clean !== raw) el.value = clean;
+    });
+    $("fItemGive").onclick = () => runInline($("fItemGive"), async () => {
+      const out = ok(await post("/api/admin/give-item", { id: p.id, pseudo: p.pseudo, itemId: $("fItem").value, quantity: $("fItemQty").value }));
+      return `${out.pseudo} : +${fmtN(out.quantity)} × ${out.name}.`;
+    });
+    $("fStockApply").onclick = () => runInline($("fStockApply"), async () => {
+      const out = ok(await post("/api/admin/adjust-stock", { id: p.id, pseudo: p.pseudo, kind: $("fStockKind").value, key: $("fStockKey").value, delta: $("fStockDelta").value }));
+      return `${out.pseudo} : ${stockName(out.kind, out.id)} ${fmtN(out.before)} → ${fmtN(out.after)}.`;
+    });
+    $("fModGive").onclick = () => runInline($("fModGive"), async () => {
+      const out = ok(await post("/api/admin/give-module", { pseudo: p.pseudo, shipId: $("fModShip").value, stat: $("fModStat").value, pct: $("fModPct").value }));
+      const b = out.module?.bonuses?.[0] || {};
+      return `${out.pseudo} : module ${out.module?.shipId} ${b.pct > 0 ? "+" : ""}${b.pct}% ${b.stat}.`;
+    });
+    $("fDesignGive").onclick = () => runInline($("fDesignGive"), async () => {
+      const out = ok(await post("/api/admin/give-drone-design", { pseudo: p.pseudo, design: $("fDesign").value, count: $("fDesignQty").value }));
+      return `${out.pseudo} : +${out.given}x ${out.name} (stock ${out.after}).`;
+    });
+    $("fTitle").onclick = () => openTitleModal(p);
+    $("fLogReload").onclick = () => loadPlayerLog(false);
+    $("fLogMore").onclick = () => loadPlayerLog(true);
+    let logSearchT = 0;
+    $("fLogSearch").addEventListener("input", () => { clearTimeout(logSearchT); logSearchT = setTimeout(() => loadPlayerLog(false), 300); });
+    $("fLogType").addEventListener("change", () => loadPlayerLog(false));
+  }
+  function showFicheTab(tab) {
+    ficheTab = tab;
+    document.querySelectorAll("#ficheTabs .tab").forEach((t) => t.classList.toggle("sel", t.dataset.tab === tab));
+    document.querySelectorAll("#fiche [data-panel]").forEach((el) => { el.hidden = el.dataset.panel !== tab; });
+    if (tab === "inventory" && inventoryFor !== selectedId) loadInventory();
+    if (tab === "items" && inventoryFor !== selectedId) loadInventory();
+    if (tab === "log" && playerLog.for !== selectedId) loadPlayerLog(false);
+  }
+  function fillCatalogSelects() {
+    const fill = (sel, items) => { const cur = sel.value; sel.innerHTML = items.map((i) => `<option value="${esc(i.id)}">${esc(i.name)}</option>`).join(""); if (cur) sel.value = cur; };
+    document.querySelectorAll('select[data-catalog="ships"]').forEach((s) => fill(s, ships));
+    document.querySelectorAll('select[data-catalog="designs"]').forEach((s) => fill(s, designs));
+    if ($("fItem")) fillItemSelect();
+    if ($("fStockKey")) fillStockKeys();
+  }
+  function fillItemSelect() {
+    const sel = $("fItem");
+    if (!sel || !catalog) return;
+    const q = ($("fItemSearch").value || "").trim().toLowerCase();
+    const cat = $("fItemCat").value;
+    const cur = sel.value;
+    const list = catalog.items.filter((i) => (!cat || i.category === cat) && (!q || i.name.toLowerCase().includes(q) || i.id.toLowerCase().includes(q))).slice(0, 400);
+    sel.innerHTML = list.length ? list.map((i) => `<option value="${esc(i.id)}">${esc(i.name)} · ${esc(CATEGORY_NAMES[i.category] || i.category)}</option>`).join("") : `<option value="">Aucun objet</option>`;
+    if (list.some((i) => i.id === cur)) sel.value = cur;
+  }
+  function fillStockKeys() {
+    const sel = $("fStockKey");
+    if (!sel || !catalog) return;
+    const kind = $("fStockKind").value;
+    const cur = sel.value;
+    let list = kind === "ammo" ? catalog.ammo : kind === "rocket" ? catalog.rockets : kind === "resource" ? catalog.resources : kind === "boosterStock" ? catalog.boosters : [];
+    if (kind === "count") list = Object.keys(inventory?.counts || {}).map((id) => ({ id, name: itemName(id) }));
+    sel.innerHTML = list.length ? list.map((i) => `<option value="${esc(i.id)}">${esc(i.name)}</option>`).join("") : `<option value="">${kind === "count" ? "Aucun objet en stock" : "—"}</option>`;
+    if (list.some((i) => i.id === cur)) sel.value = cur;
+  }
+  async function runInline(btn, fn) {
+    if (btn) btn.disabled = true;
+    try { toast(await fn(), "ok"); } catch (e) { toast(e?.message || "Erreur.", "err"); }
+    if (btn) btn.disabled = false;
+    inventoryFor = null;
+    refresh();
+    if (ficheTab === "inventory" || ficheTab === "items") loadInventory();
+  }
+
+  function renderFiche() {
+    if (!selectedId) return;
+    const p = findPlayer(selectedId);
+    if (!p) { $("fiche").innerHTML = `<div class="empty">Ce joueur n'est plus dans la liste (déconnecté ou supprimé).</div>`; selectedId = null; return; }
+    if (!$("ficheHead")) { buildFiche(); return renderFiche(); }
+    const suspect = data.suspects.find((s) => s.id === p.id);
+    const hold = data.holds.find((h) => String(h.pseudo) === String(p.pseudo));
+    const ban = findBan(p);
+    const badges = [
+      p.online ? `<span class="badge ok">en ligne</span>` : `<span class="badge">hors ligne</span>`,
+      p.guest ? `<span class="badge gold">invité</span>` : "",
+      p.instance ? `<span class="badge violet">gate</span>` : "",
+      p.dead ? `<span class="badge">mort</span>` : "",
+      p.muted ? `<span class="badge warn">muté</span>` : "",
+      p.banned ? `<span class="badge danger">banni</span>` : "",
+      hold ? `<span class="badge danger">gelé</span>` : "",
+      suspect?.flagged ? `<span class="badge warn">à examiner</span>` : "",
+    ].join("");
+    const meta = [
+      FACTIONS[p.faction] ? `Firme ${FACTIONS[p.faction]}` : "",
+      p.online ? `Carte ${esc(p.map || "?")} (${fmtN(p.x)}, ${fmtN(p.y)})` : "",
+      p.online && p.connectedSec != null ? `connecté depuis ${fmtDuration(p.connectedSec)}` : "",
+      p.createdAt ? `compte créé le ${fmtDate(p.createdAt)}` : "",
+      !p.online && p.updatedAt ? `dernière sauvegarde ${fmtDateTime(p.updatedAt)}` : "",
+    ].filter(Boolean).join(" · ");
+    $("ficheHead").innerHTML = `<div class="ficheHead"><button class="btn sm ghost back" type="button" data-fiche="back">←</button><div class="avatar">${esc(String(p.pseudo || "?").slice(0, 1).toUpperCase())}</div><div><h2>${esc(p.pseudo)}</h2><div class="badges">${badges}</div><div class="meta">${meta}</div></div></div>`;
+    let html = "";
+    if (ban || hold || suspect) {
+      html += `<div class="section"><h3>Alertes</h3><div style="display:grid;gap:8px">`;
+      if (ban) html += `<div class="alertBox">Banni ${ban.until != null ? `jusqu'au ${esc(fmtDateTime(ban.until))}` : "définitivement"} — ${esc(ban.reason || "sans motif")}</div>`;
+      if (hold) html += `<div class="alertBox">Compte gelé le ${esc(fmtDateTime(hold.at))} — ${esc(evidenceText(hold.evidence))}</div>`;
+      if (suspect) html += `<div class="alertBox warn">Score anticheat ${fmtN(suspect.score)} · ${fmtN(suspect.strikes)} signalements — ${esc(suspectLast(suspect))}</div>`;
+      html += `</div></div>`;
+    }
+    html += `<div class="section"><h3>Modération</h3><div class="actions">`
+      + (p.online ? `<button class="btn warn" type="button" data-fiche="kick">Kick</button>` : "")
+      + `<button class="btn" type="button" data-fiche="mute">${p.muted ? "Rendre la parole" : "Muter"}</button>`
+      + (ban ? `<button class="btn ok" type="button" data-fiche="unban">Débannir</button>` : `<button class="btn danger" type="button" data-fiche="ban">Bannir…</button>`)
+      + (hold ? "" : `<button class="btn danger" type="button" data-fiche="hold">Geler le compte</button>`)
+      + `</div></div>`;
+    if (!p.guest) {
+      html += `<div class="section"><h3>Ressources</h3><div class="res">`
+        + [["credits", "Crédits", p.credits], ["exp", "EXP", p.exp], ["honor", "Honneur", p.honor]].map(([k, l, v]) =>
+          `<div class="resBox"><div><span>${l}</span><b>${fmtN(v)}</b></div><button class="btn sm" type="button" data-fiche="give" data-kind="${k}">Modifier</button></div>`).join("")
+        + `</div></div>`;
+      const gg = p.gg && typeof p.gg === "object" ? Object.entries(p.gg).filter(([g, n]) => GG_NAMES[g] && Number(n) > 0) : [];
+      html += `<div class="section"><h3>Galaxy Gates terminées</h3>`
+        + (gg.length ? `<div class="gates">${gg.map(([g, n]) => `<span class="gate">${esc(GG_NAMES[g])} ×${fmtN(n)}<button type="button" title="Retirer la complétion (et l'anneau)" data-fiche="ggRemove" data-gate="${esc(g)}">×</button></span>`).join("")}</div>` : `<p class="muted" style="margin:0 0 10px">Aucune.</p>`)
+        + `<div class="actions"><button class="btn sm" type="button" data-fiche="ggAdd">Ajouter une GG…</button>${gg.length ? `<button class="btn sm danger" type="button" data-fiche="ggRemove" data-gate="all">Tout retirer</button>` : ""}</div></div>`;
+    }
+    $("ficheSummary").innerHTML = html;
+  }
+
+  /* ---------- Inventaire ---------- */
+  const CATEGORY_NAMES = { ships: "Vaisseaux", designs: "Designs", lasers: "Lasers", speedGen: "Générateurs vitesse", shieldGen: "Générateurs bouclier", extras: "Extras", ammo: "Munitions", rockets: "Roquettes", drones: "Drones", droneDesigns: "Designs de drone", formations: "Formations", pets: "P.E.T", petGears: "Gears P.E.T", petProtocols: "Protocoles P.E.T", boosters: "Boosters", station: "Station de combat", tickets: "Tickets" };
+  let catalog = null;
+  const nameMaps = { item: new Map(), ammo: new Map(), rocket: new Map(), resource: new Map(), booster: new Map(), formation: new Map(), drone: new Map() };
+  function indexCatalog() {
+    if (!catalog) return;
+    for (const i of catalog.items) nameMaps.item.set(i.id, i.name);
+    for (const [key, list] of [["ammo", catalog.ammo], ["rocket", catalog.rockets], ["resource", catalog.resources], ["booster", catalog.boosters], ["formation", catalog.formations], ["drone", catalog.droneTypes]]) {
+      for (const i of list || []) nameMaps[key].set(i.id, i.name);
+    }
+  }
+  const itemName = (id) => nameMaps.item.get(id) || id;
+  const prettyId = (id) => String(id || "").replace(/_/g, " ").replace(/(^|\s)\S/g, (c) => c.toUpperCase());
+  const shipName = (id) => (id === "?" ? "Aucun vaisseau actif" : nameMaps.item.get(`ship_${id}`) || nameMaps.item.get(`design_${id}`) || ships.find((s) => s.id === id)?.name || prettyId(id));
+  function stockName(kind, id) {
+    const map = { ammo: nameMaps.ammo, rocket: nameMaps.rocket, resource: nameMaps.resource, boosterStock: nameMaps.booster, count: nameMaps.item }[kind];
+    return map?.get(id) || id;
+  }
+  async function loadInventory() {
+    const id = selectedId;
+    const box = $("ficheInventory");
+    if (!id || !box) return;
+    if (inventoryFor !== id) box.innerHTML = `<div class="empty">Chargement…</div>`;
+    try {
+      const out = ok(await call(`/api/admin/inventory?id=${encodeURIComponent(id)}`));
+      if (selectedId !== id) return;
+      inventory = out;
+      inventoryFor = id;
+      renderInventory();
+      fillStockKeys();
+    } catch (e) { box.innerHTML = `<div class="empty">${esc(e?.message || "Erreur.")}</div>`; }
+  }
+  function renderInventory() {
+    const inv = inventory, box = $("ficheInventory");
+    if (!inv || !box) return;
+    const now = Date.now();
+    const sortByName = (rows) => rows.sort((a, b) => String(a[1]).localeCompare(String(b[1]), "fr"));
+    const stockList = (kind, obj, nameOf) => sortByName(Object.entries(obj || {}).map(([id, n]) => [id, nameOf(id), n]))
+      .map(([id, name, n]) => `<li><span title="${esc(id)}">${esc(name)}</span><b>${fmtN(n)}</b><button class="iconBtn" type="button" title="Ajuster" data-inv-adjust="${esc(kind)}" data-key="${esc(id)}">±</button></li>`).join("");
+    const box2 = (title, count, inner) => `<div class="invBox"><h4><span>${title}</span><span class="muted">${count}</span></h4>${inner || `<p class="muted" style="margin:0;padding:10px 12px;font-size:12px">Vide.</p>`}</div>`;
+    const remove = (kind, id, label) => `<button class="iconBtn danger" type="button" title="Retirer" data-inv-remove="${esc(kind)}" data-key="${esc(id)}" data-label="${esc(label)}">×</button>`;
+    const fitText = (fit) => {
+      const group = (ids) => { const c = {}; for (const id of ids) c[id] = (c[id] || 0) + 1; return Object.entries(c).map(([id, n]) => `${n}× ${itemName(id)}`).join(", "); };
+      return [fit.lasers.length ? `Lasers : ${group(fit.lasers)}` : "", fit.gens.length ? `Générateurs : ${group(fit.gens)}` : "", fit.extras.length ? `Extras : ${group(fit.extras)}` : "", fit.shipMods ? `${fit.shipMods} module(s)` : ""].filter(Boolean).join("<br>") || "<span class=\"muted\">vide</span>";
+    };
+    const active = inv.hangars.find((h) => h.active);
+    const boosterActive = Object.entries(inv.boosters.active || {}).map(([id, until]) => `<li><span>${esc(nameMaps.booster.get(id) || id)}</span><b>${fmtDuration(Math.round((until - now) / 1000))}</b></li>`).join("");
+    box.innerHTML = `<div class="section"><div class="res" style="margin-bottom:12px">
+        <div class="resBox"><div><span>Crédits</span><b>${fmtN(inv.credits)}</b></div></div>
+        <div class="resBox"><div><span>Kills (total)</span><b>${fmtN(inv.stats.kills)}</b></div></div>
+        <div class="resBox"><div><span>Énergie GG</span><b>${fmtN(inv.galaxyGates.energy)}</b></div></div>
+        <div class="resBox"><div><span>Points de rang</span><b>${fmtN(inv.stats.rankPoints)}</b></div></div>
+      </div>
+      ${active ? `<div class="alertBox warn" style="margin-bottom:12px"><b>${esc(shipName(active.shipId))}</b> (actif, config ${active.activeConfig}) · dernière carte ${esc(active.lastMap || "?")}<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:8px;font-size:12px"><div><b>Config 1</b><br>${fitText(active.fits[1])}</div><div><b>Config 2</b><br>${fitText(active.fits[2])}</div></div></div>` : ""}
+      <div class="invGrid">
+        ${box2("Vaisseaux", inv.ships.length, `<ul>${inv.ships.map((id) => `<li><span>${esc(shipName(id))}</span>${active?.shipId === id ? `<span class="badge ok">actif</span>` : remove("ship", id, shipName(id))}</li>`).join("")}</ul>`)}
+        ${box2("Designs", inv.designs.length, inv.designs.length ? `<ul>${inv.designs.map((id) => `<li><span>${esc(shipName(id))}</span>${remove("design", id, shipName(id))}</li>`).join("")}</ul>` : "")}
+        ${box2("Objets en stock", Object.keys(inv.counts).length, Object.keys(inv.counts).length ? `<ul>${stockList("count", inv.counts, itemName)}</ul>` : "")}
+        ${box2("Munitions", Object.keys(inv.ammo).length, Object.keys(inv.ammo).length ? `<ul>${stockList("ammo", inv.ammo, (id) => nameMaps.ammo.get(id) || id)}</ul>` : "")}
+        ${box2("Roquettes", Object.keys(inv.rockets).length, Object.keys(inv.rockets).length ? `<ul>${stockList("rocket", inv.rockets, (id) => nameMaps.rocket.get(id) || id)}</ul>` : "")}
+        ${box2("Ressources", Object.keys(inv.resources).length, Object.keys(inv.resources).length ? `<ul>${stockList("resource", inv.resources, (id) => nameMaps.resource.get(id) || id)}</ul>` : "")}
+        ${box2("Boosters actifs", Object.keys(inv.boosters.active).length, boosterActive ? `<ul>${boosterActive}</ul>` : "")}
+        ${box2("Boosters en stock", Object.keys(inv.boosters.stock).length, Object.keys(inv.boosters.stock).length ? `<ul>${stockList("boosterStock", inv.boosters.stock, (id) => nameMaps.booster.get(id) || id)}</ul>` : "")}
+        ${box2("Drones", inv.drones.items.length, inv.drones.items.length ? `<ul>${inv.drones.items.map((d) => `<li><span>${esc(nameMaps.drone.get(d.type) || d.type)} · niv. ${fmtN(d.level)}</span>${remove("drone", d.id, nameMaps.drone.get(d.type) || d.type)}</li>`).join("")}</ul>` : "")}
+        ${box2("Formations", inv.drones.formations.length, `<ul>${inv.drones.formations.map((id) => `<li><span>${esc(nameMaps.formation.get(id) || id)}</span>${id === inv.drones.activeFormation ? `<span class="badge ok">active</span>` : ""}${id === "standard" ? "" : remove("formation", id, nameMaps.formation.get(id) || id)}</li>`).join("")}</ul>`)}
+        ${box2("Modules de vaisseau", inv.shipModules.length, inv.shipModules.length ? `<ul>${inv.shipModules.map((m) => { const label = `${shipName(m.shipId)} ${m.tier} · ${m.bonuses.map((b) => `${b.pct > 0 ? "+" : ""}${b.pct}% ${b.stat}`).join(", ")}`; return `<li><span title="${esc(m.rarity)}">${esc(label)}</span>${remove("shipModule", m.id, label)}</li>`; }).join("")}</ul>` : "")}
+        ${box2("P.E.T", inv.pet ? 1 : 0, inv.pet ? `<ul><li><span>${esc(inv.pet.pseudo || "P.E.T")}</span><b>niv. ${fmtN(inv.pet.level)}</b></li><li><span>Carburant</span><b>${fmtN(inv.pet.fuel)}</b></li></ul>` : "")}
+        ${box2("Améliorations", Object.keys(inv.upgrades || {}).length, `<ul>${Object.entries(inv.upgrades || {}).map(([slot, u]) => `<li><span>${esc(slot)} · ${esc(nameMaps.resource.get(u?.ore) || u?.ore || "—")}</span><b>${fmtN(u?.stock)}</b></li>`).join("")}</ul>`)}
+        ${box2("Galaxy Gates terminées", Object.keys(inv.galaxyGates.completed).length, Object.keys(inv.galaxyGates.completed).length ? `<ul>${Object.entries(inv.galaxyGates.completed).map(([g, n]) => `<li><span>${esc(GG_NAMES[g] || g)}</span><b>×${fmtN(n)}</b></li>`).join("")}</ul>` : "")}
+        ${box2("Titres", inv.titles.length, inv.titles.length ? `<ul>${inv.titles.map((t) => `<li><span>${esc(t)}</span></li>`).join("")}</ul>` : "")}
+      </div>
+      <p class="muted" style="margin:12px 0 0;font-size:11.5px">Lu à ${esc(fmtTime(Date.now()))} · révision ${fmtN(inv.revision)}${inv.email ? ` · ${esc(inv.email)}` : ""} · <button class="linkName" type="button" data-inv-reload>Actualiser</button></p>
+    </div>`;
+  }
+  $("fiche").addEventListener("click", (e) => {
+    const tab = e.target.closest("#ficheTabs [data-tab]");
+    if (tab) { showFicheTab(tab.dataset.tab); return; }
+    if (e.target.closest("[data-inv-reload]")) { loadInventory(); return; }
+    const p = findPlayer(selectedId);
+    if (!p) return;
+    const adjust = e.target.closest("[data-inv-adjust]");
+    if (adjust) return openAdjustModal(p, adjust.dataset.invAdjust, adjust.dataset.key);
+    const rm = e.target.closest("[data-inv-remove]");
+    if (rm) {
+      const kind = rm.dataset.invRemove, key = rm.dataset.key;
+      const labels = { ship: "le vaisseau", design: "le design", drone: "le drone", formation: "la formation", shipModule: "le module" };
+      return openModal({ title: `Retirer ${labels[kind] || ""} « ${rm.dataset.label} » ?`, sub: `Le retrait s'applique au compte de ${p.pseudo}.`, danger: true,
+        actions: [{ label: "Annuler" }, { label: "Retirer", kind: "danger", primary: true, run: async () => {
+          ok(await post("/api/admin/remove-owned", { id: p.id, pseudo: p.pseudo, kind, key }));
+          inventoryFor = null; setTimeout(loadInventory, 50);
+          return `${p.pseudo} : ${rm.dataset.label} retiré.`;
+        } }] });
+    }
+  });
+  function openAdjustModal(p, kind, key) {
+    const current = { count: inventory?.counts, ammo: inventory?.ammo, rocket: inventory?.rockets, resource: inventory?.resources, boosterStock: inventory?.boosters?.stock }[kind]?.[key] || 0;
+    openModal({
+      title: `${stockName(kind, key)} — ${p.pseudo}`,
+      sub: `Stock actuel : ${fmtN(current)}. Quantité à ajouter (négatif = retirer).`,
+      body: `<input id="adjAmt" class="input big" type="text" inputmode="numeric" value="${-current}" autocomplete="off"><div class="chips">${[1, 10, 100, 1000, 10000].map((v) => `<button class="btn sm ok" type="button" data-amt="${v}">+${fmtN(v)}</button>`).join("")}<button class="btn sm danger" type="button" data-amt="${-current}">Tout retirer</button></div>`,
+      actions: [{ label: "Annuler" }, { label: "Appliquer", primary: true, run: async () => {
+        const raw = ($("adjAmt").value || "").replace(/[\s_  ]/g, "");
+        if (!/^-?\d+$/.test(raw) || Number(raw) === 0) throw new Error("Quantité invalide (entier non nul).");
+        const out = ok(await post("/api/admin/adjust-stock", { id: p.id, pseudo: p.pseudo, kind, key, delta: raw }));
+        inventoryFor = null; setTimeout(loadInventory, 50);
+        return `${out.pseudo} : ${stockName(kind, key)} ${fmtN(out.before)} → ${fmtN(out.after)}.`;
+      } }],
+    });
+    $("modalBody").querySelectorAll("[data-amt]").forEach((b) => { b.onclick = () => { $("adjAmt").value = b.dataset.amt; }; });
+  }
+
+  /* ---------- Journal du joueur ---------- */
+  async function loadPlayerLog(older) {
+    const id = selectedId, box = $("fLogList");
+    if (!id || !box) return;
+    const before = older && playerLog.logs.length ? playerLog.logs[playerLog.logs.length - 1].at : 0;
+    if (!older) box.innerHTML = `<div class="empty">Chargement…</div>`;
+    try {
+      const q = encodeURIComponent($("fLogSearch").value.trim()), type = encodeURIComponent($("fLogType").value);
+      const out = ok(await call(`/api/admin/player-logs?id=${encodeURIComponent(id)}&q=${q}&type=${type}&before=${before}`));
+      if (selectedId !== id) return;
+      playerLog = { for: id, logs: older ? [...playerLog.logs, ...out.logs] : out.logs, more: out.more };
+      box.innerHTML = playerLog.logs.length
+        ? playerLog.logs.map((l) => `<div class="${esc(l.type)}"><time>${esc(fmtDateTime(l.at))}</time><span class="lv">${esc(l.type)}</span><span class="x">${esc(l.text)}</span></div>`).join("")
+        : `<div class="empty">Aucune ligne. Le journal est enregistré à partir de la mise à jour du jeu : les joueurs doivent avoir relancé leur jeu.</div>`;
+      $("fLogMore").hidden = !playerLog.more;
+    } catch (e) { box.innerHTML = `<div class="empty">${esc(e?.message || "Erreur.")}</div>`; }
+  }
+
+  /* ---------- Actions de la fiche ---------- */
+  $("fiche").addEventListener("click", async (e) => {
+    const b = e.target.closest("[data-fiche]");
+    if (!b) return;
+    const p = findPlayer(selectedId);
+    if (!p) return;
+    const act = b.dataset.fiche;
+    if (act === "back") { $("playersLayout").classList.remove("showFiche"); return; }
+    if (act === "kick") return openKickModal(p);
+    if (act === "ban") return openBanModal(p);
+    if (act === "give") return openGiveModal(b.dataset.kind, p);
+    if (act === "ggAdd") return openGiveGgModal(p.pseudo);
+    if (act === "debug") return openDebugModal(p);
+    if (act === "delete") return openDeleteModal(p);
+    if (act === "hold") return openHoldModal(p);
+    if (act === "home") return openConfirmModal(`Renvoyer ${p.pseudo} à sa base ?`, "Le vaisseau actif est replacé sur la carte x-1 de sa firme.", "Renvoyer", false,
+      async () => { const out = ok(await post("/api/admin/teleport-home", { id: p.id })); return `${out.pseudo} renvoyé en ${out.map}${out.disconnected ? " (déconnecté)" : ""}.`; });
+    if (act === "rename") return openRenameModal(p);
+    if (act === "faction") return openFactionModal(p);
+    if (act === "password") return openPasswordModal(p);
+    if (act === "mute") return runInline(b, async () => { ok(await post("/api/admin/mute", { id: p.id, muted: !p.muted })); return `${p.pseudo} ${p.muted ? "peut de nouveau parler" : "muté"}.`; });
+    if (act === "unban") {
+      const ban = findBan(p);
+      if (ban) return runInline(b, async () => { ok(await post("/api/admin/unban", { key: ban.key })); return `${p.pseudo} débanni.`; });
+    }
+    if (act === "ggRemove") {
+      const gate = b.dataset.gate;
+      return openConfirmModal(`Retirer ${gate === "all" ? "toutes les GG" : `la GG ${GG_NAMES[gate] || gate}`} — ${p.pseudo} ?`, "La complétion et l'anneau correspondant sont retirés.", "Retirer", true,
+        async () => { const out = ok(await post("/api/admin/reset-gg", { pseudo: p.pseudo, gate })); return `${out.pseudo} : GG ${gate === "all" ? "toutes" : gate} retirée.`; });
+    }
+  });
+  function openConfirmModal(title, sub, label, danger, run) {
+    openModal({ title, sub, danger, actions: [{ label: "Annuler" }, { label, kind: danger ? "danger" : "", primary: true, run }] });
+  }
+  function openRenameModal(p) {
+    openModal({
+      title: `Changer le pseudo de ${p.pseudo}`, sub: "3 à 32 caractères (lettres, chiffres, espace, - et _). Aucun délai, aucun mot de passe demandé.",
+      body: `<input id="renameValue" class="input" type="text" maxlength="32" value="${esc(p.pseudo)}" autocomplete="off">`,
+      actions: [{ label: "Annuler" }, { label: "Renommer", primary: true, run: async () => {
+        const out = ok(await post("/api/admin/rename", { id: p.id, value: $("renameValue").value.trim() }));
+        return `${out.before} s'appelle maintenant ${out.pseudo}${out.disconnected ? " (déconnecté)" : ""}.`;
+      } }],
+    });
+  }
+  function openFactionModal(p) {
+    openModal({
+      title: `Changer la firme de ${p.pseudo}`, sub: "Le vaisseau actif repart à la base de la nouvelle firme.",
+      body: `<select id="factionValue" class="input" style="width:100%">${Object.entries(FACTIONS).map(([id, l]) => `<option value="${id}"${id === p.faction ? " selected" : ""}>${l}</option>`).join("")}</select>`,
+      actions: [{ label: "Annuler" }, { label: "Changer", primary: true, run: async () => {
+        const out = ok(await post("/api/admin/set-faction", { id: p.id, faction: $("factionValue").value }));
+        return `${out.pseudo} : ${FACTIONS[out.before] || out.before} → ${FACTIONS[out.faction]}${out.disconnected ? " (déconnecté)" : ""}.`;
+      } }],
+    });
+  }
+  function openPasswordModal(p) {
+    openModal({
+      title: `Réinitialiser le mot de passe de ${p.pseudo} ?`, sub: "Un mot de passe temporaire est créé et toutes ses sessions sont fermées. Tu devras le lui transmettre.", danger: true,
+      actions: [{ label: "Annuler" }, { label: "Réinitialiser", kind: "warn", primary: true, run: async () => {
+        const out = ok(await post("/api/admin/reset-password", { id: p.id }));
+        setTimeout(() => openModal({ title: `Nouveau mot de passe de ${out.pseudo}`, sub: "Affiché une seule fois : copie-le maintenant.",
+          body: `<div class="secret">${esc(out.password)}</div>`, actions: [{ label: "Fermer" }] }), 0);
+        return "";
+      } }],
+    });
+  }
+
+  /* ---------- Modales d'action ---------- */
   const GIVE_DEFS = {
     credits: { title: "Crédits", path: "/api/admin/give", unit: "crédits", field: "credits" },
     exp: { title: "EXP", path: "/api/admin/give-exp", unit: "EXP", field: "exp" },
     honor: { title: "Honneur", path: "/api/admin/give-honor", unit: "honneur", field: "honor" },
   };
-  const GIVE_CHIPS = [1000000, 10000000, 100000000, 1000000000];
+  const GIVE_CHIPS = [1e6, 1e7, 1e8, 1e9];
   function openGiveModal(kind, p) {
     const def = GIVE_DEFS[kind] || GIVE_DEFS.credits;
-    const current = p && typeof p[def.field] === "number" ? p[def.field] : null;
-    const chipsAdd = GIVE_CHIPS.map((v) => `<button type="button" data-amt="${v}">+${fmtN(v)}</button>`).join("");
-    const chipsSub = GIVE_CHIPS.map((v) => `<button type="button" data-amt="${-v}">−${fmtN(v)}</button>`).join("");
+    const chips = (sign) => GIVE_CHIPS.map((v) => `<button class="btn sm ${sign < 0 ? "danger" : "ok"}" type="button" data-amt="${v * sign}">${sign < 0 ? "−" : "+"}${fmtN(v)}</button>`).join("");
     openModal({
       title: `${def.title} — ${p.pseudo}`,
-      sub: current == null ? "Montant à ajouter (négatif = retirer)." : `Solde actuel : ${fmtN(current)} ${def.unit}. Montant à ajouter (négatif = retirer).`,
-      bodyHTML: `<input id="giveAmt" class="bigInput" type="text" inputmode="numeric" value="1 000 000" autocomplete="off">` +
-        `<div class="chips" id="giveChipsAdd">${chipsAdd}</div>` +
-        `<div class="chips" id="giveChipsSub">${chipsSub}</div>`,
-      actions: [
-        { label: "Annuler", onClick: closeModal },
-        { label: "Valider", onClick: async () => {
-          const raw = ($("giveAmt").value || "").replace(/[\s_]/g, "");
-          if (!/^-?\d+$/.test(raw)) { modalError("Montant invalide (entier)."); return; }
-          try {
-            const out = await call(def.path, { method: "POST", body: JSON.stringify({ pseudo: p.pseudo, amount: raw }) });
-            if (!out || out.ok !== true) throw new Error(out?.error || "Échec.");
-            closeModal();
-            toast(`${out.pseudo} : ${fmtN(out.before)} → ${fmtN(out.after)} ${def.unit}.`, "ok");
-          } catch (e) { modalError(e?.message || "Erreur."); return; }
-          refresh();
-        } },
-      ],
+      sub: `Solde actuel : ${fmtN(p[def.field])} ${def.unit}. Montant à ajouter (négatif = retirer).`,
+      body: `<input id="giveAmt" class="input big" type="text" inputmode="numeric" value="1 000 000" autocomplete="off"><div class="chips">${chips(1)}</div><div class="chips">${chips(-1)}</div>`,
+      actions: [{ label: "Annuler" }, { label: "Valider", primary: true, run: async () => {
+        const raw = ($("giveAmt").value || "").replace(/[\s_  ]/g, "");
+        if (!/^-?\d+$/.test(raw)) throw new Error("Montant invalide (nombre entier).");
+        const out = ok(await post(def.path, { pseudo: p.pseudo, amount: raw }));
+        return `${out.pseudo} : ${fmtN(out.before)} → ${fmtN(out.after)} ${def.unit}.`;
+      } }],
     });
-    const setAmt = (v) => { $("giveAmt").value = fmtN(v); };
-    $("giveChipsAdd").querySelectorAll("button").forEach((b) => { b.onclick = () => setAmt(Number(b.dataset.amt)); });
-    $("giveChipsSub").querySelectorAll("button").forEach((b) => { b.onclick = () => setAmt(Number(b.dataset.amt)); });
+    $("modalBody").querySelectorAll("[data-amt]").forEach((b) => { b.onclick = () => { $("giveAmt").value = fmtN(Number(b.dataset.amt)); }; });
     $("giveAmt").addEventListener("input", () => {
-      // Chiffres uniquement (jamais de lettres) ; "-" initial gardé (retrait).
-      const el = $("giveAmt");
-      if (!el) return;
-      const raw = String(el.value || "");
-      const neg = raw.trim().startsWith("-");
-      const clean = (neg ? "-" : "") + raw.replace(/[^0-9]/g, "").slice(0, 15);
+      const el = $("giveAmt"), raw = String(el.value || "");
+      const clean = (raw.trim().startsWith("-") ? "-" : "") + raw.replace(/[^0-9]/g, "").slice(0, 15);
       if (clean !== raw) el.value = clean;
     });
-    $("giveAmt").addEventListener("keydown", (e) => {
-      if (e.key === "Enter") $("modalActions").lastChild.click();
-    });
   }
-  /* ---------- Give titre cadeau : texte libre + couleur ---------- */
-  function openGiveTitleModal(p) {
+  function openTitleModal(p) {
     openModal({
       title: `Titre cadeau — ${p.pseudo}`,
       sub: "Texte affiché sous le pseudo (< … >), visible par tous. Description côté joueur : « Cadeau de l'admin ».",
-      bodyHTML: `<input id="titleName" type="text" placeholder="Texte du titre…" autocomplete="off" style="width:100%;height:34px;margin-bottom:8px;">` +
-        `<div style="display:flex;align-items:center;gap:10px;"><input id="titleColor" type="color" value="#ffd166" style="width:52px;height:34px;padding:2px;"><span id="titlePreview" style="font-weight:800;"></span></div>`,
-      actions: [
-        { label: "Annuler", onClick: closeModal },
-        { label: "Donner", onClick: async () => {
-          const name = ($("titleName").value || "").replace(/\s+/g, " ").trim();
-          const color = $("titleColor").value || "#ffffff";
-          if (!name) { modalError("Texte vide."); return; }
-          try {
-            const out = await call("/api/admin/give-title", { method: "POST", body: JSON.stringify({ pseudo: p.pseudo, name, color }) });
-            if (!out || out.ok !== true) throw new Error(out?.error || "Échec.");
-            closeModal();
-            toast(`${out.pseudo} : titre « ${out.title?.name} » donné.`, "ok");
-          } catch (e) { modalError(e?.message || "Erreur."); return; }
-          refresh();
-        } },
-      ],
+      body: `<input id="titleName" class="input" type="text" placeholder="Texte du titre…" autocomplete="off"><div style="display:flex;align-items:center;gap:10px"><input id="titleColor" type="color" value="#ffd166" style="width:52px;height:34px;padding:2px;border:0;background:none"><b id="titlePreview"></b></div>`,
+      actions: [{ label: "Annuler" }, { label: "Offrir", primary: true, run: async () => {
+        const name = ($("titleName").value || "").replace(/\s+/g, " ").trim();
+        if (!name) throw new Error("Texte vide.");
+        const out = ok(await post("/api/admin/give-title", { pseudo: p.pseudo, name, color: $("titleColor").value || "#ffffff" }));
+        return `${out.pseudo} : titre « ${out.title?.name} » offert.`;
+      } }],
     });
-    const prev = () => {
-      const el = $("titlePreview");
-      if (!el) return;
-      const name = ($("titleName").value || "").replace(/\s+/g, " ").trim() || "Aperçu";
-      el.textContent = `< ${name} >`;
-      el.style.color = $("titleColor").value || "#ffffff";
-    };
+    const prev = () => { $("titlePreview").textContent = `< ${($("titleName").value || "").replace(/\s+/g, " ").trim() || "Aperçu"} >`; $("titlePreview").style.color = $("titleColor").value; };
     $("titleName").addEventListener("input", prev);
     $("titleColor").addEventListener("input", prev);
     prev();
-    $("titleName").addEventListener("keydown", (e) => {
-      if (e.key === "Enter") $("modalActions").lastChild.click();
-    });
   }
-  /* ---------- Ban : boutons rapides de durée + motif ---------- */
-  const BAN_DURATIONS = [
-    { label: "1 jour", ms: 86400000 },
-    { label: "3 jours", ms: 3 * 86400000 },
-    { label: "7 jours", ms: 7 * 86400000 },
-    { label: "30 jours", ms: 30 * 86400000 },
-    { label: "Définitif", ms: null },
-  ];
+  const BAN_DURATIONS = [["1 jour", 864e5], ["3 jours", 3 * 864e5], ["7 jours", 7 * 864e5], ["30 jours", 30 * 864e5], ["Définitif", null]];
   function openBanModal(p) {
-    let durMs = 7 * 86400000;
-    const chips = BAN_DURATIONS.map((d, i) => `<button type="button" data-i="${i}" class="${i === 2 ? "sel" : ""}">${esc(d.label)}</button>`).join("");
+    let durMs = 7 * 864e5;
     openModal({
       title: `Bannir ${p.pseudo}`,
-      sub: p.online === true ? "Le joueur sera déconnecté aussitôt." : "Hors ligne : bloqué à sa prochaine connexion.",
-      bodyHTML: `<div class="chips" id="banChips">${chips}</div>` +
-        `<input id="banReason" type="text" placeholder="Motif du bannissement…" maxlength="200" value="Comportement inapproprié." autocomplete="off">`,
+      sub: p.online ? "Le joueur sera déconnecté aussitôt." : "Hors ligne : bloqué à sa prochaine connexion.",
       danger: true,
-      actions: [
-        { label: "Annuler", onClick: closeModal },
-        { label: "Bannir", danger: true, onClick: async () => {
-          const reason = ($("banReason").value || "").replace(/\s+/g, " ").trim().slice(0, 200) || "Comportement inapproprié.";
-          try {
-            const out = await call("/api/admin/ban", { method: "POST", body: JSON.stringify({ id: p.id, pseudo: p.pseudo, durationMs: durMs, reason }) });
-            if (!out || out.ok !== true) throw new Error(out?.error || "Échec.");
-            closeModal();
-            const until = out.until != null ? new Date(Number(out.until)).toLocaleString("fr-FR") : "définitif";
-            toast(`${out.pseudo} banni (${until}).`, "ok");
-          } catch (e) { modalError(e?.message || "Erreur."); return; }
-          refresh();
-        } },
-      ],
+      body: `<div class="chips" id="banChips">${BAN_DURATIONS.map(([l], i) => `<button class="chip${i === 2 ? " sel" : ""}" type="button" data-i="${i}">${l}</button>`).join("")}</div><input id="banReason" class="input" type="text" maxlength="200" placeholder="Motif du bannissement…" value="Comportement inapproprié." autocomplete="off">`,
+      actions: [{ label: "Annuler" }, { label: "Bannir", kind: "danger", primary: true, run: async () => {
+        const reason = ($("banReason").value || "").replace(/\s+/g, " ").trim().slice(0, 200) || "Comportement inapproprié.";
+        const out = ok(await post("/api/admin/ban", { id: p.id || "", pseudo: p.pseudo, durationMs: durMs, reason }));
+        return `${out.pseudo} banni (${out.until != null ? new Date(Number(out.until)).toLocaleString("fr-FR") : "définitif"}).`;
+      } }],
     });
-    $("banChips").querySelectorAll("button").forEach((b) => {
-      b.onclick = () => {
-        $("banChips").querySelectorAll("button").forEach((x) => x.classList.remove("sel"));
-        b.classList.add("sel");
-        durMs = BAN_DURATIONS[Number(b.dataset.i)].ms;
-      };
-    });
-    $("banReason").addEventListener("keydown", (e) => {
-      if (e.key === "Enter") $("modalActions").lastChild.click();
-    });
+    $("banChips").querySelectorAll("button").forEach((b) => { b.onclick = () => {
+      $("banChips").querySelectorAll("button").forEach((x) => x.classList.toggle("sel", x === b));
+      durMs = BAN_DURATIONS[Number(b.dataset.i)][1];
+    }; });
   }
-  /* ---------- Kick : vraie box motif ---------- */
   function openKickModal(p) {
     openModal({
-      title: `Kicker ${p.pseudo}`,
-      sub: "Explosion visible par tous + déconnexion avec le motif.",
-      bodyHTML: `<input id="kickReason" type="text" placeholder="Motif affiché au joueur…" maxlength="200" value="Comportement inapproprié." autocomplete="off">`,
-      danger: true,
-      actions: [
-        { label: "Annuler", onClick: closeModal },
-        { label: "Kicker", danger: true, onClick: async () => {
-          const reason = ($("kickReason").value || "").slice(0, 200);
-          const out = await call("/api/admin/kick", { method: "POST", body: JSON.stringify({ id: p.id, reason }) });
-          if (!out || out.ok !== true) { closeModal(); toast("Joueur déjà parti.", "err"); refresh(); return; }
-          closeModal();
-          toast(`${p.pseudo} kické.`, "ok");
-          refresh();
-        } },
-      ],
-    });
-    $("kickReason").addEventListener("keydown", (e) => {
-      if (e.key === "Enter") $("modalActions").lastChild.click();
+      title: `Kicker ${p.pseudo}`, sub: "Explosion visible par tous + déconnexion avec le motif.", danger: true,
+      body: `<input id="kickReason" class="input" type="text" maxlength="200" placeholder="Motif affiché au joueur…" value="Comportement inapproprié." autocomplete="off">`,
+      actions: [{ label: "Annuler" }, { label: "Kicker", kind: "warn", primary: true, run: async () => {
+        ok(await post("/api/admin/kick", { id: p.id, reason: ($("kickReason").value || "").slice(0, 200) }), "Joueur déjà parti.");
+        return `${p.pseudo} kické.`;
+      } }],
     });
   }
-  /* ---------- Suppression définitive : confirme en tapant le pseudo ---------- */
+  function openHoldModal(p) {
+    openModal({
+      title: `Geler ${p.pseudo} ?`, sub: "Kick + compte gelé, un dossier s'ouvre dans Anticheat. Tu pourras le libérer ou le bannir ensuite.", danger: true,
+      actions: [{ label: "Annuler" }, { label: "Geler", kind: "danger", primary: true, run: async () => {
+        ok(await post("/api/admin/cheat-hold", { id: p.id, pseudo: p.pseudo }));
+        return `${p.pseudo} gelé (dossier ouvert).`;
+      } }],
+    });
+  }
+  function openDebugModal(p) {
+    openModal({
+      title: `Débloquer ${p.pseudo} ?`,
+      sub: "Le compte est replacé en Phoenix sur sa map mère. Les deux configurations du vaisseau, des drones et du P.E.T sont vidées ; les objets restent dans l'inventaire. Le joueur est déconnecté s'il est en ligne.",
+      danger: true,
+      actions: [{ label: "Annuler" }, { label: "Débloquer", kind: "danger", primary: true, run: async () => {
+        const out = ok(await post("/api/admin/debug-account", { id: p.id, pseudo: p.pseudo }));
+        return `${out.pseudo} replacé en ${out.map} avec un Phoenix vide.`;
+      } }],
+    });
+  }
   function openDeleteModal(p) {
     openModal({
       title: `Supprimer ${p.pseudo} ?`,
       sub: "DÉFINITIF : compte, amis (des deux côtés), demandes, stats, classement, sessions, bannissements liés. Comme s'il n'avait jamais existé.",
-      bodyHTML: `<input id="delConfirm" type="text" placeholder="Tape « ${esc(p.pseudo)} » pour confirmer" autocomplete="off">`,
       danger: true,
-      actions: [
-        { label: "Annuler", onClick: closeModal },
-        { label: "Supprimer définitivement", danger: true, id: "delBtn", disabled: true, onClick: async () => {
-          try {
-            const out = await call("/api/admin/delete", { method: "POST", body: JSON.stringify({ id: p.id, pseudo: p.pseudo }) });
-            if (!out || out.ok !== true) throw new Error(out?.error || "Échec.");
-            closeModal();
-            toast(`Compte ${out.pseudo} supprimé définitivement.`, "ok");
-          } catch (e) { modalError(e?.message || "Erreur."); return; }
-          refresh();
-        } },
-      ],
+      body: `<input id="delConfirm" class="input" type="text" placeholder="Tape « ${esc(p.pseudo)} » pour confirmer" autocomplete="off">`,
+      actions: [{ label: "Annuler" }, { label: "Supprimer définitivement", kind: "danger", id: "delBtn", disabled: true, primary: true, run: async () => {
+        const out = ok(await post("/api/admin/delete", { id: p.id, pseudo: p.pseudo }));
+        selectedId = null;
+        $("fiche").innerHTML = `<div class="empty">Sélectionne un joueur dans la liste.</div>`;
+        return `Compte ${out.pseudo} supprimé définitivement.`;
+      } }],
     });
-    $("delConfirm").addEventListener("input", () => {
-      const ok = ($("delConfirm").value || "").trim() === p.pseudo;
-      $("delBtn").disabled = !ok;
-    });
-    $("delConfirm").addEventListener("keydown", (e) => {
-      if (e.key === "Enter" && !$("delBtn").disabled) $("delBtn").click();
-    });
-  }
-  // Mêmes fonctions pour connectés et hors ligne. Kick uniquement si en ligne.
-  // Mute/ban/give par id/pseudo. Supprimer = comptes uniquement (pas invités).
-  function openDebugModal(p) {
-    openModal({
-      title: `Debloquer ${p.pseudo} ?`,
-      sub: "Le compte sera replace en Phoenix sur sa map mere. Les deux configurations du vaisseau, des drones et du P.E.T seront videes. Les objets restent dans l'inventaire.",
-      bodyHTML: `<p>Le joueur sera deconnecte s'il est en ligne, puis devra se reconnecter.</p>`,
-      danger: true,
-      actions: [
-        { label: "Annuler", onClick: closeModal },
-        { label: "Debug", danger: true, onClick: async () => {
-          try {
-            const out = await call("/api/admin/debug-account", { method: "POST", body: JSON.stringify({ id: p.id, pseudo: p.pseudo }) });
-            if (!out || out.ok !== true) throw new Error(out?.error || "Echec.");
-            closeModal();
-            toast(`${out.pseudo} replace en ${out.map} avec un Phoenix vide.`, "ok");
-          } catch (e) { modalError(e?.message || "Erreur."); return; }
-          refresh();
-        } },
-      ],
-    });
-  }
-  function appendAdminActions(td, p, online, isGuest) {
-    let first = true;
-    const add = (b) => { if (!first) b.style.marginLeft = "6px"; first = false; td.appendChild(b); };
-    if (online) {
-      const kick = mkBtn("Kick", true); kick.style.marginLeft = "0px";
-      kick.onclick = () => openKickModal(p);
-      add(kick);
-    }
-    const mute = mkBtn(p.muted ? "Unmute" : "Mute"); if (first) mute.style.marginLeft = "0px";
-    mute.onclick = async () => { await call("/api/admin/mute", { method: "POST", body: JSON.stringify({ id: p.id, muted: !p.muted }) }); refresh(); };
-    add(mute);
-    const ban = mkBtn(p.banned ? "Banni" : "Ban", true);
-    ban.onclick = () => openBanModal(p);
-    add(ban);
-    if (!isGuest) {
-      const debug = mkBtn("Debug", true);
-      debug.onclick = () => openDebugModal(p);
-      add(debug);
-      const give = mkBtn("Crédits");
-      give.onclick = () => openGiveModal("credits", p);
-      add(give);
-      const giveExp = mkBtn("EXP");
-      giveExp.onclick = () => openGiveModal("exp", p);
-      add(giveExp);
-      const giveHonor = mkBtn("Honneur");
-      giveHonor.onclick = () => openGiveModal("honor", p);
-      add(giveHonor);
-      const giveTitle = mkBtn("Titre");
-      giveTitle.onclick = () => openGiveTitleModal(p);
-      add(giveTitle);
-      const del = mkBtn("Supprimer", true);
-      del.onclick = () => openDeleteModal(p);
-      add(del);
-    }
-  }
-  /* ---------- Give module : vaisseau + stat + % par joueur ---------- */
-  const MODULE_STATS = [
-    ["damage", "Dégâts"], ["hp", "PV"], ["shield", "Bouclier"], ["speed", "Vitesse"],
-    ["penetration", "Péné."], ["laser_hit", "Préci.L"], ["rocket_hit", "Préci.R"],
-    ["evasion", "Évasion"], ["exp", "EXP"], ["honor", "Honneur"],
-  ];
-  let shipFamilies = null;
-  let shipsLoading = null;
-  async function ensureShips() {
-    if (shipFamilies) return shipFamilies;
-    if (!shipsLoading) {
-      shipsLoading = call("/api/admin/ships").then((out) => {
-        shipFamilies = (out && out.ok === true && Array.isArray(out.ships)) ? out.ships : [];
-        return shipFamilies;
-      }).catch(() => []).finally(() => { shipsLoading = null; });
-    }
-    return shipsLoading;
-  }
-  /* ---------- GG terminées : listbox + bouton Retirer par joueur ---------- */
-  const GG_NAMES = { alpha: "Alpha", beta: "Beta", gamma: "Gamma", delta: "Delta", epsilon: "Epsilon", zeta: "Zeta", kappa: "Kappa", lambda: "Lambda", kronos: "Kronos", awakened: "Awakened" };
-  const ggSelByKey = {};
-  function syncGgCell(td, a) {
-    let wrap = td.querySelector("div");
-    let sel = td.querySelector("select");
-    let btn = td.querySelector("button");
-    if (!wrap) {
-      wrap = document.createElement("div");
-      wrap.className = "modCell";
-      sel = document.createElement("select");
-      sel.title = "GG terminée à retirer (anneau compris)";
-      btn = document.createElement("button");
-      btn.type = "button"; btn.className = "small danger"; btn.textContent = "Retirer";
-      btn.title = "Retirer la complétion (et l'anneau)";
-      btn.onclick = async () => {
-        const gate = sel.value;
-        const pseudo = wrap.dataset.pseudo || a.pseudo;
-        if (!gate) return;
-        btn.disabled = true;
-        try {
-          const out = await call("/api/admin/reset-gg", { method: "POST", body: JSON.stringify({ pseudo, gate }) });
-          if (!out || out.ok !== true) throw new Error(out?.error || "Échec.");
-          toast(`${out.pseudo} : GG ${gate === "all" ? "toutes" : gate} retirée.`, "ok");
-        } catch (e) { toast(e?.message || "Erreur.", "err"); }
-        btn.disabled = false;
-        refresh();
-      };
-      wrap.appendChild(sel);
-      wrap.appendChild(btn);
-      const add = document.createElement("button");
-      add.type = "button"; add.className = "small"; add.textContent = "Ajouter";
-      add.title = "Ajouter une complétion (et l'anneau)";
-      add.style.marginLeft = "6px";
-      add.onclick = () => openGiveGgModal(wrap.dataset.pseudo || a.pseudo);
-      wrap.appendChild(add);
-      td.appendChild(wrap);
-    }
-    wrap.dataset.pseudo = a.pseudo;
-    sel.onchange = () => { ggSelByKey[a.id] = sel.value; };
-    const completed = (a && a.gg && typeof a.gg === "object") ? a.gg : {};
-    const gates = Object.keys(completed).filter((g) => GG_NAMES[g] && Number(completed[g]) > 0);
-    const prev = ggSelByKey[a.id] || sel.value;
-    sel.innerHTML = "";
-    if (!gates.length) {
-      const o = document.createElement("option");
-      o.value = ""; o.textContent = "—";
-      sel.appendChild(o);
-      btn.disabled = true;
-      return;
-    }
-    for (const g of gates) {
-      const o = document.createElement("option");
-      o.value = g;
-      o.textContent = `${GG_NAMES[g]} (x${Math.max(1, Math.floor(Number(completed[g]) || 0))})`;
-      sel.appendChild(o);
-    }
-    const all = document.createElement("option");
-    all.value = "all"; all.textContent = "Toutes";
-    sel.appendChild(all);
-    sel.value = [...gates, "all"].includes(prev) ? prev : gates[0];
-    btn.disabled = false;
+    $("delConfirm").addEventListener("input", () => { $("delBtn").disabled = $("delConfirm").value.trim() !== p.pseudo; });
   }
   function openGiveGgModal(pseudo) {
-    const opts = Object.entries(GG_NAMES).map(([v, label]) => `<option value="${v}">${esc(label)}</option>`).join("") + `<option value="all">Toutes</option>`;
     openModal({
       title: `Ajouter une GG — ${pseudo}`,
-      sub: "Chaque clic = +1 complétion (+1 pièce Kronos pour Alpha/Beta/Gamma/Delta/Epsilon/Zeta/Kappa/Lambda). Anneau visible à la prochaine synchro.",
-      bodyHTML: `<select id="ggGiveSel" style="width:100%;height:34px;">${opts}</select>`,
-      actions: [
-        { label: "Annuler", onClick: closeModal },
-        { label: "Ajouter", onClick: async () => {
-          const gate = $("ggGiveSel").value;
-          try {
-            const out = await call("/api/admin/give-gg", { method: "POST", body: JSON.stringify({ pseudo, gate }) });
-            if (!out || out.ok !== true) throw new Error(out?.error || "Échec.");
-            closeModal();
-            const n = out.after != null && out.after[gate] != null ? ` x${out.after[gate]}` : "";
-            const kp = out.kronosAfter != null && out.kronosAfter[gate] != null ? ` (Kronos ${out.kronosAfter[gate]} pièce(s))` : "";
-            toast(`${out.pseudo} : GG ${gate}${n} ajoutée${kp}.`, "ok");
-          } catch (e) { modalError(e?.message || "Erreur."); return; }
-          refresh();
-        } },
-      ],
+      sub: "Chaque ajout = +1 complétion (+1 pièce Kronos pour Alpha à Lambda). Anneau visible à la prochaine synchro.",
+      body: `<select id="ggGiveSel" class="input" style="width:100%">${Object.entries(GG_NAMES).map(([v, l]) => `<option value="${v}">${l}</option>`).join("")}<option value="all">Toutes</option></select>`,
+      actions: [{ label: "Annuler" }, { label: "Ajouter", primary: true, run: async () => {
+        const gate = $("ggGiveSel").value;
+        const out = ok(await post("/api/admin/give-gg", { pseudo, gate }));
+        const n = out.after?.[gate] != null ? ` x${out.after[gate]}` : "";
+        const kp = out.kronosAfter?.[gate] != null ? ` (Kronos ${out.kronosAfter[gate]} pièce(s))` : "";
+        return `${out.pseudo} : GG ${gate}${n} ajoutée${kp}.`;
+      } }],
     });
   }
-  const modSelByKey = {};
-  function buildModuleCell(td, p) {
-    const wrap = document.createElement("div");
-    wrap.className = "modCell";
-    const shipSel = document.createElement("select");
-    shipSel.title = "Vaisseau du module";
-    const statSel = document.createElement("select");
-    statSel.title = "Stat du module";
-    for (const [v, label] of MODULE_STATS) {
-      const o = document.createElement("option");
-      o.value = v; o.textContent = label;
-      statSel.appendChild(o);
-    }
-    const pctInput = document.createElement("input");
-    pctInput.type = "number"; pctInput.value = "30"; pctInput.min = "-8"; pctInput.max = "100";
-    pctInput.title = "Pourcentage (-8 à 100)";
-    const btn = document.createElement("button");
-    btn.type = "button"; btn.className = "small"; btn.textContent = "Give";
-    btn.title = "Donner le module au joueur";
-    btn.onclick = async () => {
-      btn.disabled = true;
-      try {
-        const out = await call("/api/admin/give-module", { method: "POST", body: JSON.stringify({ pseudo: p.pseudo, shipId: shipSel.value, stat: statSel.value, pct: pctInput.value }) });
-        if (!out || out.ok !== true) throw new Error(out?.error || "Échec.");
-        const b = out.module?.bonuses?.[0] || {};
-        toast(`${out.pseudo} : module ${out.module?.shipId} ${b.pct > 0 ? "+" : ""}${b.pct}% ${b.stat}.`, "ok");
-      } catch (e) { toast(e?.message || "Erreur.", "err"); }
-      btn.disabled = false;
-      refresh();
-    };
-    const designRow = document.createElement("div");
-    designRow.className = "modCell";
-    designRow.style.marginTop = "4px";
-    const designSel = document.createElement("select");
-    designSel.title = "Design de drone à donner";
-    designSel.dataset.designSel = "1";
-    const qtyInput = document.createElement("input");
-    qtyInput.type = "number"; qtyInput.min = "1"; qtyInput.max = "99";
-    qtyInput.title = "Quantité (1 à 99)";
-    qtyInput.style.maxWidth = "70px";
-    const designBtn = document.createElement("button");
-    designBtn.type = "button"; designBtn.className = "small"; designBtn.textContent = "Design";
-    designBtn.title = "Donner le design au joueur";
-    designBtn.onclick = async () => {
-      designBtn.disabled = true;
-      try {
-        const out = await call("/api/admin/give-drone-design", { method: "POST", body: JSON.stringify({ pseudo: p.pseudo, design: designSel.value, count: qtyInput.value }) });
-        if (!out || out.ok !== true) throw new Error(out?.error || "Échec.");
-        toast(`${out.pseudo} : +${out.given}x ${out.name} (stock ${out.after}).`, "ok");
-      } catch (e) { toast(e?.message || "Erreur.", "err"); }
-      designBtn.disabled = false;
-      refresh();
-    };
-    designRow.appendChild(designSel);
-    designRow.appendChild(qtyInput);
-    designRow.appendChild(designBtn);
-    const savedMod = modSelByKey[p.id] || {};
-    const saveModSel = () => { modSelByKey[p.id] = { ship: shipSel.value, stat: statSel.value, pct: pctInput.value, design: designSel.value, dqty: qtyInput.value }; };
-    shipSel.onchange = saveModSel; statSel.onchange = saveModSel; pctInput.oninput = saveModSel;
-    designSel.onchange = saveModSel; qtyInput.oninput = saveModSel;
-    qtyInput.value = savedMod.dqty != null ? savedMod.dqty : "1";
-    designSel.dataset.saved = savedMod.design || "";
-    fillDesignSelect(designSel, savedMod.design);
-    if (!droneDesignsCache) ensureDroneDesigns().catch(() => {});
-    statSel.value = savedMod.stat || "damage";
-    pctInput.value = savedMod.pct != null ? savedMod.pct : "30";
-    if (shipFamilies && shipFamilies.length) {
-      for (const s of shipFamilies) {
-        const o = document.createElement("option");
-        o.value = s.id; o.textContent = s.name;
-        shipSel.appendChild(o);
-      }
-      if (savedMod.ship) shipSel.value = savedMod.ship;
-    } else {
-      const o = document.createElement("option");
-      o.value = ""; o.textContent = "…";
-      shipSel.appendChild(o);
-      ensureShips().then((list) => {
-        shipSel.innerHTML = "";
-        for (const s of (list || [])) {
-          const opt = document.createElement("option");
-          opt.value = s.id; opt.textContent = s.name;
-          shipSel.appendChild(opt);
-        }
-        const savedAsync = modSelByKey[p.id] || {};
-        if (savedAsync.ship) shipSel.value = savedAsync.ship;
-      }).catch(() => {});
-    }
-    wrap.appendChild(shipSel);
-    wrap.appendChild(statSel);
-    wrap.appendChild(pctInput);
-    wrap.appendChild(btn);
-    td.appendChild(wrap);
-    td.appendChild(designRow);
-  }
-  /* ---------- Give design de drone par joueur (colonne Module) ---------- */
-  let droneDesignsCache = null;
-  function fillDesignSelect(sel, savedId) {
-    const cur = savedId || sel.value;
-    sel.innerHTML = "";
-    for (const d of (droneDesignsCache || [])) {
-      const o = document.createElement("option");
-      o.value = d.id; o.textContent = d.name;
-      sel.appendChild(o);
-    }
-    if (cur) sel.value = cur;
-  }
-  async function ensureDroneDesigns() {
-    if (droneDesignsCache) return droneDesignsCache;
-    try {
-      const out = await call("/api/admin/drone-designs");
-      droneDesignsCache = (out && out.ok === true && Array.isArray(out.designs)) ? out.designs : [];
-    } catch { droneDesignsCache = []; }
-    document.querySelectorAll("select[data-design-sel]").forEach((sel) => fillDesignSelect(sel, sel.dataset.saved));
-    return droneDesignsCache;
-  }
-  async function refresh() {
-    if (!$("app") || $("app").style.display === "none") return;
-    try {
-      try { await refreshChat(); } catch {}
-      try { await refreshBans(); } catch {}
-      try { await refreshCheat(); } catch {}
-      try { await refreshAccounts(); } catch {}
-    } catch {}
-  }
-  const accountRowByKey = new Map();
-  async function refreshAccounts() {
-    const tb = $("accountRows");
-    if (!tb) return;
-    const out = await call("/api/admin/accounts");
-    const accounts = (out && out.accounts) || [];
-    const guests = (out && out.guests) || [];
-    const onlineCount = Number(out?.onlineCount ?? 0);
-    $("peerCount").textContent = String(onlineCount);
-    $("accountCount").textContent = `${String(accounts.length)} comptes · ${String(onlineCount)} en ligne`;
-    const q = ($("accountSearch")?.value || "").trim().toLowerCase();
-    const rows = accounts.filter((a) => !q || String(a.pseudo || "").toLowerCase().includes(q));
-    // En ligne d'abord, puis ordre alpha. Invités (sans compte) en bas.
-    rows.sort((a, b) => Number(b.online || false) - Number(a.online || false) || String(a.pseudo).localeCompare(String(b.pseudo)));
-    const guestsShown = guests.filter((g) => !q || String(g.pseudo || "").toLowerCase().includes(q));
-    // Mise à jour en place : les lignes existantes sont réutilisées (jamais
-    // détruites) pour ne pas fermer les listes ouvertes ni perdre les choix
-    // malgré le refresh toutes les 3 s. Seules les cellules d'info sont
-    // réécrites ; la cellule Module garde ses selects.
-    const wanted = new Set(rows.map((a) => "a:" + a.id));
-    for (const g of guestsShown) wanted.add("g:" + g.pseudo);
-    for (const [k, tr] of [...accountRowByKey]) {
-      if (!wanted.has(k)) { try { tr.remove(); } catch {} accountRowByKey.delete(k); }
-    }
-    if (!rows.length && !guestsShown.length) {
-      tb.innerHTML = `<tr><td colspan="9">Aucun compte.</td></tr>`;
-      return;
-    }
-    const ph = tb.querySelector("td[colspan]");
-    if (ph) ph.closest("tr").remove();
-    let rowIdx = 0;
-    const placeRow = (tr) => {
-      const cur = tb.children[rowIdx];
-      if (cur !== tr) tb.insertBefore(tr, cur || null);
-      rowIdx++;
-    };
-    for (const a of rows) {
-      const key = "a:" + a.id;
-      let tr = accountRowByKey.get(key);
-      if (!tr || !tr.isConnected || tr.children.length < 9) {
-        tr = document.createElement("tr");
-        tr.innerHTML = `<td></td><td></td><td></td><td class="num"></td><td class="num"></td><td class="num"></td><td></td><td></td><td></td>`;
-        accountRowByKey.set(key, tr);
-      }
-      if (a.muted) tr.className = "mutedRow"; else tr.className = "";
-      const status = a.banned
-        ? `<span class="badge muted">banni</span>`
-        : (a.online ? `<span class="badge ok">en ligne</span>` : `<span class="badge off">hors ligne</span>`);
-      const extra = [(a.online && a.instance ? ` <span class="badge gate">gate</span>` : ""),
-        (a.online && a.dead ? ` <span class="badge dead">mort</span>` : ""),
-        (a.muted ? ` <span class="badge muted">muté</span>` : "")].join("");
-      const c = tr.children;
-      c[0].textContent = a.pseudo;
-      c[1].innerHTML = `${status}${extra}`;
-      c[2].innerHTML = a.online ? esc(a.map) : `<span style="color:#5d96a5">—</span>`;
-      c[3].textContent = fmtN(a.credits);
-      c[4].textContent = fmtN(a.exp);
-      c[5].textContent = fmtN(a.honor);
-      c[6].innerHTML = "";
-      appendAdminActions(c[6], a, a.online === true, false);
-      if (!c[7].firstChild) buildModuleCell(c[7], a);
-      syncGgCell(c[8], a);
-      placeRow(tr);
-    }
-    for (const g of guestsShown) {
-      const key = "g:" + g.pseudo;
-      let tr = accountRowByKey.get(key);
-      if (!tr || !tr.isConnected || tr.children.length < 9) {
-        tr = document.createElement("tr");
-        tr.innerHTML = `<td></td><td></td><td></td><td class="num"></td><td class="num"></td><td class="num"></td><td></td><td></td><td><span style="color:#5d96a5">—</span></td>`;
-        accountRowByKey.set(key, tr);
-      }
-      tr.className = "";
-      const c = tr.children;
-      c[0].innerHTML = `${esc(g.pseudo)} <span class="badge guest">invité</span>`;
-      c[1].innerHTML = `<span class="badge ok">en ligne</span>`;
-      c[2].textContent = g.map;
-      c[6].innerHTML = "";
-      appendAdminActions(c[6], g, true, true);
-      placeRow(tr);
-    }
-  }
-  function fmtTime(at) {
-    try {
-      const d = new Date(Number(at) || Date.now());
-      return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
-    } catch { return ""; }
-  }
-  async function refreshChat() {
-    const box = $("adminChatLog");
-    if (!box) return;
-    const out = await call("/api/admin/chat");
-    const list = (out && Array.isArray(out.list)) ? out.list.slice(-40) : [];
-    box.innerHTML = "";
-    if (!list.length) box.innerHTML = `<div class="chatEmpty">Aucun message.</div>`;
-    for (const m of list) {
-      const row = document.createElement("div");
-      row.className = String(m.from || "") === "[ADMIN]" ? "chatAdmin" : "";
-      row.innerHTML = `<span class="chatTime">${esc(fmtTime(m.at))}</span> <span class="chatFrom">${esc(m.from)}</span> : <span class="chatText">${esc(m.text)}</span>`;
-      box.appendChild(row);
-    }
-    box.scrollTop = box.scrollHeight;
-  }
-  async function refreshBans() {
-    const tb = $("banRows");
-    if (!tb) return;
-    const out = await call("/api/admin/bans");
-    const list = (out && Array.isArray(out.bans)) ? out.bans : [];
-    tb.innerHTML = "";
-    if (!list.length) tb.innerHTML = `<tr><td colspan="4">Aucun bannissement.</td></tr>`;
-    for (const b of list) {
-      const tr = document.createElement("tr");
-      const until = b.until != null ? new Date(Number(b.until)).toLocaleString("fr-FR") : "Définitif";
-      tr.innerHTML = `<td>${esc(b.pseudo)}</td><td>${esc(b.reason)}</td><td>${esc(until)}</td><td></td>`;
-      const td = tr.lastChild;
-      const unban = document.createElement("button");
-      unban.type = "button"; unban.className = "small"; unban.textContent = "Débannir";
-      unban.onclick = async () => {
-        try {
-          const res = await call("/api/admin/unban", { method: "POST", body: JSON.stringify({ key: b.key }) });
-          if (!res || res.ok !== true) throw new Error("Échec.");
-          toast("Débanni.", "ok");
-        } catch (e) {
-          toast(e?.message || "Erreur.", "err");
-        }
-        refresh();
-      };
-      td.appendChild(unban);
-      tb.appendChild(tr);
-    }
-  }
-  function fmtDateTime(at) {
-    try {
-      const d = new Date(Number(at) || 0);
-      if (!Number.isFinite(d.getTime()) || d.getTime() <= 0) return "—";
-      return d.toLocaleString("fr-FR");
-    } catch { return "—"; }
-  }
-  function fmtDmgShort(v) {
-    const n = Math.max(0, Math.floor(Number(v) || 0));
-    if (n >= 1e9) return `${(n / 1e9).toFixed(1)} Md`;
-    if (n >= 1e6) return `${Math.round(n / 1e6)} M`;
-    return fmtN(n);
-  }
+
+  /* ---------- Anticheat ---------- */
   function evidenceText(ev) {
     if (!ev || typeof ev !== "object") return "—";
     const parts = [];
@@ -851,9 +1167,7 @@
     if (event.allowedDistance != null) parts.push(`budget ${fmtN(event.allowedDistance)} u`);
     if (event.speed != null) parts.push(`vitesse autorisée ${fmtN(event.speed)} u/s`);
     if (event.clientSpeed != null) parts.push(`vitesse client ${fmtN(event.clientSpeed)} u/s`);
-    if (event.clientFormation != null && event.clientFormation !== event.serverFormation) {
-      parts.push(`formation client ${event.clientFormation} / serveur ${event.serverFormation || "?"}`);
-    }
+    if (event.clientFormation != null && event.clientFormation !== event.serverFormation) parts.push(`formation client ${event.clientFormation} / serveur ${event.serverFormation || "?"}`);
     if (event.serverSpeedOre != null) parts.push(`minerai vitesse serveur ${event.serverSpeedOre || "aucun"}`);
     if (event.elapsedMs != null) parts.push(`intervalle ${fmtN(event.elapsedMs)} ms`);
     if (event.ability) parts.push(`aptitude ${event.ability}`);
@@ -861,103 +1175,200 @@
     if (event.unverified) parts.push("effet local possible : examen manuel, sans sanction automatique");
     return parts.join(" · ");
   }
-  async function refreshCheat() {
-    const tb = $("cheatRows");
-    const st = $("suspectRows");
-    if (!tb && !st) return;
-    let out = null;
-    try { out = await call("/api/admin/cheat"); } catch { return; }
-    const holds = (out && Array.isArray(out.holds)) ? out.holds : [];
-    const suspects = (out && Array.isArray(out.suspects)) ? out.suspects : [];
-    if (tb) {
-      tb.innerHTML = "";
-      if (!holds.length) tb.innerHTML = `<tr><td colspan="4">Aucun dossier.</td></tr>`;
-      for (const h of holds) {
-        const tr = document.createElement("tr");
-        tr.innerHTML = `<td>${esc(h.pseudo)}</td><td>${esc(fmtDateTime(h.at))}</td><td>${esc(evidenceText(h.evidence))}</td><td></td>`;
-        const td = tr.lastChild;
-        const free = document.createElement("button");
-        free.type = "button"; free.className = "small"; free.textContent = "Libérer (innocent)";
-        free.onclick = async () => {
-          try {
-            const res = await call("/api/admin/unban", { method: "POST", body: JSON.stringify({ key: h.key }) });
-            if (!res || res.ok !== true) throw new Error("Échec.");
-            toast(`${h.pseudo} libéré.`, "ok");
-          } catch (e) { toast(e?.message || "Erreur.", "err"); }
-          refresh();
-        };
-        const ban = document.createElement("button");
-        ban.type = "button"; ban.className = "small danger"; ban.textContent = "Bannir définitif";
-        ban.onclick = () => openBanModal({ id: "", pseudo: h.pseudo });
-        td.appendChild(free);
-        td.appendChild(ban);
-        tb.appendChild(tr);
-      }
-    }
-    if (st) {
-      const expanded = new Set([...st.querySelectorAll("details[open]")].map(d => d.dataset.id));
-      st.innerHTML = "";
-      if (!suspects.length) st.innerHTML = `<tr><td colspan="5">Aucun suspect.</td></tr>`;
-      for (const s of suspects) {
-        const tr = document.createElement("tr");
-        const report = s.security;
-        const last = (s.clockBlocked ? "Session suspendue : rythme anormal. " : "") + (report?.last && Number(report.last.at) >= Number(s.last?.at || 0) ? securityEventText(report.last)
-          : Array.isArray(s.last?.triggers) ? s.last.triggers.slice(-2).join(" · ") : "—");
-        const history = Array.isArray(report?.history) ? report.history : [];
-        const detail = history.length ? `<details data-id="${esc(s.id)}"${expanded.has(s.id) ? " open" : ""}><summary>${fmtN(report.total)} événements · détails</summary><ul>${history.map(e => `<li>${esc(fmtDateTime(e.at))} : ${esc(securityEventText(e))}</li>`).join("")}</ul></details>` : "";
-        const flag = s.flagged ? ` <span class=\"badge off\" title=\"Seuil atteint le ${esc(fmtDateTime(s.flagged.at))} : aucune sanction automatique, à toi de décider\">à examiner</span>` : "";
-        tr.innerHTML = `<td>${esc(s.pseudo)}${flag}${s.online ? "" : " <span class=\"badge off\">hors ligne</span>"}</td><td class="num">${fmtN(s.score)}</td><td class="num">${fmtN(s.strikes)}</td><td>${esc(last)}${detail}</td><td></td>`;
-        const td = tr.lastChild;
-        const kick = document.createElement("button");
-        kick.type = "button"; kick.className = "small danger"; kick.textContent = "Kick";
-        kick.onclick = () => openKickModal({ id: s.id, pseudo: s.pseudo });
-        const hold = document.createElement("button");
-        hold.type = "button"; hold.className = "small danger"; hold.textContent = "Geler";
-        hold.onclick = async () => {
-          try {
-            const res = await call("/api/admin/cheat-hold", { method: "POST", body: JSON.stringify({ id: s.id, pseudo: s.pseudo }) });
-            if (!res || res.ok !== true) throw new Error(res?.error || "Échec.");
-            toast(`${s.pseudo} gelé (dossier ouvert).`, "ok");
-          } catch (e) { toast(e?.message || "Erreur.", "err"); }
-          refresh();
-        };
-        td.appendChild(kick);
-        td.appendChild(hold);
-        st.appendChild(tr);
-      }
-    }
+  function suspectLast(s) {
+    const report = s.security;
+    return (s.clockBlocked ? "Session suspendue : rythme anormal. " : "")
+      + (report?.last && Number(report.last.at) >= Number(s.last?.at || 0) ? securityEventText(report.last)
+        : Array.isArray(s.last?.triggers) ? s.last.triggers.slice(-2).join(" · ") : "—");
   }
-  async function sendAdminMessage(inputId, msgId) {
-    const text = $(inputId).value.trim();
-    $(msgId).textContent = "";
-    $(msgId).className = "msg";
+  function renderCheat() {
+    $("holdList").innerHTML = data.holds.length
+      ? `<table><thead><tr><th>Pseudo</th><th>Gelé le</th><th>Preuves (fenêtre 10 s)</th><th></th></tr></thead><tbody>${data.holds.map((h, i) =>
+        `<tr><td><b>${esc(h.pseudo)}</b></td><td class="muted">${esc(fmtDateTime(h.at))}</td><td>${esc(evidenceText(h.evidence))}</td><td style="white-space:nowrap"><button class="btn sm ok" type="button" data-hold-free="${i}">Libérer (innocent)</button> <button class="btn sm danger" type="button" data-hold-ban="${i}">Bannir définitif</button></td></tr>`).join("")}</tbody></table>`
+      : `<div class="empty">Aucun dossier.</div>`;
+    const list = $("suspectList");
+    const expanded = new Set([...list.querySelectorAll("details[open]")].map((d) => d.dataset.id));
+    const suspects = [...data.suspects].sort((a, b) => Number(!!b.flagged) - Number(!!a.flagged) || b.score - a.score);
+    list.innerHTML = suspects.length
+      ? `<table><thead><tr><th>Pseudo</th><th class="num">Score</th><th class="num">Signalements</th><th>Dernier signalement</th><th></th></tr></thead><tbody>${suspects.map((s) => {
+        const history = Array.isArray(s.security?.history) ? s.security.history : [];
+        const detail = history.length ? `<details data-id="${esc(s.id)}"${expanded.has(s.id) ? " open" : ""}><summary>${fmtN(s.security.total)} événements · détails</summary><ul>${history.slice().reverse().map((e) => `<li>${esc(fmtDateTime(e.at))} : ${esc(securityEventText(e))}</li>`).join("")}</ul></details>` : "";
+        const flag = s.flagged ? ` <span class="badge warn" title="Seuil atteint le ${esc(fmtDateTime(s.flagged.at))}">à examiner</span>` : "";
+        return `<tr><td style="white-space:nowrap">${playerLink(s.id, s.pseudo)}${flag}${s.online ? "" : ` <span class="badge">hors ligne</span>`}</td><td class="num">${fmtN(s.score)}</td><td class="num">${fmtN(s.strikes)}</td><td>${esc(suspectLast(s))}${detail}</td><td style="white-space:nowrap"><button class="btn sm warn" type="button" data-sus-kick="${esc(s.id)}">Kick</button> <button class="btn sm danger" type="button" data-sus-hold="${esc(s.id)}">Geler</button></td></tr>`;
+      }).join("")}</tbody></table>`
+      : `<div class="empty">Aucun suspect.</div>`;
+  }
+  document.querySelector('.view[data-view="cheat"]').addEventListener("click", (e) => {
+    const free = e.target.closest("[data-hold-free]");
+    if (free) {
+      const h = data.holds[Number(free.dataset.holdFree)];
+      if (h) runInline(free, async () => { ok(await post("/api/admin/unban", { key: h.key })); return `${h.pseudo} libéré.`; });
+      return;
+    }
+    const ban = e.target.closest("[data-hold-ban]");
+    if (ban) { const h = data.holds[Number(ban.dataset.holdBan)]; if (h) openBanModal({ id: "", pseudo: h.pseudo }); return; }
+    const kick = e.target.closest("[data-sus-kick]");
+    const hold = e.target.closest("[data-sus-hold]");
+    const s = data.suspects.find((x) => x.id === (kick || hold)?.dataset[kick ? "susKick" : "susHold"]);
+    if (s && kick) openKickModal({ id: s.id, pseudo: s.pseudo, online: s.online });
+    if (s && hold) openHoldModal({ id: s.id, pseudo: s.pseudo });
+  });
+
+  /* ---------- Bannis ---------- */
+  function renderBans() {
+    $("banList").innerHTML = data.bans.length
+      ? `<table><thead><tr><th>Pseudo</th><th>Motif</th><th>Jusqu'au</th><th></th></tr></thead><tbody>${data.bans.map((b, i) =>
+        `<tr><td><b>${esc(b.pseudo)}</b>${b.cheatHold ? ` <span class="badge danger">gel anticheat</span>` : ""}</td><td>${esc(b.reason)}</td><td class="muted">${b.until != null ? esc(fmtDateTime(b.until)) : `<span class="badge danger">définitif</span>`}</td><td class="num"><button class="btn sm ok" type="button" data-unban="${i}">Débannir</button></td></tr>`).join("")}</tbody></table>`
+      : `<div class="empty">Aucun bannissement.</div>`;
+  }
+  $("banList").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-unban]");
+    const ban = b && data.bans[Number(b.dataset.unban)];
+    if (ban) runInline(b, async () => { ok(await post("/api/admin/unban", { key: ban.key })); return `${ban.pseudo} débanni.`; });
+  });
+
+  /* ---------- Statistiques ---------- */
+  let stats = null, statsAt = 0, statsTop = "credits";
+  async function loadStats(force) {
+    if (!force && Date.now() - statsAt < 15000) return;
+    statsAt = Date.now();
+    try { stats = ok(await call("/api/admin/stats")); renderStats(); } catch (e) { $("statsBody").innerHTML = `<div class="empty">${esc(e?.message || "Erreur.")}</div>`; }
+  }
+  function barList(entries, nameOf = (k) => k) {
+    const max = Math.max(1, ...entries.map(([, n]) => n));
+    return entries.length ? `<div class="bars">${entries.map(([k, n]) => `<div class="bar"><span title="${esc(k)}">${esc(nameOf(k))}</span><span class="track"><i style="width:${Math.max(2, n / max * 100)}%"></i></span><b class="num">${fmtN(n)}</b></div>`).join("")}</div>` : `<p class="muted" style="margin:0">Aucune donnée.</p>`;
+  }
+  function dayColumns(byDay) {
+    const days = [];
+    for (let i = 13; i >= 0; i--) { const d = new Date(Date.now() - i * 864e5); days.push(d.toISOString().slice(0, 10)); }
+    const max = Math.max(1, ...days.map((d) => byDay?.[d] || 0));
+    return `<div class="cols">${days.map((d) => `<div title="${esc(d)} : ${fmtN(byDay?.[d] || 0)}"><b class="num">${byDay?.[d] ? fmtN(byDay[d]) : ""}</b><i style="height:${(byDay?.[d] || 0) / max * 90}px"></i><span>${d.slice(8)}</span></div>`).join("")}</div>`;
+  }
+  function renderStats() {
+    const s = stats;
+    if (!s || view !== "stats") return;
+    const TOP_LABELS = { credits: "Crédits", exp: "EXP", honor: "Honneur", kills: "Kills" };
+    $("statsBody").innerHTML = `
+      <div class="tiles">
+        <div class="tile"><span>En ligne</span><b>${fmtN(data.onlineCount)}</b></div>
+        <div class="tile"><span>Comptes</span><b>${fmtN(s.accounts)}</b></div>
+        <div class="tile"><span>Actifs 24 h</span><b>${fmtN(s.active24h)}</b></div>
+        <div class="tile"><span>Actifs 7 j</span><b>${fmtN(s.active7d)}</b></div>
+        <div class="tile"><span>Serveur lancé depuis</span><b style="font-size:20px">${fmtDuration(s.uptimeSec)}</b></div>
+        <div class="tile"><span>Mémoire serveur</span><b style="font-size:20px">${fmtN(s.memoryMb)} Mo</b></div>
+      </div>
+      <div class="grid2" style="margin-bottom:16px">
+        <div class="card"><h2>Joueurs connectés par carte</h2><div class="pad">${barList(Object.entries(s.livePerMap || {}).sort((a, b) => b[1] - a[1]))}</div></div>
+        <div class="card"><h2>Économie (tous les comptes)</h2><div class="pad"><div class="res">
+          <div class="resBox"><div><span>Crédits</span><b>${fmtN(s.totals.credits)}</b></div></div>
+          <div class="resBox"><div><span>EXP</span><b>${fmtN(s.totals.exp)}</b></div></div>
+          <div class="resBox"><div><span>Honneur</span><b>${fmtN(s.totals.honor)}</b></div></div>
+        </div><h3 style="margin:16px 0 8px;color:var(--accent);font-size:11px;letter-spacing:.1em;text-transform:uppercase">Firmes</h3>${barList(Object.entries(s.factions).sort((a, b) => b[1] - a[1]), (k) => FACTIONS[k] || k)}</div></div>
+      </div>
+      <div class="grid2" style="margin-bottom:16px">
+        <div class="card"><h2>Comptes créés (14 jours)</h2><div class="pad">${dayColumns(s.createdByDay)}</div></div>
+        <div class="card"><h2>Comptes actifs par jour (dernière sauvegarde)</h2><div class="pad">${dayColumns(s.activeByDay)}</div></div>
+      </div>
+      <div class="grid2">
+        <div class="card"><h2>Vaisseaux actifs les plus joués</h2><div class="pad">${barList(s.ships, shipName)}</div></div>
+        <div class="card"><h2>Classement</h2>
+          <div class="filters" style="display:flex;gap:6px;padding:10px 16px;border-bottom:1px solid var(--line)">${Object.entries(TOP_LABELS).map(([k, l]) => `<button class="chip${k === statsTop ? " sel" : ""}" type="button" data-top="${k}">${l}</button>`).join("")}</div>
+          <table><tbody>${(s.top[statsTop] || []).map((p, i) => `<tr><td class="muted" style="width:30px">${i + 1}</td><td>${playerLink(p.id, p.pseudo)}</td><td class="num">${fmtN(p[statsTop])}</td></tr>`).join("")}</tbody></table>
+        </div>
+      </div>`;
+  }
+  $("statsBody").addEventListener("click", (e) => {
+    const top = e.target.closest("[data-top]");
+    if (top) { statsTop = top.dataset.top; renderStats(); }
+  });
+  $("statsReload").onclick = () => loadStats(true);
+
+  /* ---------- Journal serveur ---------- */
+  let serverLog = [], serverLogSeq = 0, serverLogPaused = false, serverLogLevel = "";
+  async function loadServerLog() {
+    if (serverLogPaused) return;
+    try {
+      const out = ok(await call(`/api/admin/server-log?since=${serverLogSeq}`));
+      if (out.seq < serverLogSeq) serverLog = []; // serveur redémarré
+      serverLogSeq = out.seq;
+      serverLog.push(...out.lines);
+      if (serverLog.length > 3000) serverLog.splice(0, serverLog.length - 3000);
+      renderServerLog();
+    } catch {}
+  }
+  function renderServerLog() {
+    if (view !== "serverlog") return;
+    const box = $("serverLogList");
+    const q = $("serverLogSearch").value.trim().toLowerCase();
+    const atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 40;
+    const list = serverLog.filter((l) => (!serverLogLevel || l.level === serverLogLevel || (serverLogLevel === "warn" && l.level === "error")) && (!q || l.text.toLowerCase().includes(q))).slice(-1000);
+    box.innerHTML = list.length
+      ? list.map((l) => `<div class="${esc(l.level)}"><time>${esc(fmtTime(l.at))}:${String(new Date(l.at).getSeconds()).padStart(2, "0")}</time><span class="lv">${esc(l.level)}</span><span class="x">${esc(l.text)}</span></div>`).join("")
+      : `<div class="empty">Aucune ligne.</div>`;
+    if (atBottom) box.scrollTop = box.scrollHeight;
+  }
+  $("serverLogSearch").addEventListener("input", renderServerLog);
+  $("serverLogLevels").addEventListener("click", (e) => {
+    const chip = e.target.closest("[data-level]");
+    if (!chip) return;
+    serverLogLevel = chip.dataset.level;
+    $("serverLogLevels").querySelectorAll(".chip").forEach((c) => c.classList.toggle("sel", c === chip));
+    renderServerLog();
+  });
+  $("serverLogPause").onclick = () => {
+    serverLogPaused = !serverLogPaused;
+    $("serverLogPause").textContent = serverLogPaused ? "Reprendre" : "Pause";
+    if (!serverLogPaused) loadServerLog();
+  };
+
+  /* ---------- Historique des actions admin ---------- */
+  const ACTION_LABELS = { give: "Crédits", "give-exp": "EXP", "give-honor": "Honneur", "give-module": "Module", "give-title": "Titre", "give-gg": "GG ajoutée", "reset-gg": "GG retirée",
+    "give-drone-design": "Design de drone", "give-item": "Objet donné", "adjust-stock": "Stock ajusté", "remove-owned": "Objet retiré", "teleport-home": "Renvoi à la base",
+    rename: "Pseudo changé", "set-faction": "Firme changée", "reset-password": "Mot de passe réinitialisé", kick: "Kick", mute: "Mute", ban: "Ban", unban: "Débannissement / libération",
+    "cheat-hold": "Gel anticheat", "debug-account": "Déblocage", delete: "Suppression", broadcast: "Message / annonce" };
+  let adminLog = [], adminLogMore = false;
+  async function loadAdminLog(older) {
+    const before = older && adminLog.length ? adminLog[adminLog.length - 1].at : 0;
+    try {
+      const out = ok(await call(`/api/admin/admin-log?before=${before}&q=${encodeURIComponent($("adminLogSearch").value.trim())}`));
+      adminLog = older ? [...adminLog, ...out.list] : out.list;
+      adminLogMore = out.more;
+      renderAdminLog();
+    } catch (e) { $("adminLogList").innerHTML = `<div class="empty">${esc(e?.message || "Erreur.")}</div>`; }
+  }
+  function renderAdminLog() {
+    $("adminLogList").innerHTML = adminLog.length
+      ? `<table><thead><tr><th>Date</th><th>Action</th><th>Cible</th><th>Détail</th></tr></thead><tbody>${adminLog.map((r) =>
+        `<tr><td class="muted" style="white-space:nowrap">${esc(fmtDateTime(r.at))}</td><td style="white-space:nowrap">${r.ok ? "" : `<span class="badge danger">échec</span> `}${esc(ACTION_LABELS[r.action] || r.action)}</td><td><b>${esc(r.target)}</b></td><td class="muted">${esc(r.detail)}</td></tr>`).join("")}</tbody></table>`
+      : `<div class="empty">Aucune action enregistrée.</div>`;
+    $("adminLogMore").hidden = !adminLogMore;
+  }
+  let adminLogSearchT = 0;
+  $("adminLogSearch").addEventListener("input", () => { clearTimeout(adminLogSearchT); adminLogSearchT = setTimeout(() => loadAdminLog(false), 300); });
+  $("adminLogMore").onclick = () => loadAdminLog(true);
+  $("adminLogReload").onclick = () => loadAdminLog(false);
+
+  /* ---------- Tchat + annonce ---------- */
+  async function sendAdminText(input, label) {
+    const text = input.value.trim();
     if (!text) return;
     try {
-      const out = await call("/api/admin/broadcast", { method: "POST", body: JSON.stringify({ text }) });
-      if (!out || out.ok !== true) throw new Error("Échec.");
-      $(inputId).value = "";
-      $(msgId).textContent = "Message envoyé.";
-      $(msgId).className = "msg ok";
-      try { await refreshChat(); } catch {}
-    } catch (e) {
-      $(msgId).textContent = e?.message || "Erreur.";
-      $(msgId).className = "msg err";
-    }
+      ok(await post("/api/admin/broadcast", { text }));
+      input.value = "";
+      toast(label, "ok");
+      refresh();
+    } catch (e) { toast(e?.message || "Erreur.", "err"); }
   }
-  async function broadcast() {
-    await sendAdminMessage("bcInput", "bcMsg");
-  }
-  async function replyChat() {
-    await sendAdminMessage("chatReplyInput", "chatReplyMsg");
-  }
+  document.querySelectorAll("[data-chat-send]").forEach((btn) => {
+    const input = btn.parentElement.querySelector("[data-chat-input]");
+    btn.onclick = () => sendAdminText(input, "Message envoyé.");
+    input.addEventListener("keydown", (e) => { if (e.key === "Enter") btn.click(); });
+  });
+  $("bcBtn").onclick = () => sendAdminText($("bcInput"), "Annonce diffusée.");
+  $("bcInput").addEventListener("keydown", (e) => { if (e.key === "Enter") $("bcBtn").click(); });
+
   $("loginBtn").onclick = login;
   $("passInput").addEventListener("keydown", (e) => { if (e.key === "Enter") login(); });
-  $("bcBtn").onclick = broadcast;
-  $("bcInput").addEventListener("keydown", (e) => { if (e.key === "Enter") broadcast(); });
-  $("chatReplyBtn").onclick = replyChat;
-  $("chatReplyInput").addEventListener("keydown", (e) => { if (e.key === "Enter") replyChat(); });
-  let searchT = 0;
-  $("accountSearch")?.addEventListener("input", () => { clearTimeout(searchT); searchT = setTimeout(() => { try { refreshAccounts(); } catch {} }, 250); });
   setInterval(refresh, 3000);
   if (token) login();
 })();

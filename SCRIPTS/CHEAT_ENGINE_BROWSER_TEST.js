@@ -118,7 +118,8 @@ try {
   assert.deepEqual(await game.evaluate(() => ({ time: simulationSeconds, shots, abilityCd })), accelerated, "la simulation est entierement suspendue");
   await admin.goto(url + "/admin.html");
   await admin.locator("#passInput").fill(password); await admin.locator("#loginBtn").click();
-  const row = admin.locator("#suspectRows tr").filter({ hasText: "clock-browser" });
+  await admin.locator('.navBtn[data-view="cheat"]').click();
+  const row = admin.locator("#suspectList tr").filter({ hasText: "clock-browser" });
   await row.waitFor();
   assert.match(await row.innerText(), /Horloge acceleree/);
   assert.match(await row.innerText(), /déclaration client, sans sanction automatique/);
