@@ -56,6 +56,7 @@ function visuals() {
     loadImage: () => {}, drawCenteredImage: (ctx, img, w, h) => draws.push({ img, w, h }),
     outlineSilhouette: () => image, strokeOutlineCentered: (...args) => draws.push({ outline: args }),
     netplayPackFor: () => ({ _ready: true, _imgs: [image], frames: 1, w: 170, h: 170 }),
+    remotePackFrame: (pack, idx) => pack._imgs[idx] || null,
     angleToFrameIndex: () => 0, petLocatorPulse: () => 0.8,
     spawnHaloPulse: (...args) => halos.push(args),
     enemiesById: new Map(), enemies: [],

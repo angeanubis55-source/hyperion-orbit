@@ -383,7 +383,6 @@ async function render() {
     user = getCurrentUserFull();
   } catch {}
   if (!user) {
-    setPager(0, 1, 0);
     hideTooltip();
     dst.innerHTML = emptyHtml("Connecte-toi pour voir ton inventaire.");
     return;

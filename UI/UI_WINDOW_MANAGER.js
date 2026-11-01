@@ -495,7 +495,21 @@ function prepareFloating(card, r = card.getBoundingClientRect()) {
     };
   }
 
-  function keepWindowInsideViewport(card, { centerIfUnpositioned = false, anchor = null } = {}) {
+  // Coin d'origine d'une fenêtre jamais déplacée, sous la barre du haut.
+  function defaultWindowSpot(place, rect) {
+    const margin = 8;
+    const top = Math.max(0, getDock()?.getBoundingClientRect?.().bottom || 0) + margin;
+    const left = window.innerWidth - rect.width - margin;
+    const bottom = window.innerHeight - rect.height - margin;
+    return {
+      "top-left": { left: margin, top },
+      "top-right": { left, top },
+      "bottom-left": { left: margin, top: bottom },
+      "bottom-right": { left, top: bottom },
+    }[place] || null;
+  }
+
+  function keepWindowInsideViewport(card, { centerIfUnpositioned = false, anchor = null, place = null } = {}) {
     if (!card) return null;
     const margin = 8;
     // Regrouper les contraintes avant la mesure ; reutiliser ensuite cette
@@ -520,8 +534,9 @@ function prepareFloating(card, r = card.getBoundingClientRect()) {
       requestedLeft = anchor.rx * window.innerWidth;
       requestedTop = anchor.ry * window.innerHeight;
     } else if (centerIfUnpositioned && !hasPosition) {
-      requestedLeft = (window.innerWidth - rect.width) / 2;
-      requestedTop = (window.innerHeight - rect.height) / 2;
+      const spot = defaultWindowSpot(place, rect);
+      requestedLeft = spot ? spot.left : (window.innerWidth - rect.width) / 2;
+      requestedTop = spot ? spot.top : (window.innerHeight - rect.height) / 2;
     }
     const p = clampToScreen(card, requestedLeft, requestedTop, rect);
     const left = Math.round(p.left), top = Math.round(p.top);
@@ -804,7 +819,7 @@ function makeMinimapResizable(id, card) {
   }
 
   window.GameWindowManager = {
-    register({ id, title, icon = "▣", root, card, defaultOpen = true, minimizable = true, dock = true }) {
+    register({ id, title, icon = "▣", root, card, defaultOpen = true, minimizable = true, dock = true, defaultPlace = null }) {
       if (!id || !root || !card) return null;
       // dock:false = jamais d'icône dans le dock (ex : terminal de quêtes :
       // il s'ouvre à proximité et se réduit sans passer par le dock).
@@ -867,6 +882,7 @@ if (barIcon && minimizable !== false) {
         bar,
         minimizable,
         defaultOpen: !!defaultOpen,
+        defaultPlace,
         dock: wantDock,
         lastDisplay: state.lastDisplay || "grid",
       });
@@ -887,7 +903,7 @@ if (barIcon && minimizable !== false) {
         // construit à l'ouverture (Modules, Boutique, etc.) ne doivent pas
         // rester vides après un rechargement de page.
         window.dispatchEvent(new CustomEvent("orbit:window-restoring", { detail: { id } }));
-        requestAnimationFrame(() => keepWindowInsideViewport(card, { centerIfUnpositioned: true }));
+        requestAnimationFrame(() => keepWindowInsideViewport(card, { centerIfUnpositioned: true, place: defaultPlace }));
         // Barre des tâches : l'icône reste visible, état actif.
         if (minimizable !== false && wantDock) {
           const dockBtn = makeDockIcon(id, title, icon);
@@ -1011,7 +1027,7 @@ restore(id) {
   // Le construire avant de mesurer evite une seconde mise en page pendant
   // l'animation, et le placement tient compte de la taille finale.
   window.dispatchEvent(new CustomEvent("orbit:window-restoring", { detail: { id } }));
-  const cardRect = keepWindowInsideViewport(w.card, { centerIfUnpositioned: !restoredSavedPosition });
+  const cardRect = keepWindowInsideViewport(w.card, { centerIfUnpositioned: !restoredSavedPosition, place: w.defaultPlace });
   bringWindowToFront(w.card);
   if (dockRect && cardRect) {
     w.card.style.setProperty("--dock-x", `${dockRect.left + dockRect.width / 2 - (cardRect.left + cardRect.width / 2)}px`);

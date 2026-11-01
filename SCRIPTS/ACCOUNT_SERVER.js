@@ -399,6 +399,8 @@ function rowToPublic(row) {
     data.pseudo = row.pseudo;
     data.email = row.email;
     data.faction = row.faction;
+    // Le hash reste en base (colonne password_hash) : il ne sort jamais.
+    delete data.password;
   }
   return data;
 }
@@ -3486,9 +3488,12 @@ async function handleEmailChangeNew(body, res) {
 // Un recu compact evite de renvoyer et reparcourir tous les modules ; il
 // confirme un saveId precis, y compris apres une reponse perdue.
 function saveResponseUser(body, user) {
-  if (body.compactSave !== true || !body.saveId) return { user };
+  if (body.compactSave !== true || !body.saveId) {
+    const { password: _hash, ...safeUser } = user;
+    return { user: safeUser };
+  }
   const metadata = {};
-  for (const key of ["id", "pseudo", "email", "faction", "password", "revision", "updatedAt"]) metadata[key] = user[key];
+  for (const key of ["id", "pseudo", "email", "faction", "revision", "updatedAt"]) metadata[key] = user[key];
   return { snapshotAccepted: true, saveId: String(body.saveId).slice(0, 128), user: metadata };
 }
 
@@ -3606,7 +3611,7 @@ async function handleSave(req, body, res) {
       .run(finalPseudo, norm(finalPseudo), finalEmail, faction, pwHash, JSON.stringify(data), incomingRev, data.updatedAt, me.id);
     if (saveId) {
       const metadata = { id: data.id, pseudo: data.pseudo, email: data.email, faction: data.faction,
-        password: data.password, revision: data.revision, updatedAt: data.updatedAt };
+        revision: data.revision, updatedAt: data.updatedAt };
       db.prepare("INSERT INTO account_save_tx (user_id, save_id, request_hash, metadata, created_at) VALUES (?, ?, ?, ?, ?)")
         .run(me.id, saveId, requestHash, JSON.stringify(metadata), data.updatedAt);
       // Petits reçus seulement ; conserver les 256 dernières opérations.

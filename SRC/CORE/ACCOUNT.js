@@ -3048,26 +3048,6 @@ export function getActiveHangarLastPos() {
   return h.lastPos || null;
 }
 
-export function saveActiveHangarPos(x, y) {
-  const u = getCurrentUserFull();
-  if (!u) return { ok: false, error: "Non connecté." };
-
-  const h = getActiveHangar(u);
-  if (!h) return { ok: false, error: "Hangar introuvable." };
-
-  const px = Number(x);
-  const py = Number(y);
-
-  if (!Number.isFinite(px) || !Number.isFinite(py)) {
-    return { ok: false, error: "Coordonnées invalides." };
-  }
-
-  h.lastPos = { x: px, y: py };
-
-  saveUser(u, { previousPetShieldMax });
-  return { ok: true };
-}
-
 export function clearActiveHangarPos() {
   const u = getCurrentUserFull();
   if (!u) return { ok: false, error: "Non connecté." };
@@ -3106,6 +3086,14 @@ export function saveActiveHangarMap(mapId) {
 
 const LIVE_HANGAR_STATE_KEY = "orbit_live_hangar_state_v1";
 
+// Ratio vie/bouclier enregistré. Absent = null, jamais 0 : Number(null) vaut 0
+// et un compte neuf démarrerait coque vide.
+function vitalityRatio(value) {
+  if (value == null || value === "") return null;
+  const ratio = Number(value);
+  return Number.isFinite(ratio) ? ratio : null;
+}
+
 function stageLiveHangarState(user, hangar) {
   try {
     if (!user?.id || !hangar?.id || typeof sessionStorage === "undefined") return;
@@ -3115,8 +3103,8 @@ function stageLiveHangarState(user, hangar) {
     // (Plus fiable que comparer Date.now() local a un updatedAt serveur.)
     all[`${user.id}:${hangar.id}`] = {
       at: Date.now(), rev: Math.floor(Number(user.revision) || 0), pos: hangar.lastPos || null, map: hangar.lastMap || null,
-      hpPct: Number.isFinite(Number(hangar.lastHpPct)) ? Number(hangar.lastHpPct) : null,
-      shPct: Number.isFinite(Number(hangar.lastShPct)) ? Number(hangar.lastShPct) : null,
+      hpPct: vitalityRatio(hangar.lastHpPct),
+      shPct: vitalityRatio(hangar.lastShPct),
     };
     sessionStorage.setItem(LIVE_HANGAR_STATE_KEY, JSON.stringify(all));
   } catch {}
@@ -3135,10 +3123,8 @@ function hangarStateView(user, hangar) {
   return {
     pos: staged?.pos || hangar?.lastPos || null,
     map: staged?.map || hangar?.lastMap || null,
-    hpPct: staged && Number.isFinite(Number(staged.hpPct)) ? Number(staged.hpPct)
-      : (Number.isFinite(Number(hangar?.lastHpPct)) ? Number(hangar.lastHpPct) : null),
-    shPct: staged && Number.isFinite(Number(staged.shPct)) ? Number(staged.shPct)
-      : (Number.isFinite(Number(hangar?.lastShPct)) ? Number(hangar.lastShPct) : null),
+    hpPct: vitalityRatio(staged?.hpPct) ?? vitalityRatio(hangar?.lastHpPct),
+    shPct: vitalityRatio(staged?.shPct) ?? vitalityRatio(hangar?.lastShPct),
   };
 }
 
@@ -3160,8 +3146,8 @@ export function saveActiveHangarState(x, y, mapId, hpPct, shPct, options = {}) {
   }
 
   // ✅ persiste la vitalité (ratio vie/bouclier) pour la restaurer après un refresh
-  if (Number.isFinite(Number(hpPct))) h.lastHpPct = Math.max(0, Math.min(1, Number(hpPct)));
-  if (Number.isFinite(Number(shPct))) h.lastShPct = Math.max(0, Math.min(1, Number(shPct)));
+  if (vitalityRatio(hpPct) != null) h.lastHpPct = Math.max(0, Math.min(1, Number(hpPct)));
+  if (vitalityRatio(shPct) != null) h.lastShPct = Math.max(0, Math.min(1, Number(shPct)));
 
   // La position est sauvegardée périodiquement et ne modifie aucune vue UI.
   if (options.deferred === true) {
@@ -4026,8 +4012,8 @@ export function saveHangarStateById(hangarId, x, y, mapId, hpPct, shPct, options
   if (mapId) h.lastMap = String(mapId).toLowerCase();
 
   // ✅ persiste la vitalité (ratio vie/bouclier) pour la restaurer après un refresh
-  if (Number.isFinite(Number(hpPct))) h.lastHpPct = Math.max(0, Math.min(1, Number(hpPct)));
-  if (Number.isFinite(Number(shPct))) h.lastShPct = Math.max(0, Math.min(1, Number(shPct)));
+  if (vitalityRatio(hpPct) != null) h.lastHpPct = Math.max(0, Math.min(1, Number(hpPct)));
+  if (vitalityRatio(shPct) != null) h.lastShPct = Math.max(0, Math.min(1, Number(shPct)));
 
   // Évite un recalcul complet de l'équipement à chaque sauvegarde de position.
   if (options.deferred === true) {

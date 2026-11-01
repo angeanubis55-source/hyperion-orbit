@@ -37,7 +37,7 @@ export function initChatUI() {
     if (!shouldRefreshWindow("chatWindow")) { onlineNeedsRender = true; return; }
     onlineNeedsRender = false;
     if (status) {
-      status.textContent = v ? "Connecté" : "Hors ligne (serveur injoignable)";
+      status.textContent = v ? "Connecté" : netplayStatus()?.sessionReplaced ? "Session ouverte ailleurs" : "Hors ligne (serveur injoignable)";
       status.classList.toggle("offline", !v);
     }
   }

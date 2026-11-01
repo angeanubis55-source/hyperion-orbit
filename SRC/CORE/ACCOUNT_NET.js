@@ -577,6 +577,9 @@ function readCache() {
     let parsed = JSON.parse(raw);
     if (parsed?.format === 2) parsed = decodeSplitAccountCache(parsed);
     if (parsed && typeof parsed.user === "object" && parsed.user.id) {
+      // Anciennes versions : le hash du mot de passe etait mis en cache.
+      delete parsed.user.password;
+      if (parsed.base) delete parsed.base.password;
       serverBase = copyAccount(parsed.base?.id === parsed.user.id ? parsed.base : parsed.user);
       retrySave = parsed.retrySave?.user?.id === parsed.user.id
         ? { ...parsed.retrySave, user: copyAccount(parsed.retrySave.user, serverBase, true) } : null;

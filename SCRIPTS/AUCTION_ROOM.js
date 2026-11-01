@@ -6,7 +6,7 @@
 // l'ordre des mises (montant mini + horodatage) et désigne le gagnant.
 
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
-import { dirname } from "node:path";
+import { dirname, join } from "node:path";
 import {
   AUCTION_ACTIVE_LOTS,
   auctionMinNextBid,
@@ -16,7 +16,7 @@ import {
 } from "../SRC/DATA/AUCTION.js";
 import { CATALOG } from "../SRC/CORE/CATALOG.js";
 
-const STATE_FILE = process.env.ORBIT_AUCTION_FILE || "SERVER_DATA/auction_state.json";
+const STATE_FILE = process.env.ORBIT_AUCTION_FILE || join(process.env.ORBIT_DATA_DIR || "SERVER_DATA", "auction_state.json");
 const MAX_BID = 1000000000000; // 1e12 : garde-fou montants absurdes
 const RECENT_KEPT = 8; // mises mémorisées par lot ("qui a parié")
 const RECENT_SENT = 5; // pseudos récents envoyés aux clients

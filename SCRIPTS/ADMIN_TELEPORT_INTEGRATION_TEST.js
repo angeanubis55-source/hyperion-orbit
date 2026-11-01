@@ -117,5 +117,23 @@ test("admin : téléportation en direct sans reconnexion, renvoi à la base, jou
   assert.equal(offline.ok, true, offline.error); assert.equal(offline.live, false);
   const inv = await admin(`/api/admin/inventory?id=u_${away.user.id}`);
   assert.equal(inv.hangars.find(h => h.active).lastMap, "1-3");
+  // Déjà venu en jeu : son état en mémoire ne reprend pas le dessus au retour.
+  ws.close();
+  await pause(200);
+  const moved = await admin("/api/admin/teleport", { id, map: "1-3", x: 6100, y: 4100 });
+  assert.equal(moved.ok, true, moved.error);
+  assert.equal(moved.live, false);
+  const again = new WebSocket(`ws://127.0.0.1:${port}/ws`);
+  sockets.push(again);
+  const received = [];
+  again.on("message", data => { received.push(JSON.parse(String(data))); });
+  await once(again, "open");
+  again.send(JSON.stringify({ t: "hello", token: pilot.token, map: "1-1" }));
+  again.send(JSON.stringify({ ...base, map: "1-3", x: 6100, y: 4100 }));
+  const arrived = async () => {
+    for (let i = 0; i < 200 && !received.some(m => m.t === "snapshot" && m.map === "1-3" && m.players.some(p => p.id === id)); i++) await pause(20);
+    return received.findLast(m => m.t === "snapshot")?.map;
+  };
+  assert.equal(await arrived(), "1-3", `le serveur a gardé l'ancienne carte : ${output}`);
   assert.equal((await admin("/api/admin/teleport", { id, map: "inconnue" })).ok, false);
 });

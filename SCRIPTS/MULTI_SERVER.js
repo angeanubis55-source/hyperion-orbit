@@ -450,7 +450,7 @@ function trackAbilityFx(state, profile, skill, msg, room, id, now, sim = null) {
     from: now,
     until: movementAbility && movementEffect
       ? (Number.isFinite(movementEffect.until) ? movementEffect.until : now + 3600_000)
-      : now + (hasDuration ? durSec * 1000 : isToggle ? 3600_000 : 3000),
+      : now + (hasDuration ? durSec * 1000 : isToggle ? 3600_000 : key === "ability_spearhead-plus_jamx-creed" ? 6000 : 3000),
     x: isZone || hyperionGa ? Math.round(Number(state.x) || 0) : 0,
     y: isZone || hyperionGa ? Math.round(Number(state.y) || 0) : 0,
     target: info.target === "enemy" || info.target === "ally" || isLinkedRepair(key) || key === "ability_disruptor_redirect" ? target : "",
@@ -944,6 +944,12 @@ async function adminTeleportRequest(body, home) {
   }
   // Hors ligne : position enregistrée dans le compte, appliquée à la connexion.
   const res = adminSetPosition(pid || body.pseudo, map, spot.x, spot.y);
+  if (res.ok) {
+    // L'état gardé en mémoire ne doit pas écraser cette position au retour.
+    cancelPeerGrace(res.pid);
+    removeFromAllRooms(res.pid);
+    securityStates.delete(res.pid);
+  }
   return res.ok ? { ...res, live: false } : res;
 }
 

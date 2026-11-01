@@ -59,3 +59,14 @@ test("un lot vide reste vide quand d'autres images sont ajoutees", async t => {
   pending.get("later.png").onload(); await next;
   assert.ok(history.every(state => state.total === 0 && state.done === 0 && state.pending === 0));
 });
+
+test("une image deja en file passe devant quand elle devient urgente", async t => {
+  const pending = images(t), loader = createImageLoader({ concurrency: 1 });
+  const busy = loader.load("busy.png");
+  loader.load("back-1.png"); loader.load("back-2.png");
+  const urgent = loader.load("urgent.png");
+  assert.equal(loader.load("urgent.png", { priority: true }), urgent, "aucun second chargement");
+  pending.get("busy.png").onload(); await busy;
+  assert.ok(pending.has("urgent.png"), "l'image urgente part juste apres");
+  assert.ok(!pending.has("back-1.png"));
+});

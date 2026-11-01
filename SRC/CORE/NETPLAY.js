@@ -271,6 +271,14 @@ function flushGameLogOutbox() {
 // douteux puis relance le cycle (hello auto à l'ouverture).
 export function forceNetReconnect() {
   if (noReconnect) return;
+  // Socket en fermeture : attendre son onclose, seul a porter le code 4001
+  // (session remplacee). Sinon l'ancien onglet reprendrait la main au nouveau.
+  if (ws && ws.readyState === 2) {
+    const now = Date.now();
+    if (!socketClosingSince) socketClosingSince = now;
+    if (now - socketClosingSince < SOCKET_CLOSING_GRACE_MS) return;
+  }
+  socketClosingSince = 0;
   stopHeartbeat();
   wsGen++; // Invalide aussi les callbacks executes pendant close().
   try {
@@ -455,6 +463,8 @@ export function drainNetAdminBoomInbox() {
 }
 // Deconnexion volontaire (kick) : ferme sans reconnect auto.
 let noReconnect = false;
+const SOCKET_CLOSING_GRACE_MS = 5000;
+let socketClosingSince = 0;
 export function netDisconnect() {
   noReconnect = true;
   stopHeartbeat();
@@ -974,7 +984,7 @@ function wsUrl() {
 }
 
 export function netplayStatus() {
-  return { connected, authed: netAuthed, myId, count: remotes.size, boxAuthority: "server", boxCount: netBoxes.size, instance: instanceMode === true, lastDisconnect };
+  return { connected, sessionReplaced: lastDisconnect?.code === 4001, authed: netAuthed, myId, count: remotes.size, boxAuthority: "server", boxCount: netBoxes.size, instance: instanceMode === true, lastDisconnect };
 }
 
 function prune() {
@@ -1704,7 +1714,6 @@ export function ensureNetplayConnection() {
             afx: sanitizeAbilityFxList(p.afx),
             shieldBuffSeq: Number(p.shieldBuffSeq) || 0,
             abilityHealSeq: Number(p.abilityHealSeq) || 0,
-            shMax: Math.max(0, Number(p.shMax) || 0),
             stockCharges: Math.max(0, Math.min(10, Number(p.stockCharges) || 0)),
             sprT: Math.max(0, Number(p.sprT) || 0),
             sprCastT: Math.max(0, Number(p.sprCastT) || 0),

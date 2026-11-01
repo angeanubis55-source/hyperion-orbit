@@ -63,6 +63,8 @@ test("inscription confirmée, identifiant oublié et réinitialisation sécuris�
     assert.ok(verify); assert.equal((await api("/api/auth/verify-email", { token: verify })).ok, true);
     assert.equal((await api("/api/auth/verify-email", { token: verify })).ok, false);
     const login = await api("/api/login", { pseudoOrEmail: "PiloteRecup", password: "ancien-password-123" }); assert.ok(login.token);
+    assert.equal(login.user.password, undefined, "le hash ne sort pas du serveur");
+    assert.equal((await api("/api/me", undefined, login.token)).user.password, undefined);
     const unknownUser = await api("/api/auth/forgot-username", { email: "absent@auth-example.com" });
     const knownUser = await api("/api/auth/forgot-username", { email: "pilote@auth-example.com" });
     assert.equal(unknownUser.message, knownUser.message); assert.match(mails.at(-1).text, /PiloteRecup/);

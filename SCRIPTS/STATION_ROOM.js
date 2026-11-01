@@ -10,7 +10,7 @@
 // remboursement. Solo-safe : sans serveur, le local continue comme avant.
 
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
-import { dirname } from "node:path";
+import { dirname, join } from "node:path";
 import { getAccountGameplayData, clanTagOfUser, clanIdOfTag, diploBetween } from "./ACCOUNT_SERVER.js";
 import {
   STATION_HUB,
@@ -27,7 +27,7 @@ import {
 } from "../SRC/DATA/BATTLESTATION.js";
 import { STATION_CENTERS } from "../SRC/DATA/STATION_CENTERS.js";
 
-const STATE_FILE = process.env.ORBIT_STATION_FILE || "SERVER_DATA/station_state.json";
+const STATE_FILE = process.env.ORBIT_STATION_FILE || join(process.env.ORBIT_DATA_DIR || "SERVER_DATA", "station_state.json");
 const INSTALL_CD_MS = 60000;
 // Réparation : 85 000 PV/s sur le cœur, 42 500 PV/s par module, pendant 10 s.
 const REPAIR_HUB_RATE = 85000;

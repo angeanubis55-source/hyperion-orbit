@@ -67,7 +67,14 @@ export function createImageLoader({
       IMG_CACHE.set(src, img);
     }
 
-    if (IMG_PROMISE.has(src)) return IMG_PROMISE.get(src);
+    if (IMG_PROMISE.has(src)) {
+      // Devenue urgente alors qu'elle attend encore : elle passe devant.
+      if (priority) {
+        const waiting = IMG_QUEUE.findIndex((job) => job.src === src);
+        if (waiting > 0) IMG_QUEUE.unshift(...IMG_QUEUE.splice(waiting, 1));
+      }
+      return IMG_PROMISE.get(src);
+    }
 
     const p = new Promise((resolve) => {
       const job = { src, img, resolve };

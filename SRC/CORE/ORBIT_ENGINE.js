@@ -4606,9 +4606,10 @@ function singularityExecute(tgt, threshold, label, ability) {
   if (!tgt || !(tgt.hp > 0)) return false;
   if (Number(tgt.hp || 0) >= threshold) return false;
   let out = null;
+  const hpBefore = Math.ceil(Number(tgt.hp) || 0);
   try { out = damageEnemy(tgt, 99999999, 1.0, { chance: 0, mult: 1 }, { ability, fixedDamage: true }); } catch {}
   if (out && (out.total || 0) > 0) {
-    try { queueVolleyFloat(tgt, out, volleySeq++, 1); } catch {}
+    try { queueVolleyFloat(tgt, { ...out, total: hpBefore, hp: hpBefore, sh: 0, rawDamage: hpBefore }, volleySeq++, 1); } catch {}
   }
   showNotification(`${label} : exécution (< ${formatInteger(threshold)} HP) !`, 2.5, "info");
   return true;
@@ -5684,7 +5685,7 @@ function shipPassiveXpMult() {
 // cibles) : elles peuvent tourner en parallèle, même sur Police.
 function startHecateCooldown(plus) {
   // Variante explicite (true = Plus, false = base) ; sans param = le vaisseau.
-  const p = plus === true ? true : plus === false ? false : hecatePlusShip();
+  const p = plus === true ? true : plus === false ? false : isHecatePlusBase();
   const cd = droneAbilityCooldown(hecateCdVal(p));
   reportAbilityCast(p ? "ability_hecate-plus_particle-beam-plus" : "ability_hecate_particle-beam", false);
   if (p) {
@@ -5733,7 +5734,7 @@ function activateHecate(forcePlus) {
   if (player.dead || !started) return;
   // Le bouton cliqué décide (Police a les deux) ; sinon le vaisseau.
   // Chaque faisceau gère SA compétence : l'autre tourne en parallèle.
-  const plus = forcePlus === true ? true : forcePlus === false ? false : hecatePlusShip();
+  const plus = forcePlus === true ? true : forcePlus === false ? false : isHecatePlusBase();
   const tKey = plus ? "hecatePlusT" : "hecateT";
   const cdKey = plus ? "hecatePlusCd" : "hecateCd";
   if ((player[tKey] || 0) > 0) return;
@@ -6615,7 +6616,8 @@ function nebulaDamageTick() {
     const ix = Math.floor((x - player.nebX) / 500 * mask.w + mask.w / 2);
     const iy = Math.floor((y - player.nebY) / 291 * mask.h + mask.h / 2);
     if (ix < 0 || iy < 0 || ix >= mask.w || iy >= mask.h) return false;
-    return mask.data[iy * mask.w + ix] === 1;
+    // Le nuage est dessiné deux fois, la seconde en miroir gauche-droite.
+    return mask.data[iy * mask.w + ix] === 1 || mask.data[iy * mask.w + (mask.w - 1 - ix)] === 1;
   };
   const tickTarget = (t, applyDamage) => {
     if (!t || !(t.hp > 0)) return;
@@ -8021,6 +8023,69 @@ function formationTip(f) {
   return tip;
 }
 
+// Onglet Aptitudes de la palette : les 65 icones de ASSETS/APTITUDES,
+// regroupees par vaisseau. Un vaisseau sans aptitude n'affiche pas de
+// section. Visuel seul pour l'instant (pas d'effet gameplay) : clic = notification.
+const ABILITY_GROUPS = [
+  { ship: "Police", ships: ["police"], ids: policeAbilityIds() },
+  { ship: "Aegis", ships: ["aegis"], ids: ["ability_aegis_hp-repair", "ability_aegis_repair-pod", "ability_aegis_shield-repair"] },
+  { ship: "Basilisk", ships: ["basilisk"], ids: ["ability_basilisk_heightened-valour", "ability_basilisk_noxious-nebula"] },
+  { ship: "Berserker", ships: ["berserker"], ids: ["ability_berserker_bsk", "ability_berserker_rvg", "ability_berserker_shl"] },
+  { ship: "Centurion Ability Solace", ships: ["centurion_ability_solace"], ids: ["ability_solace"] },
+  { ship: "Centurion Ability Diminisher", ships: ["centurion_ability_diminisher"], ids: ["ability_diminisher"] },
+  { ship: "Centurion Ability Sentinel", ships: ["centurion_ability_sentinel"], ids: ["ability_sentinel"] },
+  { ship: "Centurion Ability Venom", ships: ["centurion_ability_venom"], ids: ["ability_venom"] },
+  { ship: "Centurion Ability Spectrum", ships: ["centurion_ability_spectrum"], ids: ["ability_spectrum"] },
+  { ship: "Citadel Plus", ships: ["citadel_plus"], ids: ["ability_citadel-plus_prismatic-endurance", "ability_citadel-plus_draw-fire", "ability_citadel-plus_fortify", "ability_citadel-plus_protection", "ability_citadel-plus_travel"] },
+  { ship: "Citadel", ships: ["citadel"], ids: ["ability_citadel_draw-fire", "ability_citadel_fortify", "ability_citadel_protection", "ability_citadel_travel"] },
+  { ship: "Cyborg", ships: ["cyborg"], ids: ["ability_cyborg_singularity"] },
+  { ship: "Diminisher", ships: ["diminisher"], ids: ["ability_diminisher"] },
+  { ship: "Disruptor", ships: ["disruptor"], ids: ["ability_disruptor_ddol", "ability_disruptor_redirect", "ability_disruptor_shield-disarray"] },
+  { ship: "Goliath X", ships: ["goliath_x"], ids: ["ability_goliath-x_frozen-claw"] },
+  { ship: "Hammerclaw", ships: ["hammerclaw"], ids: ["ability_hammerclaw_hp-repair", "ability_hammerclaw_shield-repair", "ability_hammerclaw_repair-pod"] },
+  { ship: "Hammerclaw Plus", ships: ["hammerclaw_plus"], ids: ["ability_hammerclaw-plus_reallocate", "ability_hammerclaw-plus_hp-repair", "ability_hammerclaw-plus_shield-repair", "ability_hammerclaw-plus_repair-pod"] },
+  { ship: "Hecate Plus", ships: ["hecate_plus"], ids: ["ability_hecate-plus_particle-beam-plus", "ability_hecate-plus_stockpile"] },
+  { ship: "Hecate", ships: ["hecate"], ids: ["ability_hecate_particle-beam"] },
+  { ship: "Holo", ships: ["holo"], ids: ["ability_holo_enemy-reversal", "ability_holo_self-reversal"] },
+  { ship: "Hyperion", ships: ["hyperion"], ids: ["ability_hyperion_ga", "ability_hyperion_qa"] },
+  { ship: "Keres", ships: ["keres"], ids: ["ability_keres_sle", "ability_keres_spr"] },
+  { ship: "Liberator Plus", ships: ["liberator_plus"], ids: ["ability_liberator-plus_self-repair"] },
+  { ship: "Lightning", ships: ["lightning", "vengeance_lightning"], ids: ["ability_lightning"] },
+  { ship: "Mimesis", ships: ["mimesis"], ids: ["ability_mimesis_hologram", "ability_mimesis_phase-out", "ability_mimesis_scramble"] },
+  { ship: "Orcus", ships: ["orcus"], ids: ["ability_orcus_assimilate"] },
+  { ship: "Orcus Plus", ships: ["orcus_plus"], ids: ["ability_orcus-plus_assimilate", "ability_orcus-plus_target-marker"] },
+  { ship: "Paladin", ships: ["paladin"], ids: ["ability_paladin_last-stand", "ability_paladin_ripper"] },
+  { ship: "Pusat Plus", ships: ["pusat_plus"], ids: ["ability_pusat-plus_speed-sap"] },
+  { ship: "Retiarus Plus", ships: ["retiarus_plus"], ids: ["ability_retiarus-plus_chsp", "ability_retiarus-plus_spcp"] },
+  { ship: "Retiarus", ships: ["retiarus"], ids: ["ability_retiarus_chs", "ability_retiarus_spc"] },
+  { ship: "Sentinel", ships: ["sentinel"], ids: ["ability_sentinel"] },
+  { ship: "Solace Plus", ships: ["solace_plus", "solace_plus_3d_test"], ids: ["ability_solace-plus_nano-cluster-repairer-plus"] },
+  { ship: "Solace", ships: ["solace"], ids: ["ability_solace"] },
+  { ship: "Solaris Plus", ships: ["solaris_plus"], ids: ["ability_solaris-plus_incinerate-plus"] },
+  { ship: "Solaris", ships: ["solaris"], ids: ["ability_solaris_inc"] },
+  { ship: "Spearhead Plus", ships: ["spearhead_plus"], ids: ["ability_spearhead-plus_jamx-creed", "ability_spearhead-plus_neutralizing-marker", "ability_spearhead-plus_target-marker", "ability_spearhead-plus_recon", "ability_spearhead-plus_ultimate-cloak"] },
+  { ship: "Spearhead", ships: ["spearhead"], ids: ["ability_spearhead_double-minimap", "ability_spearhead_jam-x", "ability_spearhead_target-marker", "ability_spearhead_ultimate-cloak"] },
+  { ship: "Spectrum Plus", ships: ["spectrum_plus"], ids: ["ability_spectrum-plus_prismatic-reflecting"] },
+  { ship: "Spectrum", ships: ["spectrum"], ids: ["ability_spectrum"] },
+  { ship: "Tartarus Plus", ships: ["tartarus_plus"], ids: ["ability_tartarus-plus_rapid-fire-plus", "ability_tartarus-plus_speed-boost-plus"] },
+  { ship: "Tartarus", ships: ["tartarus"], ids: ["ability_tartarus_rapid-fire", "ability_tartarus_speed-boost"] },
+  { ship: "Tempest", ships: ["tempest"], ids: ["ability_tempest_volt-backup", "ability_tempest_volt-discharge", "ability_tempest_voltage-link"] },
+  { ship: "Venom", ships: ["venom"], ids: ["ability_venom"] },
+  { ship: "Yamato", ships: ["yamato", "yamato_ronin", "yamato_violet"], ids: ["ability_yamato_travel"] },
+  { ship: "Zephyr", ships: ["zephyr"], ids: ["ability_zephyr_mmt", "ability_zephyr_tbr"] },
+];
+
+// Groupe d'aptitudes du vaisseau équipé (hangar actif), ou null.
+// Designs résolus vers leur base (ex : vengeance_lightning_france -> vengeance).
+function currentAbilityShipMatch() {
+  let rawShipId = "";
+  try { rawShipId = String(getActiveHangarFromUser(account?.user)?.shipId || "").toLowerCase(); } catch {}
+  let baseShipId = null;
+  try { baseShipId = getShipDesignBaseId(rawShipId); } catch {}
+  const candidates = [rawShipId, baseShipId, String(rawShipId).split("_").slice(0, 2).join("_")].filter(Boolean);
+  return ABILITY_GROUPS.find(group => group.ships.some(sid => candidates.includes(sid))) || null;
+}
+
 function initializeCustomActionBar() {
   const bar = document.getElementById("ammoBar");
   if (!bar || bar.dataset.customized === "1") return;
@@ -8198,57 +8263,6 @@ function initializeCustomActionBar() {
     return button;
   });
 
-  // Onglet Aptitudes de la palette : les 65 icones de ASSETS/APTITUDES,
-  // regroupees par vaisseau. Un vaisseau sans aptitude n'affiche pas de
-  // section. Visuel seul pour l'instant (pas d'effet gameplay) : clic = notification.
-  const ABILITY_GROUPS = [
-    { ship: "Police", ships: ["police"], ids: policeAbilityIds() },
-    { ship: "Aegis", ships: ["aegis"], ids: ["ability_aegis_hp-repair", "ability_aegis_repair-pod", "ability_aegis_shield-repair"] },
-    { ship: "Basilisk", ships: ["basilisk"], ids: ["ability_basilisk_heightened-valour", "ability_basilisk_noxious-nebula"] },
-    { ship: "Berserker", ships: ["berserker"], ids: ["ability_berserker_bsk", "ability_berserker_rvg", "ability_berserker_shl"] },
-    { ship: "Centurion Ability Solace", ships: ["centurion_ability_solace"], ids: ["ability_solace"] },
-    { ship: "Centurion Ability Diminisher", ships: ["centurion_ability_diminisher"], ids: ["ability_diminisher"] },
-    { ship: "Centurion Ability Sentinel", ships: ["centurion_ability_sentinel"], ids: ["ability_sentinel"] },
-    { ship: "Centurion Ability Venom", ships: ["centurion_ability_venom"], ids: ["ability_venom"] },
-    { ship: "Centurion Ability Spectrum", ships: ["centurion_ability_spectrum"], ids: ["ability_spectrum"] },
-    { ship: "Citadel Plus", ships: ["citadel_plus"], ids: ["ability_citadel-plus_prismatic-endurance", "ability_citadel-plus_draw-fire", "ability_citadel-plus_fortify", "ability_citadel-plus_protection", "ability_citadel-plus_travel"] },
-    { ship: "Citadel", ships: ["citadel"], ids: ["ability_citadel_draw-fire", "ability_citadel_fortify", "ability_citadel_protection", "ability_citadel_travel"] },
-    { ship: "Cyborg", ships: ["cyborg"], ids: ["ability_cyborg_singularity"] },
-    { ship: "Diminisher", ships: ["diminisher"], ids: ["ability_diminisher"] },
-    { ship: "Disruptor", ships: ["disruptor"], ids: ["ability_disruptor_ddol", "ability_disruptor_redirect", "ability_disruptor_shield-disarray"] },
-    { ship: "Goliath X", ships: ["goliath_x"], ids: ["ability_goliath-x_frozen-claw"] },
-    { ship: "Hammerclaw", ships: ["hammerclaw"], ids: ["ability_hammerclaw_hp-repair", "ability_hammerclaw_shield-repair", "ability_hammerclaw_repair-pod"] },
-    { ship: "Hammerclaw Plus", ships: ["hammerclaw_plus"], ids: ["ability_hammerclaw-plus_reallocate", "ability_hammerclaw-plus_hp-repair", "ability_hammerclaw-plus_shield-repair", "ability_hammerclaw-plus_repair-pod"] },
-    { ship: "Hecate Plus", ships: ["hecate_plus"], ids: ["ability_hecate-plus_particle-beam-plus", "ability_hecate-plus_stockpile"] },
-    { ship: "Hecate", ships: ["hecate"], ids: ["ability_hecate_particle-beam"] },
-    { ship: "Holo", ships: ["holo"], ids: ["ability_holo_enemy-reversal", "ability_holo_self-reversal"] },
-    { ship: "Hyperion", ships: ["hyperion"], ids: ["ability_hyperion_ga", "ability_hyperion_qa"] },
-    { ship: "Keres", ships: ["keres"], ids: ["ability_keres_sle", "ability_keres_spr"] },
-    { ship: "Liberator Plus", ships: ["liberator_plus"], ids: ["ability_liberator-plus_self-repair"] },
-    { ship: "Lightning", ships: ["lightning", "vengeance_lightning"], ids: ["ability_lightning"] },
-    { ship: "Mimesis", ships: ["mimesis"], ids: ["ability_mimesis_hologram", "ability_mimesis_phase-out", "ability_mimesis_scramble"] },
-    { ship: "Orcus", ships: ["orcus"], ids: ["ability_orcus_assimilate"] },
-    { ship: "Orcus Plus", ships: ["orcus_plus"], ids: ["ability_orcus-plus_assimilate", "ability_orcus-plus_target-marker"] },
-    { ship: "Paladin", ships: ["paladin"], ids: ["ability_paladin_last-stand", "ability_paladin_ripper"] },
-    { ship: "Pusat Plus", ships: ["pusat_plus"], ids: ["ability_pusat-plus_speed-sap"] },
-    { ship: "Retiarus Plus", ships: ["retiarus_plus"], ids: ["ability_retiarus-plus_chsp", "ability_retiarus-plus_spcp"] },
-    { ship: "Retiarus", ships: ["retiarus"], ids: ["ability_retiarus_chs", "ability_retiarus_spc"] },
-    { ship: "Sentinel", ships: ["sentinel"], ids: ["ability_sentinel"] },
-    { ship: "Solace Plus", ships: ["solace_plus", "solace_plus_3d_test"], ids: ["ability_solace-plus_nano-cluster-repairer-plus"] },
-    { ship: "Solace", ships: ["solace"], ids: ["ability_solace"] },
-    { ship: "Solaris Plus", ships: ["solaris_plus"], ids: ["ability_solaris-plus_incinerate-plus"] },
-    { ship: "Solaris", ships: ["solaris"], ids: ["ability_solaris_inc"] },
-    { ship: "Spearhead Plus", ships: ["spearhead_plus"], ids: ["ability_spearhead-plus_jamx-creed", "ability_spearhead-plus_neutralizing-marker", "ability_spearhead-plus_target-marker", "ability_spearhead-plus_recon", "ability_spearhead-plus_ultimate-cloak"] },
-    { ship: "Spearhead", ships: ["spearhead"], ids: ["ability_spearhead_double-minimap", "ability_spearhead_jam-x", "ability_spearhead_target-marker", "ability_spearhead_ultimate-cloak"] },
-    { ship: "Spectrum Plus", ships: ["spectrum_plus"], ids: ["ability_spectrum-plus_prismatic-reflecting"] },
-    { ship: "Spectrum", ships: ["spectrum"], ids: ["ability_spectrum"] },
-    { ship: "Tartarus Plus", ships: ["tartarus_plus"], ids: ["ability_tartarus-plus_rapid-fire-plus", "ability_tartarus-plus_speed-boost-plus"] },
-    { ship: "Tartarus", ships: ["tartarus"], ids: ["ability_tartarus_rapid-fire", "ability_tartarus_speed-boost"] },
-    { ship: "Tempest", ships: ["tempest"], ids: ["ability_tempest_volt-backup", "ability_tempest_volt-discharge", "ability_tempest_voltage-link"] },
-    { ship: "Venom", ships: ["venom"], ids: ["ability_venom"] },
-    { ship: "Yamato", ships: ["yamato", "yamato_ronin", "yamato_violet"], ids: ["ability_yamato_travel"] },
-    { ship: "Zephyr", ships: ["zephyr"], ids: ["ability_zephyr_mmt", "ability_zephyr_tbr"] },
-  ];
   function abilityIconSrc(name) {
     return `ASSETS/APTITUDES/ICONS/${abilityIconFile(name)}`;
   }
@@ -8621,16 +8635,6 @@ function initializeCustomActionBar() {
     }
   }
 
-  // Groupe d'aptitudes du vaisseau équipé (hangar actif), ou null.
-  // Designs résolus vers leur base (ex : vengeance_lightning_france -> vengeance).
-  function currentAbilityShipMatch() {
-    let rawShipId = "";
-    try { rawShipId = String(getActiveHangarFromUser(account?.user)?.shipId || "").toLowerCase(); } catch {}
-    let baseShipId = null;
-    try { baseShipId = getShipDesignBaseId(rawShipId); } catch {}
-    const candidates = [rawShipId, baseShipId, String(rawShipId).split("_").slice(0, 2).join("_")].filter(Boolean);
-    return ABILITY_GROUPS.find(group => group.ships.some(sid => candidates.includes(sid))) || null;
-  }
   // Masque l'onglet Aptitudes si le vaisseau équipé n'a aucune aptitude.
   // Retourne le groupe affiché (ou null).
   function syncAbilitiesTabVisibility() {
@@ -11336,9 +11340,11 @@ function registerHudWindows() {
   // chaque mise à jour au lieu de resservir un cache périmé.
   const menuIcon = (name) => `<img class="menuIconImg" src="ASSETS/UI/MENU/${name}.png?v=${encodeURIComponent(String(GAME_VERSION || "0"))}" alt="" draggable="false">`;
 
-  reg("boxMeta", "Stats joueur", menuIcon("profile_hover"));
-  reg("boxVitals", "État du vaisseau", menuIcon("ship_hover"));
-  reg("minimap", "Mini-carte", menuIcon("cross_hover"));
+  // Petit écran : deux fenêtres ouvertes seulement, pour garder le vaisseau visible.
+  const shortScreen = window.innerHeight < 560;
+  reg("boxMeta", "Stats joueur", menuIcon("profile_hover"), !shortScreen, { defaultPlace: "top-left" });
+  reg("boxVitals", "État du vaisseau", menuIcon("ship_hover"), true, { defaultPlace: shortScreen ? "top-left" : "top-right" });
+  reg("minimap", "Mini-carte", menuIcon("cross_hover"), true, { defaultPlace: "bottom-right" });
   reg("settingsWindow", "Paramètres", menuIcon("settings_hover"), false);
   reg("questWindow", "Missions", menuIcon("missions_hover"), false);
   reg("questOfferWindow", "Terminal de quêtes", menuIcon("diminish_quests_hover"), false, { dock: false });
@@ -11348,7 +11354,7 @@ function registerHudWindows() {
   reg("starMapInfoWindow", "Détails de la carte", menuIcon("starmap_hover"), false, { dock: false });
   window.GameWindowManager.close("starMapInfoWindow");
   reg("gameLogWindow", "LOG", menuIcon("text_hover"), false);
-  reg("chatWindow", "Chat", menuIcon("chat_hover"), true);
+  reg("chatWindow", "Chat", menuIcon("chat_hover"), !shortScreen, { defaultPlace: "bottom-left" });
   reg("groupWindow", "Groupe", menuIcon("crew_hover"), false);
   reg("friendsWindow", "Amis", menuIcon("addfriend_hover"), false);
   reg("clanWindow", "Clan", menuIcon("clan_hover"), false);
@@ -33328,7 +33334,15 @@ function isLaserTargetOutOfRange(t) {
 
 // Annonce immédiate au déclenchement manuel : "Le combat a commencé."
 // à portée, "Cible hors de portée." sinon (comme roquettes / lance-roquettes).
+let noLaserHintShown = false;
+function hintNoLasersEquipped() {
+  if (noLaserHintShown || player.laserMods?.length !== 0) return;
+  noLaserHintShown = true;
+  showNotification("Aucun laser équipé : tes tirs ne font presque aucun dégât. Équipe-en un au hangar.", 5, "error");
+}
+
 function announceLaserCombatRange(t) {
+  hintNoLasersEquipped();
   const out = isLaserTargetOutOfRange(t);
   laserCombatInRange = !out;
   escapeWatch = null;
@@ -37171,6 +37185,13 @@ function drawMinimap() {
     const foe = enemiesById.get(petLocator.enemyId);
     if (foe && foe.hp > 0) petLocatorMarkers.push({ x: foe.x, y: foe.y, color: "#ff2e4d", pulse: true });
   }
+  // Point de ralliement du groupe sur la carte courante.
+  try {
+    const rally = getNetGroup()?.rally;
+    if (rally && Number(rally.expiresAt) > Date.now() && String(rally.map) === String(window.__CURRENT_MAP_ID__ || "")) {
+      petLocatorMarkers.push({ x: Number(rally.x) || 0, y: Number(rally.y) || 0, color: "#ff3b4f", pulse: true, cross: true });
+    }
+  } catch {}
   renderMinimap(mctx, {
     width: useCss ? cssW : mini.width,
     height: useCss ? cssH : mini.height,
@@ -37547,6 +37568,27 @@ function netplayPackFor(shipId) {
   return pack;
 }
 
+// Vue à dessiner pour un distant pendant le chargement de son vaisseau : celle
+// de son angle en priorité, sinon la plus proche déjà reçue. Une connexion
+// lente montre ainsi la coque dès la première image, pas une flèche.
+function remotePackFrame(pack, idx) {
+  const exact = pack?._imgs?.[idx];
+  if (isImgReady(exact)) return exact;
+  if (pack && !pack._promise) ensurePackLoaded(pack);
+  const frames = Math.max(1, Number(pack?.frames) || 1);
+  if (pack && pack._wantedFrame !== idx) {
+    pack._wantedFrame = idx;
+    try { loadImage(`${pack.path}${pack.firstNumber + idx}${pack.ext}`, { priority: true }); } catch {}
+  }
+  for (let step = 1; step <= frames / 2; step++) {
+    const after = pack?._imgs?.[(idx + step) % frames];
+    if (isImgReady(after)) return after;
+    const before = pack?._imgs?.[(idx - step + frames) % frames];
+    if (isImgReady(before)) return before;
+  }
+  return null;
+}
+
 function warmNetplayRemoteAssets(remote) {
   if (!remote || remote.dead) return;
   const dx = Number(remote.x) - Number(player.x), dy = Number(remote.y) - Number(player.y);
@@ -37704,12 +37746,6 @@ function shouldPlayNetVolleySound(ev) {
       if (netVolleySoundsSeen.size <= 480) break;
     }
   }
-  try {
-    const rally = getNetGroup()?.rally;
-    if (rally && Number(rally.expiresAt) > Date.now() && String(rally.map) === String(window.__CURRENT_MAP_ID__ || "")) {
-      petLocatorMarkers.push({ x: Number(rally.x) || 0, y: Number(rally.y) || 0, color: "#ff3b4f", pulse: true, cross: true });
-    }
-  } catch {}
   return true;
 }
 
@@ -38458,11 +38494,11 @@ function drawRemoteAbilityFx(r, shipFx) {
   function rfxRemoteShip(rem) {
     try {
       const pk = netplayPackFor(rem.shipId);
-      if (!pk || !pk._ready || !pk._imgs || !pk._imgs.length) return null;
-      const fr = Math.max(1, Number(pk.frames) || pk._imgs.length || 1);
+      if (!pk) return null;
+      const fr = Math.max(1, Number(pk.frames) || 1);
       const fi = angleToFrameIndex((Number(rem.rangle ?? rem.angle) || 0) + (pk?.angleOffset || 0), fr);
-      const si = pk._imgs[fi] || pk._imgs[0];
-      if (!isImgReady(si)) return null;
+      const si = remotePackFrame(pk, fi);
+      if (!si) return null;
       return { pack: pk, img: si, w: pk.w ?? 170, h: pk.h ?? 170, frame: fi, packId: pk?.id || rem.shipId };
     } catch { return null; }
   }
@@ -38532,7 +38568,7 @@ function drawRemoteAbilityFx(r, shipFx) {
       }
       // Plaque stable : ne suit pas le balancement du vaisseau.
       drawPlayerStatus(ctx, { hp: 1, hpMax: 1, sh: 1, shMax: 1, r: 18 },
-        (r.clan ? `[${r.clan}] ` : "") + String(r.pseudo || "Pilote"), 0, -swayBob,
+        (r.clan ? `[${r.clan}] ` : "") + String(r.pseudo || "Pilote"), 0, 0,
         getCachedImage(r.rank || ""), getCachedImage(getFaction(r.firm)?.imagePath || ""),
         r.droneIndicators || [], getCachedImage(r.ficon || ""), r.moduleIndicators || [], false, true, undefined, undefined, Math.max(0, Math.floor(Number(r.gg) || 0)), renderSmoothingOn(),
         (() => { try { if (r.showTitle !== true) return null; const t = getTitleById(r.title); if (t) return { text: t.name, color: t.color }; const tt = String(r.titleT || ""); if (!tt) return null; const tc = String(r.titleC || ""); return { text: tt, color: /^#[0-9a-fA-F]{6}$/.test(tc.trim()) ? tc.trim().toLowerCase() : "#ffffff" }; } catch { return null; } })());
@@ -39183,15 +39219,15 @@ function drawNetplayRemotes(ox, oy) {
     let drawn = false;
     let remoteFrame = 0;
     try {
-      if (pack && pack._ready && pack._imgs && pack._imgs.length) {
-        const frames = Math.max(1, Number(pack.frames) || pack._imgs.length || 1);
+      if (pack) {
+        const frames = Math.max(1, Number(pack.frames) || 1);
         // Meme convention que la coque locale : angle + angleOffset du pack.
         const idx = angleToFrameIndex((Number(r.rangle ?? r.angle) || 0) + (pack?.angleOffset || 0), frames);
         remoteFrame = idx;
-        const img = pack._imgs[idx] || pack._imgs[0];
-        if (isImgReady(img)) {
+        const img = remotePackFrame(pack, idx);
+        if (img) {
           ctx.imageSmoothingEnabled = false;
-          if (isLeonovHomeShip(r.shipId, r.firm)) {
+          if (img === pack._imgs[idx] && isLeonovHomeShip(r.shipId, r.firm)) {
             const w = pack.w ?? 170;
             const h = pack.h ?? 170;
             const sil = outlineSilhouette(`net-ship:${r.id}:${pack?.id || r.shipId}:${idx}`, img, w, h, "#259abb");
@@ -39202,8 +39238,6 @@ function drawNetplayRemotes(ox, oy) {
           drawCustomDesignParticles(r.shipId, r.id);
           drawn = true;
         }
-      } else if (pack && !pack._promise) {
-        try { ensurePackLoaded(pack); } catch {}
       }
     } catch {}
     if (!drawn) {
@@ -41602,6 +41636,7 @@ function refreshMyClanTagNow() {
       const tag = cleanClanTag(data?.clan?.tag);
       setMyClanTag(tag);
       try {
+        if (!tag) { setNetDiplo([], [], []); return null; }
         const rel = await fetch("/api/clans/relations", { headers });
         const relData = await rel.json().catch(() => ({}));
         const act = Array.isArray(relData?.active) ? relData.active : [];
@@ -47949,7 +47984,9 @@ async function startGame() {
     if (!linked) {
       // Refus affiché en rouge un instant, puis RÉESSAYER (orange).
       setLoadingStartBtn("refused");
-      setDepartStatus("Serveur injoignable. Relance le serveur puis réessaie.");
+      setDepartStatus(netplayStatus().sessionReplaced
+        ? "Session ouverte ailleurs. Actualise cette page pour reprendre ici."
+        : "Serveur injoignable. Relance le serveur puis réessaie.");
       setTimeout(() => {
         starting = false;
         setLoadingStartBtn("retry");
@@ -50276,10 +50313,10 @@ updateAmmoUI();
 // ✅ restaure la vitalité de la dernière session (refresh ne soigne plus)
 {
   const restored = getActiveHangarState();
-  if (player.hpMax > 0 && Number.isFinite(Number(restored?.hpPct))) {
+  if (player.hpMax > 0 && restored?.hpPct != null && Number.isFinite(Number(restored.hpPct))) {
     player.hp = Math.max(1, Math.floor(player.hpMax * clamp(Number(restored.hpPct), 0, 1)));
   }
-  if (player.shMax > 0 && Number.isFinite(Number(restored?.shPct))) {
+  if (player.shMax > 0 && restored?.shPct != null && Number.isFinite(Number(restored.shPct))) {
     player.sh = Math.max(0, Math.floor(player.shMax * clamp(Number(restored.shPct), 0, 1)));
   }
 }

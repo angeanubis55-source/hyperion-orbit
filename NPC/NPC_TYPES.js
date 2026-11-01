@@ -3470,15 +3470,6 @@ export const NPC_TYPES = {
     bulletSprite: { src: "COMBAT/MUNITIONS/X2.png", w: 46, h: 16, glow: true, invert: true },
     r: 18, hp: 180000, shield: 100000, speed: 300, bulletDmg: 3000, bulletSpeed: 4500, shootRange: 500,
   },
-  npc_Saturn_Goliath: {
-    name: "-=[ Saturn Goliath ]=-",
-    sprite: { path: "SHIP/SHIP_SPRITES/SHIP_GOLIATH/", frames: 32, firstNumber: 1, ext: ".png", w: 169, h: 150 },
-    playSprite: false,
-    passiveNative: false,
-    spriteSpeed: 0,
-    bulletSprite: { src: "COMBAT/MUNITIONS/X3.png", w: 78, h: 20, glow: true, invert: true },
-    r: 18, hp: 256000, shield: 150000, speed: 290, bulletDmg: 7000, bulletSpeed: 4500, shootRange: 550,
-  },
   npc_Saturn_Leonov: {
     name: "-=[ Saturn Leonov ]=-",
     sprite: { path: "SHIP/SHIP_SPRITES/SHIP_LEONOV/", frames: 32, firstNumber: 1, ext: ".png", w: 186, h: 165 },
