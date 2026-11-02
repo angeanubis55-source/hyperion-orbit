@@ -4750,8 +4750,22 @@ function tickStationDefense(map, room, now) {
   } catch {}
 }
 let snapshotTick = 0;
+// Un serveur bloqué n'avance plus les NPC, alors que chaque client continue de
+// les prédire : sans rattrapage, tous reculent d'un coup au paquet suivant.
+const NPC_STEP_MS = 50;
+const NPC_MAX_CATCHUP_STEPS = 12;
+const SERVER_LAG_LOG_MS = 250;
+let lastNpcStepAt = Date.now();
+let lastServerLagLogAt = 0;
 setInterval(() => {
   const now = Date.now();
+  const elapsedMs = now - lastNpcStepAt;
+  lastNpcStepAt = now;
+  const npcSteps = Math.max(1, Math.min(NPC_MAX_CATCHUP_STEPS, Math.floor(elapsedMs / NPC_STEP_MS)));
+  if (elapsedMs >= SERVER_LAG_LOG_MS && now - lastServerLagLogAt >= 10_000) {
+    lastServerLagLogAt = now;
+    console.warn(`[multi:lag] boucle de jeu bloquee ${elapsedMs} ms.`);
+  }
   snapshotTick++;
   const fullPlayerTick = (snapshotTick & 1) === 0;
   const includePlayerStatic = snapshotTick % PLAYER_STATIC_REFRESH_TICKS === 0;
@@ -4798,7 +4812,7 @@ setInterval(() => {
         if (typeof sim.prunePlayers === "function") {
           try { sim.prunePlayers([...room.keys()]); } catch {}
         }
-        sim.tick(0.05);
+        for (let step = 0; step < npcSteps; step++) sim.tick(NPC_STEP_MS / 1000);
         // Les tirs NPC partages retirent les PV dans le meme pool autoritaire
         // que le PvP. Les soins du client (reparateur, regen) remontent ce
         // pool via les pos ; les degats serveur restent prioritaires.

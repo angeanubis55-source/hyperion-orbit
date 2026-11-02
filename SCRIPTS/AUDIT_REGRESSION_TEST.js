@@ -130,3 +130,9 @@ test("l'écran de chargement Halloween suit exactement les bornes de l'event", a
     assert.equal(isHalloweenEventActive(new Date(iso)), shown, iso);
   }
 });
+
+test("un blocage du serveur est rattrapé par les NPC au lieu de les faire reculer", () => {
+  const server = read("./MULTI_SERVER.js");
+  assert.match(server, /Math\.floor\(elapsedMs \/ NPC_STEP_MS\)/);
+  assert.match(server, /for \(let step = 0; step < npcSteps; step\+\+\) sim\.tick\(/);
+});
