@@ -93,12 +93,14 @@
 </div>
 <script>
 (function () {
-  // Halloween TEST : debut 16/10 22h50 (remettre 23h59 apres essai). Fin 01/11 23h59.
+  // Halloween : memes bornes que NPC_HALLOWEEN.js, 16/10 23h59 -> 01/11 23h59 (heure de Paris).
   try {
-    var now = new Date();
-    var start = new Date(now.getFullYear(), 9, 16, 22, 50, 0);
-    var end = new Date(now.getFullYear(), 10, 1, 23, 59, 59);
-    if (now >= start && now <= end) {
+    var paris = {};
+    new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/Paris", month: "2-digit", day: "2-digit",
+      hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(new Date())
+      .forEach(function (part) { paris[part.type] = Number(part.value); });
+    var stamp = paris.month * 1000000 + paris.day * 10000 + paris.hour * 100 + paris.minute;
+    if (stamp >= 10162359 && stamp <= 11012359) {
       var overlay = document.getElementById("loadingOverlay");
       if (overlay) overlay.classList.add("halloween");
       var pre = new Image();

@@ -171,7 +171,9 @@ export function initBattlepassUI() {
     try { active = isHalloweenEventActive(); } catch {}
     try {
       const btn = document.getElementById("btnPassHub");
-      if (btn) btn.style.display = active ? "" : "none";
+      // Le dock impose display:grid !important : il faut la même priorité.
+      if (active) btn?.style.removeProperty("display");
+      else btn?.style.setProperty("display", "none", "important");
     } catch {}
     if (!active) {
       try {

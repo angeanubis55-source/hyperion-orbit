@@ -29,6 +29,7 @@ import { CARGO_CAPACITY, RESOURCE_TYPES, cargoAdd, getRefineryRecipe, ORE_SELL_P
 import { getPetTradeBonusPct } from "../PET/PET_GEARS.js";
 import { CRAFTING_ENABLED, getCraftingRecipe } from "../SRC/DATA/CRAFTING.js";
 import { isHalloweenEventActive } from "../NPC/NPC_HALLOWEEN.js";
+import { normalizeBattlepassState } from "../QUEST/BATTLEPASS.js";
 import { getPassShopOffer, PASS_MODULE_FORCED } from "../SRC/DATA/PASS_SHOP.js";
 import { SKYLAB_INSTANT_TRANSPORT_COST, SKYLAB_MAX_ROBOTS, SKYLAB_RESOURCE_IDS, SKYLAB_ROBOT_CREDIT_COST, SKYLAB_ROBOT_LIFETIME_MS, SKYLAB_TRANSPORT_COOLDOWN_SEC, canStartSkylabUpgrade, getSkylabModuleDef, isCollectorModule, normalizeSkylabState, skylabRobotCount, skylabStorageCap, tickSkylabState } from "../SRC/DATA/SKYLAB.js";
 import { deployBuiltGalaxyGate, normalizeGalaxyGateState, palladiumExchangeForEnergy, setGalaxyGateMultiplierArmed, spinGalaxyGate } from "../SRC/CORE/GALAXY_GATES.js";
@@ -155,6 +156,47 @@ async function sendVerificationEmail(user, rawToken) {
     text: `Bonjour ${user.pseudo}, confirme ton inscription avec ce lien (valable 24 h) : ${href}`,
     html: emailTemplate("Confirme ton inscription", `Bienvenue ${emailText(user.pseudo)}. Confirme ton adresse email pour activer ton compte. Ce lien expire dans 24 heures.`, "Activer mon compte", href),
   });
+}
+
+// Fin de l'event : clés du passe et progression effacées, même pour un compte
+// hors ligne à la fin. Bonbons et modules tirés sont conservés.
+export function clearExpiredBattlepass(data, now = new Date()) {
+  if (isHalloweenEventActive(now)) return false;
+  const resources = data?.inventory?.resources;
+  const hasKeys = Number(resources?.battlepass_key) > 0;
+  const pass = data?.battlepass;
+  const hasProgress = Object.values(pass?.progress || {}).some(value => Number(value) > 0) || pass?.claimed?.length > 0;
+  if (hasKeys) delete resources.battlepass_key;
+  if (hasProgress) data.battlepass = normalizeBattlepassState(null);
+  return hasKeys || hasProgress;
+}
+
+// Une seule passe par fin d'event (ou au démarrage hors event) : parcourir les
+// comptes à chaque minute coûterait pour rien.
+let battlepassEventSeen = null;
+export function sweepExpiredBattlepass(now = new Date()) {
+  const active = isHalloweenEventActive(now);
+  const due = !active && battlepassEventSeen !== false;
+  battlepassEventSeen = active;
+  if (!due) return 0;
+  let cleared = 0;
+  try {
+    const rows = db.prepare(`SELECT id, data, revision FROM users
+      WHERE json_extract(data, '$.inventory.resources.battlepass_key') > 0
+        OR json_extract(data, '$.battlepass') IS NOT NULL`).all();
+    for (const row of rows) {
+      const data = JSON.parse(row.data);
+      if (!clearExpiredBattlepass(data, now)) continue;
+      const updatedAt = Date.now();
+      data.revision = Math.max(Math.floor(Number(data.revision) || 0), Number(row.revision) || 0) + 1;
+      data.updatedAt = updatedAt;
+      db.prepare("UPDATE users SET data = ?, revision = ?, updated_at = ? WHERE id = ?")
+        .run(JSON.stringify(data), data.revision, updatedAt, row.id);
+      cleared += 1;
+    }
+  } catch (e) { console.error("[battlepass] nettoyage fin d'event :", e?.message || e); }
+  if (cleared) console.log(`[battlepass] Fin d'event : ${cleared} compte(s) remis à zéro.`);
+  return cleared;
 }
 
 // --- Base ---
@@ -340,6 +382,8 @@ export function initAccountDb() {
   };
   purge();
   setInterval(purge, 3600_000).unref?.();
+  sweepExpiredBattlepass();
+  setInterval(sweepExpiredBattlepass, 60_000).unref?.();
   // Clans : recrutement ouvert/fermé pour les bases existantes.
   try { db.exec("ALTER TABLE clans ADD COLUMN open INTEGER NOT NULL DEFAULT 1"); } catch {}
   // Clans : annonce (message du jour) et banque de crédits.
@@ -3588,6 +3632,8 @@ async function handleSave(req, body, res) {
   // Les tirages sont validés par /api/modules. Une sauvegarde de jeu créée
   // juste avant un tirage ne doit jamais pouvoir remettre un ancien compteur.
   const moduleRollsCorrected = protectServerModuleDailyRolls(serverData, data);
+  // Un client resté ouvert ne doit pas réécrire clés ou progression effacées.
+  const battlepassCorrected = clearExpiredBattlepass(data);
   // Journal des tirages : le client ne l'envoie plus (le serveur l'écrit).
   // Clé absente = on garde le journal serveur tel quel (borné). Reçu d'un
   // ancien client qui le porte encore : remplacement comme avant.
@@ -3626,7 +3672,7 @@ async function handleSave(req, body, res) {
   const responseUser = body.compactSave === true && saveId ? data
     : rowToPublic({ id: me.id, pseudo: finalPseudo, email: finalEmail, faction, data: JSON.stringify(data) });
   return json(res, 200, { ok: true, conflict: conflict || undefined,
-    ...(moduleRollsCorrected ? { user: responseUser } : saveResponseUser(body, responseUser)) });
+    ...(moduleRollsCorrected || battlepassCorrected ? { user: responseUser } : saveResponseUser(body, responseUser)) });
 }
 
 export function handleAccountApi(req, res) {

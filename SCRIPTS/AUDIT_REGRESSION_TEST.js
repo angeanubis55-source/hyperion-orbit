@@ -3,7 +3,9 @@
 // passaient au travers. Ici, on lit le vrai code du moteur.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import vm from "node:vm";
 
 const read = path => readFileSync(new URL(path, import.meta.url), "utf8");
@@ -70,4 +72,61 @@ test("une session remplacée attend le code de fermeture avant de reconnecter", 
   assert.match(reconnect, /ws\.readyState === 2/);
   assert.ok(reconnect.indexOf("ws.readyState === 2") < reconnect.indexOf("wsGen++"),
     "le socket en fermeture garde sa génération pour que onclose lise 4001");
+});
+
+test("le bouton du passe disparaît malgré le display forcé du dock", () => {
+  const sync = section(read("../UI/UI_BATTLEPASS.js"), "function syncPassVisibility() {", 'window.addEventListener("orbit:user-updated"');
+  assert.match(sync, /setProperty\("display", "none", "important"\)/);
+});
+
+test("fin de l'event : clés et progression effacées pour un compte hors ligne, bonbons conservés", async t => {
+  const dir = mkdtempSync(join(tmpdir(), "orbit-pass-end-"));
+  process.env.ORBIT_DATA_DIR = dir;
+  const { clearExpiredBattlepass, initAccountDb, sweepExpiredBattlepass } = await import("./ACCOUNT_SERVER.js");
+  const db = initAccountDb();
+  t.after(() => { db.close(); rmSync(dir, { recursive: true, force: true }); });
+  const during = new Date(Date.UTC(2026, 9, 31, 12)), after = new Date(Date.UTC(2026, 10, 2, 12));
+  const data = { revision: 4, inventory: { resources: { battlepass_key: 7, candy: 900 }, shipModules: [{ id: "m1" }] },
+    battlepass: { eventId: "hw2026", progress: { hw_kill_1: 5 }, claimed: ["hw_kill_1"] } };
+  const now = Date.now();
+  db.prepare(`INSERT INTO users (id, pseudo, pseudo_norm, email, password_hash, data, revision, created_at, updated_at, email_verified_at)
+    VALUES ('hors-ligne', 'Pilote', 'pilote', 'p@example.test', 'x', ?, 4, ?, ?, ?)`).run(JSON.stringify(data), now, now, now);
+  const row = () => { const r = db.prepare("SELECT data, revision FROM users WHERE id = 'hors-ligne'").get(); return { ...JSON.parse(r.data), rev: r.revision }; };
+
+  assert.equal(sweepExpiredBattlepass(during), 0, "pendant l'event, rien ne bouge");
+  assert.equal(row().inventory.resources.battlepass_key, 7);
+  assert.equal(sweepExpiredBattlepass(after), 1, "la fin nettoie le compte hors ligne");
+  const cleared = row();
+  assert.equal(cleared.inventory.resources.battlepass_key, undefined);
+  assert.equal(cleared.inventory.resources.candy, 900);
+  assert.deepEqual(cleared.inventory.shipModules, [{ id: "m1" }]);
+  assert.equal(cleared.battlepass.progress.hw_kill_1, 0);
+  assert.deepEqual(cleared.battlepass.claimed, []);
+  assert.equal(cleared.rev, 5);
+  assert.equal(sweepExpiredBattlepass(after), 0, "une seule passe par fin d'event");
+
+  const stale = { inventory: { resources: { battlepass_key: 3 } }, battlepass: { progress: {}, claimed: [] } };
+  assert.equal(clearExpiredBattlepass(stale, during), false, "une sauvegarde pendant l'event garde ses clés");
+  assert.equal(clearExpiredBattlepass(stale, after), true, "une sauvegarde tardive ne recrée pas de clés");
+  assert.equal(stale.inventory.resources.battlepass_key, undefined);
+  assert.equal(clearExpiredBattlepass(stale, after), false);
+});
+
+test("l'écran de chargement Halloween suit exactement les bornes de l'event", async () => {
+  const { isHalloweenEventActive } = await import("../NPC/NPC_HALLOWEEN.js");
+  const script = section(read("../index.html"), "// Halloween : memes bornes", "})();");
+  const shownAt = iso => {
+    const classes = new Set();
+    const fixed = new Date(iso);
+    class FixedDate extends Date { constructor() { super(fixed.getTime()); } }
+    vm.runInNewContext(script, { Date: FixedDate, Intl, Image: class {},
+      document: { getElementById: () => ({ classList: { add: name => classes.add(name) } }) } });
+    return classes.has("halloween");
+  };
+  const cases = [["2026-10-16T21:58:59Z", false], ["2026-10-16T21:59:00Z", true],
+    ["2026-11-01T22:59:59Z", true], ["2026-11-01T23:00:00Z", false], ["2027-10-16T21:59:00Z", true]];
+  for (const [iso, shown] of cases) {
+    assert.equal(shownAt(iso), shown, iso);
+    assert.equal(isHalloweenEventActive(new Date(iso)), shown, iso);
+  }
 });

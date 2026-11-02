@@ -9,6 +9,7 @@ import { createServer } from "node:net";
 import { once } from "node:events";
 import { ORE_SELL_PRICES } from "../SRC/DATA/RESOURCES.js";
 import { normalizeGalaxyGateState } from "../SRC/CORE/GALAXY_GATES.js";
+import { isHalloweenEventActive } from "../NPC/NPC_HALLOWEEN.js";
 
 test("achat de munitions laser autoritaire côté serveur", { timeout: 20000 }, async t => {
   const temporary = await mkdtemp(join(tmpdir(), "orbit-shop-buy-"));
@@ -373,6 +374,11 @@ test("achat de munitions laser autoritaire côté serveur", { timeout: 20000 }, 
   const passBought = await api("/api/modules", { token, body: {
     action: "pass", offerId: "res_scrap", cost: 0, resources: { scrap: 999_999 },
   } });
+  if (!isHalloweenEventActive()) {
+    assert.equal(passBought.status, 409, "le passe ferme avec l'event");
+    assert.equal(canonical.inventory.resources.battlepass_key, undefined, "hors event, une sauvegarde ne recree pas de cles");
+    return;
+  }
   assert.equal(passBought.status, 200); canonical = passBought.user;
   assert.equal(canonical.inventory.resources.battlepass_key, 2);
   assert.equal(canonical.inventory.resources.scrap, scrapBefore + 25, "le gain Pass Shop fourni par le navigateur est ignore");
