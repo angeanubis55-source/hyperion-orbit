@@ -348,7 +348,7 @@ test("Icy de l'Ice et du Super Ice : 100k PV, 80k bouclier, 2k dégâts", () => 
   }
 });
 
-test("Hiver : Bonus Box classiques en visuel glace, autres box inchangées", async () => {
+test("Hiver : Bonus Box et Cargo Box en visuel glace, autres box inchangées", async () => {
   const { readFileSync, existsSync } = await import("node:fs");
   const vm = await import("node:vm");
   const engine = readFileSync(new URL("../SRC/CORE/ORBIT_ENGINE.js", import.meta.url), "utf8").replace(/\r\n/g, "\n");
@@ -368,10 +368,13 @@ test("Hiver : Bonus Box classiques en visuel glace, autres box inchangées", asy
   assert.equal(on("Bonus_Box").path, "ASSETS/COLLECTABLES/BONUS_BOX_HIVER_GLACE/");
   assert.equal(off("Bonus_Box").path, "ASSETS/COLLECTABLES/BONUS_BOX/");
   assert.equal(on("Green_Booty_Box").path, "GREEN/");
-  assert.equal(on("Cargo_Box").path, "CARGO/");
-  const sp = on("Bonus_Box");
-  for (let i = sp.firstNumber; i < sp.firstNumber + sp.frames; i++) {
-    assert.ok(existsSync(new URL(`../${sp.path}${i}${sp.ext}`, import.meta.url)), `frame ${i} manquante`);
+  assert.equal(on("Cargo_Box").path, "ASSETS/COLLECTABLES/CARGO_BOX_HIVER_GLACE/");
+  assert.equal(off("Cargo_Box").path, "CARGO/");
+  assert.equal(run(false, true)("Cargo_Box").path, candy.match(/path: "([^"]+)"/)[1]);
+  for (const sp of [on("Bonus_Box"), on("Cargo_Box")]) {
+    for (let i = sp.firstNumber; i < sp.firstNumber + sp.frames; i++) {
+      assert.ok(existsSync(new URL(`../${sp.path}${i}${sp.ext}`, import.meta.url)), `${sp.path} frame ${i} manquante`);
+    }
   }
 });
 

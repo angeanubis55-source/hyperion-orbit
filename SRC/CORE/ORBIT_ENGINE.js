@@ -28931,6 +28931,21 @@ const WINTER_BONUS_BOX_SPRITE = {
   glow: false,
 };
 
+// Même saison : les Cargo Box prennent un visuel de glace (contenu
+// inchangé, seul le visuel est remplacé).
+const WINTER_CARGO_BOX_SPRITE = {
+  path: "ASSETS/COLLECTABLES/CARGO_BOX_HIVER_GLACE/",
+  frames: 32,
+  firstNumber: 1,
+  ext: ".png",
+  fps: 35,
+  w: 128,
+  h: 128,
+  scale: 1,
+  randomStart: true,
+  glow: false,
+};
+
 function collectableSpriteFor(type) {
   if (String(type || "") === "Bonus_Box") {
     try {
@@ -28939,6 +28954,7 @@ function collectableSpriteFor(type) {
   }
   if (String(type || "") === "Cargo_Box") {
     try {
+      if (isWinterEventActive()) return WINTER_CARGO_BOX_SPRITE;
       if (isHalloweenEventActive()) return CANDY_BOX_SPRITE;
     } catch {}
   }
