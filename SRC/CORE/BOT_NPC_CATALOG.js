@@ -18,6 +18,15 @@ import {
   halloweenVariantKey,
   isHalloweenEventActive,
 } from "../../NPC/NPC_HALLOWEEN.js";
+import {
+  WINTER_MAPS,
+  WINTER_SPAWN_GROUPS,
+  WINTER_TYPES,
+  isWinterEventActive,
+} from "../../NPC/NPC_WINTER.js";
+
+// Icy des (Super) Ice Meteoroid (variante <=< Icy >=>, minions façon Cubikon).
+export const WINTER_ICY_TYPE = "npc_Meteoroid_Icy";
 
 // Événements : chaque ligne regroupe toutes les variantes d'un même NPC.
 export const BOT_EVENT_NPCS = Object.freeze([
@@ -38,11 +47,28 @@ export const BOT_EVENT_NPCS = Object.freeze([
       };
     }),
   }),
+  // Saison d'hiver (01/11 -> 31/01) : Ice Meteoroid, Super Ice Meteoroid
+  // et leurs Icy, sur les paires de maps de NPC_WINTER.
+  Object.freeze({
+    id: "winter",
+    label: "Hiver",
+    isActive: (now) => isWinterEventActive(now),
+    rows: () => [
+      ...WINTER_TYPES.map((type) => ({
+        key: `event:winter:${type}`,
+        name: type === "npc_Super_Ice_Meteoroid" ? "<=< Super Ice Meteoroid >=>" : "<=< Ice Meteoroid >=>",
+        types: [type],
+        maps: WINTER_SPAWN_GROUPS.filter((g) => g.type === type).flatMap((g) => g.maps),
+      })),
+      { key: `event:winter:${WINTER_ICY_TYPE}`, name: "<=< Icy >=>", types: [WINTER_ICY_TYPE], maps: [...WINTER_MAPS] },
+    ],
+  }),
 ]);
 
 // Types d'événement : jamais listés depuis les maps (ils n'y sont pas, mais
 // une base d'event qui y traînerait ne doit pas rester après l'event).
 function isEventType(type) {
+  if (WINTER_TYPES.includes(String(type)) || String(type) === WINTER_ICY_TYPE) return true;
   try { return halloweenRoleOf(type) != null; } catch { return false; }
 }
 
@@ -112,7 +138,7 @@ export function botMapsLabel(maps) {
 }
 
 function cleanName(name) {
-  return String(name || "").replace(/^[-=\[\s.:{]+|[-=\]\s.:}]+$/g, "").trim();
+  return String(name || "").replace(/^[-=\[\s.:{<]+|[-=\]\s.:}>]+$/g, "").trim();
 }
 
 // Lignes de la liste : { key, name, types, maps, groups, event }.

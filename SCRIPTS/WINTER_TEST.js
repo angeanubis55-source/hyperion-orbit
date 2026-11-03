@@ -372,3 +372,14 @@ test("Hiver : Bonus Box classiques en visuel glace, autres box inchangées", asy
     assert.ok(existsSync(new URL(`../${sp.path}${i}${sp.ext}`, import.meta.url)), `frame ${i} manquante`);
   }
 });
+
+test("Bot : Ice, Super Ice et Icy listés pendant l'hiver seulement", async () => {
+  const { buildBotNpcCatalog } = await import("../SRC/CORE/BOT_NPC_CATALOG.js");
+  const rows = buildBotNpcCatalog({ locations: {}, npcTypes: NPC_TYPES, now: new Date(MID) });
+  const byType = Object.fromEntries(rows.map((r) => [r.types[0], r]));
+  assert.deepEqual(byType.npc_Ice_Meteoroid.maps, ["1-6", "1-7", "2-6", "2-7", "3-6", "3-7"]);
+  assert.deepEqual(byType.npc_Super_Ice_Meteoroid.maps, ["4-4", "4-5"]);
+  assert.deepEqual(byType.npc_Meteoroid_Icy.maps, [...WINTER_MAPS]);
+  for (const r of Object.values(byType)) assert.equal(r.event, "Hiver");
+  assert.equal(buildBotNpcCatalog({ locations: {}, npcTypes: NPC_TYPES, now: new Date(SUMMER) }).length, 0);
+});
