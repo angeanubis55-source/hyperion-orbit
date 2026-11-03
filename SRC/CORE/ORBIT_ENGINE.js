@@ -28915,7 +28915,7 @@ const CANDY_BOX_SPRITE = {
   glow: false,
 };
 
-// Saison d'hiver (01/11 00h01 -> 31/01 23h59, Paris) : les Bonus Box
+// Saison d'hiver (02/11 00h01 -> 31/01 23h59, Paris) : les Bonus Box
 // classiques prennent un visuel de glace (contenu inchangé, seul le
 // visuel est remplacé ; Green Booty / Astral Prime ne changent pas).
 const WINTER_BONUS_BOX_SPRITE = {
@@ -30133,7 +30133,7 @@ function drawCollectables(ox, oy) {
     const idx = boxAnimsOn ? Math.floor(c.frameAcc) % frames : 0;
     const img = sp._imgs?.[idx];
     // Event Halloween : filtre orange léger sur les Bonus Box classiques
-    // (pas sur le visuel de glace de l'hiver, qui prime le 01/11).
+    // (jamais sur le visuel de glace de l'hiver).
     let drawImg = img;
     try {
       if (String(c.type || "") === "Bonus_Box" && isHalloweenEventActive() && !isWinterEventActive()) {

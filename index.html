@@ -93,6 +93,7 @@
 </div>
 <script>
 (function () {
+  // Hiver : memes bornes que NPC_WINTER.js, 02/11 00h01 -> 31/01 23h59 (heure de Paris).
   // Halloween : memes bornes que NPC_HALLOWEEN.js, 16/10 23h59 -> 01/11 23h59 (heure de Paris).
   try {
     var paris = {};
@@ -100,7 +101,12 @@
       hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(new Date())
       .forEach(function (part) { paris[part.type] = Number(part.value); });
     var stamp = paris.month * 1000000 + paris.day * 10000 + paris.hour * 100 + paris.minute;
-    if (stamp >= 10162359 && stamp <= 11012359) {
+    if (stamp >= 11020001 || stamp <= 1312359) {
+      var winterOverlay = document.getElementById("loadingOverlay");
+      if (winterOverlay) winterOverlay.classList.add("winter");
+      var winterPre = new Image();
+      winterPre.src = "ASSETS/UI/LOADING_SCREEN_WINTER.webp";
+    } else if (stamp >= 10162359 && stamp <= 11012359) {
       var overlay = document.getElementById("loadingOverlay");
       if (overlay) overlay.classList.add("halloween");
       var pre = new Image();

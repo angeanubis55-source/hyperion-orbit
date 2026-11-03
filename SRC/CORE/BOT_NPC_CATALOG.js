@@ -47,7 +47,7 @@ export const BOT_EVENT_NPCS = Object.freeze([
       };
     }),
   }),
-  // Saison d'hiver (01/11 -> 31/01) : Ice Meteoroid, Super Ice Meteoroid
+  // Saison d'hiver (02/11 -> 31/01) : Ice Meteoroid, Super Ice Meteoroid
   // et leurs Icy, sur les paires de maps de NPC_WINTER.
   Object.freeze({
     id: "winter",

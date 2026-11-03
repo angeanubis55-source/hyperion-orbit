@@ -17,15 +17,17 @@ import { NPC_TYPES } from "../NPC/NPC_TYPES.js";
 import { getPortalSkinForMap } from "../SRC/CORE/PORTAL_SKINS.js";
 import { ZoneNpcSim, syncWinterEvent } from "./NPC_ROOM.js";
 
-// Saison : 01/11 00h01 -> 31/01 23h59 (Paris, UTC+1 tout l'hiver).
-const BEFORE = Date.parse("2026-10-31T23:00:59Z"); // 01/11 00h00:59 Paris
-const START = Date.parse("2026-10-31T23:01:00Z"); // 01/11 00h01 Paris
+// Saison : 02/11 00h01 -> 31/01 23h59 (Paris, UTC+1 tout l'hiver).
+const BEFORE = Date.parse("2026-11-01T23:00:59Z"); // 02/11 00h00:59 Paris
+const START = Date.parse("2026-11-01T23:01:00Z"); // 02/11 00h01 Paris
 const MID = Date.parse("2026-12-15T12:00:00Z");
 const LAST = Date.parse("2027-01-31T22:59:59Z"); // 31/01 23h59:59 Paris
 const AFTER = Date.parse("2027-01-31T23:00:00Z"); // 01/02 00h00 Paris
 const SUMMER = Date.parse("2027-07-01T12:00:00Z");
 
-test("Hiver : fenêtre 01/11 00h01 -> 31/01 23h59 Paris, chaque année", () => {
+test("Hiver : fenêtre 02/11 00h01 -> 31/01 23h59 Paris, chaque année", () => {
+  // Plus de chevauchement avec Halloween (fin 01/11 23h59).
+  assert.equal(isWinterEventActive(new Date(Date.parse("2026-11-01T12:00:00Z"))), false);
   assert.equal(isWinterEventActive(new Date(BEFORE)), false);
   assert.equal(isWinterEventActive(new Date(START)), true);
   assert.equal(isWinterEventActive(new Date(MID)), true);
@@ -382,4 +384,32 @@ test("Bot : Ice, Super Ice et Icy listés pendant l'hiver seulement", async () =
   assert.deepEqual(byType.npc_Meteoroid_Icy.maps, [...WINTER_MAPS]);
   for (const r of Object.values(byType)) assert.equal(r.event, "Hiver");
   assert.equal(buildBotNpcCatalog({ locations: {}, npcTypes: NPC_TYPES, now: new Date(SUMMER) }).length, 0);
+});
+
+test("Écran de chargement : image d'hiver du 02/11 00h01 au 31/01 23h59 (Paris), Halloween avant", async () => {
+  const { readFileSync, existsSync } = await import("node:fs");
+  const vm = await import("node:vm");
+  const html = readFileSync(new URL("../index.html", import.meta.url), "utf8");
+  const i = html.indexOf("// Hiver : memes bornes que NPC_WINTER.js");
+  const script = html.slice(html.lastIndexOf("<script>", i) + 8, html.indexOf("</script>", i));
+  const classAt = (iso) => {
+    const classes = new Set();
+    const RealDate = Date;
+    const FakeDate = class extends RealDate { constructor(...a) { super(...(a.length ? a : [iso])); } };
+    vm.runInNewContext(script, {
+      Date: FakeDate, Intl, Number, Image: class {},
+      document: { getElementById: () => ({ classList: { add: (c) => classes.add(c) } }) },
+    });
+    return [...classes].join(",");
+  };
+  assert.equal(classAt("2026-10-20T12:00:00Z"), "halloween");
+  assert.equal(classAt("2026-11-01T22:59:59Z"), "halloween"); // 01/11 23h59 Paris
+  assert.equal(classAt("2026-11-01T23:00:59Z"), ""); // 02/11 00h00 Paris
+  assert.equal(classAt("2026-11-01T23:01:00Z"), "winter"); // 02/11 00h01 Paris
+  assert.equal(classAt("2026-12-25T12:00:00Z"), "winter");
+  assert.equal(classAt("2027-01-31T22:59:00Z"), "winter"); // 31/01 23h59 Paris
+  assert.equal(classAt("2027-01-31T23:00:00Z"), ""); // 01/02 00h00 Paris
+  assert.equal(classAt("2027-06-15T12:00:00Z"), "");
+  assert.ok(existsSync(new URL("../ASSETS/UI/LOADING_SCREEN_WINTER.webp", import.meta.url)));
+  assert.match(readFileSync(new URL("../style.css", import.meta.url), "utf8"), /\.loadingOverlay\.winter\s*\{[^}]*LOADING_SCREEN_WINTER\.webp/);
 });

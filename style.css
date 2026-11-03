@@ -11149,6 +11149,10 @@ body #ammoBar .actionPaletteToggle.active {
 .loadingOverlay.halloween {
   background:#02050e url("/ASSETS/UI/LOADING_SCREEN_HALLOWEEN.png") center / cover no-repeat;
 }
+/* Saison d'hiver (02/11 00h01 -> 31/01 23h59, Paris) : voir index.html. */
+.loadingOverlay.winter {
+  background:#02050e url("/ASSETS/UI/LOADING_SCREEN_WINTER.webp") center / cover no-repeat;
+}
 .loadingOverlay.isLeaving {
   opacity:0;
   pointer-events:none;

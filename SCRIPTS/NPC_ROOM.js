@@ -2847,7 +2847,7 @@ export const syncSundayEvent = createRoamingEventController({
   isActive: isSundayEventActive, pickMap: sundayPickMap, buildCamp: buildSundayCamp,
 });
 
-// Saison d'hiver (01/11 -> 31/01) : 1 NPC d'hiver par paire de maps, chaque
+// Saison d'hiver (02/11 -> 31/01) : 1 NPC d'hiver par paire de maps, chaque
 // paire indépendante (Ice Meteoroid en 1-6/1-7, 2-6/2-7, 3-6/3-7 ; Super
 // Ice Meteoroid en 4-4/4-5). Voir WINTER_SPAWN_GROUPS.
 const WINTER_CONTROLLERS = WINTER_SPAWN_GROUPS.map(({ maps, type }) => createRoamingEventController({

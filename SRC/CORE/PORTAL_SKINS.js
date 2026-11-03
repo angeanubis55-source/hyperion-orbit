@@ -186,7 +186,7 @@ export const DEFAULT_PORTAL_JUMP_BUTTON = Object.freeze({
 // HIVER : neige + verglas par-dessus les portails NORMAUX, BATTLE, BL, QZ et
 // le portail standard vers MAUDITE (même anneau 320x320 ; pas sur les
 // Galaxy Gates ni les pirates (5-2, LOW), qui ont leur propre forme).
-// Dates de la saison (01/11 00h01 -> 31/01 23h59, Paris) : NPC/NPC_WINTER.js.
+// Dates de la saison (02/11 00h01 -> 31/01 23h59, Paris) : NPC/NPC_WINTER.js.
 // Le calque (320x320, transparent) se pose sur les 3 états idle/open/jump.
 // ============================================================================
 export const PORTAL_WINTER_OVERLAY = Object.freeze({ src: "ASSETS/PORTAL/NORMAUX/NEIGE_VERGLAS.png?v=3", w: 320, h: 320, xOff: 0, yOff: 0, alpha: 1 });

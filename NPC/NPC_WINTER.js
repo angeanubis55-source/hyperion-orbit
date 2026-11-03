@@ -1,5 +1,5 @@
 // NPC/NPC_WINTER.js — Saison d'hiver, indépendante d'Halloween et du dimanche.
-// Du 01/11 00h01 au 31/01 23h59 (heure de Paris, chaque année) :
+// Du 02/11 00h01 au 31/01 23h59 (heure de Paris, chaque année) :
 //   - neige/verglas par-dessus les portails NORMAUX (SRC/CORE/PORTAL_SKINS.js) ;
 //   - en plus des NPC classiques, 1 seul NPC d'hiver à la fois par paire de
 //     maps, sur une map de la paire tirée au hasard (comme l'UFONIT du
@@ -9,7 +9,7 @@
 // Pur (aucun DOM) : testable sous Node, importable côté client.
 
 export const WINTER_TIME_ZONE = "Europe/Paris";
-export const WINTER_START = Object.freeze({ month: 10, day: 1, hour: 0, minute: 1 });
+export const WINTER_START = Object.freeze({ month: 10, day: 2, hour: 0, minute: 1 });
 export const WINTER_END = Object.freeze({ month: 0, day: 31, hour: 23, minute: 59 });
 
 export const WINTER_METEOROID_TYPE = "npc_Ice_Meteoroid";

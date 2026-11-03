@@ -2502,7 +2502,7 @@ function pumpSundayEvent() {
 }
 setInterval(() => { try { pumpSundayEvent(); } catch {} }, 2000).unref?.();
 
-// --- Saison d'hiver (01/11 -> 31/01) : 1 NPC d'hiver par paire de maps ---
+// --- Saison d'hiver (02/11 -> 31/01) : 1 NPC d'hiver par paire de maps ---
 // Ice Meteoroid en 1-6/1-7, 2-6/2-7, 3-6/3-7 ; Super Ice Meteoroid en 4-4/4-5.
 // En plus des NPC classiques, map de la paire tirée au hasard, respawn instantané
 // ailleurs après sa mort (même contrôleur que l'UFONIT). Pas d'annonce chat.
