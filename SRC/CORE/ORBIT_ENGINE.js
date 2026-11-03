@@ -16400,6 +16400,31 @@ function applyPetModeValue(v) {
     showToast(out.mode === "combat" ? "P.E.T : mode combat" : "P.E.T : passif", 1.2);
 }
 
+// Fins de session des gears à recharge, appelées par la boucle de jeu : la
+// fenêtre P.E.T peut être fermée sans actualisation, la recharge doit partir.
+function tickPetSessions() {
+  // Cargo Trader (G-TRA) : expiration des 10 s ou fermeture manuelle → cooldown.
+  if (petTrader.until > 0 && (!isOreTradeWindowOpen() || !traWindowActive())) endTraSession();
+  // Lien HP (G-HPL) : fin des 20 s, REX désactivé ou config changée → coupure.
+  if (petLink.until > 0) {
+    if (performance.now() / 1000 >= petLink.until) endHplLink("expired");
+    else if (account.user?.pet?.active !== true) endHplLink("off");
+    else if (petConfigKey() !== petLink.configKey) endHplLink("config");
+  }
+  // Bouées (G-BC / G-BH) : fin des 120 s ou REX désactivé → coupure. Aura PV.
+  // Config changée : on garde si la bouée est équipée sur les 2, sinon coupée.
+  // (L'IEM ne coupe jamais la bouée.)
+  if (petBuoy.until > 0) {
+    if (performance.now() / 1000 >= petBuoy.until) endBuoySession("expired");
+    else if (account.user?.pet?.active !== true) endBuoySession("off");
+    else if (petConfigKey() !== petBuoy.configKey) {
+      if (Number(petGearLevels()[petBuoy.key]) > 0) petBuoy.configKey = petConfigKey();
+      else endBuoySession("config");
+    }
+  }
+  tickBuoyHpAura();
+}
+
 function updatePetHud() {
   if (!shouldRefreshWindow("petWindow")) return;
   const pet = account.user?.pet?.owned === true ? account.user.pet : null;
@@ -16551,26 +16576,6 @@ function updatePetHud() {
     if (showPetNpc) placePetDropdown(ui.petNpcBtn, ui.petNpcList);
     else if (ui.petNpcList) ui.petNpcList.hidden = true;
   }
-  // Cargo Trader (G-TRA) : expiration des 10 s ou fermeture manuelle → cooldown.
-  if (petTrader.until > 0 && (!isOreTradeWindowOpen() || !traWindowActive())) endTraSession();
-  // Lien HP (G-HPL) : fin des 20 s, REX désactivé ou config changée → coupure.
-  if (petLink.until > 0) {
-    if (performance.now() / 1000 >= petLink.until) endHplLink("expired");
-    else if (account.user?.pet?.active !== true) endHplLink("off");
-    else if (petConfigKey() !== petLink.configKey) endHplLink("config");
-  }
-  // Bouées (G-BC / G-BH) : fin des 120 s ou REX désactivé → coupure. Aura PV.
-  // Config changée : on garde si la bouée est équipée sur les 2, sinon coupée.
-  // (L'IEM ne coupe jamais la bouée.)
-  if (petBuoy.until > 0) {
-    if (performance.now() / 1000 >= petBuoy.until) endBuoySession("expired");
-    else if (account.user?.pet?.active !== true) endBuoySession("off");
-    else if (petConfigKey() !== petBuoy.configKey) {
-      if (Number(petGearLevels()[petBuoy.key]) > 0) petBuoy.configKey = petConfigKey();
-      else endBuoySession("config");
-    }
-  }
-  tickBuoyHpAura();
   // Sprite de la fenêtre suit le palier de niveau (sans recharger en boucle).
   const stage = has ? getPetStage(level) : 0;
   if (stage !== lastPetHudStage) {
@@ -18171,6 +18176,10 @@ function getPortalSpriteSet(ptl = null) {
       },
 
       portalPreview: ptl?.sprites?.portalPreview || skin?.portalPreview || null,
+
+      // ✅ calque saisonnier (neige/verglas l'hiver sur les NORMAUX) : seulement
+      // si le portail garde le skin de sa destination (pas de sprites custom).
+      seasonalOverlay: ptl?.sprites?.idle ? null : (skin?.seasonalOverlay || null),
     };
   }
 
@@ -18211,6 +18220,8 @@ function preloadPortalSprites(ptl = null) {
   if (spr.idle?.src) jobs.push(loadImage(spr.idle.src, { priority: true }));
   // ✅ aperçu destination (ex. Saturne Kronos).
   if (spr.portalPreview?.image) jobs.push(loadImage(spr.portalPreview.image, { priority: true }));
+  // ✅ calque saisonnier (neige/verglas).
+  if (spr.seasonalOverlay?.src) jobs.push(loadImage(spr.seasonalOverlay.src, { priority: true }));
   // ✅ open animé : précharge toutes les frames (sinon seule la 1re s'affiche).
   if (spr.open && Number(spr.open.frames) > 1 && spr.open.path) {
     const frames = Math.max(1, Number(spr.open.frames));
@@ -25479,23 +25490,6 @@ function petMissChance(pet, user) {
   const aim = getPetProtocolPct(pet, user, "aim");
   return Math.max(0, Math.min(1, PLAYER_SHOTS.missChance - aim / 100));
 }
-// Le REX ne peut se battre que s'il a au moins un laser équipé sur son
-// fit actif (même condition que firePetVolley, en version légère pour le
-// choix de cible : évite qu'un REX sans lasers colle les NPC pour rien).
-function petHasGuns() {
-  try {
-    const user = account.user;
-    const hangar = (user?.hangars || []).find((h) => h?.active) || null;
-    const hid = hangar ? String(hangar.id) : null;
-    const cfg = String(Number(hangar?.activeConfig) === 2 ? 2 : 1);
-    const fit = hid ? getPetFit(user?.pet, hid, cfg) : null;
-    for (const itemId of fit?.lasers || []) {
-      const item = itemId ? findCatalogItem(itemId) : null;
-      if (item?.module?.type === "laser") return true;
-    }
-  } catch {}
-  return false;
-}
 
 function firePetVolley(target) {
   const { total, count } = petVolleyDamage(account.user?.pet, account.user, target);
@@ -25826,6 +25820,12 @@ function onPetDestroyed() {
   // Une destruction coupe reellement le REX : aucun gear ne doit pouvoir le
   // faire reapparaitre sans une reparation puis un nouveau clic sur Play.
   const destroyedPet = account.user?.pet;
+  // Le Lien HP ne touche que la coque : sans ça, un REX détruit gardait un
+  // bouclier transférable par la Flamme sacrificielle.
+  if (destroyedPet?.owned === true && Number(destroyedPet.sh) > 0) {
+    destroyedPet.sh = 0;
+    markProgressDirty();
+  }
   if (destroyedPet?.owned === true && destroyedPet.active === true) {
     // Modifie l'objet live. setPetActive() relit la sauvegarde et pouvait
     // restaurer ici les PV precedant de quelques frames le kill reseau.
@@ -25978,14 +25978,14 @@ function endBuoySession(reason) {
   showToast(messages[reason] || messages.expired, 2);
 }
 
-// Aura coque : +5 % PV max dans le halo vert (retirés en sortant).
+// Aura coque : +5 % PV max dans le halo vert (retirés en sortant). Les PV
+// actuels ne bougent pas à l'entrée : sortir/rentrer ne soigne pas.
 function tickBuoyHpAura() {
   const inside = petBuoy.key === "bh" && buoyPlayerInside();
   if (inside && !player.buoyHpBuff) {
     player.buoyHpBuff = true;
     player.hpMaxBase = player.hpMax;
     player.hpMax = Math.max(1, Math.round(player.hpMax * (1 + PET_BUOY_HP_PCT / 100)));
-    player.hp = Math.min(player.hpMax, Math.round(player.hp * (1 + PET_BUOY_HP_PCT / 100)));
     markProgressDirty();
   } else if (!inside && player.buoyHpBuff) {
     player.buoyHpBuff = false;
@@ -26092,13 +26092,6 @@ function triggerPetKamikaze() {
     loadAccountUser();
     return showToast("Kamikaze : P.E.T détruit, répare-le.", 1.8);
   }
-  // One-shot : 3 de carburant d'un coup (réduit par AI-ECO). Prélevé ici :
-  // la course détruit le REX, aucun gear ne reste actif derrière.
-  const kkFuel = consumePetOneshotFuel(pet, account.user);
-  if (!kkFuel.ok) {
-    loadAccountUser();
-    return showToast(`Kamikaze : carburant insuffisant (${kkFuel.cost} requis).`, 1.8);
-  }
   if (player.dead || !started) {
     loadAccountUser();
     return showToast("Kamikaze impossible pour le moment.", 1.5);
@@ -26107,6 +26100,13 @@ function triggerPetKamikaze() {
   if (!target) {
     loadAccountUser();
     return showToast("Kamikaze : verrouille une cible.", 1.8);
+  }
+  // One-shot : 3 de carburant d'un coup (réduit par AI-ECO). Prélevé en
+  // dernier : un refus (pas de cible, joueur mort) ne coûte rien.
+  const kkFuel = consumePetOneshotFuel(pet, account.user);
+  if (!kkFuel.ok) {
+    loadAccountUser();
+    return showToast(`Kamikaze : carburant insuffisant (${kkFuel.cost} requis).`, 1.8);
   }
   // Le kamikaze prend la main : ferme les sessions en cours.
   if (traWindowActive()) endTraSession();
@@ -26255,6 +26255,10 @@ function triggerSacrificeFlame() {
     return showToast("Gear déséquipé.", 1.5);
   }
   const pet = account.user?.pet;
+  if (pet?.owned !== true || pet.active !== true || !(Number(pet.hp) > 0)) {
+    loadAccountUser();
+    return showToast("Flamme sacrificielle : P.E.T désactivé ou détruit.", 1.8);
+  }
   const shMax = petShieldMaxForHud(pet, account.user);
   const rexSh = pet?.sh != null && Number.isFinite(Number(pet.sh)) ? Number(pet.sh) : shMax;
   if (!(rexSh > 0)) {
@@ -26338,11 +26342,24 @@ function petActiveGears() {
   return gears;
 }
 
+// Box refusée au ramassage (soute pleine, cargo d'un duel) : ignorée 30 s
+// pour que le REX passe aux suivantes au lieu de rester posé dessus.
+const PET_REFUSED_BOX_SEC = 30;
+const petRefusedBoxes = new Map();
+function petBoxRefused(id) {
+  const until = petRefusedBoxes.get(id);
+  if (until == null) return false;
+  if (performance.now() / 1000 < until) return true;
+  petRefusedBoxes.delete(id);
+  return false;
+}
+
 // Box récoltable par le P.E.T : portée centrée sur le joueur, jamais celle
 // que le joueur est déjà en train de collecter lui-même.
 function isPetFetchEligible(c, gears, alRange, arRange) {
   if (!c) return false;
   if (collectableTargetId === c.id && c.armed === true) return false;
+  if (petBoxRefused(c.id)) return false;
   const type = String(c?.type || "");
   const dp = Math.hypot(c.x - player.x, c.y - player.y);
   if (gears.al > 0 && dp <= alRange && PET_GEAR_AUTOLOOT_TYPES.includes(type)) return true;
@@ -26361,7 +26378,8 @@ function validatePetFetch(gears) {
   return null;
 }
 
-// Nouveau scan : la box éligible la plus proche du joueur.
+// Nouveau scan : parmi les box à portée du joueur, la plus proche du REX.
+// Viser la plus proche du joueur le faisait retraverser la zone entre deux box.
 function scanPetFetch(gears) {
   const pet = account.user?.pet;
   const alRange = getPetGearRangeWithRadar("al", gears.al, pet, account.user);
@@ -26369,7 +26387,7 @@ function scanPetFetch(gears) {
   if (Math.max(alRange, arRange) <= 0) return null;
   const next = pickNearestWithin(
     spatialCollectablesNear(player.x, player.y, Math.max(alRange, arRange)),
-    player.x, player.y, Math.max(alRange, arRange),
+    petState.x, petState.y, Infinity,
     (c) => isPetFetchEligible(c, gears, alRange, arRange),
   );
   if (next) petState.fetchId = next.id;
@@ -26414,8 +26432,13 @@ function collectPetBox(box, st = petState) {
   const res = applyCollectableReward(box);
   try { if (box) delete box._petSalvagePct; } catch {}
   if (res?.kept) {
-    // Soute pleine : la box reste — tenter à nouveau dans 10 s, sans spam sonore.
-    st.pickCd = 10;
+    // Refusée (soute pleine, cargo d'un duel) : la box reste, le REX et les
+    // clones passent aux suivantes et la retentent dans 30 s.
+    if (box?.id != null) {
+      petRefusedBoxes.set(box.id, performance.now() / 1000 + PET_REFUSED_BOX_SEC);
+      if (petRefusedBoxes.size > 200) petRefusedBoxes.delete(petRefusedBoxes.keys().next().value);
+    }
+    st.pickCd = PET_GEAR_PICK_DELAY;
     return;
   }
   SFX.play("collect", { cut: true });
@@ -26465,7 +26488,7 @@ function tickPetPassiveGears(dt) {
   if (!pet || pet.active !== true || !petState.ready || player.dead || !started) return;
   // Un seul gear actif à la fois (sélecteur fenêtre P.E.T).
   const gears = petActiveGears();
-  // Récupération (coque + bouclier) : tourne même REX détruit (revive via G-REP).
+  // Récupération (coque + bouclier). Un REX détruit est désactivé : pas de revive.
   tickPetRecovery(dt, pet, gears);
   if (!(Number(pet.hp) > 0)) return;
   // La collecte (G-AL / G-AR) se fait en volant jusqu'à la box
@@ -26541,9 +26564,6 @@ function tickPetRecovery(dt, pet, gears) {
   } else {
     petState.shTickT = 0;
   }
-  // La collecte (G-AL / G-AR) se fait en volant jusqu'à la box
-  // (voir updatePet) ; ici : réparation + localisateur uniquement.
-  tickPetLocator(gears, dt);
 }
 
 // Carburant du REX : 1 unité toutes les 2 s +1 par gear actif continu,
@@ -26670,7 +26690,7 @@ function updatePet(dt) {
     return;
   }
   savePetPosition(pet, petMap, dt);
-  // REX détruit : seule la récupération tourne (revive via G-REP).
+  // REX à 0 encore marqué actif (compte chargé) : kamikaze et bouée coupés, bouclier à zéro.
   if (!(Number(pet.hp) > 0)) {
     cancelKamikazeRun("destroyed");
     if (petBuoy.until > 0) endBuoySession("destroyed");
@@ -26737,6 +26757,13 @@ function updatePet(dt) {
   // La portée reste centrée sur le joueur : s'éloigner trop annule la cible.
   const petGears = petActiveGears();
   const preFetch = validatePetFetch(petGears) || scanPetFetch(petGears);
+  // Distancé sur la même map (vitesse, saut...) : il réapparaît à côté de nous
+  // à la frame suivante au lieu de traverser la carte. Une box encore à
+  // ramasser (portée G-AL + radar, jusqu'à ~4 500) passe avant.
+  if (ownerDistance > PET_MAX_CHASE_DIST && preFetch == null) {
+    petState.ready = false;
+    return;
+  }
   const leash = Math.max(750, playerRange * 1.2) + (finishingAttack ? 600 : 0);
   // Inclure le rayon de combat : le cote oppose du NPC reste accessible.
   const ownerLeash = leash + PET_COMBAT_RADIUS;
@@ -26801,15 +26828,8 @@ function updatePet(dt) {
     }
   }
   if (!petCombatMode) petState.assistTarget = null;
-  // Localisateur d'ennemis (G-EL) : le REX engage aussi la cible localisée
-  // au lieu de rester passif. Rejoint le circuit normal ci-dessous (laisse,
-  // cessez-le-feu en zone sûre, stabilité de cible) comme une cible combat :
-  // il vole jusqu'à elle et tire une fois à portée (300).
-  if (!target && petGears.el > 0 && petLocator.enemyId != null && petHasGuns()) {
-    let foe = null;
-    try { foe = getEnemyById(petLocator.enemyId); } catch {}
-    if (foe && foe.hp > 0 && petTargetStillValid(foe)) target = foe;
-  }
+  // Localisateur d'ennemis (G-EL) : marquage uniquement (mini-carte + monde),
+  // le REX reste passif et n'engage jamais la cible localisée.
   // Multi PvP : pas de tir REX en zone de non-agression (parité avec le joueur).
   if (target && (target._netPlayer != null || target._netPet != null || target.isJpcBot === true)) {
     try { if (netPvpBlocked(target)) target = null; } catch {}
@@ -26842,6 +26862,10 @@ function updatePet(dt) {
       target = null;
     }
   }
+  // Camouflage (ultime, CPU CL04K-XL, hologramme) : aucune attaque automatique
+  // du REX ni des clones. Les dégâts reçus restent mémorisés : la riposte
+  // reprend si le camouflage tombe dans les 6 s.
+  if (target && isPlayerUntargetable()) target = null;
   petState.target = target;
   if (!target) {
     for (let i = pendingEscortSalvo.length - 1; i >= 0; i--) {
@@ -26918,10 +26942,12 @@ function updatePet(dt) {
       }
     }
     if (fetchTarget) {
-      // Vitesse du joueur, sans bonus de rattrapage (pas une fusée).
+      // Vitesse du joueur, avec le même rattrapage qu'en escorte (x1,35) tant
+      // que la box est loin ; à moins de 400 il revient à notre vitesse.
+      const fetchSpeed = ownerSpeed * (1 + 0.35 * clamp((trueDist - 400) / 600, 0, 1));
       const vx = (aimX - petState.x) * 3, vy = (aimY - petState.y) * 3;
       const speed = Math.hypot(vx, vy);
-      const scale = speed > 0 ? Math.min(1, ownerSpeed / speed) : 0;
+      const scale = speed > 0 ? Math.min(1, fetchSpeed / speed) : 0;
       stepPetMotion(petState, vx * scale, vy * scale, dt, WORLD, RADIATION_SPAWN_MARGIN);
     }
   } else {
@@ -41311,6 +41337,29 @@ function drawZonePortals(ox, oy) {
     }
 
     // ========================================================
+    // Calque saisonnier (neige/verglas l'hiver, portails NORMAUX) :
+    // par-dessus les 3 états (idle / open / JUMP fixe), sous l'anim
+    // de saut pour que l'effet du saut reste visible.
+    // ========================================================
+    if (spr.seasonalOverlay?.src) {
+      const ov = spr.seasonalOverlay;
+      const imgOv = getCachedImage(ov.src);
+      if (isImgReady(imgOv)) {
+        const ovW = ov.w || w;
+        const ovH = ov.h || h;
+        ctx.globalAlpha = clamp(Number(ov.alpha ?? 1), 0, 1);
+        ctx.drawImage(
+          imgOv,
+          x + Number(ov.xOff || 0) - ovW / 2,
+          y + Number(ov.yOff || 0) - ovH / 2,
+          ovW,
+          ovH
+        );
+        ctx.globalAlpha = 1;
+      }
+    }
+
+    // ========================================================
     // Animation pendant le saut (ON uniquement) : la séquence
     // joue en entier par-dessus l'image JUMP fixe, comme avant.
     // ========================================================
@@ -44447,6 +44496,7 @@ if (movementLocked) {
   if (typeof tickStrokelightBarrage === "function") {
     try { tickStrokelightBarrage(dt); } catch (error) { console.warn("Strokelight barrage tick:", error); }
   }
+  tickPetSessions();
   updatePet(dt);
   try { tickHangarSwap(dt); } catch (error) { console.warn("Hangar swap tick:", error); }
   try { tickStarJump(dt); } catch (error) { console.warn("Star jump tick:", error); }

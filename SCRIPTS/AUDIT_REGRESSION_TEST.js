@@ -136,3 +136,151 @@ test("un blocage du serveur est rattrapé par les NPC au lieu de les faire recul
   assert.match(server, /Math\.floor\(elapsedMs \/ NPC_STEP_MS\)/);
   assert.match(server, /for \(let step = 0; step < npcSteps; step\+\+\) sim\.tick\(/);
 });
+
+// --- Audit P.E.T du 3 novembre 2026 ---
+
+test("les recharges du P.E.T partent même fenêtre fermée", () => {
+  const hud = section(engine, "function updatePetHud() {", "\nfunction ");
+  assert.doesNotMatch(hud, /endTraSession|endHplLink|endBuoySession|tickBuoyHpAura/);
+  const sessions = section(engine, "function tickPetSessions() {", "\nfunction updatePetHud() {");
+  for (const call of ["endTraSession()", 'endHplLink("expired")', 'endBuoySession("expired")', "tickBuoyHpAura()"]) {
+    assert.ok(sessions.includes(call), call);
+  }
+  const loop = section(engine, "function update(dt) {", "\nfunction ");
+  assert.match(loop, /tickPetSessions\(\);\s*updatePet\(dt\);/);
+});
+
+test("un kamikaze refusé ne consomme pas de carburant", () => {
+  const source = section(engine, "function triggerPetKamikaze() {", "\n// Fait voler le REX");
+  const pet = { owned: true, active: true, hp: 1000, fuel: 10, mode: "passive" };
+  const toasts = [];
+  const context = {
+    petKamikaze: { active: false }, account: { user: { pet } }, player: { dead: false }, started: true,
+    petGearLevels: () => ({ kk: 1 }), kkCooldownLeftSec: () => 0, loadAccountUser() {},
+    showToast: text => toasts.push(text), pickKamikazeTarget: () => null,
+    consumePetOneshotFuel: p => { p.fuel -= 3; return { ok: true, cost: 3 }; },
+  };
+  vm.runInNewContext(`${source}\ntriggerPetKamikaze();`, context);
+  assert.equal(pet.fuel, 10, "sans cible");
+  assert.match(toasts.at(-1), /verrouille une cible/);
+  context.pickKamikazeTarget = () => ({ id: 1 });
+  context.player.dead = true;
+  vm.runInNewContext(`${source}\ntriggerPetKamikaze();`, context);
+  assert.equal(pet.fuel, 10, "joueur mort");
+});
+
+test("la bouée coque augmente les PV max sans soigner en entrant et sortant", () => {
+  const source = section(engine, "function tickBuoyHpAura() {", "\n// Recalcul de vie");
+  let inside = false;
+  const player = { hp: 50000, hpMax: 100000 };
+  const context = { petBuoy: { key: "bh" }, buoyPlayerInside: () => inside, player, PET_BUOY_HP_PCT: 5, markProgressDirty() {} };
+  vm.runInNewContext(source, context);
+  for (let i = 0; i < 10; i++) {
+    inside = true; vm.runInNewContext("tickBuoyHpAura()", context);
+    assert.equal(player.hpMax, 105000);
+    inside = false; vm.runInNewContext("tickBuoyHpAura()", context);
+  }
+  assert.equal(player.hp, 50000);
+  assert.equal(player.hpMax, 100000);
+});
+
+test("le serveur accepte le P.E.T aussi loin que porte l'auto-loot", async () => {
+  const { ANTICHEAT } = await import("./ANTICHEAT.js");
+  const { PET_GEAR_RANGES } = await import("../PET/PET_GEARS.js");
+  const radar = Math.max(...[...read("../SRC/CORE/CATALOG.js").matchAll(/petProtocol: \{ key: "radar", level: \d+, pct: ([\d.]+)/g)].map(m => Number(m[1])));
+  assert.ok(radar > 0, "protocole radar introuvable");
+  const reach = Math.max(...PET_GEAR_RANGES.al, ...PET_GEAR_RANGES.ar) * (1 + radar / 100);
+  assert.ok(ANTICHEAT.PET_LEASH >= reach, `${ANTICHEAT.PET_LEASH} < ${Math.ceil(reach)}`);
+});
+
+test("la régénération du pool PET serveur couvre le G-REP le plus fort", async () => {
+  const { PET_GEAR_REPAIR_PCT } = await import("../PET/PET_GEARS.js");
+  const rate = Number(read("./MULTI_SERVER.js").match(/_petHpRegenBudget = Math\.min\(phm \* ([\d.]+)/)?.[1]);
+  assert.ok(rate >= Math.max(...PET_GEAR_REPAIR_PCT) / 100, String(rate));
+});
+
+test("un P.E.T distancé réapparaît à côté du vaisseau, sauf en pleine collecte", () => {
+  const update = section(engine, "function updatePet(dt) {", "\nconst petCombinedFrames");
+  assert.match(update, /ownerDistance > PET_MAX_CHASE_DIST && preFetch == null\) \{\s*petState\.ready = false;/);
+  assert.ok(update.indexOf("const preFetch =") < update.indexOf("ownerDistance > PET_MAX_CHASE_DIST"), "la collecte est connue avant");
+  const recovery = section(engine, "function tickPetRecovery(", "\n// Carburant du REX");
+  assert.doesNotMatch(recovery, /tickPetLocator/);
+});
+
+test("l'auto-loot vise la box la plus proche du P.E.T, pas du vaisseau", async () => {
+  const { pickNearestWithin } = await import("../PET/PET_GEARS.js");
+  const source = section(engine, "function scanPetFetch(gears) {", "\n// Collecte des clones TBR");
+  const nearShip = { id: "a", x: 1100, y: 1000 }, nearPet = { id: "b", x: 2900, y: 1000 };
+  const petState = { x: 3000, y: 1000, fetchId: null };
+  const context = {
+    account: { user: { pet: {} } }, player: { x: 1000, y: 1000 }, petState, pickNearestWithin,
+    getPetGearRangeWithRadar: key => (key === "al" ? 3000 : 0),
+    spatialCollectablesNear: () => [nearShip, nearPet], isPetFetchEligible: () => true,
+  };
+  vm.runInNewContext(`${source}\nthis.picked = scanPetFetch({ al: 4, ar: 0 });`, context);
+  assert.equal(context.picked, nearPet);
+  assert.equal(petState.fetchId, "b");
+});
+
+test("une box refusée est ignorée 30 s puis retentée", () => {
+  const helpers = section(engine, "const PET_REFUSED_BOX_SEC = 30;", "\n// Cible de collecte du P.E.T");
+  const collect = section(engine, "function collectPetBox(box, st = petState) {", "\nfunction tickPetLocator(");
+  let now = 1000;
+  const box = { id: 7, type: "Cargo_Box", x: 0, y: 0 };
+  const st = { pickCd: 0 };
+  const context = {
+    performance: { now: () => now * 1000 }, collectableTargetId: null, player: { x: 0, y: 0 }, account: { user: { pet: {} } },
+    PET_GEAR_AUTOLOOT_TYPES: ["Cargo_Box"], PET_GEAR_ORE_TYPES: [], PET_GEAR_PICK_DELAY: 0.3,
+    getPetProtocolPct: () => 0, applyCollectableReward: () => ({ kept: true }), SFX: { play() {} },
+    takeCollectableInstance() { throw new Error("box refusée retirée"); }, collectables: [box], st, box,
+  };
+  vm.runInNewContext(`${helpers}\n${collect}\ncollectPetBox(box, st);`, context);
+  const eligible = () => vm.runInNewContext("isPetFetchEligible(box, { al: 1, ar: 0 }, 3000, 0)", context);
+  assert.equal(st.pickCd, 0.3, "pas d'attente de 10 s sur les box suivantes");
+  assert.equal(eligible(), false);
+  now += 29; assert.equal(eligible(), false);
+  now += 2; assert.equal(eligible(), true);
+});
+
+test("le P.E.T n'attaque pas tout seul pendant le camouflage", () => {
+  const update = section(engine, "function updatePet(dt) {", "\nconst petCombinedFrames");
+  const guard = update.indexOf("if (target && isPlayerUntargetable()) target = null;");
+  assert.ok(guard > 0, "garde camouflage");
+  assert.ok(guard < update.indexOf("petState.target = target;"), "avant la cible du REX et des clones");
+  assert.match(engine, /function isPlayerUntargetable\(\) \{ return isPlayerCloaked\(\) \|\| isPlayerCpuCloaked\(\) \|\| isPlayerHoloHidden\(\); \}/);
+});
+
+test("la Flamme sacrificielle exige un P.E.T actif et en vie", () => {
+  const source = section(engine, "function triggerSacrificeFlame() {", "\nfunction openTraTradeWindow");
+  for (const pet of [{ owned: true, active: false, hp: 1000, sh: 500 }, { owned: true, active: false, hp: 0, sh: 500 }]) {
+    const player = { sh: 0, shMax: 1000 };
+    const context = { account: { user: { pet } }, player, petGearLevels: () => ({ fs: 1 }), loadAccountUser() {}, showToast() {},
+      petShieldMaxForHud: () => 500, consumePetOneshotFuel: () => ({ ok: true }) };
+    vm.runInNewContext(`${source}\ntriggerSacrificeFlame();`, context);
+    assert.equal(player.sh, 0);
+    assert.equal(pet.sh, 500);
+  }
+});
+
+test("un P.E.T détruit perd son bouclier", () => {
+  const source = section(engine, "function onPetDestroyed() {", "\n// Part coque redirigée");
+  const pet = { owned: true, active: true, hp: 0, sh: 800, activeGear: "hpl" };
+  const context = { account: { user: { pet } }, markProgressDirty() {}, cancelKamikazeRun() {}, petState: {}, petLocator: {},
+    petEngine: { states: new Map() }, engineTrails: [] };
+  vm.runInNewContext(`${source}\nonPetDestroyed();`, context);
+  assert.equal(pet.sh, 0);
+  assert.equal(pet.active, false);
+});
+
+test("en collecte, le P.E.T rattrape jusqu'à x1,35 loin de la box", () => {
+  const update = section(engine, "function updatePet(dt) {", "\nconst petCombinedFrames");
+  assert.match(update, /const fetchSpeed = ownerSpeed \* \(1 \+ 0\.35 \* clamp\(\(trueDist - 400\) \/ 600, 0, 1\)\);/);
+  assert.match(update, /Math\.min\(1, fetchSpeed \/ speed\)/);
+});
+
+test("le localisateur G-EL marque sans faire attaquer le P.E.T", () => {
+  const update = section(engine, "function updatePet(dt) {", "\nconst petCombinedFrames");
+  assert.doesNotMatch(update, /getEnemyById\(petLocator\.enemyId\)/);
+  assert.doesNotMatch(engine, /petHasGuns/);
+  assert.match(engine, /if \(isPetActive && petLocator\.enemyId != null\) \{/, "le marqueur mini-carte reste");
+});

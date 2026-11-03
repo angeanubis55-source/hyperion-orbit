@@ -16,7 +16,9 @@ const AC_PVP_HIT_CAP = 240, AC_PVP_HIT_REFILL = 80;
 const AC_PVP_DMG_CAP = 1e9, AC_PVP_DMG_REFILL = 150e6;
 const HEAL_BUDGET_RATE = 0.5, HEAL_BUDGET_CAP = 0.5;
 const REVIVE_REBASE_MAX = 0.25;
-const PET_LEASH = 3000;
+// Distance PET-vaisseau acceptée : couvre l'auto-loot le plus long
+// (G-AL5 3938 + radar), sinon ses collectes lointaines sont refusées.
+const PET_LEASH = 5000;
 
 // (Export groupé ANTICHEAT en fin de fichier.)
 

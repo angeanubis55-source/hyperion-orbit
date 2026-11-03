@@ -4436,14 +4436,14 @@ wss.on("connection", (ws) => {
         } else {
           if (cPHp < state.petPoolHp) state.petPoolHp = cPHp;
           if (cPSh < state.petPoolSh) state.petPoolSh = cPSh;
-          // Regeneration legitime du REX : G-REP repare jusqu'a 5 %/s et le
+          // Regeneration legitime du REX : G-REP repare jusqu'a 6,56 %/s et le
           // bouclier recharge a 5 %/s. Les valeurs arrivent par paliers de
           // 1 s, donc on utilise un petit budget accumule plutot qu'un cliquet
           // strictement descendant qui figeait les barres multijoueur.
           const syncNow = Date.now();
           const syncDt = Math.max(0, Math.min(2, (syncNow - Number(state._petRegenAt || syncNow)) / 1000));
           state._petRegenAt = syncNow;
-          state._petHpRegenBudget = Math.min(phm * 0.055, Math.max(0, Number(state._petHpRegenBudget) || 0) + phm * 0.055 * syncDt);
+          state._petHpRegenBudget = Math.min(phm * 0.066, Math.max(0, Number(state._petHpRegenBudget) || 0) + phm * 0.066 * syncDt);
           state._petShRegenBudget = Math.min(psm * 0.055, Math.max(0, Number(state._petShRegenBudget) || 0) + psm * 0.055 * syncDt);
           if (cPHp > state.petPoolHp && state._petHpRegenBudget > 0) {
             const gain = Math.min(cPHp - state.petPoolHp, state._petHpRegenBudget);

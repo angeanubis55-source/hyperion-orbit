@@ -181,6 +181,73 @@ export const DEFAULT_PORTAL_JUMP_BUTTON = Object.freeze({
   requireNear: true,
 });
 
+// ============================================================================
+// HIVER : neige + verglas par-dessus les portails NORMAUX uniquement.
+// Du 01/11 00h01 au 31/01 23h59 (heure de Paris, chaque année).
+// Le calque (320x320, transparent) se pose sur les 3 états idle/open/jump.
+// ============================================================================
+export const PORTAL_WINTER_TIME_ZONE = "Europe/Paris";
+export const PORTAL_WINTER_START = Object.freeze({ month: 10, day: 1, hour: 0, minute: 1 });
+export const PORTAL_WINTER_END = Object.freeze({ month: 0, day: 31, hour: 23, minute: 59 });
+export const PORTAL_WINTER_OVERLAY = Object.freeze({ src: "ASSETS/PORTAL/NORMAUX/NEIGE_VERGLAS.png", w: 320, h: 320, xOff: 0, yOff: 0, alpha: 1 });
+
+const winterDateFormat = new Intl.DateTimeFormat("en-GB", {
+  timeZone: PORTAL_WINTER_TIME_ZONE,
+  year: "numeric", month: "2-digit", day: "2-digit",
+  hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23",
+});
+
+function winterDateParts(date) {
+  return Object.fromEntries(winterDateFormat.formatToParts(date)
+    .filter((part) => part.type !== "literal")
+    .map((part) => [part.type, Number(part.value)]));
+}
+
+// Date civile de Paris -> instant UTC (offset recalculé : hiver UTC+1).
+function winterParisTime(year, month, day, hour = 0, minute = 0, second = 0) {
+  const target = Date.UTC(year, month, day, hour, minute, second);
+  let timestamp = target;
+  for (let i = 0; i < 3; i++) {
+    const p = winterDateParts(new Date(timestamp));
+    const delta = target - Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute, p.second);
+    timestamp += delta;
+    if (!delta) break;
+  }
+  return timestamp;
+}
+
+// Appelé à chaque frame pour chaque portail : conversions Intl seulement
+// au changement d'année. La saison chevauche deux années : on garde la
+// fenêtre qui finit en janvier de l'année courante et celle qui commence
+// en novembre de l'année courante.
+let winterWindowCache = null;
+function winterWindows(date) {
+  const timestamp = date.getTime();
+  if (!Number.isFinite(timestamp)) return null;
+  if (!winterWindowCache || timestamp < winterWindowCache.yearStart
+      || timestamp >= winterWindowCache.yearEnd) {
+    const { year } = winterDateParts(date);
+    const s = PORTAL_WINTER_START, e = PORTAL_WINTER_END;
+    winterWindowCache = {
+      yearStart: winterParisTime(year, 0, 1),
+      yearEnd: winterParisTime(year + 1, 0, 1),
+      windows: [
+        [winterParisTime(year - 1, s.month, s.day, s.hour, s.minute), winterParisTime(year, e.month, e.day, e.hour, e.minute, 59)],
+        [winterParisTime(year, s.month, s.day, s.hour, s.minute), winterParisTime(year + 1, e.month, e.day, e.hour, e.minute, 59)],
+      ],
+    };
+  }
+  return winterWindowCache.windows;
+}
+
+export function isPortalWinterActive(now = new Date()) {
+  const t = now instanceof Date ? now : new Date(now);
+  const windows = winterWindows(t);
+  if (!windows) return false;
+  const ms = t.getTime();
+  return windows.some(([start, end]) => ms >= start && ms <= end);
+}
+
 export function getPortalSkinForMap(toMap) {
   const id = normalizeMapId(toMap);
   const lower = String(id || "").toLowerCase();
@@ -201,10 +268,13 @@ export function getPortalSkinForMap(toMap) {
   const dir = SKIN_DIR_BY_MAP.get(id);
   if (!dir) return null;
   const category = String(dir).split("/")[0];
+  // ✅ calque saisonnier (neige/verglas) : portails NORMAUX seulement.
+  const seasonalOverlay = category === "NORMAUX" && isPortalWinterActive() ? PORTAL_WINTER_OVERLAY : null;
   return {
     idle: { src: `ASSETS/PORTAL/${dir}/DESACTIVE.png`, w: 320, h: 320, yOff: 0 },
     open: { src: `ASSETS/PORTAL/${dir}/ACTIVE.png`, w: 320, h: 320, yOff: 0 },
     jump: { src: `ASSETS/PORTAL/${dir}/JUMP.png`, w: 320, h: 320, yOff: 0, scale: 1, spinSpeed: 0, alpha: 1 },
     jumpFxPath: JUMP_FX_BY_CATEGORY[category] || null,
+    seasonalOverlay,
   };
 }
