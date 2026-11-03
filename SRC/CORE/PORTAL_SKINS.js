@@ -183,7 +183,9 @@ export const DEFAULT_PORTAL_JUMP_BUTTON = Object.freeze({
 });
 
 // ============================================================================
-// HIVER : neige + verglas par-dessus les portails NORMAUX uniquement.
+// HIVER : neige + verglas par-dessus les portails NORMAUX, BATTLE, BL, QZ et
+// le portail vers MAUDITE (même anneau 320x320 ; pas sur les Galaxy Gates,
+// les pirates ni LOW).
 // Dates de la saison (01/11 00h01 -> 31/01 23h59, Paris) : NPC/NPC_WINTER.js.
 // Le calque (320x320, transparent) se pose sur les 3 états idle/open/jump.
 // ============================================================================
@@ -191,6 +193,11 @@ export const PORTAL_WINTER_OVERLAY = Object.freeze({ src: "ASSETS/PORTAL/NORMAUX
 
 export function isPortalWinterActive(now = new Date()) {
   return isWinterEventActive(now);
+}
+
+const WINTER_PORTAL_CATEGORIES = new Set(["NORMAUX", "BATTLE", "BL", "QZ"]);
+function winterOverlayFor(category) {
+  return WINTER_PORTAL_CATEGORIES.has(category) && isPortalWinterActive() ? PORTAL_WINTER_OVERLAY : null;
 }
 
 export function getPortalSkinForMap(toMap) {
@@ -209,12 +216,16 @@ export function getPortalSkinForMap(toMap) {
   if (lower === "awakened") return SPECIAL_SKINS.awakened;
   if (lower === "eternal") return SPECIAL_SKINS.eternal;
   if (PIRATES_DESTINATIONS.includes(lower)) return SPECIAL_SKINS.pirates;
+  // MAUDITE : portail standard (fallback), avec la neige l'hiver.
+  if (lower === "maudite") {
+    return isPortalWinterActive() ? { ...STANDARD_PORTAL_SKIN, seasonalOverlay: PORTAL_WINTER_OVERLAY } : null;
+  }
   // Portails par map : NORMAUX / BATTLE / BL / QZ.
   const dir = SKIN_DIR_BY_MAP.get(id);
   if (!dir) return null;
   const category = String(dir).split("/")[0];
-  // ✅ calque saisonnier (neige/verglas) : portails NORMAUX seulement.
-  const seasonalOverlay = category === "NORMAUX" && isPortalWinterActive() ? PORTAL_WINTER_OVERLAY : null;
+  // ✅ calque saisonnier (neige/verglas) : NORMAUX / BATTLE / BL / QZ.
+  const seasonalOverlay = winterOverlayFor(category);
   return {
     idle: { src: `ASSETS/PORTAL/${dir}/DESACTIVE.png`, w: 320, h: 320, yOff: 0 },
     open: { src: `ASSETS/PORTAL/${dir}/ACTIVE.png`, w: 320, h: 320, yOff: 0 },

@@ -63,14 +63,17 @@ test("Hiver : 4 paires (Ice x3, Super Ice en 4-4/4-5), tirage dans la paire", ()
   assert.deepEqual(winterPreloadTypes("1-3", new Date(MID)), []);
 });
 
-test("Hiver : neige sur les portails NORMAUX seulement", () => {
+test("Hiver : neige sur les portails NORMAUX, BATTLE, BL, QZ et MAUDITE", () => {
   // Dépend de l'heure réelle : on vérifie la cohérence avec la saison.
   const on = isWinterEventActive(new Date());
-  assert.equal(!!getPortalSkinForMap("1-2")?.seasonalOverlay, on);
-  assert.equal(!!getPortalSkinForMap("3-8")?.seasonalOverlay, on);
-  for (const m of ["4-2", "1-BL", "qz", "5-2", "alpha", "low"]) {
-    assert.equal(getPortalSkinForMap(m)?.seasonalOverlay ?? null, null);
+  for (const m of ["1-2", "3-8", "4-2", "4-5", "1-BL", "3-BL", "qz", "MAUDITE"]) {
+    assert.equal(!!getPortalSkinForMap(m)?.seasonalOverlay, on, m);
   }
+  for (const m of ["5-2", "alpha", "kronos", "eternal", "low"]) {
+    assert.equal(getPortalSkinForMap(m)?.seasonalOverlay ?? null, null, m);
+  }
+  // MAUDITE garde le visuel standard sous la neige.
+  if (on) assert.equal(getPortalSkinForMap("MAUDITE").idle.src, "ASSETS/STANDARD_PORTAL/DESACTIVE.png");
 });
 
 function makeSims() {
