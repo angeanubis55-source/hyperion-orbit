@@ -63,17 +63,22 @@ test("Hiver : 4 paires (Ice x3, Super Ice en 4-4/4-5), tirage dans la paire", ()
   assert.deepEqual(winterPreloadTypes("1-3", new Date(MID)), []);
 });
 
-test("Hiver : neige sur les portails NORMAUX, BATTLE, BL, QZ et MAUDITE", () => {
+test("Hiver : neige sur les portails NORMAUX, BATTLE, BL, QZ et MAUDITE ; LOW en skin pirate", () => {
   // Dépend de l'heure réelle : on vérifie la cohérence avec la saison.
   const on = isWinterEventActive(new Date());
   for (const m of ["1-2", "3-8", "4-2", "4-5", "1-BL", "3-BL", "qz", "MAUDITE"]) {
     assert.equal(!!getPortalSkinForMap(m)?.seasonalOverlay, on, m);
   }
-  for (const m of ["5-2", "alpha", "kronos", "eternal", "low"]) {
+  for (const m of ["5-2", "low", "alpha", "kronos", "eternal"]) {
     assert.equal(getPortalSkinForMap(m)?.seasonalOverlay ?? null, null, m);
   }
   // MAUDITE garde le visuel standard sous la neige.
-  if (on) assert.equal(getPortalSkinForMap("MAUDITE").idle.src, "ASSETS/STANDARD_PORTAL/DESACTIVE.png");
+  if (on) {
+    assert.equal(getPortalSkinForMap("MAUDITE").idle.src, "ASSETS/STANDARD_PORTAL/DESACTIVE.png");
+  }
+  // LOW : skin pirate, comme 5-2.
+  assert.equal(getPortalSkinForMap("low").idle.src, "ASSETS/PIRATES_PORTAL/DESACTIVE.png");
+  assert.equal(getPortalSkinForMap("LOW").idle.src, "ASSETS/PIRATES_PORTAL/DESACTIVE.png");
 });
 
 function makeSims() {

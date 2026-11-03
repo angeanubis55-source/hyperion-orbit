@@ -140,10 +140,10 @@ const SPECIAL_SKINS = Object.freeze({
   }),
 });
 
-// Destination utilisant le skin pirates : le portail vers 5-2.
+// Destinations utilisant le skin pirates : les portails vers 5-2 et vers LOW.
 // (les sprites pirates explicites déjà présents dans SPAWNS.js sont conservés
 //  tels quels et restent prioritaires ; 4-5 garde son fallback standard.)
-const PIRATES_DESTINATIONS = Object.freeze(["5-2"]);
+const PIRATES_DESTINATIONS = Object.freeze(["5-2", "low"]);
 
 // Fallback : portail standard du jeu (conservé).
 export const STANDARD_PORTAL_SKIN = Object.freeze({
@@ -184,8 +184,8 @@ export const DEFAULT_PORTAL_JUMP_BUTTON = Object.freeze({
 
 // ============================================================================
 // HIVER : neige + verglas par-dessus les portails NORMAUX, BATTLE, BL, QZ et
-// le portail vers MAUDITE (même anneau 320x320 ; pas sur les Galaxy Gates,
-// les pirates ni LOW).
+// le portail standard vers MAUDITE (même anneau 320x320 ; pas sur les
+// Galaxy Gates ni les pirates (5-2, LOW), qui ont leur propre forme).
 // Dates de la saison (01/11 00h01 -> 31/01 23h59, Paris) : NPC/NPC_WINTER.js.
 // Le calque (320x320, transparent) se pose sur les 3 états idle/open/jump.
 // ============================================================================
@@ -196,6 +196,8 @@ export function isPortalWinterActive(now = new Date()) {
 }
 
 const WINTER_PORTAL_CATEGORIES = new Set(["NORMAUX", "BATTLE", "BL", "QZ"]);
+// Destinations sans skin dédié (portail standard) qui reçoivent la neige.
+const WINTER_STANDARD_DESTINATIONS = Object.freeze(["maudite"]);
 function winterOverlayFor(category) {
   return WINTER_PORTAL_CATEGORIES.has(category) && isPortalWinterActive() ? PORTAL_WINTER_OVERLAY : null;
 }
@@ -217,7 +219,7 @@ export function getPortalSkinForMap(toMap) {
   if (lower === "eternal") return SPECIAL_SKINS.eternal;
   if (PIRATES_DESTINATIONS.includes(lower)) return SPECIAL_SKINS.pirates;
   // MAUDITE : portail standard (fallback), avec la neige l'hiver.
-  if (lower === "maudite") {
+  if (WINTER_STANDARD_DESTINATIONS.includes(lower)) {
     return isPortalWinterActive() ? { ...STANDARD_PORTAL_SKIN, seasonalOverlay: PORTAL_WINTER_OVERLAY } : null;
   }
   // Portails par map : NORMAUX / BATTLE / BL / QZ.
