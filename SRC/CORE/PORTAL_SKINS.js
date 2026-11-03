@@ -189,7 +189,7 @@ export const DEFAULT_PORTAL_JUMP_BUTTON = Object.freeze({
 export const PORTAL_WINTER_TIME_ZONE = "Europe/Paris";
 export const PORTAL_WINTER_START = Object.freeze({ month: 10, day: 1, hour: 0, minute: 1 });
 export const PORTAL_WINTER_END = Object.freeze({ month: 0, day: 31, hour: 23, minute: 59 });
-export const PORTAL_WINTER_OVERLAY = Object.freeze({ src: "ASSETS/PORTAL/NORMAUX/NEIGE_VERGLAS.png", w: 320, h: 320, xOff: 0, yOff: 0, alpha: 1 });
+export const PORTAL_WINTER_OVERLAY = Object.freeze({ src: "ASSETS/PORTAL/NORMAUX/NEIGE_VERGLAS.png?v=3", w: 320, h: 320, xOff: 0, yOff: 0, alpha: 1 });
 
 const winterDateFormat = new Intl.DateTimeFormat("en-GB", {
   timeZone: PORTAL_WINTER_TIME_ZONE,
