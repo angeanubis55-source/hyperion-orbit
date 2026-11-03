@@ -148,13 +148,13 @@ test("serveur : 50 Pumpkin Box à l'ouverture et en direct, exclusions et fin re
     return source.slice(start, end + 2);
   };
   const intervals = [];
-  const context = vm.createContext({ Map, COLLECTABLE_TYPES, isHalloweenEventActive,
+  const context = vm.createContext({ Map, COLLECTABLE_TYPES, isHalloweenEventActive, isWinterEventActive: () => false,
     boxRooms: new Map(), boxRoomLoads: new Map(), boxRespawns: new Map(), rooms: new Map(), npcSims: new Map(),
     ensureNpcSim: async () => null, randomBoxPosition: () => ({ x: 500, y: 500 }),
     setInterval: fn => intervals.push(fn),
   });
-  vm.runInContext(functionSource("collectableAllowedOnMap") + "\n" + functionSource("ensureBoxRoom"), context);
-  const intervalStart = source.indexOf("// Event Halloween : apparition / disparition des Pumpkin Box en direct");
+  vm.runInContext(functionSource("collectableEventOn") + "\n" + functionSource("collectableAllowedOnMap") + "\n" + functionSource("ensureBoxRoom"), context);
+  const intervalStart = source.indexOf("// Box d'event : apparition / disparition en direct");
   const intervalEnd = source.indexOf("}, 5000);", intervalStart);
   assert.ok(intervalStart >= 0 && intervalEnd > intervalStart);
   vm.runInContext(source.slice(intervalStart, intervalEnd + "}, 5000);".length), context);

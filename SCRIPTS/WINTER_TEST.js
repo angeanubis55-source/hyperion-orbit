@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
@@ -348,34 +349,42 @@ test("Icy de l'Ice et du Super Ice : 100k PV, 80k bouclier, 2k dégâts", () => 
   }
 });
 
-test("Hiver : Bonus Box et Cargo Box en visuel glace, autres box inchangées", async () => {
-  const { readFileSync, existsSync } = await import("node:fs");
+test("Hiver : Cargo Box en visuel box0, Bonus Box classiques sans filtre", async () => {
+  const { existsSync } = await import("node:fs");
+  const { readFileSync } = await import("node:fs");
   const vm = await import("node:vm");
   const engine = readFileSync(new URL("../SRC/CORE/ORBIT_ENGINE.js", import.meta.url), "utf8").replace(/\r\n/g, "\n");
-  const start = engine.indexOf("const WINTER_BONUS_BOX_SPRITE = {");
-  const fnStart = engine.indexOf("function collectableSpriteFor(type) {");
-  const end = engine.indexOf("\n}\n", fnStart) + 3;
-  const candy = engine.slice(engine.indexOf("const CANDY_BOX_SPRITE = {"), engine.indexOf("};", engine.indexOf("const CANDY_BOX_SPRITE = {")) + 2);
+  const cut = (from, to) => { const i = engine.indexOf(from); return engine.slice(i, engine.indexOf(to, i)); };
+  const code = cut("const CANDY_BOX_SPRITE = {", "\nfunction ensureCollectableLoaded")
+    + "\n" + cut("const HALLOWEEN_BOX_TINT", "\nconst boxTintCache");
   const run = (winter, halloween) => {
     const ctx = vm.createContext({
       isWinterEventActive: () => winter, isHalloweenEventActive: () => halloween,
-      COLLECTABLE_DEFS: { Bonus_Box: { sprite: { path: "ASSETS/COLLECTABLES/BONUS_BOX/" } }, Green_Booty_Box: { sprite: { path: "GREEN/" } }, Cargo_Box: { sprite: { path: "CARGO/" } } },
+      COLLECTABLE_DEFS: { Bonus_Box: { sprite: { path: "BONUS/" } }, Green_Booty_Box: { sprite: { path: "GREEN/" } }, Cargo_Box: { sprite: { path: "CARGO/" } } },
     });
-    vm.runInContext(candy + "\n" + engine.slice(start, end) + "\nglobalThis.f = collectableSpriteFor;", ctx);
-    return ctx.f;
+    vm.runInContext(code + "\nglobalThis.sprite = collectableSpriteFor; globalThis.tint = seasonalBoxTint;", ctx);
+    return ctx;
   };
-  const on = run(true, false), off = run(false, false);
-  assert.equal(on("Bonus_Box").path, "ASSETS/COLLECTABLES/BONUS_BOX_HIVER_GLACE/");
-  assert.equal(off("Bonus_Box").path, "ASSETS/COLLECTABLES/BONUS_BOX/");
-  assert.equal(on("Green_Booty_Box").path, "GREEN/");
-  assert.equal(on("Cargo_Box").path, "ASSETS/COLLECTABLES/CARGO_BOX_HIVER_GLACE/");
-  assert.equal(off("Cargo_Box").path, "CARGO/");
-  assert.equal(run(false, true)("Cargo_Box").path, candy.match(/path: "([^"]+)"/)[1]);
-  for (const sp of [on("Bonus_Box"), on("Cargo_Box")]) {
+  const w = run(true, false), off = run(false, false), h = run(false, true);
+  assert.equal(w.sprite("Green_Booty_Box").path, "GREEN/");
+  assert.equal(w.sprite("Cargo_Box").path, "ASSETS/COLLECTABLES/CARGO_BOX_WINTER/");
+  assert.equal(w.sprite("Bonus_Box").path, "BONUS/");
+  for (const sp of [w.sprite("Cargo_Box")]) {
     for (let i = sp.firstNumber; i < sp.firstNumber + sp.frames; i++) {
-      assert.ok(existsSync(new URL(`../${sp.path}${i}${sp.ext}`, import.meta.url)), `${sp.path} frame ${i} manquante`);
+      assert.ok(existsSync(new URL(`../${sp.path}${i}${sp.ext}`, import.meta.url)), `${sp.path} frame ${i}`);
     }
   }
+  assert.equal(off.sprite("Cargo_Box").path, "CARGO/");
+  assert.equal(off.sprite("Bonus_Box").path, "BONUS/");
+  assert.equal(h.sprite("Bonus_Box").path, "BONUS/");
+  assert.equal(w.tint("Bonus_Box"), null);
+  assert.equal(w.tint("Cargo_Box"), null);
+  assert.equal(h.tint("Cargo_Box"), null);
+  assert.equal(w.tint("Green_Booty_Box"), null);
+  assert.equal(off.tint("Bonus_Box"), null);
+  assert.equal(h.tint("Bonus_Box"), "rgba(255,130,0,0.38)");
+  assert.notEqual(h.sprite("Cargo_Box").path, "CARGO/");
+  assert.doesNotMatch(engine, /HIVER_GLACE/);
 });
 
 test("Bot : Ice, Super Ice et Icy listés pendant l'hiver seulement", async () => {
@@ -415,4 +424,102 @@ test("Écran de chargement : image d'hiver du 02/11 00h01 au 31/01 23h59 (Paris)
   assert.equal(classAt("2027-06-15T12:00:00Z"), "");
   assert.ok(existsSync(new URL("../ASSETS/UI/LOADING_SCREEN_WINTER.webp", import.meta.url)));
   assert.match(readFileSync(new URL("../style.css", import.meta.url), "utf8"), /\.loadingOverlay\.winter\s*\{[^}]*LOADING_SCREEN_WINTER\.webp/);
+});
+
+test("Hiver : Winter Gift Box comme les Pumpkin Box (maps), 25 par map, loot Pumpkin / 2 sans bonbons", async () => {
+  const { COLLECTABLE_TYPES } = await import("../SRC/DATA/COLLECTABLES.js");
+  const { PET_GEAR_AUTOLOOT_TYPES } = await import("../PET/PET_GEARS.js");
+  const gift = COLLECTABLE_TYPES.Winter_Gift_Box;
+  const pumpkin = COLLECTABLE_TYPES.Pumpkin_Box;
+  assert.equal(gift.event, "winter");
+  assert.equal(gift.name, "Winter Gift Box");
+  assert.equal(gift.qty, 25);
+  assert.equal(gift.spawnBatch, 25);
+  for (const k of ["maps", "minSpacing", "respawnDelaySec", "npcDespawnAfter", "r", "pickupRadius"]) {
+    assert.deepEqual(gift[k], pumpkin[k], k);
+  }
+  assert.deepEqual(gift.denyMaps, pumpkin.denyMaps);
+  // Loot de la Pumpkin divisé par 2 (arrondi, min 1), mêmes chances, sans
+  // bonbons ni clé du passe Halloween.
+  const halloweenOnly = (r) => r.reward?.resources?.candy || r.reward?.resources?.battlepass_key;
+  const div2 = (v) => Array.isArray(v) ? v.map((n) => Math.max(1, Math.round(n / 2)))
+    : (v && typeof v === "object") ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, div2(x)])) : v;
+  const expected = pumpkin.exclusiveRewards.filter((r) => !halloweenOnly(r)).map((r) => ({ weight: r.weight, reward: div2(r.reward) }));
+  assert.deepEqual(gift.exclusiveRewards, expected);
+  assert.ok(PET_GEAR_AUTOLOOT_TYPES.includes("Winter_Gift_Box"));
+  const sp = gift.sprite;
+  for (let i = sp.firstNumber; i < sp.firstNumber + sp.frames; i++) {
+    assert.ok(existsSync(new URL(`../${sp.path}${i}${sp.ext}`, import.meta.url)), `frame ${i} manquante`);
+  }
+});
+
+test("serveur : 25 Winter Gift Box pendant l'hiver, en direct, exclusions et fin respectées", async (t) => {
+  const { readFileSync } = await import("node:fs");
+  const vm = await import("node:vm");
+  const { COLLECTABLE_TYPES } = await import("../SRC/DATA/COLLECTABLES.js");
+  t.mock.timers.enable({ apis: ["Date"], now: BEFORE });
+  const source = readFileSync(new URL("./MULTI_SERVER.js", import.meta.url), "utf8").replace(/\r\n/g, "\n");
+  const functionSource = (name) => {
+    const start = source.indexOf(`function ${name}(`);
+    assert.ok(start >= 0, name);
+    return source.slice(start, source.indexOf("\n}", start) + 2);
+  };
+  const intervals = [];
+  const context = vm.createContext({ Map, COLLECTABLE_TYPES, isHalloweenEventActive: () => false, isWinterEventActive,
+    boxRooms: new Map(), boxRoomLoads: new Map(), boxRespawns: new Map(), rooms: new Map(), npcSims: new Map(),
+    ensureNpcSim: async () => null, randomBoxPosition: () => ({ x: 500, y: 500 }),
+    setInterval: (fn) => intervals.push(fn),
+  });
+  vm.runInContext(["collectableEventOn", "collectableAllowedOnMap", "ensureBoxRoom"].map(functionSource).join("\n"), context);
+  const intervalStart = source.indexOf("// Box d'event : apparition / disparition en direct");
+  const intervalEnd = source.indexOf("}, 5000);", intervalStart);
+  assert.ok(intervalStart >= 0 && intervalEnd > intervalStart);
+  vm.runInContext(source.slice(intervalStart, intervalEnd + "}, 5000);".length), context);
+  const gifts = (boxes) => [...boxes.values()].filter((b) => b.type === "Winter_Gift_Box");
+  const boxes = await context.ensureBoxRoom("1-3");
+  assert.equal(gifts(boxes).length, 0, "pas avant le 02/11 00h01");
+  t.mock.timers.setTime(START);
+  intervals[0]();
+  assert.equal(gifts(boxes).length, 25, "room déjà ouverte avant l'hiver");
+  intervals[0]();
+  assert.equal(gifts(boxes).length, 25, "aucun doublon");
+  assert.equal(gifts(await context.ensureBoxRoom("2-4")).length, 25, "nouvelle room pendant l'hiver");
+  for (const m of ["1-bl", "maudite", "low", "alpha"]) {
+    assert.equal(gifts(await context.ensureBoxRoom(m)).length, 0, m);
+  }
+  assert.equal([...boxes.values()].filter((b) => b.type === "Pumpkin_Box").length, 0, "pas de Pumpkin l'hiver");
+  t.mock.timers.setTime(AFTER);
+  intervals[0]();
+  assert.equal(gifts(boxes).length, 0, "retirées après le 31/01 23h59");
+});
+
+test("client : Winter Gift Box actives l'hiver seulement, retirées à la fin", async () => {
+  const { readFileSync } = await import("node:fs");
+  const vm = await import("node:vm");
+  const engine = readFileSync(new URL("../SRC/CORE/ORBIT_ENGINE.js", import.meta.url), "utf8").replace(/\r\n/g, "\n");
+  const fn = (name) => {
+    const start = engine.indexOf(`function ${name}(`);
+    assert.ok(start >= 0, name);
+    return engine.slice(start, engine.indexOf("\n}", start) + 2);
+  };
+  const run = (winter, halloween) => {
+    const ctx = vm.createContext({
+      isWinterEventActive: () => winter, isHalloweenEventActive: () => halloween,
+      collectables: [{ type: "Winter_Gift_Box" }, { type: "Pumpkin_Box" }, { type: "Bonus_Box" }],
+      eventBoxSweepT: 0, collectableTargetId: null, collectableTickPlayerTarget: null, collectableTickPetTarget: null,
+      indexCollectableRemoved: () => {},
+    });
+    vm.runInContext(fn("collectableEventActive") + "\n" + fn("sweepExpiredEventBoxes")
+      + "\nglobalThis.active = collectableEventActive; globalThis.sweep = sweepExpiredEventBoxes;", ctx);
+    return ctx;
+  };
+  assert.equal(run(true, false).active({ event: "winter" }), true);
+  assert.equal(run(false, true).active({ event: "winter" }), false);
+  assert.equal(run(false, true).active({ event: "halloween" }), true);
+  const off = run(false, true);
+  off.sweep(5);
+  assert.deepEqual(vm.runInContext("collectables.map((c) => c.type)", off), ["Pumpkin_Box", "Bonus_Box"]);
+  const on = run(true, false);
+  on.sweep(5);
+  assert.deepEqual(vm.runInContext("collectables.map((c) => c.type)", on), ["Winter_Gift_Box", "Bonus_Box"]);
 });

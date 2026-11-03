@@ -26447,7 +26447,7 @@ function scanTbrFetch(c, gears, exclude) {
 // st = état porteur du cooldown (petState ou clone TBR).
 function collectPetBox(box, st = petState) {
   const salvagePct = getPetProtocolPct(account.user?.pet, account.user, "salvage");
-  const eligible = ["Bonus_Box", "Pumpkin_Box", "Cargo_Box", "Green_Booty_Box", "Astral_Prime_Box"].includes(String(box?.type || ""));
+  const eligible = ["Bonus_Box", "Pumpkin_Box", "Winter_Gift_Box", "Cargo_Box", "Green_Booty_Box", "Astral_Prime_Box"].includes(String(box?.type || ""));
   try {
     if (salvagePct > 0 && eligible) box._petSalvagePct = salvagePct;
     else if (box) delete box._petSalvagePct;
@@ -28490,8 +28490,13 @@ function collectableAllowedOnCurrentMap(cfg, mapId = currentMapId()) {
 }
 
 function collectableEventActive(cfg) {
-  if (cfg?.event !== "halloween") return true;
-  try { return isHalloweenEventActive(); } catch { return false; }
+  if (cfg?.event === "halloween") {
+    try { return isHalloweenEventActive(); } catch { return false; }
+  }
+  if (cfg?.event === "winter") {
+    try { return isWinterEventActive(); } catch { return false; }
+  }
+  return true;
 }
 
 function collectableDefsList() {
@@ -28915,30 +28920,15 @@ const CANDY_BOX_SPRITE = {
   glow: false,
 };
 
-// Saison d'hiver (02/11 00h01 -> 31/01 23h59, Paris) : les Bonus Box
-// classiques prennent un visuel de glace (contenu inchangé, seul le
-// visuel est remplacé ; Green Booty / Astral Prime ne changent pas).
-const WINTER_BONUS_BOX_SPRITE = {
-  path: "ASSETS/COLLECTABLES/BONUS_BOX_HIVER_GLACE/",
-  frames: 25,
-  firstNumber: 1,
-  ext: ".png",
-  fps: 20,
-  w: 108,
-  h: 72,
-  scale: 1,
-  randomStart: true,
-  glow: false,
-};
-
-// Même saison : les Cargo Box prennent un visuel de glace (contenu
-// inchangé, seul le visuel est remplacé).
+// Saison d'hiver (02/11 00h01 -> 31/01 23h59, Paris) : les Cargo Box
+// prennent le visuel d'hiver officiel (box0, cargo bleue glacée) ; seul le
+// visuel change. 26 frames, boucle ~0.9 s comme la cargo classique.
 const WINTER_CARGO_BOX_SPRITE = {
-  path: "ASSETS/COLLECTABLES/CARGO_BOX_HIVER_GLACE/",
-  frames: 32,
+  path: "ASSETS/COLLECTABLES/CARGO_BOX_WINTER/",
+  frames: 26,
   firstNumber: 1,
   ext: ".png",
-  fps: 35,
+  fps: 28,
   w: 128,
   h: 128,
   scale: 1,
@@ -28947,11 +28937,6 @@ const WINTER_CARGO_BOX_SPRITE = {
 };
 
 function collectableSpriteFor(type) {
-  if (String(type || "") === "Bonus_Box") {
-    try {
-      if (isWinterEventActive()) return WINTER_BONUS_BOX_SPRITE;
-    } catch {}
-  }
   if (String(type || "") === "Cargo_Box") {
     try {
       if (isWinterEventActive()) return WINTER_CARGO_BOX_SPRITE;
@@ -29227,7 +29212,7 @@ function applyCollectableReward(c) {
     }
   }
   const botBoxMult = collectableBotRewardMultiplier(c?.type, Bot.active === true);
-  const boxMult = ((String(c?.type || "") === "Bonus_Box" || String(c?.type || "") === "Pumpkin_Box") ? playerBoosterMults().box * playerPilotMults().bonusLoot * playerPilotMults().luck : 1) * battleMult * salvageMult * x1Mult * botBoxMult;
+  const boxMult = ((String(c?.type || "") === "Bonus_Box" || String(c?.type || "") === "Pumpkin_Box" || String(c?.type || "") === "Winter_Gift_Box") ? playerBoosterMults().box * playerPilotMults().bonusLoot * playerPilotMults().luck : 1) * battleMult * salvageMult * x1Mult * botBoxMult;
 
   // X-1 + niveau 10 : box consommée mais vide (officiel).
   if (x1Mult <= 0 && String(c?.type || "") === "Bonus_Box") {
@@ -29577,11 +29562,15 @@ function sweepExpiredEventBoxes(dt) {  eventBoxSweepT += Number(dt) || 0;
   eventBoxSweepT = 0;
   let active = true;
   try { active = isHalloweenEventActive(); } catch {}
-  if (active) return;
+  let winterActive = true;
+  try { winterActive = isWinterEventActive(); } catch {}
+  if (active && winterActive) return;
   for (let i = collectables.length - 1; i >= 0; i--) {
     const c = collectables[i];
     const t = String(c?.type || "");
-    if (t !== "Pumpkin_Box" && t !== "Cucurbitor_Box" && t !== "Boss_Cucurbitor_Box") continue;
+    const halloweenBox = t === "Pumpkin_Box" || t === "Cucurbitor_Box" || t === "Boss_Cucurbitor_Box";
+    const winterBox = t === "Winter_Gift_Box";
+    if (!(halloweenBox && !active) && !(winterBox && !winterActive)) continue;
     if (collectableTargetId === c?.id) {
       try { cancelCollectableTarget(); } catch {}
       moveTarget.active = false;
@@ -29596,7 +29585,7 @@ function sweepExpiredEventBoxes(dt) {  eventBoxSweepT += Number(dt) || 0;
 
 function syncNetBoxes(dt) {
   // Event terminé : les box Halloween restantes (pumpkin, cucu, boss cucu)
-  // disparaissent, en solo comme en multi.
+  // et les Winter Gift Box après l'hiver disparaissent, en solo comme en multi.
   try { sweepExpiredEventBoxes(dt); } catch {}
   // Fin d'event : clés du passe non utilisées effacées.
   try { syncBattlepassEvent(dt); } catch {}
@@ -30081,12 +30070,21 @@ function fxDensityCap(base) {
   return Math.max(4, Math.floor(Number(base) * fxDensityMult()));
 }
 
-// Event Halloween : les Bonus Box classiques prennent une légère teinte
-// orange (frames teintées une fois, en cache). Retour normal après l'event.
-const orangeBoxTintCache = new Map();
-function orangeTintedBox(img) {
-  if (!img || !(Number(img.naturalWidth) > 0)) return null;
-  let tinted = orangeBoxTintCache.get(img);
+// Filtre saisonnier (seule la couleur change, frames teintées une fois,
+// en cache) : orange léger sur les Bonus Box pendant Halloween. L'hiver,
+// Bonus Box classiques sans filtre, Cargo Box en visuel box0.
+const HALLOWEEN_BOX_TINT = "rgba(255,130,0,0.38)";
+function seasonalBoxTint(type) {
+  if (String(type || "") !== "Bonus_Box") return null;
+  try { if (isHalloweenEventActive()) return HALLOWEEN_BOX_TINT; } catch {}
+  return null;
+}
+const boxTintCache = new Map();
+function tintedBox(img, color) {
+  if (!img || !color || !(Number(img.naturalWidth) > 0)) return null;
+  let byColor = boxTintCache.get(color);
+  if (!byColor) { byColor = new Map(); boxTintCache.set(color, byColor); }
+  let tinted = byColor.get(img);
   if (!tinted) {
     tinted = document.createElement("canvas");
     tinted.width = Number(img.naturalWidth);
@@ -30094,10 +30092,10 @@ function orangeTintedBox(img) {
     const g = tinted.getContext("2d");
     g.drawImage(img, 0, 0);
     g.globalCompositeOperation = "source-atop";
-    g.fillStyle = "rgba(255,130,0,0.38)";
+    g.fillStyle = color;
     g.fillRect(0, 0, tinted.width, tinted.height);
-    if (orangeBoxTintCache.size > 64) orangeBoxTintCache.clear();
-    orangeBoxTintCache.set(img, tinted);
+    if (byColor.size > 64) byColor.clear();
+    byColor.set(img, tinted);
   }
   return tinted;
 }
@@ -30148,13 +30146,11 @@ function drawCollectables(ox, oy) {
     try { boxAnimsOn = GAME_SETTINGS.boxAnims !== false; } catch {}
     const idx = boxAnimsOn ? Math.floor(c.frameAcc) % frames : 0;
     const img = sp._imgs?.[idx];
-    // Event Halloween : filtre orange léger sur les Bonus Box classiques
-    // (jamais sur le visuel de glace de l'hiver).
+    // Filtre saisonnier des Bonus Box : orange pendant Halloween.
     let drawImg = img;
     try {
-      if (String(c.type || "") === "Bonus_Box" && isHalloweenEventActive() && !isWinterEventActive()) {
-        drawImg = orangeTintedBox(img) || img;
-      }
+      const tint = seasonalBoxTint(c.type);
+      if (tint) drawImg = tintedBox(img, tint) || img;
     } catch {}
 
     // Même option : sans pulsation/flottement/halo.

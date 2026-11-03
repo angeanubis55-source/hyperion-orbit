@@ -8,7 +8,7 @@ import { randomBytes, timingSafeEqual } from "node:crypto";
 import { WebSocketServer } from "ws";
 import { discordWebhookUrl, startDiscordAnnounce } from "./DISCORD_ANNOUNCE.js";
 import { ZoneNpcSim, syncSundayEvent, syncWinterEvent } from "./NPC_ROOM.js";
-import { WINTER_MAPS } from "../NPC/NPC_WINTER.js";
+import { WINTER_MAPS, isWinterEventActive } from "../NPC/NPC_WINTER.js";
 import {
   ANTICHEAT as AC,
   acBucket,
@@ -1839,10 +1839,18 @@ setInterval(() => {
 }, 30000);
 let nextId = 1;
 
+// Box d'event : actives seulement pendant leur event (Halloween / hiver).
+function collectableEventOn(cfg) {
+  if (cfg?.event === "halloween") return isHalloweenEventActive();
+  if (cfg?.event === "winter") return isWinterEventActive();
+  return true;
+}
+
 function collectableAllowedOnMap(cfg, mapId) {
   if (!cfg) return false;
-  // Event (ex : Pumpkin Box hors Halloween) : jamais, même si maps/deny OK.
-  if (cfg.event === "halloween" && !isHalloweenEventActive()) return false;
+  // Event (ex : Pumpkin Box hors Halloween, Gift Box hors hiver) : jamais,
+  // même si maps/deny OK.
+  if (!collectableEventOn(cfg)) return false;
   const id = String(mapId || "").toLowerCase();
   const deny = cfg?.denyMaps ?? cfg?.blockedMaps ?? cfg?.disabledMaps ?? cfg?.excludeMaps;
   for (const value of (Array.isArray(deny) ? deny : deny != null ? [deny] : [])) {
@@ -4554,7 +4562,7 @@ setInterval(() => {
       if (set.has(pending.uid)) continue;
       const cfg = COLLECTABLE_TYPES[pending.type] || {};
       // Event terminé entre-temps (ex : Pumpkin hors Halloween) : pas de respawn.
-      if (cfg.event === "halloween" && !isHalloweenEventActive()) continue;
+      if (!collectableEventOn(cfg)) continue;
       const pos = randomBoxPosition(sim && typeof sim.then !== "function" ? sim : null);
       const box = { type: pending.type, ...pos };
       set.set(pending.uid, box);
@@ -4565,43 +4573,47 @@ setInterval(() => {
   }
 }, 250);
 
-// Event Halloween : apparition / disparition des Pumpkin Box en direct
-// (toutes les 5 s), sans restart — les rooms ne sont construites qu'une fois.
+// Box d'event : apparition / disparition en direct (toutes les 5 s), sans
+// restart — les rooms ne sont construites qu'une fois. Pumpkin Box pendant
+// Halloween, Winter Gift Box pendant l'hiver.
 setInterval(() => {
-  try {
-    const active = isHalloweenEventActive();
-    for (const [mapId, set] of boxRooms) {
-      if (!(set instanceof Map)) continue;
-      const has = [...set.values()].some((b) => b && b.type === "Pumpkin_Box");
-      const room = rooms.get(mapId);
-      if (active && !has) {
-        const cfg = COLLECTABLE_TYPES.Pumpkin_Box;
-        if (!cfg || !collectableAllowedOnMap(cfg, mapId)) continue;
-        const sim = npcSims.get(mapId);
-        const qty = Math.max(0, Math.floor(Number(cfg.qty) || 0));
-        for (let index = 0; index < qty; index++) {
-          const uid = `Pumpkin_Box#${index}`;
-          if (set.has(uid)) continue;
-          const pos = randomBoxPosition(sim && typeof sim.then !== "function" ? sim : null);
-          const box = { type: "Pumpkin_Box", ...pos };
-          set.set(uid, box);
-          if (room?.size) broadcastRoom(room, JSON.stringify({ t: "box", op: "spawn", box: { uid, ...box } }));
-        }
-      } else if (!active && has) {
-        const gone = [];
-        for (const [uid, b] of set) {
-          if (b && b.type === "Pumpkin_Box") { set.delete(uid); gone.push(uid); }
-        }
-        const queue = boxRespawns.get(mapId);
-        if (Array.isArray(queue)) {
-          for (let i = queue.length - 1; i >= 0; i--) {
-            if (queue[i]?.type === "Pumpkin_Box") queue.splice(i, 1);
+  for (const type of ["Pumpkin_Box", "Winter_Gift_Box"]) {
+    try {
+      const cfg = COLLECTABLE_TYPES[type];
+      if (!cfg) continue;
+      const active = collectableEventOn(cfg);
+      for (const [mapId, set] of boxRooms) {
+        if (!(set instanceof Map)) continue;
+        const has = [...set.values()].some((b) => b && b.type === type);
+        const room = rooms.get(mapId);
+        if (active && !has) {
+          if (!collectableAllowedOnMap(cfg, mapId)) continue;
+          const sim = npcSims.get(mapId);
+          const qty = Math.max(0, Math.floor(Number(cfg.qty) || 0));
+          for (let index = 0; index < qty; index++) {
+            const uid = `${type}#${index}`;
+            if (set.has(uid)) continue;
+            const pos = randomBoxPosition(sim && typeof sim.then !== "function" ? sim : null);
+            const box = { type, ...pos };
+            set.set(uid, box);
+            if (room?.size) broadcastRoom(room, JSON.stringify({ t: "box", op: "spawn", box: { uid, ...box } }));
           }
+        } else if (!active && has) {
+          const gone = [];
+          for (const [uid, b] of set) {
+            if (b && b.type === type) { set.delete(uid); gone.push(uid); }
+          }
+          const queue = boxRespawns.get(mapId);
+          if (Array.isArray(queue)) {
+            for (let i = queue.length - 1; i >= 0; i--) {
+              if (queue[i]?.type === type) queue.splice(i, 1);
+            }
+          }
+          if (gone.length && room?.size) broadcastRoom(room, JSON.stringify({ t: "box", op: "unspawn", uids: gone }));
         }
-        if (gone.length && room?.size) broadcastRoom(room, JSON.stringify({ t: "box", op: "unspawn", uids: gone }));
       }
-    }
-  } catch {}
+    } catch {}
+  }
 }, 5000);
 
 // Bonus bases du clan (temps réel, toutes maps) : cache 1 s, partagé par

@@ -479,6 +479,48 @@ export const COLLECTABLE_TYPES = Object.freeze({
     ],
   },
 
+  // Winter Gift Box (hiver, 02/11 00h01 -> 31/01 23h59 Paris) : même
+  // logique que les Pumpkin Box d'Halloween (mêmes maps / respawn, 25 par map,
+  // flag `event`). Loot : celui de la Pumpkin divisé par 2 (arrondi, min 1),
+  // mêmes chances, sans les bonbons ni la clé du passe Halloween.
+  Winter_Gift_Box: {
+    name: "Winter Gift Box",
+    maps: "*",
+    // Mêmes exclusions que les Pumpkin Box (GG / Low / QZ / 5-2 / BL / MAUDITE).
+    denyMaps: ["alpha", "beta", "gamma", "delta", "epsilon", "zeta", "kappa", "lambda", "kronos", "awakened", "eternal", "low", "qz", "5-2", "1-bl", "2-bl", "3-bl", "maudite"],
+    event: "winter",
+    qty: 25,
+    spawnBatch: 25,
+    minSpacing: 100,
+    avoidPlayer: 0,
+    npcDespawnAfter: 0,
+    respawnDelaySec: 0,
+    r: 30,
+    pickupRadius: 50,
+    bob: 5,
+    sprite: {
+      path: "ASSETS/COLLECTABLES/WINTER_GIFT_BOX/",
+      frames: 31,
+      firstNumber: 1,
+      ext: ".png",
+      fps: 20,
+      w: 100,
+      h: 100,
+      scale: 1,
+      randomStart: true,
+      glow: false,
+    },
+    exclusiveRewards: [
+      { weight: 150, reward: { credits: [7500, 15000] } },
+      { weight: 100, reward: { galaxyEnergy: [5, 15] } },
+      { weight: 280, reward: { ammo: { x2: [60, 180] } } },
+      { weight: 180, reward: { ammo: { x3: [30, 90] } } },
+      { weight: 140, reward: { ammo: { sab: [15, 75] } } },
+      { weight: 100, reward: { rockets: { plt2021: [6, 24] } } },
+      { weight: 30, reward: { ammo: { x4: [15, 45] } } },
+    ],
+  },
+
   // Box de Cucurbitors : drop des Curcubitors normaux (100 %), bonbons uniquement.
   // Reste au sol indéfiniment (pas de timer).
   // Jamais sur la map maudite.
