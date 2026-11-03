@@ -58,7 +58,7 @@ export function findJpcPreyForNpc(npc, enemies, range, isSafeFn = null) {
 }
 // Cibles autorisées : que du classique. Jamais cubi, emperor, invoke,
 // mindfire, strokelight (ni kamikazes, ni tourelles, ni saturn/gates).
-const JPC_BANNED_TARGET = /cubikon|cubi|emperor|invoke|mindfire|strokelight|barrage|kamikaze|creeper|saturn|awakened|maudite|turret|egg|hitac/i;
+const JPC_BANNED_TARGET = /cubikon|cubi|ice_meteoroid|emperor|invoke|mindfire|strokelight|barrage|kamikaze|creeper|saturn|awakened|maudite|turret|egg|hitac/i;
 
 export function isJpcFarmable(npc) {
   if (!npc || npc.hp <= 0 || npc.isJpcBot === true) return false;

@@ -174,13 +174,16 @@ export const NPC_REWARDS = Object.freeze({
   // soute ni récompense versée, seule la loterie module du top 10).
   npc_Event_Ufonit: { credits: 5000000, exp: 1000000, honor: 10000 },
   npc_Santa_1100101: { credits: 50000, exp: 25000, honor: 100 },
-  npc_Super_Ice_Meteoroid: { credits: 4300000, exp: 1300000, honor: 5250 },
+  // Super Ice Meteoroid : 6 553 600 + 3600 uridium x 10 000 = 42 553 600 (pas d'uridium en jeu).
+  npc_Super_Ice_Meteoroid: { credits: 42553600, exp: 2000000, honor: 8000 },
   npc_Disguisor: { credits: 50000, exp: 25000, honor: 100 },
   npc_Kucurbium: { credits: 3000000, exp: 105000, honor: 600 },
   npc_BossKucurbium: { credits: 6000000, exp: 400000, honor: 2500 },
   npc_Unidentified_Dreadnought: { credits: 50000, exp: 25000, honor: 100 },
-  npc_Ice_Meteoroid: { credits: 2000000, exp: 667000, honor: 3300 },
+  // Ice Meteoroid : 3 000 000 + 1800 uridium x 10 000 = 21 000 000 (pas d'uridium en jeu).
+  npc_Ice_Meteoroid: { credits: 21000000, exp: 1000000, honor: 5000 },
   npc_Icy: { credits: 12800, exp: 6400, honor: 32 },
+  npc_Meteoroid_Icy: { credits: 12800, exp: 6400, honor: 32 },
   npc_1100101: { credits: 50000, exp: 25000, honor: 100 },
   npc_Sunburst_Lordakium: { credits: 50000, exp: 25000, honor: 100 },
   npc_Hitac_2_0: { credits: 2000000, exp: 10000000, honor: 100000 },

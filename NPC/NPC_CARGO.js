@@ -74,7 +74,8 @@ const BASE_CARGO = Object.freeze({
   npc_Reflector_Mimesis: Object.freeze({ ...tri(4000, 4000, 4000), prometid: 2048, duranium: 2048, promerium: 64, xenomit: 128 }),
   // Glace.
   npc_Icy: Object.freeze({ ...tri(100, 100, 100), prometid: 16, duranium: 16, promerium: 2 }),
-  npc_Ice_Meteoroid: Object.freeze({ ...tri(2400, 2400, 2400), prometid: 1024, duranium: 1024, promerium: 128, xenomit: 256 }),
+  npc_Meteoroid_Icy: Object.freeze({ ...tri(100, 100, 100), prometid: 16, duranium: 16, promerium: 2 }),
+  npc_Ice_Meteoroid: Object.freeze({ ...tri(1200, 1200, 1200), prometid: 512, duranium: 512, promerium: 64, xenomit: 256 }),
   npc_Super_Ice_Meteoroid: Object.freeze({ ...tri(2400, 2400, 2400), prometid: 1024, duranium: 1024, promerium: 128, xenomit: 512 }),
   npc_Kucurbium: Object.freeze({ ...tri(1200, 1200, 1200), prometid: 512, duranium: 512, promerium: 64, xenomit: 256 }),
   npc_BossKucurbium: Object.freeze({ ...tri(4800, 4800, 4800), prometid: 2048, duranium: 2048, promerium: 256, xenomit: 1024 }),

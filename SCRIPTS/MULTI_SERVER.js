@@ -7,7 +7,8 @@ import { dirname, extname, join, normalize, resolve } from "node:path";
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import { WebSocketServer } from "ws";
 import { discordWebhookUrl, startDiscordAnnounce } from "./DISCORD_ANNOUNCE.js";
-import { ZoneNpcSim, syncSundayEvent } from "./NPC_ROOM.js";
+import { ZoneNpcSim, syncSundayEvent, syncWinterEvent } from "./NPC_ROOM.js";
+import { WINTER_MAPS } from "../NPC/NPC_WINTER.js";
 import {
   ANTICHEAT as AC,
   acBucket,
@@ -2500,6 +2501,25 @@ function pumpSundayEvent() {
   }
 }
 setInterval(() => { try { pumpSundayEvent(); } catch {} }, 2000).unref?.();
+
+// --- Saison d'hiver (01/11 -> 31/01) : 1 NPC d'hiver par paire de maps ---
+// Ice Meteoroid en 1-6/1-7, 2-6/2-7, 3-6/3-7 ; Super Ice Meteoroid en 4-4/4-5.
+// En plus des NPC classiques, map de la paire tirée au hasard, respawn instantané
+// ailleurs après sa mort (même contrôleur que l'UFONIT). Pas d'annonce chat.
+function pumpWinterEvent() {
+  try { for (const m of WINTER_MAPS) { try { ensureNpcSim(m); } catch {} } } catch {}
+  let res = null;
+  try { res = syncWinterEvent(sundaySimGetter, Date.now()); } catch { res = null; }
+  if (!res || !Array.isArray(res.events)) return;
+  for (const ev of res.events) {
+    try {
+      if (ev?.t === "spawn" && ev.map) console.info(`[winter] spawn ${String(ev.map).toLowerCase()}`);
+      else if (ev?.t === "start") console.info("[winter] saison d'hiver : début");
+      else if (ev?.t === "end") console.info("[winter] saison d'hiver : fin");
+    } catch {}
+  }
+}
+setInterval(() => { try { pumpWinterEvent(); } catch {} }, 2000).unref?.();
 // --- Audit anticheat périodique (10 s) : signalement seulement. Kick, gel
 // et ban sont des actions manuelles de l'admin. Voir ANTICHEAT.js.
 const CHEAT_KICK_MESSAGE = "Vous avez triché. La modération étudie actuellement votre cas. Si cela est avéré, vous serez définitivement banni.";

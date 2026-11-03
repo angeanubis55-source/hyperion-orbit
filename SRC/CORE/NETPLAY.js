@@ -2047,13 +2047,17 @@ export function ensureNetplayConnection() {
             vy: Number(prev.vy || 0) * 0.5 + rawVelocity.vy * 0.5,
           } : rawVelocity;
           const positionChanged = !motionPrev || x !== Number(prev.x) || y !== Number(prev.y);
+          // NPC figé par le serveur (Ice Meteoroid attaqué) : vitesse nulle
+          // tout de suite, pas d'extrapolation sur l'ancienne trajectoire.
+          const held = n.hold === 1;
           const npcEntry = prev || {};
           Object.assign(npcEntry, {
             uid,
             type: String(n.type || ""),
             x, y,
-            vx: n.alive === false ? 0 : n.jpc ? Number(n.jpVx) || 0 : (positionChanged ? velocity.vx : Number(prev?.vx || 0)),
-            vy: n.alive === false ? 0 : n.jpc ? Number(n.jpVy) || 0 : (positionChanged ? velocity.vy : Number(prev?.vy || 0)),
+            vx: n.alive === false || held ? 0 : n.jpc ? Number(n.jpVx) || 0 : (positionChanged ? velocity.vx : Number(prev?.vx || 0)),
+            vy: n.alive === false || held ? 0 : n.jpc ? Number(n.jpVy) || 0 : (positionChanged ? velocity.vy : Number(prev?.vy || 0)),
+            hold: held,
             jpc: n.jpc === 1,
             jpSafe: typeof n.jpSafe === "boolean" ? n.jpSafe : null,
             jpPseudo: String(n.jpPseudo || "").slice(0, 32),

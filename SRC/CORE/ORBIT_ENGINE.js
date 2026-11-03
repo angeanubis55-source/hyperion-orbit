@@ -47,6 +47,7 @@ import { watchSelects } from "../../UI/UI_SELECT_COMBO.js";
 import { SpatialIndex } from "./SPATIAL_INDEX.js";
 import { normalizeMapId } from "./MAP_REGISTRY.js";
 import { getPortalSkinForMap } from "./PORTAL_SKINS.js";
+import { WINTER_TYPES, isWinterEventActive, winterPreloadTypes } from "../../NPC/NPC_WINTER.js";
 "use strict";
 import {
   getCurrentUserFull,
@@ -16534,15 +16535,29 @@ function updatePetHud() {
     }
     if (ui.petNpcList) ui.petNpcList.hidden = true;
   } else if (ui.petNpcBtn && ui.petNpcList) {
-    const live = enemies.filter((e) => e && Number(e.hp) > 0);
+    // Bots JPC exclus (faux joueurs), comme dans la liste du bot.
+    const live = enemies.filter((e) => e && Number(e.hp) > 0 && e.isJpcBot !== true);
     // Une entrée par famille présente sur la carte.
     const families = [...new Set(live.map((e) => String(e.type || "?")))].sort();
+    // Ancien choix sur un JPC (avant leur exclusion) : oublié.
+    const pickedType = petLocator.manualType ?? petLocator.picked;
+    if (pickedType != null && !families.includes(String(pickedType))
+      && enemies.some((e) => e?.isJpcBot === true && String(e.type) === String(pickedType))) {
+      petLocator.manualType = null;
+      petLocator.enemyId = null;
+      petLocator.needsPick = true;
+      setPetLocatorPick(null);
+    }
     petLocatorRestorePick();
-    // NPC choisi mais mort (respawn en cours) : reste dans la liste, en attente.
+    // NPC choisi mais mort : il réapparaîtra sur cette carte (ex : Emperor,
+    // 30 s), donc il reste affiché, sans mention d'attente. NPC itinérant
+    // ((Super) Ice Meteoroid, UFONIT) : il peut revenir sur une autre map,
+    // donc il n'est plus affiché ; le choix reste mémorisé s'il revient ici.
     const waitingType = petLocator.manualType != null && !families.includes(petLocator.manualType)
       && petLocatorKeepsPick(petLocator.manualType) ? petLocator.manualType : null;
-    if (waitingType) families.push(waitingType);
-    if (petLocator.manualType != null && !families.includes(petLocator.manualType)) {
+    const hiddenType = waitingType && isRoamingNpcType(waitingType) ? waitingType : null;
+    if (waitingType && !hiddenType) families.push(waitingType);
+    if (petLocator.manualType != null && !waitingType && !families.includes(petLocator.manualType)) {
       petLocator.manualType = null;
       petLocator.needsPick = true;
     }
@@ -16551,18 +16566,18 @@ function updatePetHud() {
       petLocator.needsPick = false;
       petLocator.manualType = families[Math.floor(Math.random() * families.length)];
     }
-    const npcLabel = (type) => String(NPC_TYPES[type]?.name || type) + (type === waitingType ? " (en attente)" : "");
-    const sig = families.join("|") + "#" + (waitingType || "");
+    const npcLabel = (type) => String(NPC_TYPES[type]?.name || type);
+    const sig = families.join("|");
     if (sig !== lastPetNpcSig) {
       lastPetNpcSig = sig;
       ui.petNpcList.innerHTML = '<button type="button" data-value="">— Choisir un NPC —</button>'
         + families.map((type) => `<button type="button" data-value="${escapeHtml(type)}">${escapeHtml(npcLabel(type))}</button>`).join("");
     }
-    const wantNpc = petLocator.manualType != null ? String(petLocator.manualType) : "";
+    const wantNpc = petLocator.manualType != null && !hiddenType ? String(petLocator.manualType) : "";
     for (const b of ui.petNpcList.querySelectorAll("button[data-value]")) {
       b.classList.toggle("isCurrent", (b.dataset.value || "") === wantNpc);
     }
-    const wantLabel = petLocator.manualType != null
+    const wantLabel = petLocator.manualType != null && !hiddenType
       ? npcLabel(petLocator.manualType)
       : "— Choisir un NPC —";
     if (ui.petNpcBtn.textContent !== wantLabel) ui.petNpcBtn.textContent = wantLabel;
@@ -25582,9 +25597,17 @@ const petLocator = { enemyId: null, manualType: null, needsPick: true, picked: n
 
 // Choix explicite du joueur (fenêtre P.E.T ou liste du bot), mémorisé pour
 // la map où il a été fait. Un NPC à respawn (boss, NPC unique...) tué ne
-// fait plus repartir le localisateur au hasard : il reste sur ce NPC, en
-// attente, et le reprend dès sa réapparition. Le tirage au hasard (aucun
+// fait plus repartir le localisateur au hasard : il reste affiché (sans
+// mention d'attente) et le localisateur le reprend dès sa réapparition.
+// Exception : un NPC itinérant (voir isRoamingNpcType) n'est plus affiché
+// tant qu'il n'est pas sur la carte, il peut réapparaître ailleurs. Le tirage au hasard (aucun
 // choix) garde son fonctionnement : nouveau tirage quand la famille disparaît.
+// NPC itinérants : un seul à la fois sur un groupe de maps, il réapparaît
+// sur une map tirée au hasard (pas forcément celle où il a été tué).
+const ROAMING_NPC_TYPES = new Set([...WINTER_TYPES, SUNDAY_UFONIT_TYPE].map(String));
+function isRoamingNpcType(type) {
+  return ROAMING_NPC_TYPES.has(String(type || ""));
+}
 function petLocatorMapKey() {
   return String(window.__CURRENT_MAP_ID__ || "").toLowerCase();
 }
@@ -26464,7 +26487,7 @@ function tickPetLocator(gears, dt) {
   const range = getPetGearRangeWithRadar("el", gears.el, account.user?.pet, account.user);
   const foe = pickNearestWithin(
     spatialNpcsNear(player.x, player.y, range), player.x, player.y, range,
-    (e) => Number(e?.hp) > 0 && String(e.type || "?") === petLocator.manualType,
+    (e) => Number(e?.hp) > 0 && e.isJpcBot !== true && String(e.type || "?") === petLocator.manualType,
   );
   if (foe) {
     petLocator.enemyId = foe.id;
@@ -26475,7 +26498,7 @@ function tickPetLocator(gears, dt) {
   // attendu), sinon nouveau tirage.
   petLocator.enemyId = null;
   const anyLeft = enemies.some(
-    (e) => Number(e?.hp) > 0 && String(e.type || "?") === petLocator.manualType,
+    (e) => Number(e?.hp) > 0 && e.isJpcBot !== true && String(e.type || "?") === petLocator.manualType,
   );
   if (!anyLeft && !petLocatorKeepsPick(petLocator.manualType)) {
     petLocator.manualType = null;
@@ -28892,7 +28915,28 @@ const CANDY_BOX_SPRITE = {
   glow: false,
 };
 
+// Saison d'hiver (01/11 00h01 -> 31/01 23h59, Paris) : les Bonus Box
+// classiques prennent un visuel de glace (contenu inchangé, seul le
+// visuel est remplacé ; Green Booty / Astral Prime ne changent pas).
+const WINTER_BONUS_BOX_SPRITE = {
+  path: "ASSETS/COLLECTABLES/BONUS_BOX_HIVER_GLACE/",
+  frames: 25,
+  firstNumber: 1,
+  ext: ".png",
+  fps: 20,
+  w: 108,
+  h: 72,
+  scale: 1,
+  randomStart: true,
+  glow: false,
+};
+
 function collectableSpriteFor(type) {
+  if (String(type || "") === "Bonus_Box") {
+    try {
+      if (isWinterEventActive()) return WINTER_BONUS_BOX_SPRITE;
+    } catch {}
+  }
   if (String(type || "") === "Cargo_Box") {
     try {
       if (isHalloweenEventActive()) return CANDY_BOX_SPRITE;
@@ -30088,10 +30132,11 @@ function drawCollectables(ox, oy) {
     try { boxAnimsOn = GAME_SETTINGS.boxAnims !== false; } catch {}
     const idx = boxAnimsOn ? Math.floor(c.frameAcc) % frames : 0;
     const img = sp._imgs?.[idx];
-    // Event Halloween : filtre orange léger sur les Bonus Box classiques.
+    // Event Halloween : filtre orange léger sur les Bonus Box classiques
+    // (pas sur le visuel de glace de l'hiver, qui prime le 01/11).
     let drawImg = img;
     try {
-      if (String(c.type || "") === "Bonus_Box" && isHalloweenEventActive()) {
+      if (String(c.type || "") === "Bonus_Box" && isHalloweenEventActive() && !isWinterEventActive()) {
         drawImg = orangeTintedBox(img) || img;
       }
     } catch {}
@@ -36741,6 +36786,10 @@ async function collectHomeBaseJobs({ skipCurrentMap = false } = {}) {
           if (camp?.type && NPC_TYPES[camp.type]) jobs.push(ensureNpcLoaded(camp.type));
         }
         for (const type of halloweenPreloadTypes(id, NPC_TYPES)) {
+          if (NPC_TYPES[type]) jobs.push(ensureNpcLoaded(type));
+        }
+        // Saison d'hiver : Ice Meteoroid itinérant (spawn serveur).
+        for (const type of winterPreloadTypes(id)) {
           if (NPC_TYPES[type]) jobs.push(ensureNpcLoaded(type));
         }
         for (const targetPortal of (rules.getZonePortals?.(world) || [])) {
@@ -47903,6 +47952,7 @@ function npcTypesForCurrentSector() {
     if (rules?.mode === "zone" && typeof rules.getZoneSpawns === "function") {
       for (const spawn of rules.getZoneSpawns(WORLD) || []) if (spawn?.type) types.add(spawn.type);
       for (const type of halloweenPreloadTypes(window.__CURRENT_MAP_ID__, NPC_TYPES)) types.add(type);
+      for (const type of winterPreloadTypes(window.__CURRENT_MAP_ID__)) types.add(type);
     } else {
       for (let waveNo = 1; waveNo <= 32; waveNo++) {
         for (const spawn of getWavePlan(waveNo)?.spawns || []) if (spawn?.type) types.add(spawn.type);
@@ -48616,6 +48666,7 @@ async function switchMapConfig(nextConfig, { mapId, spawnId = null } = {}) {
   jobs.push(...preloadSafeModuleSprites(nextRules, nextWorld));
   for (const camp of preparedZoneCamps) if (camp?.type && NPC_TYPES[camp.type]) jobs.push(ensureNpcLoaded(camp.type));
   for (const type of halloweenPreloadTypes(mapId, NPC_TYPES)) if (NPC_TYPES[type]) jobs.push(ensureNpcLoaded(type));
+  for (const type of winterPreloadTypes(mapId)) if (NPC_TYPES[type]) jobs.push(ensureNpcLoaded(type));
   if (nextRules.mode !== "zone" && typeof nextConfig.getWavePlan === "function") {
     const gateTypes = new Set();
     for (let waveNo = 1; waveNo <= 32; waveNo++) {

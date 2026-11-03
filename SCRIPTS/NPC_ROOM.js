@@ -9,6 +9,7 @@ import { pickSpacedSpawnPosition } from "../NPC/NPC_SPAWN_POSITION.js";
 import { createUniverse, deserializeUniverse, ensureMapSlots, markDead, markAlive, getSlot, serializeUniverse, slotUid, applyNpcDensityToCamps } from "../SRC/SIM/UNIVERSE_SIM.js";
 import { appendHalloweenCamps, applyHalloweenKill, halloweenCampBlocked, halloweenRoleOf, isHalloweenBossVariant, isHalloweenMapActive, isHalloweenVariantType, normalizeHalloweenState } from "../NPC/NPC_HALLOWEEN.js";
 import { SUNDAY_DMG_MULT, SUNDAY_MAPS, SUNDAY_UFONIT_TYPE, buildSundayCamp, isSundayBossVariant, isSundayEventActive, sundayPickMap } from "../NPC/NPC_SUNDAY.js";
+import { WINTER_SPAWN_GROUPS, WINTER_TYPES, buildWinterCamp, isWinterEventActive, winterPickMap } from "../NPC/NPC_WINTER.js";
 import { NPC_TYPES } from "../NPC/NPC_TYPES.js";
 import { damageEnemyLayers } from "../COMBAT/COMBAT_RULES.js";
 import { JPC_LASER, jpcVolleyParts, tickJpcRepair, jpcTravel, jpcCombatMove, jpcCombatDistance, jpcEngageRange } from "../NPC/JPC_BEHAVIOR.js";
@@ -33,6 +34,36 @@ const ANCHORED_NPC_TYPES = new Set([
 ]);
 function isAnchoredNpcType(type) {
   return ANCHORED_NPC_TYPES.has(String(type || ""));
+}
+
+// Maîtres de minions (mécanique Cubikon) : le premier impact déclenche une
+// vague de minions ancrés autour du maître, renfort sous 5 survivants,
+// retrait silencieux après 15 s sans coup, désagrégation à sa mort.
+// - Cubikon : Protegit, animation d'ouverture (delay 2 s -> open -> hold).
+// - Ice Meteoroid (hiver) : Icy (variante <=< Icy >=>), sans animation (vague 1 s après l'impact),
+//   et immobile tant qu'il est attaqué (lui ou ses Icy, < 15 s). Ses Icy
+//   patrouillent exactement comme les Protegit (vitesse, cap, distance).
+// Option patrol : réglage de patrouille propre au maître (défaut Protegit).
+const MINION_MASTERS = Object.freeze({
+  npc_Cubikon: Object.freeze({ minion: "npc_Protegit", wave: 20, max: 20, openAnim: true, holdWhileEngaged: false }),
+  npc_Ice_Meteoroid: Object.freeze({ minion: "npc_Meteoroid_Icy", wave: 20, max: 20, openAnim: false, holdWhileEngaged: true }),
+  // Super Ice Meteoroid (hiver, 4-4/4-5) : même mécanique que l'Ice
+  // Meteoroid, avec deux fois plus d'Icy (vagues de 40).
+  npc_Super_Ice_Meteoroid: Object.freeze({ minion: "npc_Meteoroid_Icy", wave: 40, max: 40, openAnim: false, holdWhileEngaged: true }),
+});
+function minionMasterSpec(type) {
+  return MINION_MASTERS[String(type || "")] || null;
+}
+// Maître immobilisé (Ice Meteoroid attaqué, lui ou ses minions, < 15 s) :
+// ne se déplace plus et n'est plus poussé par la séparation.
+function isHoldingMinionMaster(e, nowMs) {
+  return !!(e && e.cubeArmed && minionMasterSpec(e.type)?.holdWhileEngaged
+    && nowMs - Number(e.lastCubeHitAt || 0) <= 15000);
+}
+function minionWaveStart(spec, nowMs) {
+  return spec && spec.openAnim === false
+    ? { phase: "hold", until: nowMs + 1000, spawnAt: nowMs + 1000 }
+    : { phase: "delay", until: nowMs + 2000, spawnAt: nowMs + 4600 };
 }
 
 // Maps doublées (1-BL / 2-BL / 3-BL / 4-5 : 22000x14000 vs 11000x7000
@@ -568,32 +599,48 @@ export class ZoneNpcSim {
     }
   }
 
-  // --- Mini-event dominical [ UFONIT ] (multi) ---
-  // 1 seul UFONIT à la fois : purge locale + compteur, le placement
-  // cross-map est piloté par syncSundayEvent() (bas de fichier).
-  purgeSunday() {
+  // --- Events itinérants (UFONIT dominical, Ice Meteoroid d'hiver) ---
+  // 1 seul NPC à la fois sur un groupe de maps : purge locale + compteur,
+  // le placement cross-map est piloté par createRoamingEventController()
+  // (bas de fichier).
+  purgeRoamingEvent(event, type) {
     const nowMs = Date.now();
+    const purged = new Set();
     for (const [uid, e] of [...this.entries]) {
-      if (!e || e.type !== SUNDAY_UFONIT_TYPE || !(e.hp > 0)) continue;
+      if (!e || e.type !== type || !(e.hp > 0)) continue;
       try { markDead(this.universe, this.mapId, uid, nowMs); } catch {}
       this.entries.delete(uid);
+      purged.add(uid);
       if (this.recentGone.length < 200) this.recentGone.push(uid);
     }
-    if (this.camps.some((c) => c?.event === "sunday")) {
-      this.camps = this.camps.filter((c) => c?.event !== "sunday");
+    // Minions (Icy de l'Ice Meteoroid) retirés avec leur maître.
+    if (purged.size) {
+      for (const [uid, e] of [...this.entries]) {
+        if (!e || !purged.has(e.masterUid)) continue;
+        this.entries.delete(uid);
+        if (this.recentGone.length < 200) this.recentGone.push(uid);
+      }
+    }
+    if (this.camps.some((c) => c?.event === event)) {
+      this.camps = this.camps.filter((c) => c?.event !== event);
       try { ensureMapSlots(this.universe, this.mapId, this.camps, nowMs); } catch {}
     }
   }
 
-  sundayLiveCount() {
+  roamingLiveCount(type) {
     let n = 0;
     try {
       for (const e of this.entries.values()) {
-        if (e && e.type === SUNDAY_UFONIT_TYPE && e.hp > 0) n++;
+        if (e && e.type === type && e.hp > 0) n++;
       }
     } catch {}
     return n;
   }
+
+  purgeSunday() { this.purgeRoamingEvent("sunday", SUNDAY_UFONIT_TYPE); }
+  sundayLiveCount() { return this.roamingLiveCount(SUNDAY_UFONIT_TYPE); }
+  purgeWinter() { for (const type of WINTER_TYPES) this.purgeRoamingEvent("winter", type); }
+  winterLiveCount() { let n = 0; for (const type of WINTER_TYPES) n += this.roamingLiveCount(type); return n; }
 
   // Nombre de NPC de la vague active encore en vie.
   raidWaveAliveCount() {
@@ -678,6 +725,7 @@ export class ZoneNpcSim {
     // Camp à usage unique (raid) : marqué comme spawné pour cette
     // activation de vague (anti-respawn, voir tick).
     if (camp.noRespawn === true) camp._raidGen = Number(this.raidWaveGen) || 0;
+    if (camp.roaming === true) camp._roamSpawned = true;
     this.entries.set(uid, {
       uid, campId: camp.id, type: camp.type,
       x: clamp(pos.x, 80, this.world.w - 80),
@@ -1445,6 +1493,7 @@ drainPlayerHits() {
   // (delay 2 s -> open -> hold 2 s) puis le serveur fait apparaitre 20
   // Protegits ancres au Cubikon. Sans nouveau coup pendant 15 s, les
   // minions sont retires silencieusement et la vague est re-armee.
+  // Meme mecanique pour l'Ice Meteoroid et ses Icy (voir MINION_MASTERS).
   static CUBIKON_WAVE_SIZE = 20;
   static CUBIKON_WAVE_MAX = 20;
 
@@ -1535,22 +1584,24 @@ drainPlayerHits() {
 
   refillCubikonMinions(cub, nowMs) {
     if (nowMs < Number(cub?.jamUntil || 0)) return;
-    if (cub?.type !== "npc_Cubikon" || !(cub.hp > 0) || !cub.cubeArmed || cub.cube) return;
+    const spec = minionMasterSpec(cub?.type);
+    if (!spec || !(cub.hp > 0) || !cub.cubeArmed || cub.cube) return;
     if (nowMs - Number(cub.lastCubeHitAt || 0) > 15000) return;
     if (this.countCubikonMinions(cub.uid) < 5) {
-      cub.cube = { phase: "delay", until: nowMs + 2000, spawnAt: nowMs + 4600 };
+      cub.cube = minionWaveStart(spec, nowMs);
     }
   }
 
   spawnCubikonWave(cub, nowMs) {
     if (nowMs < Number(cub?.jamUntil || 0)) return;
     if (!cub || !(cub.hp > 0)) return;
-    const stats = statsFor("npc_Protegit");
+    const spec = minionMasterSpec(cub.type) || MINION_MASTERS.npc_Cubikon;
+    const stats = statsFor(spec.minion);
     if (!stats) return;
     const linked = this.countCubikonMinions(cub.uid);
     const toSpawn = Math.min(
-      ZoneNpcSim.CUBIKON_WAVE_SIZE,
-      Math.max(0, ZoneNpcSim.CUBIKON_WAVE_MAX - linked)
+      spec.wave,
+      Math.max(0, spec.max - linked)
     );
     for (let i = 0; i < toSpawn; i++) {
       const ang = Math.random() * TAU;
@@ -1563,7 +1614,7 @@ drainPlayerHits() {
       const x = clamp(cub.x + Math.cos(ang) * dist, 80, this.world.w - 80);
       const y = clamp(cub.y + Math.sin(ang) * dist, 80, this.world.h - 80);
       this.entries.set(uid, {
-        uid, campId: null, type: "npc_Protegit",
+        uid, campId: null, type: spec.minion,
         masterUid: cub.uid, masterSeq: Number(cub.seq) || 0,
         x, y, angle: Math.random() * TAU,
         hp: stats.hpMax, sh: stats.shMax,
@@ -1921,18 +1972,19 @@ drainPlayerHits() {
       entry.pendingAggroBy = null;
       entry.retreating = false;
     }
-    if (applied > 0 && entry.type === "npc_Protegit" && entry.masterUid) {
+    if (applied > 0 && entry.masterUid) {
       const master = this.entries.get(entry.masterUid);
-      if (master?.type === "npc_Cubikon" && master.hp > 0) master.lastCubeHitAt = nowMs;
+      if (minionMasterSpec(master?.type) && master.hp > 0) master.lastCubeHitAt = nowMs;
     }
-    if (entry.type === "npc_Cubikon") {
+    const masterSpec = minionMasterSpec(entry.type);
+    if (masterSpec) {
       // Premier impact de l'engagement : animation + vague partagees.
       // (Si le coup est fatal, la mort ci-dessous libere les minions.)
       entry.lastCubeHitAt = nowMs;
       if (entry.hp > 0 && nowMs >= Number(entry.jamUntil || 0) && !entry.cubeArmed && !entry.cube) {
-        if (this.countCubikonMinions(uid) < ZoneNpcSim.CUBIKON_WAVE_MAX) {
+        if (this.countCubikonMinions(uid) < masterSpec.max) {
           entry.cubeArmed = true;
-          entry.cube = { phase: "delay", until: nowMs + 2000, spawnAt: nowMs + 4600 };
+          entry.cube = minionWaveStart(masterSpec, nowMs);
         }
       }
     }
@@ -1964,7 +2016,7 @@ drainPlayerHits() {
       entry.cause = "gun";
       entry.cube = null;
       if (!entry.campId) entry.deadAt = nowMs;
-      if (entry.type === "npc_Cubikon") {
+      if (minionMasterSpec(entry.type)) {
         try { this.releaseCubikonMinions(entry, nowMs); } catch {}
       }
       try { this.spawnOnKillWave(entry, nowMs); } catch {}
@@ -2039,6 +2091,9 @@ drainPlayerHits() {
       // Raid Low : camp à usage unique — déjà spawné pendant cette
       // activation de vague = pas de respawn (sinon vague infinie).
       if (camp.noRespawn === true && camp._raidGen === this.raidWaveGen) continue;
+      // Event itinérant (Ice Meteoroid d'hiver) : jamais de respawn local,
+      // même tué par un JPC ; seul le contrôleur le replace (map au hasard).
+      if (camp.roaming === true && camp._roamSpawned === true) continue;
       if ((aliveByCamp.get(camp.id) || 0) >= camp.maxAlive) continue;
       const cd = (this.campT.get(camp.id) || 0) - dt;
       if (cd > 0) { this.campT.set(camp.id, cd); continue; }
@@ -2113,7 +2168,7 @@ drainPlayerHits() {
     // dechet des minions orphelins et re-armement apres 15 s sans coup.
     for (const [muid, m] of [...this.entries]) {
       if (!m) continue;
-      if (m.type === "npc_Cubikon" && m.cube) {
+      if (minionMasterSpec(m.type) && m.cube) {
         if (!(m.hp > 0)) { m.cube = null; continue; }
         if (nowMs >= Number(m.cube.until) || 0) {
           if (m.cube.phase === "delay") {
@@ -2138,7 +2193,7 @@ drainPlayerHits() {
       // Cubikon vivant sans coup depuis 15 s : minions retires
       // silencieusement (parite solo : despawn 0.5 s, sans recompense),
       // la prochaine salve re-arme la vague.
-      if (m.type === "npc_Cubikon" && m.cubeArmed && (m.hp > 0)
+      if (minionMasterSpec(m.type) && m.cubeArmed && (m.hp > 0)
         && nowMs - Number(m.lastCubeHitAt || 0) > 15000) {
         for (const [muid2, m2] of [...this.entries]) {
           if (m2 && m2.masterUid === m.uid && m2.hp > 0 && !m2.decaying) {
@@ -2442,7 +2497,7 @@ drainPlayerHits() {
         if (mv.dead) continue;
         mx = Number(mv.mx) || 0; my = Number(mv.my) || 0; spd = Math.max(0, Number(mv.spd) || 0);
       } else if (cubeAnchored) {
-        const patrol = protegitPatrol(e, cubeMaster, this.world, dt);
+        const patrol = protegitPatrol(e, cubeMaster, this.world, dt, Math.random, minionMasterSpec(cubeMaster.type)?.patrol);
         mx = patrol.x; my = patrol.y; spd = e.speed * patrol.speed;
         e.angle = chase ? Math.atan2(chase.y - e.y, chase.x - e.x) : Math.atan2(my, mx);
       } else if (fleeing) {
@@ -2492,6 +2547,9 @@ drainPlayerHits() {
       }
       if (frozen) spd = 0;
       else spd *= slowMult;
+      // Ice Meteoroid : ne bouge plus tant qu'il est attaqué (lui ou ses
+      // Icy, dernier coup < 15 s), ses Icy patrouillent autour de lui.
+      if (isHoldingMinionMaster(e, nowMs)) spd = 0;
       const radiationTravel = !!chase || outsideMap;
       const minBound = radiationTravel ? 80 - RADIATION_CHASE_MARGIN : 80;
       const maxBoundX = radiationTravel ? this.world.w - 80 + RADIATION_CHASE_MARGIN : this.world.w - 80;
@@ -2582,6 +2640,7 @@ drainPlayerHits() {
       this.separationIndex.forEachPair(activeList, (a, b, i, j) => {
         // Ancre impliquée : traversée libre, aucune séparation.
         if (a.jpc || b.jpc || isAnchoredNpcType(a.type) || isAnchoredNpcType(b.type)) return;
+        if (isHoldingMinionMaster(a, nowMs) || isHoldingMinionMaster(b, nowMs)) return;
         let dx = b.x - a.x, dy = b.y - a.y;
         const minimum = (Number(a.r) || 18) + (Number(b.r) || 18) + 6;
         let squared = dx * dx + dy * dy;
@@ -2684,6 +2743,9 @@ drainPlayerHits() {
           cube: (e.type === "npc_Cubikon" && e.cube && e.cube.phase) ? String(e.cube.phase) : null,
           cubeT: (e.type === "npc_Cubikon" && e.cube && e.cube.phase)
             ? Math.max(0, (Number(e.cube.until) || 0) - nowMs) / 1000 : 0,
+          // Ice Meteoroid attaqué : immobile. Le client coupe sa vitesse
+          // estimée tout de suite (sinon il glisse encore sur l'ancienne).
+          ...(isHoldingMinionMaster(e, nowMs) ? { hold: 1 } : null),
         });
       } else if (e.killer != null) {
         list.push({ uid: e.uid, type: e.type, alive: false, killer: e.killer, cause: e.cause || "gun", seq: e.seq || 0 });
@@ -2709,70 +2771,108 @@ drainPlayerHits() {
   }
 }
 
-// --- Contrôleur global du mini-event dominical [ UFONIT ] ---
-// 1 seul UFONIT à la fois sur 4-1 / 4-2 / 4-3 / 4-4 (map tirée au hasard à
-// chaque apparition), respawn instantané après sa mort. getSim(mapId) doit
-// retourner la sim de la map ou null. Throttle interne 2 s.
-// Retourne { events, liveMap, active } ou null (throttle) ;
-// events = [{ t: "start" | "spawn" | "end", map? }].
-const SUNDAY_CTRL = { at: 0, wasActive: false, lastMap: null };
-export function syncSundayEvent(getSim, nowMs = Date.now()) {
-  if (nowMs - SUNDAY_CTRL.at < 2000) return null;
-  SUNDAY_CTRL.at = nowMs;
-  const events = [];
-  const sims = new Map();
-  for (const m of SUNDAY_MAPS) {
+// --- Contrôleur des events itinérants ---
+// 1 seul NPC de l'event à la fois sur ses maps (map tirée au hasard à chaque
+// apparition, sans répéter la précédente si possible), respawn instantané
+// après sa mort. getSim(mapId) doit retourner la sim de la map ou null.
+// Throttle interne 2 s. Retourne { events, liveMap, active } ou null
+// (throttle) ; events = [{ t: "start" | "spawn" | "end", map? }].
+function createRoamingEventController({ event, type, maps, isActive, pickMap, buildCamp }) {
+  const ctrl = { at: 0, wasActive: false, lastMap: null };
+  return function syncRoamingEvent(getSim, nowMs = Date.now()) {
+    if (nowMs - ctrl.at < 2000) return null;
+    ctrl.at = nowMs;
+    const events = [];
+    const sims = new Map();
+    for (const m of maps) {
+      try {
+        const s = getSim(m);
+        if (s && typeof s.tick === "function" && Array.isArray(s.camps) && s.entries instanceof Map) sims.set(m, s);
+      } catch {}
+    }
+    let active = false;
+    try { active = isActive(new Date(nowMs)); } catch {}
+    if (!active) {
+      for (const [, sim] of sims) { try { sim.purgeRoamingEvent(event, type); } catch {} }
+      if (ctrl.wasActive) events.push({ t: "end" });
+      ctrl.wasActive = false;
+      return { events, liveMap: null, active: false };
+    }
+    if (!ctrl.wasActive) events.push({ t: "start" });
+    ctrl.wasActive = true;
+    for (const [m, sim] of sims) {
+      try { if (sim.roamingLiveCount(type) > 0) return { events, liveMap: m, active: true }; } catch {}
+    }
+    const ready = [...sims.keys()];
+    if (!ready.length) return { events, liveMap: null, active: true };
+    // Tirage aléatoire, sans répéter la map précédente si possible.
+    let pick = pickMap(Math.random);
+    if (ready.length > 1) {
+      for (let tries = 0; tries < 4 && pick === ctrl.lastMap; tries++) pick = pickMap(Math.random);
+    }
+    const finalMap = ready.includes(pick) ? pick : ready[0];
+    ctrl.lastMap = finalMap;
+    const sim = sims.get(finalMap);
+    for (const [m, s] of sims) {
+      if (m === finalMap) continue;
+      try {
+        if (s.camps.some((c) => c?.event === event)) {
+          s.camps = s.camps.filter((c) => c?.event !== event);
+          ensureMapSlots(s.universe, s.mapId, s.camps, nowMs);
+        }
+      } catch {}
+    }
     try {
-      const s = getSim(m);
-      if (s && typeof s.tick === "function" && Array.isArray(s.camps) && s.entries instanceof Map) sims.set(m, s);
-    } catch {}
-  }
-  let active = false;
-  try { active = isSundayEventActive(new Date(nowMs)); } catch {}
-  if (!active) {
-    for (const [, sim] of sims) { try { sim.purgeSunday(); } catch {} }
-    if (SUNDAY_CTRL.wasActive) events.push({ t: "end" });
-    SUNDAY_CTRL.wasActive = false;
-    return { events, liveMap: null, active: false };
-  }
-  if (!SUNDAY_CTRL.wasActive) events.push({ t: "start" });
-  SUNDAY_CTRL.wasActive = true;
-  for (const [m, sim] of sims) {
-    try { if (sim.sundayLiveCount() > 0) return { events, liveMap: m, active: true }; } catch {}
-  }
-  const ready = [...sims.keys()];
-  if (!ready.length) return { events, liveMap: null, active: true };
-  // Tirage aléatoire, sans répéter la map précédente si possible.
-  let pick = sundayPickMap(Math.random);
-  if (ready.length > 1) {
-    for (let tries = 0; tries < 4 && pick === SUNDAY_CTRL.lastMap; tries++) pick = sundayPickMap(Math.random);
-  }
-  const finalMap = ready.includes(pick) ? pick : ready[0];
-  SUNDAY_CTRL.lastMap = finalMap;
-  const sim = sims.get(finalMap);
-  for (const [m, s] of sims) {
-    if (m === finalMap) continue;
-    try {
-      if (s.camps.some((c) => c?.event === "sunday")) {
-        s.camps = s.camps.filter((c) => c?.event !== "sunday");
-        ensureMapSlots(s.universe, s.mapId, s.camps, nowMs);
+      let camp = sim.camps.find((c) => c?.event === event);
+      if (!camp) {
+        let nextId = 0;
+        for (const c of sim.camps) nextId = Math.max(nextId, Number(c?.id) || 0);
+        camp = { id: nextId + 1, ...buildCamp(sim.world, Math.random) };
+        sim.camps.push(camp);
+        ensureMapSlots(sim.universe, sim.mapId, sim.camps, nowMs);
+      }
+      const alive = [...sim.entries.values()].filter((e) => e && e.campId === camp.id && e.hp > 0).length;
+      if (!alive && sim.spawnFor(camp, nowMs)) {
+        try { sim.campT.set(camp.id, 0); } catch {}
+        events.push({ t: "spawn", map: finalMap });
       }
     } catch {}
+    return { events, liveMap: finalMap, active: true };
+  };
+}
+
+// Mini-event dominical [ UFONIT ] : 4-1 / 4-2 / 4-3 / 4-4.
+export const syncSundayEvent = createRoamingEventController({
+  event: "sunday", type: SUNDAY_UFONIT_TYPE, maps: SUNDAY_MAPS,
+  isActive: isSundayEventActive, pickMap: sundayPickMap, buildCamp: buildSundayCamp,
+});
+
+// Saison d'hiver (01/11 -> 31/01) : 1 NPC d'hiver par paire de maps, chaque
+// paire indépendante (Ice Meteoroid en 1-6/1-7, 2-6/2-7, 3-6/3-7 ; Super
+// Ice Meteoroid en 4-4/4-5). Voir WINTER_SPAWN_GROUPS.
+const WINTER_CONTROLLERS = WINTER_SPAWN_GROUPS.map(({ maps, type }) => createRoamingEventController({
+  event: "winter", type, maps,
+  isActive: isWinterEventActive, pickMap: (random) => winterPickMap(maps, random),
+  buildCamp: (world, random) => buildWinterCamp(world, random, type),
+}));
+// Même contrat que syncSundayEvent, sauf liveMaps (1 map par paire) ;
+// "start" / "end" ne sont émis qu'une fois pour toutes les paires.
+export function syncWinterEvent(getSim, nowMs = Date.now()) {
+  const results = [];
+  for (const sync of WINTER_CONTROLLERS) {
+    try { const r = sync(getSim, nowMs); if (r) results.push(r); } catch {}
   }
-  try {
-    let camp = sim.camps.find((c) => c?.event === "sunday");
-    if (!camp) {
-      let nextId = 0;
-      for (const c of sim.camps) nextId = Math.max(nextId, Number(c?.id) || 0);
-      camp = { id: nextId + 1, ...buildSundayCamp(sim.world, Math.random) };
-      sim.camps.push(camp);
-      ensureMapSlots(sim.universe, sim.mapId, sim.camps, nowMs);
+  if (!results.length) return null;
+  const events = [];
+  for (const r of results) {
+    for (const ev of r.events || []) {
+      if (ev.t !== "spawn" && events.some((e) => e.t === ev.t)) continue;
+      events.push(ev);
     }
-    const alive = [...sim.entries.values()].filter((e) => e && e.campId === camp.id && e.hp > 0).length;
-    if (!alive && sim.spawnFor(camp, nowMs)) {
-      try { sim.campT.set(camp.id, 0); } catch {}
-      events.push({ t: "spawn", map: finalMap });
-    }
-  } catch {}
-  return { events, liveMap: finalMap, active: true };
+  }
+  return {
+    events,
+    liveMaps: results.map((r) => r.liveMap).filter(Boolean),
+    active: results.some((r) => r.active),
+  };
 }

@@ -1423,11 +1423,11 @@ export const NPC_TYPES = {
     r: 52, hp: 250000, shield: 150000, speed: 250, bulletDmg: 3000, bulletSpeed: 4500, shootRange: 550,
   },
   npc_Super_Ice_Meteoroid: {
-    name: "-=[ Super Ice Meteoroid ]=-",
+    name: "<=< Super Ice Meteoroid >=>",
     sprite: { path: "NPC/NPC_SPRITES/SUPER_ICE_METEOROID/", frames: 64, firstNumber: 1, ext: ".png", w: 252, h: 252 },
     playSprite: true,
     passiveNative: false,
-    spriteSpeed: 18,
+    spriteSpeed: 25,
     bulletSprite: { src: "COMBAT/MUNITIONS/SPECIAL8.png", w: 55, h: 17, glow: true, invert: true },
     r: 45, hp: 3200000, shield: 2400000, speed: 250, bulletDmg: 0, bulletSpeed: 4500, shootRange: 550,
   },
@@ -1468,11 +1468,11 @@ export const NPC_TYPES = {
     r: 26, hp: 250000, shield: 150000, speed: 250, bulletDmg: 3000, bulletSpeed: 4500, shootRange: 550,
   },
   npc_Ice_Meteoroid: {
-    name: "-=[ Ice Meteoroid ]=-",
+    name: "<=< Ice Meteoroid >=>",
     sprite: { path: "NPC/NPC_SPRITES/ICE_METEOROID/", frames: 62, firstNumber: 1, ext: ".png", w: 168, h: 168 },
     playSprite: true,
     passiveNative: false,
-    spriteSpeed: 18,
+    spriteSpeed: 25,
     bulletSprite: { src: "COMBAT/MUNITIONS/SPECIAL8.png", w: 55, h: 17, glow: true, invert: true },
     r: 30, hp: 1600000, shield: 1200000, speed: 250, bulletDmg: 0, bulletSpeed: 4500, shootRange: 550,
   },
@@ -1484,6 +1484,18 @@ export const NPC_TYPES = {
     spriteSpeed: 0,
     bulletSprite: { src: "COMBAT/MUNITIONS/SPECIAL8.png", w: 55, h: 17, glow: true, invert: true },
     r: 18, hp: 100000, shield: 80000, speed: 250, bulletDmg: 2000, bulletSpeed: 4500, shootRange: 550,
+  },
+  // Icy de l'Ice Meteoroid (minions façon Cubikon, saison d'hiver) :
+  // stats de l'Icy, sauf la vitesse (420, comme les Protegit du Cubikon)
+  // et la munition (celle du Kristallin).
+  npc_Meteoroid_Icy: {
+    name: "<=< Icy >=>",
+    sprite: { path: "NPC/NPC_SPRITES/ICY/", frames: 32, firstNumber: 1, ext: ".png", w: 75, h: 75 },
+    playSprite: false,
+    passiveNative: false,
+    spriteSpeed: 0,
+    bulletSprite: { src: "COMBAT/MUNITIONS/KRISTALLIN.png", w: 40, h: 15, glow: true, invert: true },
+    r: 18, hp: 100000, shield: 80000, speed: 420, bulletDmg: 2000, bulletSpeed: 4500, shootRange: 550,
   },
   npc_1100101: {
     name: "-=[ 1100101 ]=-",

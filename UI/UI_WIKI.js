@@ -51,9 +51,10 @@ const kbd = (k) => `<kbd>${esc(k)}</kbd>`;
 const img = (src, cls = "wikiIco", fallback = "") => (src
   ? `<img class="${cls}" src="${esc(src)}"${fallback ? ` data-fallback="${esc(fallback)}"` : ""} alt="" loading="lazy" decoding="async" />`
   : "");
-// "-=[ Streuner ]=- κ" -> "Streuner κ" : on retire les décorations DarkOrbit.
+// "-=[ Streuner ]=- κ" -> "Streuner κ" : on retire les décorations DarkOrbit
+// (dont "<=< Ice Meteoroid >=>").
 const npcName = (type) => String(NPC_TYPES[type]?.name || type)
-  .replace(/-=\[|\]=-|\.\.::\{|\}::\.\.|[[\]{}]/g, " ").replace(/\s+/g, " ").trim();
+  .replace(/-=\[|\]=-|<=<|>=>|\.\.::\{|\}::\.\.|[[\]{}]/g, " ").replace(/\s+/g, " ").trim();
 const lines = (text) => esc(text).replace(/\n/g, "<br />");
 
 // Carte : titre cyan + contenu. span = pleine largeur.
