@@ -37,6 +37,84 @@ function client() {
   return { api: context, sockets, intervals, timeouts, advance: ms => { now += ms; } };
 }
 
+function npcMotionClient() {
+  const c = client();
+  let at = 10000;
+  const advance = ms => { c.advance(ms); at += ms; };
+  const snap = (elapsed, x, extra = {}) => {
+    advance(elapsed);
+    c.sockets[0].receive({ t: "snapshot", at, players: [], npc: { list: x === null ? [] : [{
+      uid: "motion", type: "npc_Streuner", seq: 1, x, y: 100,
+      hp: 100, hpMax: 100, alive: true, ...extra,
+    }] } });
+    return c.api.getNetNpcs().get("motion");
+  };
+  return { ...c, advance, snap };
+}
+
+test("NPC : des positions identiques confirment l'arret sans derive ni rollback a la reprise", () => {
+  const c = npcMotionClient();
+  c.snap(0, 100); c.snap(50, 120);
+  const npc = c.snap(50, 120);
+  for (let i = 0; i < 40; i++) {
+    c.snap(50, 120);
+    c.api.tickNetplayRemotes(.05);
+  }
+  assert.equal(npc.vx, 0, "un paquet immobile efface l'ancienne vitesse");
+  assert.ok(Math.abs(npc.rx - 120) < .01, `NPC arrete rendu a ${npc.rx} au lieu de 120`);
+  const before = npc.rx;
+  c.snap(50, 140); c.api.tickNetplayRemotes(.05);
+  assert.ok(npc.rx > before, "la reprise ne tire pas le NPC en arriere");
+});
+
+test("NPC : le gel autoritaire coupe la prediction des le premier paquet", () => {
+  const c = npcMotionClient();
+  c.snap(0, 100); c.snap(50, 120);
+  const npc = c.snap(50, 130, { freezeT: 2 });
+  assert.equal(npc.vx, 0);
+  for (let i = 0; i < 40; i++) { c.advance(16); c.api.tickNetplayRemotes(.016); }
+  assert.ok(npc.rx <= 130.01, `le NPC gele glisse jusqu'a ${npc.rx}`);
+});
+
+test("NPC : une coupure ne predit pas une seconde entiere et la correction reste bornee", () => {
+  const c = npcMotionClient();
+  for (let i = 0; i < 20; i++) { c.snap(i ? 50 : 0, 100 + i * 20); c.api.tickNetplayRemotes(.05); }
+  const npc = c.api.getNetNpcs().get("motion"), stoppedAt = npc.x;
+  for (let i = 0; i < 100; i++) { c.advance(16); c.api.tickNetplayRemotes(.016); }
+  assert.ok(npc.rx <= stoppedAt + 80, `extrapolation excessive : ${npc.rx - stoppedAt} px`);
+  c.snap(50, stoppedAt + 1000);
+  const before = npc.rx;
+  c.api.tickNetplayRemotes(.016);
+  assert.ok(Math.abs(npc.rx - before) <= 1500 * .016 + 1e-8, "pas de teleportation au retour du paquet");
+});
+
+test("NPC : les listes partielles a 20 Hz ne figent pas un NPC lointain actualise a 1 Hz", () => {
+  const c = npcMotionClient();
+  c.snap(0, 100); c.snap(1000, 500); c.api.tickNetplayRemotes(.05);
+  const npc = c.api.getNetNpcs().get("motion"), before = npc.rx;
+  for (let i = 0; i < 16; i++) { c.snap(50, null); c.api.tickNetplayRemotes(.05); }
+  assert.ok(npc.rx > before + 100, "absence de la liste ne signifie pas arret");
+  assert.equal(npc.x, 500);
+});
+
+test("NPC : mouvement proche regulier fluide a 20 Hz et respawn sans trajet depuis le cadavre", () => {
+  const c = npcMotionClient();
+  c.snap(0, 100);
+  let previous = 100;
+  for (let frame = 1; frame <= 240; frame++) {
+    c.advance(1000 / 60);
+    if (frame % 3 === 0) c.snap(0, 100 + frame * 400 / 60);
+    c.api.tickNetplayRemotes(1 / 60);
+    const npc = c.api.getNetNpcs().get("motion");
+    assert.ok(npc.rx >= previous, `retour en arriere a la frame ${frame}`);
+    if (frame > 30) assert.ok(npc.rx > previous + 2, `freeze a la frame ${frame}`);
+    previous = npc.rx;
+  }
+  const npc = c.snap(50, 8000, { seq: 2 });
+  assert.equal(npc.rx, 8000);
+  assert.equal(npc.vx, 0);
+});
+
 test("1000 récompenses : appliquées dans chaque réception, sans attendre de frame", () => {
   const c = client(), socket = c.sockets[0];
   const received = [];
@@ -74,7 +152,7 @@ test("Boss Cucurbitor : la part de 0.5 % d'un second attaquant est transmise san
 test("JPC : protection portail/base transmise, attaque refusee puis autorisee a la sortie", () => {
   const c = client(), socket = c.sockets[0];
   const target = { id: "bot", isJpcBot: true, x: 100, y: 100 };
-  const context = vm.createContext({ e: target, isJpcBotSheltered,
+  const context = vm.createContext({ e: target, isJpcBotSheltered, rules: {},
     npcIsInSafeZone: () => false, // Joueur d'une autre firme.
     performance: { now: () => 10000 }, lastPvpSafeToastAt: 0, showToast: () => {},
     isOwnPetTarget: () => false, isSharedZone: () => true });

@@ -10,6 +10,11 @@ import { createServer } from "node:net";
 import { basename, dirname, extname, join, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { chromium } from "playwright-core";
+import { applyNpcDensityToCamps } from "../SRC/SIM/UNIVERSE_SIM.js";
+import { WORLD } from "../MAPS/1-BL/WORLD.js";
+import { getZoneSpawns } from "../MAPS/1-BL/SPAWNS.js";
+
+const expectedNpcCount = applyNpcDensityToCamps(getZoneSpawns(WORLD)).length;
 
 const root = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const temporary = await mkdtemp(join(tmpdir(), "orbit-bl-performance-"));
@@ -193,7 +198,8 @@ try {
       const p = window.__SNAPSHOT_PROFILE__, sizes = p.samples.map(s => s.bytes).sort((a, b) => a - b);
       return { samples: sizes.length, maxBytes: sizes.at(-1), medianBytes: sizes[Math.floor(sizes.length / 2)], maxHandlerMs: p.maxHandlerMs };
     });
-    assert.equal(state.player.dead, false); assert.ok(state.npcs >= 101);
+    assert.equal(state.player.dead, false);
+    assert.ok(state.npcs >= expectedNpcCount, `${state.npcs} NPC, ${expectedNpcCount} camps attendus`);
     assert.ok(timings['frame.draw'].count > 30);
     if (scenario === 'pet-locator') assert.notEqual(state.locator, null, 'le vrai localisateur reste actif');
     if (scenario === 'combat' || scenario === 'moving-combat') assert.ok(state.mindfire[0].hp < 135000000, 'les tirs atteignent le Mindfire');

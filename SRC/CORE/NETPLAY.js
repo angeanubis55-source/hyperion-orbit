@@ -2092,13 +2092,19 @@ export function ensureNetplayConnection() {
           // NPC figé par le serveur (Ice Meteoroid attaqué) : vitesse nulle
           // tout de suite, pas d'extrapolation sur l'ancienne trajectoire.
           const held = n.hold === 1;
+          const stopped = n.alive === false || held || Number(n.freezeT) > 0;
+          // Une position repetee est une confirmation d'arret, pas un trou
+          // reseau. Une absence de la liste partielle n'entre pas ici.
+          const updateInterval = motionPrev
+            ? Math.max(50, Math.min(1000, sourceAt - Number(prev.sourceAt ?? sourceAt)))
+            : 50;
           const npcEntry = prev || {};
           Object.assign(npcEntry, {
             uid,
             type: String(n.type || ""),
             x, y,
-            vx: n.alive === false || held ? 0 : n.jpc ? Number(n.jpVx) || 0 : (positionChanged ? velocity.vx : Number(prev?.vx || 0)),
-            vy: n.alive === false || held ? 0 : n.jpc ? Number(n.jpVy) || 0 : (positionChanged ? velocity.vy : Number(prev?.vy || 0)),
+            vx: stopped ? 0 : n.jpc ? Number(n.jpVx) || 0 : (positionChanged ? velocity.vx : 0),
+            vy: stopped ? 0 : n.jpc ? Number(n.jpVy) || 0 : (positionChanged ? velocity.vy : 0),
             hold: held,
             jpc: n.jpc === 1,
             jpSafe: typeof n.jpSafe === "boolean" ? n.jpSafe : null,
@@ -2133,7 +2139,8 @@ export function ensureNetplayConnection() {
             jamT: Math.max(0, Number(n.jamT) || 0),
             freezeT: Math.max(0, Number(n.freezeT) || 0),
             lastSeen: now,
-            sampleAt: positionChanged ? now : Number(prev?.sampleAt || now),
+            sampleAt: now,
+            updateInterval,
             sourceAt,
             rx: motionPrev ? Number(prev.rx ?? prev.x ?? n.x) : x,
             ry: motionPrev ? Number(prev.ry ?? prev.y ?? n.y) : y,
@@ -2826,7 +2833,10 @@ export function tickNetplayRemotes(dt = 0.016) {
     }
   }
   for (const n of netNpcs.values()) {
-    const lead = predictionLeadSeconds(now - Number(n.sampleAt || now));
+    // A 20 Hz, limiter la prediction aux petits retards. Les NPC lointains
+    // (1 Hz) gardent une fenetre adaptee a leur propre cadence d'envoi.
+    const leadCap = (Number(n.updateInterval || 50) + 100) / 1000;
+    const lead = Math.min(leadCap, predictionLeadSeconds(now - Number(n.sampleAt || now)));
     if (n.jpc) {
       // Vitesse serveur explicite : un arrêt efface immédiatement l'ancienne
       // vitesse. Aucun retard d'interpolation ne s'accumule à la réparation.
@@ -2842,8 +2852,10 @@ export function tickNetplayRemotes(dt = 0.016) {
     const targetX = Number(n.x) + Number(n.vx || 0) * lead;
     const targetY = Number(n.y) + Number(n.vy || 0) * lead;
     const rx = Number(n.rx ?? n.x), ry = Number(n.ry ?? n.y);
-    n.rx = rx + (targetX - rx) * k;
-    n.ry = ry + (targetY - ry) * k;
+    const dx = targetX - rx, dy = targetY - ry, distance = Math.hypot(dx, dy);
+    const correctionK = distance > 0 ? Math.min(k, NET_MAX_ESTIMATED_SPEED * frameDt / distance) : k;
+    n.rx = rx + dx * correctionK;
+    n.ry = ry + dy * correctionK;
   }
 }
 

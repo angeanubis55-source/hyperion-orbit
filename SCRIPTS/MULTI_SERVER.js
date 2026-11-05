@@ -4803,12 +4803,18 @@ const NPC_STEP_MS = 50;
 const NPC_MAX_CATCHUP_STEPS = 12;
 const SERVER_LAG_LOG_MS = 250;
 let lastNpcStepAt = Date.now();
+// Conserver le temps non rattrape : le jeter provoque un rollback visuel
+// (le client predit plus loin, puis recoit un serveur en retard).
+let npcStepDebtMs = 0;
 let lastServerLagLogAt = 0;
 setInterval(() => {
   const now = Date.now();
   const elapsedMs = now - lastNpcStepAt;
   lastNpcStepAt = now;
-  const npcSteps = Math.max(1, Math.min(NPC_MAX_CATCHUP_STEPS, Math.floor(elapsedMs / NPC_STEP_MS)));
+  const totalNpcTimeMs = Math.max(0, elapsedMs) + npcStepDebtMs;
+  const wantedNpcSteps = Math.floor(totalNpcTimeMs / NPC_STEP_MS);
+  const npcSteps = Math.min(NPC_MAX_CATCHUP_STEPS, wantedNpcSteps);
+  npcStepDebtMs = Math.max(0, totalNpcTimeMs - npcSteps * NPC_STEP_MS);
   if (elapsedMs >= SERVER_LAG_LOG_MS && now - lastServerLagLogAt >= 10_000) {
     lastServerLagLogAt = now;
     console.warn(`[multi:lag] boucle de jeu bloquee ${elapsedMs} ms.`);

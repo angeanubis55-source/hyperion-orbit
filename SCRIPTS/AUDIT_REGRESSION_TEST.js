@@ -133,7 +133,20 @@ test("l'écran de chargement Halloween suit exactement les bornes de l'event", a
 
 test("un blocage du serveur est rattrapé par les NPC au lieu de les faire reculer", () => {
   const server = read("./MULTI_SERVER.js");
-  assert.match(server, /Math\.floor\(elapsedMs \/ NPC_STEP_MS\)/);
+  const start = server.indexOf("const NPC_STEP_MS =");
+  const end = server.indexOf("  if (elapsedMs >= SERVER_LAG_LOG_MS", start);
+  assert.ok(start >= 0 && end > start);
+  let now = 10000, tick;
+  const context = vm.createContext({ Date: { now: () => now }, setInterval: fn => { tick = fn; } });
+  vm.runInContext(server.slice(start, end) + "\nreturn npcSteps;\n});", context);
+  let elapsed = 0, simulated = 0;
+  for (const ms of [99, 1, 49, 51, 51, 49, 1300, ...Array(30).fill(51)]) {
+    now += ms; elapsed += ms;
+    const steps = tick(); simulated += steps * 50;
+    assert.ok(steps >= 0 && steps <= 12, "rattrapage borne par tour");
+    assert.ok(simulated <= elapsed, `${simulated} ms simulees pour ${elapsed} ms reelles`);
+  }
+  assert.ok(elapsed - simulated < 50, "le reliquat et les longs blocages sont rattrapes");
   assert.match(server, /for \(let step = 0; step < npcSteps; step\+\+\) sim\.tick\(/);
 });
 
