@@ -38,7 +38,7 @@ export const WINTER_CONVOY_SWAY_HALF_WAVE = 1600;
 // Lent : bien moins vite que tous ses attaquants (250 au plus lent).
 export const WINTER_CONVOY_SPEED = 100;
 // Coque seule, pas de bouclier.
-export const WINTER_CONVOY_HP = 450000000;
+export const WINTER_CONVOY_HP = 650000000;
 export const WINTER_CONVOY_RADIUS = 60;
 // Identifiant partagé du convoi (cible serveur des attaquants).
 export const WINTER_CONVOY_ID = "winter_convoy";

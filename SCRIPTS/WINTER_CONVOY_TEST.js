@@ -34,7 +34,7 @@ test("Convoi : map WINTER partagée (zone), survie de 30 minutes", () => {
   assert.match(map, /mode: "zone"/);
   assert.match(map, /convoy: true/);
   assert.equal(WINTER_CONVOY_DURATION, 30 * 60);
-  assert.equal(WINTER_CONVOY_HP, 450000000);
+  assert.equal(WINTER_CONVOY_HP, 650000000);
 });
 
 test("Convoi : circuit différent à chaque GG, identique pour une même graine", () => {
