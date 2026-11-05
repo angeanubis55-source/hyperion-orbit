@@ -42,9 +42,12 @@ export const WINTER_CONVOY_HP = 450000000;
 export const WINTER_CONVOY_RADIUS = 60;
 // Identifiant partagé du convoi (cible serveur des attaquants).
 export const WINTER_CONVOY_ID = "winter_convoy";
-// Entrée ouverte pendant les 5 premières minutes de chaque heure.
+// Entrée ouverte pendant 5 minutes chaque heure, à partir de la minute
+// WINTER_GATE_OPEN_MINUTE (TEST : :20 -> :25 ; normal : 0, soit :00 -> :05).
+export const WINTER_GATE_OPEN_MINUTE = 20;
 export const WINTER_GATE_ENTRY_MS = 5 * 60 * 1000;
 const HOUR_MS = 60 * 60 * 1000;
+const OPEN_OFFSET_MS = WINTER_GATE_OPEN_MINUTE * 60 * 1000;
 
 // Étape : distance roulée avant l'arrêt suivant.
 export const WINTER_CONVOY_LEG = 3000;
@@ -171,7 +174,8 @@ export function winterConvoyReward(lifeRatio) {
 // Session de l'heure en cours (heures pleines : identiques à Paris).
 // open = entrée autorisée (avant le départ de :05).
 export function winterGateSession(nowMs = Date.now()) {
-  const hourAt = Math.floor(Number(nowMs) / HOUR_MS) * HOUR_MS;
+  // hourAt = ouverture de la session en cours (ou de la dernière).
+  const hourAt = Math.floor((Number(nowMs) - OPEN_OFFSET_MS) / HOUR_MS) * HOUR_MS + OPEN_OFFSET_MS;
   const startAt = hourAt + WINTER_GATE_ENTRY_MS;
   return {
     hourAt, startAt,
@@ -180,6 +184,12 @@ export function winterGateSession(nowMs = Date.now()) {
     open: Number(nowMs) < startAt,
     seed: (Math.floor(hourAt / HOUR_MS) % 0x7ffffffe) + 1,
   };
+}
+
+// Créneau affiché aux joueurs : { open: ":20", start: ":25" }.
+export function winterGateWindowLabel() {
+  const mm = (minute) => `:${String(minute % 60).padStart(2, "0")}`;
+  return { open: mm(WINTER_GATE_OPEN_MINUTE), start: mm(WINTER_GATE_OPEN_MINUTE + WINTER_GATE_ENTRY_MS / 60000) };
 }
 
 // Point d'arrivée des joueurs : juste derrière le convoi à son départ.

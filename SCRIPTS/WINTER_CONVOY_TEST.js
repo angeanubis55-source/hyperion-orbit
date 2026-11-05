@@ -5,7 +5,7 @@ import { readFileSync } from "node:fs";
 import {
   WINTER_CONVOY_DURATION, WINTER_CONVOY_HP, WINTER_CONVOY_LEG, WINTER_CONVOY_LOOP_POINTS,
   WINTER_CONVOY_REWARD, WINTER_CONVOY_SPAWN_DISTANCE, WINTER_CONVOY_SPEED, WINTER_CONVOY_SWAY,
-  WINTER_CONVOY_WAVE_ADDS, WINTER_CONVOY_WAVE_GROWTH_MAX, WINTER_CONVOY_WORLD, WINTER_CONVOY_ID, WINTER_GATE_ENTRY_MS,
+  WINTER_CONVOY_WAVE_ADDS, WINTER_CONVOY_WAVE_GROWTH_MAX, WINTER_CONVOY_WORLD, WINTER_CONVOY_ID, WINTER_GATE_ENTRY_MS, WINTER_GATE_OPEN_MINUTE,
   createWinterConvoyRoute, newWinterConvoySeed, winterConvoyReward, winterConvoySpawnPoint, winterConvoyWave,
   winterGateArrival, winterGateSession, winterGateShares,
 } from "../SRC/CORE/WINTER_CONVOY.js";
@@ -227,7 +227,8 @@ test("Convoi : les attaquants se traversent (aucune collision entre eux)", () =>
 });
 
 test("Session : entrée de :00 à :05, départ commun à :05, 30 minutes, même circuit pour tous", () => {
-  const hour = Date.UTC(2026, 11, 20, 14, 0, 0);
+  // Ouverture de la session (minute WINTER_GATE_OPEN_MINUTE de l'heure).
+  const hour = Date.UTC(2026, 11, 20, 14, 0, 0) + WINTER_GATE_OPEN_MINUTE * 60000;
   const at = (min, sec = 0) => winterGateSession(hour + min * 60000 + sec * 1000);
   assert.equal(WINTER_GATE_ENTRY_MS, 5 * 60 * 1000);
   assert.ok(at(0).open && at(4, 59).open);

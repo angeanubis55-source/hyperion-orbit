@@ -43,7 +43,7 @@ import { drawEngineTrailParticles, updateEngineTrailParticles } from "./ENGINE_T
 import { computeBotCombatMove, computeBotWallMove, isPointInWall } from "./BOT_NAVIGATION.js";
 import {
   WINTER_CONVOY_HP, WINTER_CONVOY_ID, WINTER_CONVOY_RADIUS,
-  createWinterConvoyRoute, winterGateArrival, winterGateSession,
+  createWinterConvoyRoute, winterGateArrival, winterGateSession, winterGateWindowLabel,
 } from "./WINTER_CONVOY.js";
 import { blacklightSearchTarget } from "./BOT_SEARCH.js";
 import { botCatalogGroups, botMapGroupKey, botMapGroupLabel, botMapsLabel, buildBotNpcCatalog } from "./BOT_NPC_CATALOG.js";
@@ -18537,7 +18537,8 @@ function startZonePortalJump(ptl, entryConfirmed = false) {
     const session = winterGateSession();
     if (!session.open) {
       SFX.play("swDeny");
-      showToast(`GG d'hiver — entrée de :00 à :05, prochaine ouverture dans ${winterConvoyClock(session.nextOpenAt - Date.now())}`, 2.2);
+      const slot = winterGateWindowLabel();
+      showToast(`GG d'hiver — entrée de ${slot.open} à ${slot.start}, prochaine ouverture dans ${winterConvoyClock(session.nextOpenAt - Date.now())}`, 2.2);
       return false;
     }
   }
@@ -46674,7 +46675,7 @@ function tickWinterConvoy(dt) {
     const prev = c.phase;
     c.phase = st.phase;
     if (st.phase === "lobby") {
-      showNotification("GG d'hiver — le convoi part à :05 pour tout le monde", 4, "info");
+      showNotification(`GG d'hiver — le convoi part à ${winterGateWindowLabel().start} pour tout le monde`, 4, "info");
     } else if (st.phase === "run") {
       showNotification("Protège le convoi pendant 30 minutes !", 3, "info");
     } else if (st.phase === "done" && !st.success) {
@@ -46688,7 +46689,8 @@ function tickWinterConvoy(dt) {
       leaveWinterGate("Le convoi a tenu 30 minutes — aucune part (aucun dégât infligé)");
       return;
     } else if (st.phase === "closed") {
-      leaveWinterGate(prev === "run" ? "GG d'hiver interrompue" : "GG d'hiver fermée — entrée de :00 à :05");
+      const slot = winterGateWindowLabel();
+      leaveWinterGate(prev === "run" ? "GG d'hiver interrompue" : `GG d'hiver fermée — entrée de ${slot.open} à ${slot.start}`);
       return;
     }
   }
