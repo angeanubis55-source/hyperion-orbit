@@ -1,10 +1,13 @@
 import { getFactionBaseSpawn, getFactionRespawnMap, getFactionUpperBaseMap } from "../SRC/CORE/FACTIONS.js";
 
+import { winterGateArrival } from "../SRC/CORE/WINTER_CONVOY.js";
+import { winterGateEntryOpen } from "./WINTER_GATE.js";
+
 export async function loadServerMaps() {
-  const ids = ["low", "maudite", "5-2", ...[1, 2, 3].flatMap(s =>
+  const ids = ["low", "maudite", "winter", "5-2", ...[1, 2, 3].flatMap(s =>
     [...Array.from({ length: 8 }, (_, i) => `${s}-${i + 1}`), `${s}-bl`]),
     ...Array.from({ length: 5 }, (_, i) => `4-${i + 1}`)];
-  const aliases = { low: "LOW_MAP", maudite: "MAUDITE", "1-bl": "1-BL", "2-bl": "2-BL", "3-bl": "3-BL" };
+  const aliases = { low: "LOW_MAP", maudite: "MAUDITE", winter: "WINTER_MAP", "1-bl": "1-BL", "2-bl": "2-BL", "3-bl": "3-BL" };
   const entries = await Promise.all(ids.map(async id => {
     const dir = aliases[id] || id;
     const [{ WORLD }, spawns] = await Promise.all([
@@ -33,7 +36,13 @@ export function baseArrival(maps, map, faction) {
 // La destination est déduite du portail à la position serveur. Une chaîne
 // map fournie par le client n'accorde aucune exemption de déplacement.
 export function mapTransition(maps, state, fromMap, toMap, faction, now) {
-  if (!maps.has(toMap) && !["alpha", "beta", "gamma", "delta", "epsilon", "zeta", "kappa", "lambda", "kronos", "awakened", "eternal", "qz"].includes(toMap)) return null;
+  if (!maps.has(toMap) && !["alpha", "beta", "gamma", "delta", "epsilon", "zeta", "kappa", "lambda", "kronos", "awakened", "eternal", "winter", "qz"].includes(toMap)) return null;
+  // GG d'hiver (map partagée sans portail) : retour à la base mère à tout
+  // moment (fin de session) ; entrée seulement de :00 à :05.
+  if (fromMap === "winter" && toMap === respawnMap(faction, fromMap) && !(state.pvpDead === true || state.hp <= 0)) {
+    return baseArrival(maps, toMap, faction);
+  }
+  if (toMap === "winter" && !winterGateEntryOpen(now)) return null;
   if (state.pvpDead === true || state.hp <= 0) {
     if (toMap !== respawnMap(faction, fromMap)) return null;
     return { ...baseArrival(maps, toMap, faction), revive: true };
@@ -47,6 +56,7 @@ export function mapTransition(maps, state, fromMap, toMap, faction, now) {
   const target = maps.get(toMap)?.portals.find(p => String(p.id) === String(source.toPortal))
     || maps.get(toMap)?.portals.find(p => String(p.toMap).toLowerCase() === fromMap);
   return target ? { x: target.x, y: target.y, radius: 650 }
+    : toMap === "winter" ? { ...winterGateArrival(now), radius: 1500 }
     : ["alpha", "beta", "gamma", "delta", "epsilon", "zeta", "kappa", "lambda", "kronos", "awakened", "eternal", "qz"].includes(toMap) ? { instance: true }
     : toMap === "maudite" ? baseArrival(maps, toMap, faction) : null;
 }
@@ -63,7 +73,7 @@ export function reviveArrival(maps, state, map, faction, x, y) {
   const base = map === respawnMap(faction, map) ? baseArrival(maps, map, faction) : null;
   if (base && near({ x, y }, base, base.radius)) return base;
   if (near({ x, y }, state, 150)) return { x: state.x, y: state.y, radius: 150 };
-  const portals = (maps.get(map)?.portals || []).filter(p => p?.hidden !== true && !["low", "qz", "alpha", "beta", "gamma", "delta", "epsilon", "zeta", "kappa", "lambda", "kronos", "awakened", "eternal", "maudite", "5-2"].includes(String(p.toMap).toLowerCase()));
+  const portals = (maps.get(map)?.portals || []).filter(p => p?.hidden !== true && !["low", "qz", "alpha", "beta", "gamma", "delta", "epsilon", "zeta", "kappa", "lambda", "kronos", "awakened", "eternal", "winter", "maudite", "5-2"].includes(String(p.toMap).toLowerCase()));
   const closest = portals.sort((a, b) => Math.hypot(a.x - state.x, a.y - state.y) - Math.hypot(b.x - state.x, b.y - state.y))[0];
   return closest && near({ x, y }, closest, 150) ? { x: closest.x, y: closest.y, radius: 150 } : null;
 }

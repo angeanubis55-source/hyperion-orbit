@@ -84,6 +84,24 @@ test("Hiver : neige sur les portails NORMAUX, BATTLE, BL, QZ et MAUDITE ; LOW en
   assert.equal(getPortalSkinForMap("LOW").idle.src, "ASSETS/PIRATES_PORTAL/DESACTIVE.png");
 });
 
+test("Hiver : portail de la GG d'hiver au centre de 1-3, 2-3 et 3-3", async () => {
+  const skin = getPortalSkinForMap("winter");
+  for (const [state, file] of [["idle", "DESACTIVE"], ["open", "ACTIVE"], ["jump", "JUMP"]]) {
+    assert.equal(skin[state].src, `ASSETS/PORTAL/WINTER/${file}.png`);
+    assert.deepEqual([skin[state].w, skin[state].h], [384, 411]);
+    assert.ok(existsSync(new URL(`../${skin[state].src}`, import.meta.url)), skin[state].src);
+  }
+  assert.equal(skin.seasonalOverlay ?? null, null);
+  assert.equal(skin.hintOpen, undefined);
+  for (const map of ["1-3", "2-3", "3-3"]) {
+    const { WORLD } = await import(`../MAPS/${map}/WORLD.js`);
+    const { getZonePortals } = await import(`../MAPS/${map}/SPAWNS.js`);
+    const gate = getZonePortals(WORLD).filter((p) => p.toMap === "winter");
+    assert.equal(gate.length, 1, map);
+    assert.deepEqual([gate[0].x, gate[0].y], [WORLD.w / 2, WORLD.h / 2], map);
+  }
+});
+
 function makeSims() {
   const sims = new Map();
   for (const m of WINTER_MAPS) sims.set(m, new ZoneNpcSim(m, { w: 11000, h: 7000 }, []));

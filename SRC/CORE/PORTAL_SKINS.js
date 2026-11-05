@@ -140,6 +140,16 @@ const SPECIAL_SKINS = Object.freeze({
   }),
 });
 
+// ✅ GG d'hiver (centre de 1-3 / 2-3 / 3-3, saison d'hiver uniquement) :
+// atlas officiel portal_tutorial_texture_snow (3 états 384x411) :
+// normal = DESACTIVE, active (anneau jaune) = ACTIVE, highlight = JUMP.
+const WINTER_GATE_SKIN = Object.freeze({
+  idle: { src: "ASSETS/PORTAL/WINTER/DESACTIVE.png", w: 384, h: 411, yOff: 0 },
+  open: { src: "ASSETS/PORTAL/WINTER/ACTIVE.png", w: 384, h: 411, yOff: 0 },
+  jump: { src: "ASSETS/PORTAL/WINTER/JUMP.png", w: 384, h: 411, yOff: 0, scale: 1, spinSpeed: 0, alpha: 1 },
+  jumpFxPath: null,
+});
+
 // Destinations utilisant le skin pirates : les portails vers 5-2 et vers LOW.
 // (les sprites pirates explicites déjà présents dans SPAWNS.js sont conservés
 //  tels quels et restent prioritaires ; 4-5 garde son fallback standard.)
@@ -203,6 +213,8 @@ function winterOverlayFor(category) {
 }
 
 export function getPortalSkinForMap(toMap) {
+  // GG d'hiver : pas (encore) de map enregistrée, normalizeMapId la ramènerait en 1-1.
+  if (String(toMap || "").trim().toLowerCase() === "winter") return WINTER_GATE_SKIN;
   const id = normalizeMapId(toMap);
   const lower = String(id || "").toLowerCase();
   // Portails spéciaux d'abord (galaxy gates + pirates).

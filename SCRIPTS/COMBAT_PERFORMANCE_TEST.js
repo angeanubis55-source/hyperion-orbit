@@ -675,7 +675,7 @@ test('la mini-carte reste reactive aux changements de carte et de taille sans re
     account: { user: {} }, player: { x: 21000, y: 6220 }, WORLD: { w: 30000, h: 18000 },
     enemies: Array.from({ length: 101 }, (_, id) => ({ id, hp: 100 })),
     minimapAllies: () => [], getInteractivePortals: () => [], gateReturnPortal: null,
-    isZoneMap: true, zoneStation: null, zoneSafe: null, zoneWalls: [], rules: {}, moveTarget: {}, miniPing: {}, camera: {},
+    isZoneMap: true, zoneStation: null, zoneSafe: null, zoneWalls: [], winterConvoy: null, rules: {}, moveTarget: {}, miniPing: {}, camera: {},
     innerWidth: 1600, innerHeight: 900, Target: { get: () => null },
     renderMinimap: (_, options) => draws.push(options),
   });

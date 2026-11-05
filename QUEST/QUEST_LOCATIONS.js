@@ -3,7 +3,7 @@
 import { MAP_LOADERS } from "../SRC/CORE/MAP_REGISTRY.js";
 import { NPC_TYPES } from "../NPC/NPC_TYPES.js";
 
-const GATE_MAPS = new Set(["alpha", "beta", "gamma", "delta", "epsilon", "zeta", "kappa", "lambda", "kronos", "awakened", "eternal", "qz"]);
+const GATE_MAPS = new Set(["alpha", "beta", "gamma", "delta", "epsilon", "zeta", "kappa", "lambda", "kronos", "awakened", "eternal", "winter", "qz"]);
 // Alias mapId -> dossier (la Low partagée vit dans MAPS/LOW_MAP).
 const MAP_DIRS = Object.freeze({ low: "LOW_MAP" });
 // Vagues de chaque Galaxy Gate. Seules QZ et Eternal font aussi apparaître

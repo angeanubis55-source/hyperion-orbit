@@ -206,23 +206,26 @@ export const NPC_REWARDS = Object.freeze({
   npc_Frozen_Meteoroid: { credits: 2500000, exp: 25000, honor: 100 },
   npc_Frozen_Super_Meteoroid: { credits: 4300000, exp: 25000, honor: 100 },
   npc_EM_Freighter: { credits: 50000, exp: 25000, honor: 100 },
-  npc_Hexor_Mimesis: { credits: 50000, exp: 25000, honor: 100 },
-  npc_Raging_Mimesis: { credits: 50000, exp: 25000, honor: 100 },
-  npc_Cloning_Mimesis: { credits: 50000, exp: 25000, honor: 100 },
-  npc_Terror_Mimesis: { credits: 50000, exp: 25000, honor: 100 },
-  npc_Kamikaze_Mimesis: { credits: 50000, exp: 25000, honor: 100 },
-  npc_Reflector_Mimesis: { credits: 50000, exp: 25000, honor: 100 },
-  npc_Raider_Mimesis: { credits: 50000, exp: 25000, honor: 100 },
-  npc_Assailant_Mimesis: { credits: 50000, exp: 25000, honor: 100 },
-  npc_Medic_Mimesis: { credits: 50000, exp: 25000, honor: 100 },
-  npc_Hardy_Mimesis: { credits: 50000, exp: 25000, honor: 100 },
-  npc_Piercing_Mimesis: { credits: 50000, exp: 25000, honor: 100 },
-  npc_Obscured_Mimesis: { credits: 50000, exp: 25000, honor: 100 },
-  npc_Hounding_Mimesis: { credits: 50000, exp: 25000, honor: 100 },
-  npc_Mirror_Mimesis: { credits: 50000, exp: 25000, honor: 100 },
-  npc_Mirror_Mimesis_249: { credits: 50000, exp: 25000, honor: 100 },
-  npc_Sniper_Mimesis: { credits: 50000, exp: 25000, honor: 100 },
-  npc_Marker_Mimesis: { credits: 50000, exp: 25000, honor: 100 },
+  // Mimesis : récompenses officielles (darkorbitwiki.com) ; honneur Terror /
+  // Reflector corrigé (le wiki affiche x1000 par erreur : crédits / 1000).
+  // Tourelle : non publiée, alignée sur l'Hexor.
+  npc_Hexor_Mimesis: { credits: 128000, exp: 25600, honor: 128 },
+  npc_Raging_Mimesis: { credits: 512000, exp: 102400, honor: 512 },
+  npc_Cloning_Mimesis: { credits: 1024000, exp: 205300, honor: 1024 },
+  npc_Terror_Mimesis: { credits: 2048000, exp: 409600, honor: 2048 },
+  npc_Kamikaze_Mimesis: { credits: 128000, exp: 25600, honor: 128 },
+  npc_Reflector_Mimesis: { credits: 4096000, exp: 819200, honor: 4096 },
+  npc_Raider_Mimesis: { credits: 512000, exp: 102400, honor: 512 },
+  npc_Assailant_Mimesis: { credits: 512000, exp: 102400, honor: 512 },
+  npc_Medic_Mimesis: { credits: 1024000, exp: 204800, honor: 1024 },
+  npc_Hardy_Mimesis: { credits: 1024000, exp: 204800, honor: 1024 },
+  npc_Piercing_Mimesis: { credits: 2048000, exp: 409600, honor: 2048 },
+  npc_Obscured_Mimesis: { credits: 4096000, exp: 819200, honor: 4096 },
+  npc_Hounding_Mimesis: { credits: 2048000, exp: 409600, honor: 2048 },
+  npc_Mirror_Mimesis: { credits: 4096000, exp: 819200, honor: 4096 },
+  npc_Mirror_Mimesis_249: { credits: 4096000, exp: 819200, honor: 4096 },
+  npc_Sniper_Mimesis: { credits: 2048000, exp: 409600, honor: 2048 },
+  npc_Marker_Mimesis: { credits: 4096000, exp: 819200, honor: 4096 },
   npc_Troublemaker_Cyborg: { credits: 50000, exp: 25000, honor: 100 },
   npc_Cowering_Cyborg: { credits: 50000, exp: 25000, honor: 100 },
   npc_Phasing_Cyborg: { credits: 50000, exp: 25000, honor: 100 },
@@ -238,7 +241,7 @@ export const NPC_REWARDS = Object.freeze({
   npc_Frightful_Curcubitor: { credits: 50000, exp: 25000, honor: 100 },
   npc_Hitac_Underling: { credits: 50000, exp: 25000, honor: 100 },
   npc_Hitac_Underboss: { credits: 50000, exp: 25000, honor: 100 },
-  npc_Mimesis_Turret: { credits: 50000, exp: 25000, honor: 100 },
+  npc_Mimesis_Turret: { credits: 128000, exp: 25600, honor: 128 },
   npc_Dreadfyre_Fortress: { credits: 50000, exp: 25000, honor: 100 },
   npc_Dreadfyre_Guardian: { credits: 50000, exp: 25000, honor: 100 },
   npc_Dreadfyre_Harbinger: { credits: 50000, exp: 25000, honor: 100 },
@@ -263,8 +266,8 @@ export const NPC_REWARDS = Object.freeze({
   npc_Frozen_Boss_Kristallin: { credits: 64000, exp: 25000, honor: 100 },
   npc_Frozen_Kristallon: { credits: 32000, exp: 25000, honor: 100 },
   npc_Frozen_Boss_Kristallon: { credits: 128000, exp: 25000, honor: 100 },
-  npc_Cloned_Mimesis: { credits: 50000, exp: 25000, honor: 100 },
-  npc_Inspirit_Mimesis: { credits: 50000, exp: 25000, honor: 100 },
+  npc_Cloned_Mimesis: { credits: 128000, exp: 25600, honor: 128 },
+  npc_Inspirit_Mimesis: { credits: 1024000, exp: 204800, honor: 1024 },
   npc_Uber_Interceptor: { credits: 120000, exp: 60000, honor: 120 },
   npc_Uber_Barracuda: { credits: 270000, exp: 37500, honor: 100 },
   npc_Uber_Saboteur: { credits: 375000, exp: 37500, honor: 100 },
@@ -442,6 +445,8 @@ export const NPC_REWARDS = Object.freeze({
 export function resolveNpcReward(type) {
   const direct = NPC_REWARDS[type];
   if (direct) return direct;
+  // GG d'hiver (attaquants du convoi) : npc_Convoy_X = récompense de npc_X.
+  if (/^npc_Convoy_/.test(String(type))) return NPC_REWARDS[String(type).replace(/^npc_Convoy_/, "npc_")] || null;
   const parsed = parseHalloweenVariant(type);
   if (!parsed) return null;
   const stats = halloweenMapStats(parsed.level, parsed.role);

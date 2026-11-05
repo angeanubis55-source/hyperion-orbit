@@ -27,6 +27,7 @@ const {
   PET_LEASH,
 } = AC;
 import { tickLowRaid, getLowRaidState } from "./LOW_RAID.js";
+import { tickWinterGate, getWinterGateState } from "./WINTER_GATE.js";
 import { damagePlayerLayers } from "../COMBAT/COMBAT_RULES.js";
 import { handleAccountApi, getAccountGameplayData, verifyWsToken, recordPvpKill, recordPvpPetKill, awardNpcKill, grantSundayModule, grantSundayTickets, grantSundayAmmo, listFriends, friendFollowers, findUserByPseudo, hasFriendRequest, isBlockedBy, clanIdOfUser, clanTagOfUser, clanMemberUserIds, setClanPresenceProvider, setClanBasesProvider, recordClanWarKill, adminGiveCredits, adminGiveExperience, adminGiveHonor, adminGiveModule, adminGiveTitle, adminListAccounts, adminDebugAccount, adminDeleteAccount, adminResetGalaxyGate, adminGiveGalaxyGate, adminDroneDesigns, adminGiveDroneDesign, adminShipFamilies, adminCatalog, adminInventory, adminGiveItem, adminAdjustStock, adminRemoveOwned, adminSetPosition, adminRename, adminSetFaction, adminResetPassword, appendPlayerLogs, adminPlayerLogs, adminLogAction, adminActionLog, adminStats } from "./ACCOUNT_SERVER.js";
 import { combatProfile, validateCombatHit, syncDeclaredFormation, accountWithFormation } from "./COMBAT_PROFILE.js";
@@ -59,7 +60,7 @@ const ABILITY_CLOAK_SILENT = new Set([
 // Camouflage interdit par carte : GG + QZ + Low + Maudite. Le client grise
 // les boutons, le serveur tranche en autorité (anti-contournement).
 const NO_CLOAK_MAPS = new Set(["alpha", "beta", "gamma", "delta", "epsilon",
-  "zeta", "kappa", "lambda", "kronos", "awakened", "eternal", "qz", "low", "maudite"]);
+  "zeta", "kappa", "lambda", "kronos", "awakened", "eternal", "winter", "qz", "low", "maudite"]);
 function ownsAbility(profile, skill) {
   // Source unique : MOVEMENT_RULES.shipOwnsAbility (Police + designs).
   try { return shipOwnsAbility(profile?.shipId, skill); } catch { return false; }
@@ -287,6 +288,10 @@ function broadcastChargedShot(room, state, hit, now) {
     target: String(hit.target || hit.uid), x: state.x, y: state.y, at: now, until: now + 1200 }));
 }
 function applyServerAbilityDamage(room, sim, victim, damage, pen, now, sourceId, sourceProfile = null, weaken = 0, secondary = false) {
+  // GG d'hiver : aucun PvP (seuls les NPC pourraient toucher un joueur).
+  if (String(sim?.mapId || victim?.serverMap || "") === "winter" && !sim?.entries?.has(String(sourceId))) {
+    return { total: 0, hp: 0, sh: 0, bypass: 0 };
+  }
   const context = {
     room, sourceProfile,
     // Une présence dans la simulation NPC est la preuve serveur de la source.
@@ -1954,7 +1959,7 @@ function sendBoxSync(ws, mapId) {
 // suivant est alors un no-op (déjà sur place côté serveur).
 // Refusé : instances, gates, raid Low, même map, cooldowns.
 // Refusé : instances, gates, raid Low, Maudite, 5-2, Blacklight, même map, cooldowns.
-const STAR_JUMP_BLOCKED_MAPS = new Set(["alpha", "beta", "gamma", "delta", "epsilon", "zeta", "kappa", "lambda", "kronos", "awakened", "qz", "low", "maudite", "5-2", "1-bl", "2-bl", "3-bl"]);
+const STAR_JUMP_BLOCKED_MAPS = new Set(["alpha", "beta", "gamma", "delta", "epsilon", "zeta", "kappa", "lambda", "kronos", "awakened", "qz", "low", "maudite", "winter", "5-2", "1-bl", "2-bl", "3-bl"]);
 const STAR_JUMP_REUSE_MS = STARMAP_JUMP_REUSE_SEC * 1000;
 const STAR_JUMP_MAP_ALIASES = { low: "LOW_MAP", maudite: "MAUDITE", "1-bl": "1-BL", "2-bl": "2-BL", "3-bl": "3-BL" };
 
@@ -3332,6 +3337,8 @@ wss.on("connection", (ws) => {
         const me = room.get(id);
         if (!foe || !me) return;
         if (foe === me || me.state.pvpDead === true || !(me.state.hp > 0)) return;
+        // GG d'hiver : pas de PvP.
+        if (mapId === "winter") return;
         if (msg.ability === "ability_hyperion_qa"
           && foe.state.safe === true) return;
         const profile = refreshCombatProfile(me.state, accountId, mapId);
@@ -3615,6 +3622,8 @@ wss.on("connection", (ws) => {
         const me = room.get(id);
         if (!foe || !me) return;
         if (foe === me || me.state.pvpDead === true || !(me.state.hp > 0)) return;
+        // GG d'hiver : on ne tire pas non plus sur les P.E.T des autres.
+        if (mapId === "winter") return;
         const profile = refreshCombatProfile(me.state, accountId, mapId);
         msg = validateCombatHit(profile, msg, me.state);
         if (!msg) {
@@ -3910,6 +3919,10 @@ wss.on("connection", (ws) => {
       // Raid Low : état courant pour le nouvel arrivant (vague en cours, etc.).
       if (nextMap === "low") {
         try { ws.send(JSON.stringify(getLowRaidState())); } catch {}
+      }
+      // GG d'hiver : session en cours (attente, convoi, chrono).
+      if (nextMap === "winter") {
+        try { ws.send(JSON.stringify(getWinterGateState())); } catch {}
       }
       if (authed && accountId) {
         sendFriendsSync(ws, accountId);
@@ -5009,6 +5022,18 @@ setInterval(() => {
         if (lowSim && typeof lowSim.setRaidWave === "function") {
           tickLowRaid(room, lowSim, {
             describe: (pid) => describePeer(pid),
+            sendTo: (pid, obj) => sendToPeer(pid, obj),
+            broadcast: (obj) => broadcastRoom(room, JSON.stringify(obj)),
+          });
+        }
+      } catch {}
+    }
+    // GG d'hiver : session horaire du convoi (attente, vagues, fin).
+    if (key === "winter") {
+      try {
+        const winterSim = npcSims.get(key);
+        if (winterSim && typeof winterSim.spawnConvoyAttackers === "function") {
+          tickWinterGate(room, winterSim, {
             sendTo: (pid, obj) => sendToPeer(pid, obj),
             broadcast: (obj) => broadcastRoom(room, JSON.stringify(obj)),
           });

@@ -331,7 +331,7 @@ function portalHarness(zone = true) {
     { id: 'other', x: 220, y: 100, toMap: '1-3', jumpDur: 2, active: true, buttonPressed: true, buttonHovered: true }];
   const noop = () => {};
   Object.assign(c, {
-    isZoneMap: zone, betweenWaves: true, zonePortals: portals, portal: portals[0], gateReturnPortal: portals[1],
+    isZoneMap: zone, winterConvoy: null, betweenWaves: true, zonePortals: portals, portal: portals[0], gateReturnPortal: portals[1],
     GALAXY_GATE_DEFINITIONS: {}, rules: {}, wave: 1, isLowRaidRunning: () => false, isZonePortalAvailable: () => true,
     Target: { get: () => null }, enemies: [], enemyBullets: [], GAME_SETTINGS: { portalAnims: true }, mapPortalLock: 0,
     isPlayerNearPortal: p => Math.hypot(p.x - c.player.x, p.y - c.player.y) <= 450,

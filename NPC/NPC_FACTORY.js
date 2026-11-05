@@ -30,6 +30,7 @@ export function createNpcEntity({ id, type, x, y, config, wave = 1, random = Mat
     ammoKey: config.ammoKey || "x1",
     fauxLasers: Math.max(0, Math.floor(Number(config.fauxLasers) || 0)),
     altShot: config.altShot === true, _altShot: false,
+    passThrough: config.passThrough === true,
     matchPlayerSpeed: config.matchPlayerSpeed === true,
     // ✅ décalage appliqué à la vitesse joueur (ex. -50 pour l'icy).
     playerSpeedDelta: Number.isFinite(Number(config.playerSpeedDelta)) ? Number(config.playerSpeedDelta) : 0,

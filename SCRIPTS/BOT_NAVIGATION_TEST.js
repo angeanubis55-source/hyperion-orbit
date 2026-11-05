@@ -227,7 +227,7 @@ function engineBot(walls, start, goal, npc = null) {
   const context = vm.createContext({
     portalJumpActive: false, mapSwitchInProgress: false,
     document: { body: { classList: { contains: () => false } } },
-    hangarSwapFx: null, StarJump: { channel: null }, Bot: { active: true, manualT: 0, combatTargetId: npc?.id, combatMoveTargetId: npc?.id },
+    hangarSwapFx: null, StarJump: { channel: null }, winterConvoy: null, Bot: { active: true, manualT: 0, combatTargetId: npc?.id, combatMoveTargetId: npc?.id },
     moveTarget: { active: true, ...goal }, player: { ...start, r: 18, baseSpeed: 400, vx: 0, vy: 0 },
     pointer: { down: false }, performance: { now: () => 10000 }, isZoneMap: true, zoneWalls: walls,
     WORLD: { w: 4000, h: 4000 }, attackActive: !!npc, enemies: npc ? [npc] : [],
@@ -387,7 +387,7 @@ test("le vrai tick passe entre exploration, navigation et fuite puis reprend la 
   Object.assign(c.Bot, { active: true, manualT: 0, mode: "kill", formMove: "wheel", cfgFly: "1",
     formFlee: "ring", cfgFlee: "2", formTravel: "heart", cfgTravel: "", flee: true });
   Object.assign(c, {
-    started: true, StarJump: { channel: null }, player: { x: 1000, y: 1000, hp: 100, hpMax: 100 }, WORLD: { w: 4000, h: 4000 },
+    started: true, StarJump: { channel: null }, winterConvoy: null, player: { x: 1000, y: 1000, hp: 100, hpMax: 100 }, WORLD: { w: 4000, h: 4000 },
     window: { __CURRENT_MAP_ID__: "1-1" }, rules: {}, moveTarget: { active: false },
     enemies: [], collectables: [], attackActive: false, Target: { get: () => null },
     botNearestNpc: () => null, botInstantNpc: () => null, botBlacklightSearch: () => null, botPortalIndex: null, botClearSpecialAmmo: () => {},
@@ -510,7 +510,7 @@ function repairCloakContext() {
   Object.assign(c.Bot, { skillCloak: false, lastNpcKey: null, fleeCloak: true, mode: 'kill' });
   Object.assign(c.player, { x: 1000, y: 1000, hp: 20, hpMax: 100 });
   Object.assign(c, {
-    StarJump: { channel: null }, WORLD: { w: 4000, h: 4000 },
+    StarJump: { channel: null }, winterConvoy: null, WORLD: { w: 4000, h: 4000 },
     window: { __CURRENT_MAP_ID__: '1-7' }, rules: {}, moveTarget: { active: false },
     collectables: [], attackActive: true, Target: { get: () => null },
     botNearestNpc: () => null, botInstantNpc: () => null, botBlacklightSearch: () => null, botPortalIndex: null, botClearSpecialAmmo: () => {},
@@ -909,7 +909,7 @@ test("soute pleine : une seule vente, immobile pendant la vente, pause si la sou
   Object.assign(c.Bot, { active: true, manualT: 0, mode: "kill", cargo: true, cargoPct: 90, flee: false });
   let resolveSale;
   Object.assign(c, {
-    started: true, StarJump: { channel: null }, player: { x: 1000, y: 1000, hp: 100, hpMax: 100 }, WORLD: { w: 4000, h: 4000 },
+    started: true, StarJump: { channel: null }, winterConvoy: null, player: { x: 1000, y: 1000, hp: 100, hpMax: 100 }, WORLD: { w: 4000, h: 4000 },
     window: { __CURRENT_MAP_ID__: "1-1" }, rules: {}, moveTarget: { active: true, x: 0, y: 0 },
     enemies: [], collectables: [], attackActive: false, Target: { get: () => null, clear: () => {} },
     botNearestNpc: () => null, botInstantNpc: () => null, botBlacklightSearch: () => null, botPortalIndex: null, botClearSpecialAmmo: () => {},

@@ -232,6 +232,7 @@ function stripReskin(type) {
   base = base.replace(/_maudite\d*$/, "");
   base = base.replace(/_(Aberration|Oddity)$/, "");
   base = base.replace(/^npc_Awakened_/, "npc_");
+  base = base.replace(/^npc_Convoy_/, "npc_");
   // Finale GG (ex : npc_Awakened_Impulse_Final) : même soute que le régulier.
   base = base.replace(/_Final$/, "_II");
   if (base === "npc_QQQ_Protegit") return "npc_Protegit";

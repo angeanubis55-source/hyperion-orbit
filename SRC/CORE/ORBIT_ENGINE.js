@@ -41,6 +41,10 @@ import {
 } from "../../PET/PET_GEARS.js";
 import { drawEngineTrailParticles, updateEngineTrailParticles } from "./ENGINE_TRAILS.js";
 import { computeBotCombatMove, computeBotWallMove, isPointInWall } from "./BOT_NAVIGATION.js";
+import {
+  WINTER_CONVOY_HP, WINTER_CONVOY_ID, WINTER_CONVOY_RADIUS,
+  createWinterConvoyRoute, winterGateArrival, winterGateSession,
+} from "./WINTER_CONVOY.js";
 import { blacklightSearchTarget } from "./BOT_SEARCH.js";
 import { botCatalogGroups, botMapGroupKey, botMapGroupLabel, botMapsLabel, buildBotNpcCatalog } from "./BOT_NPC_CATALOG.js";
 import { watchSelects } from "../../UI/UI_SELECT_COMBO.js";
@@ -167,7 +171,7 @@ import { renderSpeedGuard } from "./SPEED_GUARD_UI.js";
 import { netServerMessageAge, netSimulationStep, netGameTimeMs, netSpeedGuardActive, queueGameLogForServer } from "./NETPLAY.js";
   import { pushNetplayLocal, sendNetplayBackgroundState, netplayLocalUpdateDue, getNetplayRemotes, tickNetplayRemotes, getNetNpcs, getNetDeaths, drainNetGone, getNetBoxes, drainNetBoxInbox, drainNetDmgInbox, drainNetHealInbox, drainNetShotEvents, drainNetSkillInbox, drainNetSkillDenied, clearNetShots, clearNetplayGameplay, sendShotEvent, sendSkillUse, sendHealAlly, sendPvpHit, sendPvpPetHit, getNetSelf, setNetInstanceMode, clearNetBoxes, claimNetBox, requestBoxSync, netBoxSyncAgeMs, netBoxSnapshotReady, netInInstance, sendNetHit, netMyId, netplayStatus, sendPing, netLatencyMs, netPongAge, netHelloAckAge, netServerVersion, netConnected, forceNetReconnect, ensureNetplayConnection, drainNetPvpKillInbox, drainNetPvpPetKillInbox, takeNetNpcReward, sendPvpLoot, sendPvpLootTake, drainNetPvpLootInbox,
   drainNetPvpLootTakeInbox, drainNetAdminKickInbox, drainNetAdminBoomInbox, drainNetBannedInbox, drainNetCheatInbox, netDisconnect, drainNetSunInbox, drainNetSundayInbox, drainNetDecloakInbox, drainNetIemHitInbox, drainNetStationDmgInbox, getNetClanBases, getNetStationOwners,
-  getNetGroup, getNetLowRaid, takeNetLowRaidReward, setNetNpcRewardHandler, getNetServerRestartAt, consumeNetServerRestart, getMyClanTag, getClanRelation, setMyClanTag, setNetDiplo, netIsAuthed, sendStationInstall, sendStationUninstall, sendStationBuild, sendStationReplace, sendStationCancelReplace, sendStationRepair, sendStationDeflectToggle, requestStationSync, sendStationHit, requestStarJumpArrival, requestHangarArrival, finishHangarArrival } from "./NETPLAY.js";
+  getNetGroup, getNetLowRaid, takeNetLowRaidReward, getNetWinterGate, takeNetWinterGateReward, setNetNpcRewardHandler, getNetServerRestartAt, consumeNetServerRestart, getMyClanTag, getClanRelation, setMyClanTag, setNetDiplo, netIsAuthed, sendStationInstall, sendStationUninstall, sendStationBuild, sendStationReplace, sendStationCancelReplace, sendStationRepair, sendStationDeflectToggle, requestStationSync, sendStationHit, requestStarJumpArrival, requestHangarArrival, finishHangarArrival } from "./NETPLAY.js";
 import {
   createGatePortalState,
   getGateReturnMap as resolveGateReturnMap,
@@ -7833,7 +7837,7 @@ function breakCpuCloak(reason) {
 // Camouflage interdit par carte : GG + QZ + Low + Maudite. Boutons grisés
 // et activations refusées sur place (le serveur tranche en autorité).
 const NO_CLOAK_MAPS = new Set(["alpha", "beta", "gamma", "delta", "epsilon",
-  "zeta", "kappa", "lambda", "kronos", "awakened", "eternal", "qz", "low", "maudite"]);
+  "zeta", "kappa", "lambda", "kronos", "awakened", "eternal", "winter", "qz", "low", "maudite"]);
 function cloakBlockedOnMap(mapId = null) {
   try {
     const id = String(mapId ?? window.__CURRENT_MAP_ID__ ?? currentMapId() ?? "").toLowerCase();
@@ -15060,6 +15064,11 @@ function tickBot(dt) {
   try { botTickCargoView(dt); } catch {}
   if (!Bot.active) return;
   if (StarJump.channel) return;
+  // GG d'hiver : l'escorte du convoi se fait à la main.
+  if (winterConvoy) {
+    Bot.status = "Indisponible dans la GG d'hiver";
+    return;
+  }
   if (!started || player.dead) {
     Bot.cloakPendingMap = null;
     Bot.fleeCloakUsed = false;
@@ -18518,6 +18527,20 @@ function startZonePortalJump(ptl, entryConfirmed = false) {
   // Niveau requis façon DarkOrbit officiel (voir SRC/CORE/MAP_ACCESS.js).
   // Vérifié avant les coûts : inutile de payer si le niveau bloque.
   const targetMapId = String(ptl.toMap || "").toLowerCase();
+  // ✅ GG d'hiver : saison d'hiver, entrée de :00 à :05 (départ commun à :05).
+  if (targetMapId === "winter") {
+    if (!isWinterEventActive()) {
+      SFX.play("swDeny");
+      showToast("GG d'hiver — fermée hors saison", 1.8);
+      return false;
+    }
+    const session = winterGateSession();
+    if (!session.open) {
+      SFX.play("swDeny");
+      showToast(`GG d'hiver — entrée de :00 à :05, prochaine ouverture dans ${winterConvoyClock(session.nextOpenAt - Date.now())}`, 2.2);
+      return false;
+    }
+  }
   if (targetMapId) {
     const user = account.user || getCurrentUserFull();
     const playerLevel = getLevelInfo(Number(user?.stats?.exp || 0)).level;
@@ -19956,6 +19979,8 @@ function getInteractivePortals() {
 
 function isZonePortalAvailable(ptl) {
   const gateId = String(ptl?.toMap || "").toLowerCase();
+  // ✅ GG d'hiver : portail central des X-3, visible pendant la saison seulement.
+  if (gateId === "winter") return isWinterEventActive();
   // ✅ Gate Eternal : visible sur la map mère uniquement si posée via CPU (pas de stock).
   if (gateId === "eternal") {
     // Appelé par portail et par frame : pas de relecture complète du compte.
@@ -34771,6 +34796,8 @@ let isZoneMap = rules?.mode === "zone";
 let zoneCamps = [];
 let zonePortals = [];
 let zoneWalls = [];
+// GG d'hiver : convoi du Père Noël en cours (null hors de la GG d'hiver).
+let winterConvoy = null;
 let zoneSafe = null;
 let zoneStation = null;
 let mapPortalLock = 0;
@@ -34825,7 +34852,7 @@ function portalProvidesSafety(portal, forJpc = false) {
   const playerSector = getFaction((account.user || getCurrentUserFull())?.faction).sector;
   if (!forJpc && sectorMatch && sectorMatch[1] !== playerSector) return false;
   const destination = String(portal?.toMap || "").trim().toLowerCase();
-  return !["alpha", "beta", "gamma", "delta", "epsilon", "zeta", "kappa", "lambda", "kronos", "awakened", "eternal"].includes(destination);
+  return !["alpha", "beta", "gamma", "delta", "epsilon", "zeta", "kappa", "lambda", "kronos", "awakened", "eternal", "winter"].includes(destination);
 }
 
 function baseProvidesSafety(forJpc = false) {
@@ -35174,6 +35201,17 @@ function netPvpBlocked(t) {
     } catch {}
     return true;
   }
+  // GG d'hiver : aucun PvP, ni sur les joueurs ni sur leurs P.E.T.
+  if ((t._netPlayer || t._netPet) && rules?.convoy === true) {
+    try {
+      const nowMs = performance.now();
+      if (nowMs - lastPvpSafeToastAt > 3000) {
+        lastPvpSafeToastAt = nowMs;
+        showToast("Pas de PvP dans la GG d'hiver", 1.4);
+      }
+    } catch {}
+    return true;
+  }
   if ((!t._netPlayer && !t._netPet) || !isSharedZone()) return false;
   // Seule la cible compte : protégée -> intouchable. Attaquant protégé
   // seul -> autorisé (il perd sa ZNA en attaquant, mécanique existante).
@@ -35206,6 +35244,8 @@ function isOwnPetTarget(t) {
 function netNpcCombatTarget(e) {
   const aggro = e._netAggro;
   if (aggro == null) return null;
+  // GG d'hiver : tirs visuels vers le convoi (sa vie est tranchée au serveur).
+  if (String(aggro) === WINTER_CONVOY_ID) return winterConvoy?.esc?.hp > 0 ? winterConvoy.esc : null;
   if (String(aggro) === String(netMyId())) return player.dead ? null : player;
   try {
     const remotes = getNetplayRemotes();
@@ -36268,6 +36308,7 @@ jumpBaseFade: 1,
     } catch {}
   }
 
+  winterConvoy = null;
   if (isZoneMap && typeof rules.getZoneWalls === "function") {
     zoneWalls = rules.getZoneWalls(WORLD) || [];
   } else {
@@ -36418,6 +36459,7 @@ jumpBaseFade: 1,
     player.x = clamp(Number(spawn.x ?? WORLD.w * Number(spawn.xRatio ?? 0.08)), 80, WORLD.w - 80);
     player.y = clamp(Number(spawn.y ?? WORLD.h * Number(spawn.yRatio ?? 0.5)), 80, WORLD.h - 80);
   }
+  if (rules?.convoy) startWinterConvoy();
 
   // ✅ Arrivée via un portail : le saut nettoie le combat (façon DO officiel).
   // Sans ça, combatT (> 0 jusqu'à 5 s) bloquait safeZoneActive et le joueur
@@ -36457,7 +36499,7 @@ jumpBaseFade: 1,
       ? Math.max(1, Math.floor(Number(getCurrentUserFull()?.eternalGate?.wave) || 1))
       : 1;
   wave = Math.max(1, Math.floor(Number(savedGateWave) || 1));
-  if (!isZoneMap) beginWave();
+  if (!isZoneMap && !winterConvoy) beginWave();
 
   markProgressDirty();
   saveProgressNow();
@@ -36660,7 +36702,7 @@ function die() {
 // ✅ Portails annexes (par destination) : jamais utilisés pour une
 // réapparition au portail — low, QZ, Galaxy Gates (aussi celles des X-1),
 // map maudite et 5-2 (portail central de 4-5).
-const ANNEX_PORTAL_MAPS = new Set(["low", "qz", "alpha", "beta", "gamma", "delta", "epsilon", "zeta", "kappa", "lambda", "kronos", "awakened", "eternal", "maudite", "5-2"]);
+const ANNEX_PORTAL_MAPS = new Set(["low", "qz", "alpha", "beta", "gamma", "delta", "epsilon", "zeta", "kappa", "lambda", "kronos", "awakened", "eternal", "winter", "maudite", "5-2"]);
 
 function isAnnexPortal(portal) {
   // Retour Low : exclu aussi (sinon réapparition sur le portail masqué).
@@ -37279,6 +37321,10 @@ function drawMinimap() {
       petLocatorMarkers.push({ x: Number(rally.x) || 0, y: Number(rally.y) || 0, color: "#ff3b4f", pulse: true, cross: true });
     }
   } catch {}
+  // GG d'hiver : convoi (vert, pulsant).
+  if (winterConvoy && winterConvoy.esc.hp > 0) {
+    petLocatorMarkers.push({ x: winterConvoy.esc.x, y: winterConvoy.esc.y, color: "#3dff7a", pulse: true });
+  }
   renderMinimap(mctx, {
     width: useCss ? cssW : mini.width,
     height: useCss ? cssH : mini.height,
@@ -37320,8 +37366,10 @@ function drawMinimap() {
       } catch { return null; }
     },
     // Spearhead Recon : radar minimap x2 pendant l'effet.
-    shouldShowNpc: (source, enemy, locked) => shouldDetectNpc(source, enemy, ((player.reconT || 0) > 0 ? NPC_SENSOR_RANGES.radar * 2 : NPC_SENSOR_RANGES.radar), locked),
+    // GG d'hiver : les attaquants du convoi restent visibles hors portée radar.
+    shouldShowNpc: (source, enemy, locked) => rules?.convoy === true || shouldDetectNpc(source, enemy, ((player.reconT || 0) > 0 ? NPC_SENSOR_RANGES.radar * 2 : NPC_SENSOR_RANGES.radar), locked),
     npcOpacity: (source, enemy, locked) => {
+      if (rules?.convoy === true) return 1;
       const recon = (player.reconT || 0) > 0 ? 2 : 1;
       return npcSensorOpacity(source, enemy, DEFAULT_NPC_RADAR_FADE_START * recon, NPC_SENSOR_RANGES.radar * recon, locked);
     },
@@ -44304,7 +44352,7 @@ if (movementLocked) {
   tickCollectables(dt);
   try { syncNetBoxes(dt); } catch {}
 
-  if (!isZoneMap) waveController(dt);
+  if (!isZoneMap && !winterConvoy) waveController(dt);
   else zoneController(dt);
   syncNetNpcs(dt);
   try { syncNetPlayers(dt); } catch {}
@@ -44593,6 +44641,7 @@ if (movementLocked) {
     }
   } catch {}
   tickZonePortalVisualTransitions(dt);
+  tickWinterConvoy(dt);
   if (tickGatePortalJumps(dt)) return;
   if (tickZonePortalJumps(dt)) return;
 
@@ -45331,7 +45380,8 @@ for (let i = enemyBullets.length - 1; i >= 0; i--) {
             notePetAttacker(enemies.find((x) => x?.id === b.ownerId) || null);
           }
         }
-        else {
+        else if (bulletTarget._netConvoy !== true) {
+          // Convoi partagé : impact visuel seul (vie tranchée au serveur).
           const ownerNpc = b.ownerId != null ? enemies.find((x) => x?.id === b.ownerId) || null : null;
           damagePlayerLayers(bulletTarget, redirectProtectionDamage(bulletTarget, b.dmg, ownerNpc));
           // Clone Mimesis tué : explosion standard + rire.
@@ -46495,6 +46545,189 @@ function drawZoneWalls(ox, oy) {
   });
 }
 
+// ============================================================================
+// GG d'hiver partagée : convoi du Père Noël (réglages : WINTER_CONVOY.js,
+// session et vagues : SCRIPTS/WINTER_GATE.js). Le serveur déplace le convoi,
+// fait apparaître les vagues et tranche sa vie ; ici on l'affiche (position
+// interpolée, barre de vie, chrono, dégâts subis) et on suit la session :
+// attente jusqu'à :05, survie de 30 minutes, puis récompense partagée selon
+// les dégâts (victoire) ou retour à la base (défaite, session fermée).
+// Le convoi reste une escorte (escortShips) : les NPC serveur le visent
+// (cible partagée WINTER_CONVOY_ID), leurs tirs sur lui sont visuels.
+// ============================================================================
+const WINTER_CONVOY_SPRITE = NPC_TYPES.npc_Santa_1100101.sprite;
+
+function winterConvoyClock(ms) {
+  const s = Math.max(0, Math.ceil(ms / 1000));
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+}
+
+// À droite du nom : attente avant le départ, puis temps de survie restant.
+function winterConvoyTimeLeft() {
+  const st = getNetWinterGate();
+  if (!st) return "…";
+  const now = Date.now() - (st.skew || 0);
+  if (st.phase === "lobby") return `départ dans ${winterConvoyClock(st.startAt - now)}`;
+  if (st.phase === "run") return winterConvoyClock(st.endAt - now);
+  return "0:00";
+}
+
+function startWinterConvoy() {
+  // Même circuit que le serveur (graine de la session) : convoi au départ
+  // en attendant son état, joueur juste derrière lui.
+  const p = createWinterConvoyRoute(winterGateSession().seed).pointAt(0);
+  const esc = {
+    id: WINTER_CONVOY_ID,
+    convoy: true,
+    _netConvoy: true,
+    x: p.x,
+    y: p.y,
+    vx: 0,
+    vy: 0,
+    angle: p.angle,
+    r: WINTER_CONVOY_RADIUS,
+    hp: WINTER_CONVOY_HP,
+    hpMax: WINTER_CONVOY_HP,
+    // Pas de bouclier : toute la vie est dans la coque.
+    sh: 0,
+    shMax: 0,
+  };
+  escortShips.push(esc);
+  // Toutes les orientations du Santa chargées d'avance : sinon il disparaît
+  // le temps de charger chaque nouvelle direction en tournant sur le circuit.
+  const sp = WINTER_CONVOY_SPRITE;
+  for (let i = 0; i < sp.frames; i++) loadImage(`${sp.path}${(sp.firstNumber || 1) + i}${sp.ext || ".png"}`, { priority: true });
+  // Sprites des attaquants chargés d'avance : toute la vague s'affiche d'un coup.
+  for (const type of Object.keys(NPC_TYPES)) if (/^npc_Convoy_/.test(type) || type === "npc_Meteoroid_Icy") ensureNpcLoaded(type);
+  winterConvoy = {
+    esc, phase: "", wave: 0, leaving: false,
+    // Vie au tick précédent : une baisse = dégâts reçus (affichés).
+    lastLife: esc.hp,
+  };
+  const arrival = winterGateArrival();
+  player.x = clamp(arrival.x, 80, WORLD.w - 80);
+  player.y = clamp(arrival.y, 80, WORLD.h - 80);
+  player.vx = 0;
+  player.vy = 0;
+  moveTarget.active = false;
+}
+
+// Sortie (défaite, session fermée) : retour à la base mère.
+function leaveWinterGate(reason) {
+  const c = winterConvoy;
+  if (!c || c.leaving) return;
+  c.leaving = true;
+  if (reason) showNotification(reason, 5, "info");
+  const user = account.user || getCurrentUserFull();
+  const home = getFactionRespawnMap(user?.faction, "winter", { gate: true });
+  setRespawnOverride({ map: home, baseCenter: true, fallback: getFactionBaseSpawn(user?.faction) });
+  if (typeof window.__SWITCH_MAP__ === "function") {
+    window.__SWITCH_MAP__(home).catch(() => window.__GO_TO_MAP__?.(home));
+  } else {
+    window.__GO_TO_MAP__?.(home);
+  }
+}
+
+function tickWinterConvoy(dt) {
+  const c = winterConvoy;
+  if (!c || c.leaving || !started || mapSwitchInProgress) return;
+  const esc = c.esc;
+  // Victoire : part de la récompense selon les dégâts infligés, puis fin de
+  // GG habituelle (message, retour à la base mère).
+  const won = takeNetWinterGateReward();
+  if (won) {
+    c.leaving = true;
+    showNotification(`Le convoi a tenu 30 minutes (${Math.round(won.life * 100)} % de vie) — ta part : ${Math.round(won.share * 100)} % des dégâts`, 5, "info");
+    runOnKillAction({ completeSpecialGate: { gateId: "winter", name: "Convoi d'hiver", reward: won.reward } });
+    return;
+  }
+  const st = getNetWinterGate();
+  if (!st) return;
+  if (st.convoy) {
+    // Position serveur extrapolée (au plus 0,3 s) puis lissée.
+    const ahead = Math.min(0.3, Math.max(0, (Date.now() - st.at) / 1000));
+    const tx = st.convoy.x + st.convoy.vx * ahead, ty = st.convoy.y + st.convoy.vy * ahead;
+    if (Math.hypot(tx - esc.x, ty - esc.y) > 1500) {
+      esc.x = tx;
+      esc.y = ty;
+    } else {
+      const k = 1 - Math.exp(-dt * 10);
+      esc.x += (tx - esc.x) * k;
+      esc.y += (ty - esc.y) * k;
+    }
+    esc.vx = st.convoy.vx;
+    esc.vy = st.convoy.vy;
+    esc.angle = st.convoy.angle;
+    esc.hp = st.convoy.hp;
+    esc.hpMax = st.convoy.hpMax;
+  }
+  // Tir reçu (baisse de vie) : dégâts affichés au-dessus du convoi, comme
+  // ceux du joueur.
+  const life = esc.hp;
+  if (life < c.lastLife) {
+    const dmg = Math.round(c.lastLife - life);
+    addFloatText(esc.x + (Math.random() - 0.5) * 80, esc.y - WINTER_CONVOY_SPRITE.h / 2 - 40 - Math.random() * 20, dmg,
+      "rgba(255,80,100,0.95)", { text: DMG_FMT.format(dmg), size: 21, pop: 0.3, shake: 0.6, life: 1, glow: 1, weight: 900, impact: true });
+  }
+  c.lastLife = life;
+  if (st.phase !== c.phase) {
+    const prev = c.phase;
+    c.phase = st.phase;
+    if (st.phase === "lobby") {
+      showNotification("GG d'hiver — le convoi part à :05 pour tout le monde", 4, "info");
+    } else if (st.phase === "run") {
+      showNotification("Protège le convoi pendant 30 minutes !", 3, "info");
+    } else if (st.phase === "done" && !st.success) {
+      try { spawnExplosion(esc.x, esc.y, 2); } catch {}
+      const i = escortShips.indexOf(esc);
+      if (i >= 0) escortShips.splice(i, 1);
+      leaveWinterGate("Le convoi a été détruit — GG d'hiver ratée");
+      return;
+    } else if (st.phase === "done") {
+      // Victoire sans dégât infligé : aucune part de la récompense.
+      leaveWinterGate("Le convoi a tenu 30 minutes — aucune part (aucun dégât infligé)");
+      return;
+    } else if (st.phase === "closed") {
+      leaveWinterGate(prev === "run" ? "GG d'hiver interrompue" : "GG d'hiver fermée — entrée de :00 à :05");
+      return;
+    }
+  }
+  if (st.phase === "run" && st.wave !== c.wave) {
+    c.wave = st.wave;
+    showNotification(`Vague ${st.wave} — protège le convoi !`, 3, "info");
+  }
+}
+
+function drawWinterConvoy(ox, oy) {
+  const c = winterConvoy;
+  const esc = c?.esc;
+  if (!c || !(esc.hp > 0) || !escortShips.includes(esc)) return;
+  // Santa-1100101 + barre de vie façon joueur (UI_CANVAS_HUD), en plus
+  // grand (pas de bouclier), nom et chrono juste au-dessus.
+  ctx.save();
+  const sp = WINTER_CONVOY_SPRITE;
+  const frame = angleToFrameIndex(esc.angle + (sp.angleOffset || 0), sp.frames);
+  const img = getCachedImage(`${sp.path}${(sp.firstNumber || 1) + frame}${sp.ext || ".png"}`);
+  const sx = esc.x + ox, sy = esc.y + oy;
+  if (isImgReady(img)) ctx.drawImage(img, sx - sp.w / 2, sy - sp.h / 2, sp.w, sp.h);
+  const bw = 220, bh = 7, bx = sx - bw / 2, by = sy - sp.h / 2 - 12;
+  const hpPct = clamp(esc.hp / esc.hpMax, 0, 1);
+  ctx.globalAlpha = 0.95;
+  ctx.lineWidth = 1.5;
+  ctx.strokeStyle = "rgba(255,255,255,0.22)";
+  ctx.fillStyle = "rgba(0,0,0,0.45)";
+  ctx.fillRect(bx, by, bw, bh);
+  ctx.fillStyle = hpHueColor(hpPct, 0.98);
+  ctx.fillRect(bx, by, bw * hpPct, bh);
+  ctx.strokeRect(bx - 0.5, by - 0.5, bw + 1, bh + 1);
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = "#eaffea";
+  ctx.font = "800 16px system-ui";
+  ctx.textAlign = "center";
+  ctx.fillText(`Convoi du Père Noël — ${winterConvoyTimeLeft()}`, sx, by - 12);
+  ctx.restore();
+}
+
 function botMinimalRenderActive() {
   return false;
 }
@@ -46730,6 +46963,7 @@ function draw() {
 
   drawSpeedStars();
   drawZoneWalls(ox, oy);
+  drawWinterConvoy(ox, oy);
 
   drawZonePortals(ox, oy);
   drawSafeModules(ox, oy);
@@ -49123,6 +49357,7 @@ function paintStarMapNode(n) {
     for (const p of art.portals || []) {
       if (p.hidden || p.arrival || starMapById.has(String(p.toMap).toLowerCase())) continue;
       if (/^[123]-1$/.test(key) && GALAXY_GATE_DEFINITIONS[String(p.toMap).toLowerCase()]) continue;
+      if (String(p.toMap).toLowerCase() === "winter" && !isWinterEventActive()) continue;
       // ✅ Gate Eternal : point masqué tant qu'elle n'est pas posée via CPU.
       if (/^[123]-1$/.test(key) && String(p.toMap).toLowerCase() === "eternal"
         && !isEternalGateDeployed(getCurrentUserFull())) continue;

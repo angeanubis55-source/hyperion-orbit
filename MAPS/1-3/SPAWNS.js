@@ -110,6 +110,15 @@ export function getZonePortals(WORLD) {
       toMap: "2-3",
       toPortal: "p_23_to_13",
     },
+    // ✅ GG d'hiver : portail au centre, visible seulement pendant la saison
+    // d'hiver (02/11 00h01 -> 31/01 23h59, Paris ; voir NPC/NPC_WINTER.js).
+    {
+      id: "p_13_to_winter",
+      x: 5500,
+      y: 3500,
+      r: 260,
+      toMap: "winter",
+    },
   ];
 }
 

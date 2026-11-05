@@ -133,28 +133,40 @@ function drawMinimapStatic(cctx, cw, ch, world, portals, isZoneMap, safeZone, re
   // Murs (cadres gris) : remplissage discret + bordure claire.
   // Les arêtes recouvertes par un autre mur ne sont pas tracées : les murs
   // jointifs (ex les 2 barres à droite en 1-BL) rendent un seul bloc uni.
+  // Remplissage en un seul tracé (union) : les croisements qui se
+  // chevauchent (labyrinthe de la GG d'hiver) ne sont pas teintés 2 fois.
   if (Array.isArray(walls) && walls.length) {
     cctx.save();
     const wrects = [];
+    cctx.fillStyle = "rgba(122,134,150,0.30)";
+    cctx.beginPath();
     for (const wl of walls) {
       if (!wl) continue;
       const wx = Number(wl.x) * scaleX, wy = Number(wl.y) * scaleY;
       const ww = Math.max(2, Number(wl.w) * scaleX), wh = Math.max(2, Number(wl.h) * scaleY);
-      cctx.fillStyle = "rgba(122,134,150,0.30)";
-      cctx.fillRect(wx - ww / 2, wy - wh / 2, ww, wh);
+      cctx.rect(wx - ww / 2, wy - wh / 2, ww, wh);
       wrects.push(wl);
     }
+    cctx.fill("nonzero");
     const wspan = (wl) => ({
       x1: Number(wl.x) - Number(wl.w) / 2, x2: Number(wl.x) + Number(wl.w) / 2,
       y1: Number(wl.y) - Number(wl.h) / 2, y2: Number(wl.y) + Number(wl.h) / 2,
     });
     // Tronçons d'une arête non recouverts par un autre mur (coordonnées monde).
-    const edgeGaps = (fixed, a1, a2, vertical, self) => {
+    // Une arête n'est masquée que si l'autre mur se prolonge du côté
+    // extérieur (outward -1 = vers les petites coordonnées, +1 = grandes) :
+    // deux murs jointifs fusionnent, mais l'angle extérieur d'un croisement
+    // (murs qui se chevauchent sans se prolonger) garde sa bordure.
+    const edgeGaps = (fixed, a1, a2, vertical, self, outward) => {
       const covered = [];
       for (const o of wrects) {
         if (o === self) continue;
         const t = wspan(o);
-        if (vertical ? (t.x1 <= fixed + 2 && t.x2 >= fixed - 2) : (t.y1 <= fixed + 2 && t.y2 >= fixed - 2)) {
+        const lo = vertical ? t.x1 : t.y1, hi = vertical ? t.x2 : t.y2;
+        const reaches = outward < 0 ? (lo < fixed - 2 && hi >= fixed - 2) : (hi > fixed + 2 && lo <= fixed + 2);
+        // Même arête portée par 2 murs (angle d'un croisement) : tracée une fois.
+        const twin = Math.abs((outward < 0 ? lo : hi) - fixed) <= 2 && wrects.indexOf(o) < wrects.indexOf(self);
+        if (reaches || twin) {
           const s0 = Math.max(a1, vertical ? t.y1 : t.x1);
           const s1 = Math.min(a2, vertical ? t.y2 : t.x2);
           if (s1 - s0 > 4) covered.push([s0, s1]);
@@ -177,19 +189,19 @@ function drawMinimapStatic(cctx, cw, ch, world, portals, isZoneMap, safeZone, re
     for (const wl of wrects) {
       const s = wspan(wl);
       const wx = Number(wl.x) * scaleX, wy = Number(wl.y) * scaleY;
-      for (const seg of edgeGaps(s.y1, s.x1, s.x2, false, wl)) {
+      for (const seg of edgeGaps(s.y1, s.x1, s.x2, false, wl, -1)) {
         cctx.moveTo(wx + (seg[0] - Number(wl.x)) * scaleX, wy - (Number(wl.h) * scaleY) / 2);
         cctx.lineTo(wx + (seg[1] - Number(wl.x)) * scaleX, wy - (Number(wl.h) * scaleY) / 2);
       }
-      for (const seg of edgeGaps(s.y2, s.x1, s.x2, false, wl)) {
+      for (const seg of edgeGaps(s.y2, s.x1, s.x2, false, wl, 1)) {
         cctx.moveTo(wx + (seg[0] - Number(wl.x)) * scaleX, wy + (Number(wl.h) * scaleY) / 2);
         cctx.lineTo(wx + (seg[1] - Number(wl.x)) * scaleX, wy + (Number(wl.h) * scaleY) / 2);
       }
-      for (const seg of edgeGaps(s.x1, s.y1, s.y2, true, wl)) {
+      for (const seg of edgeGaps(s.x1, s.y1, s.y2, true, wl, -1)) {
         cctx.moveTo(wx - (Number(wl.w) * scaleX) / 2, wy + (seg[0] - Number(wl.y)) * scaleY);
         cctx.lineTo(wx - (Number(wl.w) * scaleX) / 2, wy + (seg[1] - Number(wl.y)) * scaleY);
       }
-      for (const seg of edgeGaps(s.x2, s.y1, s.y2, true, wl)) {
+      for (const seg of edgeGaps(s.x2, s.y1, s.y2, true, wl, 1)) {
         cctx.moveTo(wx + (Number(wl.w) * scaleX) / 2, wy + (seg[0] - Number(wl.y)) * scaleY);
         cctx.lineTo(wx + (Number(wl.w) * scaleX) / 2, wy + (seg[1] - Number(wl.y)) * scaleY);
       }

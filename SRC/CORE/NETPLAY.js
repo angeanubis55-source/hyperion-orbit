@@ -156,6 +156,8 @@ export function suspendNetplay(v) {
     netPvpKillInbox.length = 0;
     netNpcRewardReceipts.clear();
     try { netLowRaid = null; } catch {}
+    netWinterGate = null;
+    netWinterGateReward = null;
     netPvpPetKillInbox.length = 0;
     netPvpLootInbox.length = 0;
     netPvpLootTakeInbox.length = 0;
@@ -316,6 +318,8 @@ function clearInstanceGameplay() {
     netPvpKillInbox.length = 0;
     netNpcRewardReceipts.clear();
     try { netLowRaid = null; } catch {}
+    netWinterGate = null;
+    netWinterGateReward = null;
     netPvpPetKillInbox.length = 0;
     netPvpLootInbox.length = 0;
     netPvpLootTakeInbox.length = 0;
@@ -551,6 +555,18 @@ export function takeNetNpcReward(mapId, uid, seq) {
   return reward;
 }
 // Raid Low : récompense fixe de fin de run (uid low-raid-cache, seq variable).
+// GG d'hiver : dernier état de la session (convoi, phase, chrono) et part
+// de récompense de victoire (SCRIPTS/WINTER_GATE.js).
+let netWinterGate = null;
+let netWinterGateReward = null;
+export function getNetWinterGate() {
+  return netWinterGate;
+}
+export function takeNetWinterGateReward() {
+  const reward = netWinterGateReward;
+  netWinterGateReward = null;
+  return reward;
+}
 export function takeNetLowRaidReward() {
   for (const [key, reward] of netNpcRewardReceipts) {
     if (String(key).includes(":low-raid-cache:")) {
@@ -1513,6 +1529,32 @@ export function ensureNetplayConnection() {
       if (netIemHitInbox.length > 8) netIemHitInbox.shift();
       netIemHitInbox.push({ by: String(msg.by || ""), x: Number(msg.x) || 0, y: Number(msg.y) || 0,
         until: Math.max(0, Number(msg.until) || 0) });
+      return;
+    }
+    if (msg.t === "winterGate" && msg && typeof msg === "object") {
+      const num = (v) => Number(v) || 0;
+      netWinterGate = {
+        phase: String(msg.phase || "closed"),
+        startAt: num(msg.startAt), endAt: num(msg.endAt), nextOpenAt: num(msg.nextOpenAt),
+        wave: Math.max(1, Math.floor(num(msg.wave))),
+        success: msg.success === true,
+        convoy: Number.isFinite(Number(msg.x)) && Number.isFinite(Number(msg.y)) ? {
+          x: num(msg.x), y: num(msg.y), vx: num(msg.vx), vy: num(msg.vy), angle: num(msg.angle),
+          hp: Math.max(0, num(msg.hp)), hpMax: Math.max(1, num(msg.hpMax)),
+        } : null,
+        // Décalage d'horloge serveur -> client (chronos exacts).
+        skew: Date.now() - num(msg.now),
+        at: Date.now(),
+      };
+      return;
+    }
+    if (msg.t === "winterGateReward" && msg && typeof msg === "object") {
+      const reward = msg.reward && typeof msg.reward === "object" ? msg.reward : {};
+      netWinterGateReward = {
+        share: Math.max(0, Math.min(1, Number(msg.share) || 0)),
+        life: Math.max(0, Math.min(1, Number(msg.life) || 0)),
+        reward: Object.fromEntries(["credits", "exp", "honor", "x4"].map((k) => [k, Math.max(0, Math.floor(Number(reward[k]) || 0))])),
+      };
       return;
     }
     if (msg.t === "lowRaid" && msg && typeof msg === "object") {

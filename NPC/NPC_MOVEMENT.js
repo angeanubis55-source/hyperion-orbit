@@ -30,6 +30,8 @@ export function applyNpcSeparation(enemies, deltaTime, world, isZoneMap = false)
     // Les mobiles passent par-dessus le boss au lieu de le pousser
     // (ou de rebondir dessus).
     if (isAnchoredNpc(a) || isAnchoredNpc(b)) return;
+    // NPC sans collision (attaquants du convoi d'hiver) : ils se traversent.
+    if (a.passThrough || b.passThrough) return;
     // Fuyards (< 10 % PV en gate) : on les laisse se stacker exactement les
     // uns sur les autres dans le coin, sans les écarter.
     if (a._fleeing && b._fleeing) return;

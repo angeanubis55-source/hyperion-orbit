@@ -16,6 +16,8 @@ import { JPC_LASER, jpcVolleyParts, tickJpcRepair, jpcTravel, jpcCombatMove, jpc
 import { buildJpcRoster, ensureJpcTypes, isJpcBotMap, isJpcFarmable, JPC_TIERS, tierForMap, rollJpcFormSet, jpcRoleFormation, jpcSkillForMap, jpcRiposteFormation, jpcRiposteMultForSkill, jpcDroneDmgFactor, JPC_RESPAWN_DELAY_S, jpcFarmDmgMult, rollJpcRockets, jpcRocketDamage, jpcParkingSpot, jpcMissChance, jpcFleeThreshold, rollJpcBreather, jpcHourBucket, jpcRosterCount } from "../NPC/JPC_BOTS.js";
 import { createSpatialPairIndex } from "../SRC/CORE/SPATIAL_INDEX.js";
 import { DDOL_ACCURACY_PENALTY } from "./DISRUPTOR_RULES.js";
+import { NPC_DIRECT_SPEED_FACTOR, computeNpcKiteMove } from "../NPC/NPC_AI.js";
+import { WINTER_CONVOY_ID, winterConvoySpawnPoint } from "../SRC/CORE/WINTER_CONVOY.js";
 
 const clamp = (v, a, b) => Math.max(a, Math.min(b, Number(v)));
 const TAU = Math.PI * 2;
@@ -171,6 +173,12 @@ export class ZoneNpcSim {
     // Journal des kills (2.5 s) : le respawn instantane des NPC normaux
     // effacerait sinon la mort avant le snapshot — le killer perdrait sa recompense.
     this.deaths = []; // { uid, type, x, y, killer, at }
+    // GG d'hiver : convoi partagé { x, y, vx, vy, hp, hpMax } posé et déplacé
+    // par SCRIPTS/WINTER_GATE.js ; ses attaquants le visent et l'abîment ici.
+    this.convoy = null;
+    this.convoySeq = 0;
+    // Dégâts d'un joueur sur un attaquant du convoi (partage de la récompense).
+    this.onConvoyDamage = null;
     ensureMapSlots(this.universe, this.mapId, camps, Date.now());
   }
 
@@ -180,7 +188,7 @@ export class ZoneNpcSim {
     // Alias client -> dossier (casse exacte, systèmes sensibles à la casse) :
     // la Low partagée vit dans MAPS/LOW_MAP, la Maudite dans MAPS/MAUDITE,
     // les BL dans MAPS/1-BL, 2-BL, 3-BL.
-    const MAP_DIR_ALIASES = { low: "LOW_MAP", maudite: "MAUDITE", "1-bl": "1-BL", "2-bl": "2-BL", "3-bl": "3-BL" };
+    const MAP_DIR_ALIASES = { low: "LOW_MAP", maudite: "MAUDITE", winter: "WINTER_MAP", "1-bl": "1-BL", "2-bl": "2-BL", "3-bl": "3-BL" };
     const dir = MAP_DIR_ALIASES[id] || id;
     try {
       const [{ WORLD }, spawns] = await Promise.all([
@@ -190,7 +198,8 @@ export class ZoneNpcSim {
       if (!WORLD || typeof spawns?.getZoneSpawns !== "function") return null;
       const world = { w: Number(WORLD.w) || 11000, h: Number(WORLD.h) || 7000 };
       const rawDefs = spawns.getZoneSpawns(world);
-      if (!Array.isArray(rawDefs) || !rawDefs.length) return null;
+      // GG d'hiver : aucun camp, seulement les vagues du convoi.
+      if (!Array.isArray(rawDefs) || (!rawDefs.length && id !== "winter")) return null;
       // Event Halloween (x-3..x-8, dates) + densité -30 % : mêmes règles qu'en solo.
       const defs = applyNpcDensityToCamps(
         appendHalloweenCamps(rawDefs, world, { npcTypes: NPC_TYPES, mapId: id }));
@@ -1845,6 +1854,82 @@ drainPlayerHits() {
     }
   }
 
+  // --- GG d'hiver : attaquants du convoi (vagues de SCRIPTS/WINTER_GATE.js) ---
+  spawnConvoyAttackers(types, nowMs = Date.now()) {
+    const c = this.convoy;
+    if (!c) return;
+    for (const type of types) {
+      const stats = statsFor(type);
+      if (!stats) continue;
+      const n = (this.convoySeq = (Number(this.convoySeq) || 0) + 1);
+      const uid = `convoy:${n}`;
+      const { x, y } = winterConvoySpawnPoint(c.x, c.y);
+      this.entries.set(uid, {
+        uid, campId: null, type, convoyAttacker: true,
+        x, y, angle: Math.atan2(c.y - y, c.x - x),
+        hp: stats.hpMax, sh: stats.shMax,
+        hpMax: stats.hpMax, shMax: stats.shMax, r: stats.r,
+        speed: stats.speed, dr: stats.dr, spread: stats.spread,
+        passive: false, kamikaze: false,
+        explodeOnTouch: false, explodeRadius: 0, explodeDmg: 0,
+        canShoot: stats.canShoot, shootRange: stats.shootRange, shootRate: stats.shootRate,
+        bulletDmg: stats.bulletDmg, burst: stats.burst, shootCd: 0.5 + Math.random(),
+        aggroRange: 0, aggroHoldMs: 0, aggroBy: null, aggroUntil: 0,
+        tx: null, ty: null, killer: null, firstBy: null, lastHitBy: null,
+        lockBy: null, lockHitAt: 0, lockReleaseAt: 0, hitHist: [],
+        decaying: false, deadAt: 0, ai: {},
+        seq: n,
+      });
+    }
+  }
+
+  convoyAttackersAlive() {
+    let n = 0;
+    for (const e of this.entries.values()) if (e && e.convoyAttacker === true && e.hp > 0) n++;
+    return n;
+  }
+
+  // Fin de session : attaquants retirés sans mort ni récompense.
+  clearConvoyAttackers() {
+    for (const [uid, e] of [...this.entries]) {
+      if (!e || e.convoyAttacker !== true) continue;
+      this.entries.delete(uid);
+      if (e.hp > 0 && this.recentGone.length < 200) this.recentGone.push(uid);
+    }
+  }
+
+  // Attaquant du convoi : kiting à portée autour du convoi, ne vise que lui
+  // (jamais les joueurs), ne fuit jamais. Les tirs retirent la vie du convoi ;
+  // les clients en rejouent les visuels (cible partagée WINTER_CONVOY_ID).
+  tickConvoyAttacker(e, dt, nowMs) {
+    const c = this.convoy;
+    if (!c || !(c.hp > 0)) {
+      e.chaseId = null;
+      return;
+    }
+    e.chaseId = WINTER_CONVOY_ID;
+    const frozen = nowMs < Number(e.freezeUntil || 0);
+    const slowMult = nowMs < Number(e.slowUntil || 0)
+      ? Math.max(0.05, 1 - clamp(Number(e.slowPct) || 0, 0, 95) / 100)
+      : 1;
+    const range = e.shootRange > 0 ? e.shootRange : 450;
+    const move = computeNpcKiteMove(e, c, range, e.ai || (e.ai = {}), dt, e.speed);
+    const spd = frozen ? 0 : e.speed * NPC_DIRECT_SPEED_FACTOR * slowMult;
+    e.x = clamp(e.x + move.mxv * spd * dt, 80, this.world.w - 80);
+    e.y = clamp(e.y + move.myv * spd * dt, 80, this.world.h - 80);
+    e.angle = Math.atan2(c.y - e.y, c.x - e.x);
+    e.shootCd = Math.max(0, Number(e.shootCd || 0) - dt);
+    if (frozen || e.canShoot === false || !(e.shootRate > 0) || e.shootCd > 0) return;
+    if (nowMs < Number(e._redirectSilenceUntil || 0)) return;
+    if (Math.hypot(c.x - e.x, c.y - e.y) > range) return;
+    e.shootCd = (1 / Math.max(0.001, e.shootRate)) * (0.85 + Math.random() * 0.3);
+    for (let shot = 0; shot < e.burst; shot++) {
+      const accuracyPenalty = nowMs < Number(e.accuracyUntil || 0) ? Number(e.accuracyPenaltyPct) || 0 : 0;
+      if (Math.random() < Math.min(1, 0.15 + accuracyPenalty / 100)) continue;
+      c.hp = Math.max(0, c.hp - Math.max(1, Math.round(e.bulletDmg * (0.95 + Math.random() * 0.1))));
+    }
+  }
+
   applyHit(clientId, hit) {
     const uid = String(hit?.uid || "");
     const entry = this.entries.get(uid);
@@ -1945,6 +2030,9 @@ drainPlayerHits() {
     if (applied > 0) {
       const key = `${uid}|${clientId}`;
       this.feed.set(key, { uid, by: String(clientId), total: Math.round((this.feed.get(key)?.total || 0) + applied) });
+      if (entry.convoyAttacker === true) {
+        try { this.onConvoyDamage?.(String(clientId), applied); } catch {}
+      }
     }
     // Preuve console : le x15 dominical est bien appliqué (une fois par UFONIT).
     if (applied > 0 && isSundayBossVariant(entry.type) && !entry._sunLogged) {
@@ -2234,6 +2322,10 @@ drainPlayerHits() {
       // récent (pas besoin de taper pour passer rouge) ; personne → libre.
       // firstBy suit pour que la récompense aille au nouveau rouge.
       this.tickNpcLock(e, nowMs);
+      if (e.convoyAttacker === true) {
+        try { this.tickConvoyAttacker(e, dt, nowMs); } catch {}
+        continue;
+      }
       // Minion orphelin (Cubikon mort) : perd 5 % de sa vie max par seconde
       // jusqu'a la mort, meme sous le feu ennemi. Fuite en ligne droite
       // pendant 3 s, puis errance + agro comme les autres NPC (tirs inclus).
@@ -2640,6 +2732,8 @@ drainPlayerHits() {
       this.separationIndex.forEachPair(activeList, (a, b, i, j) => {
         // Ancre impliquée : traversée libre, aucune séparation.
         if (a.jpc || b.jpc || isAnchoredNpcType(a.type) || isAnchoredNpcType(b.type)) return;
+        // Attaquants du convoi : traversée libre entre eux.
+        if (a.convoyAttacker === true || b.convoyAttacker === true) return;
         if (isHoldingMinionMaster(a, nowMs) || isHoldingMinionMaster(b, nowMs)) return;
         let dx = b.x - a.x, dy = b.y - a.y;
         const minimum = (Number(a.r) || 18) + (Number(b.r) || 18) + 6;
@@ -2702,7 +2796,9 @@ drainPlayerHits() {
         // riposte ZNA (sinon dégâts invisibles sur le joueur protégé).
         // Sans closure allouee par entree (pression GC a 20 Hz).
         let aggroId = null;
-        if (e.chaseId) {
+        if (e.chaseId === WINTER_CONVOY_ID && e.convoyAttacker === true) {
+          aggroId = WINTER_CONVOY_ID;
+        } else if (e.chaseId) {
           const ap = this.players.get(e.chaseId);
           if (this.validTarget(ap)) aggroId = e.chaseId;
           else if (this.retaliationOpen(e, e.chaseId, nowMs)) aggroId = e.chaseId;

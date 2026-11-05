@@ -92,6 +92,41 @@ export function computeNpcSteering(entity, distance, nx, ny, ai, deltaTime, clos
   };
 }
 
+// Kiting autour d'une cible mobile (GG d'hiver : le convoi) : le NPC se
+// tient vers 80 % de sa portée (distance qui "respire" lentement), recule si
+// la cible est trop près, revient si elle s'éloigne, tourne un peu autour
+// d'elle et change parfois de sens ; la vitesse de la cible est ajoutée pour
+// ne pas se laisser distancer. État dans `ai.kite`. Direction bornée à 1
+// (même échelle que computeNpcCombatMove, voir setNpcVelocity).
+export const NPC_KITE = Object.freeze({
+  rangeRatio: 0.8, breathe: 0.12, breatheRate: 0.9, tangent: 0.45, flipChance: 0.5, flipEvery: [2, 6],
+});
+export function computeNpcKiteMove(entity, target, range, ai, deltaTime, speed, random = Math.random) {
+  const [f0, f1] = NPC_KITE.flipEvery;
+  if (!ai.kite) ai.kite = { dir: random() < 0.5 ? -1 : 1, flipT: f0 + random() * (f1 - f0), phase: random() * Math.PI * 2 };
+  const kite = ai.kite;
+  kite.flipT -= deltaTime;
+  if (kite.flipT <= 0) {
+    if (random() < NPC_KITE.flipChance) kite.dir = -kite.dir;
+    kite.flipT = f0 + random() * (f1 - f0);
+  }
+  kite.phase += deltaTime * NPC_KITE.breatheRate;
+  const desired = range * (NPC_KITE.rangeRatio + NPC_KITE.breathe * Math.sin(kite.phase));
+  const dx = target.x - entity.x, dy = target.y - entity.y;
+  const d = Math.hypot(dx, dy) || 1;
+  const nx = dx / d, ny = dy / d;
+  const pull = clamp((d - desired) / Math.max(1, range * 0.25), -1, 1);
+  const maxSpeed = Math.max(1, Number(speed) || 0) * NPC_DIRECT_SPEED_FACTOR;
+  let mxv = -ny * kite.dir * NPC_KITE.tangent + nx * pull + (Number(target.vx) || 0) / maxSpeed;
+  let myv = nx * kite.dir * NPC_KITE.tangent + ny * pull + (Number(target.vy) || 0) / maxSpeed;
+  const len = Math.hypot(mxv, myv);
+  if (len > 1) {
+    mxv /= len;
+    myv /= len;
+  }
+  return { mxv, myv };
+}
+
 export function setNpcVelocity(entity, directionX, directionY, speed) {
   const maxSpeed = Math.max(0, Number(speed) || 0) * NPC_DIRECT_SPEED_FACTOR;
   const length = Math.hypot(directionX, directionY);

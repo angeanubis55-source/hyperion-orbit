@@ -1697,6 +1697,9 @@ export const NPC_TYPES = {
     bulletSprite: { src: "COMBAT/MUNITIONS/SPECIAL8.png", w: 55, h: 17, glow: true, invert: true },
     r: 62, hp: 250000, shield: 150000, speed: 250, bulletDmg: 3000, bulletSpeed: 4500, shootRange: 550,
   },
+  // Mimesis : stats officielles (darkorbitwiki.com, Mimesis Mutiny et
+  // Mimesis Mutiny Gate) ; dégâts = "Max Damage" (bombes du Kamikaze et du
+  // Marker comptées comme tirs). Vitesse non publiée : 250 (tourelle : 0).
   npc_Hexor_Mimesis: {
     name: "-=[ Hexor Mimesis ]=-",
     sprite: { path: "NPC/NPC_SPRITES/HEXOR_MIMESIS/", frames: 32, firstNumber: 1, ext: ".png", w: 230, h: 184 },
@@ -1704,7 +1707,7 @@ export const NPC_TYPES = {
     passiveNative: false,
     spriteSpeed: 0,
     bulletSprite: { src: "COMBAT/MUNITIONS/SPECIAL8.png", w: 55, h: 17, glow: true, invert: true },
-    r: 41, hp: 250000, shield: 150000, speed: 250, bulletDmg: 3000, bulletSpeed: 4500, shootRange: 550,
+    r: 41, hp: 495000, shield: 200000, speed: 250, bulletDmg: 6500, bulletSpeed: 4500, shootRange: 550,
   },
   npc_Raging_Mimesis: {
     name: "-=[ Raging Mimesis ]=-",
@@ -1713,7 +1716,7 @@ export const NPC_TYPES = {
     passiveNative: false,
     spriteSpeed: 0,
     bulletSprite: { src: "COMBAT/MUNITIONS/SPECIAL8.png", w: 55, h: 17, glow: true, invert: true },
-    r: 40, hp: 250000, shield: 150000, speed: 250, bulletDmg: 3000, bulletSpeed: 4500, shootRange: 550,
+    r: 40, hp: 1045000, shield: 600000, speed: 250, bulletDmg: 20000, bulletSpeed: 4500, shootRange: 550,
   },
   npc_Cloning_Mimesis: {
     name: "-=[ Cloning Mimesis ]=-",
@@ -1722,7 +1725,7 @@ export const NPC_TYPES = {
     passiveNative: false,
     spriteSpeed: 0,
     bulletSprite: { src: "COMBAT/MUNITIONS/SPECIAL8.png", w: 55, h: 17, glow: true, invert: true },
-    r: 40, hp: 250000, shield: 150000, speed: 250, bulletDmg: 3000, bulletSpeed: 4500, shootRange: 550,
+    r: 40, hp: 2200000, shield: 1200000, speed: 250, bulletDmg: 75000, bulletSpeed: 4500, shootRange: 550,
   },
   npc_Terror_Mimesis: {
     name: "-=[ Terror Mimesis ]=-",
@@ -1731,7 +1734,7 @@ export const NPC_TYPES = {
     passiveNative: false,
     spriteSpeed: 0,
     bulletSprite: { src: "COMBAT/MUNITIONS/SPECIAL8.png", w: 55, h: 17, glow: true, invert: true },
-    r: 40, hp: 250000, shield: 150000, speed: 250, bulletDmg: 3000, bulletSpeed: 4500, shootRange: 550,
+    r: 40, hp: 3000000, shield: 1800000, speed: 250, bulletDmg: 65000, bulletSpeed: 4500, shootRange: 550,
   },
   npc_Kamikaze_Mimesis: {
     name: "-=[ Kamikaze Mimesis ]=-",
@@ -1740,7 +1743,7 @@ export const NPC_TYPES = {
     passiveNative: false,
     spriteSpeed: 0,
     bulletSprite: { src: "COMBAT/MUNITIONS/SPECIAL8.png", w: 55, h: 17, glow: true, invert: true },
-    r: 32, hp: 250000, shield: 150000, speed: 250, bulletDmg: 3000, bulletSpeed: 4500, shootRange: 550,
+    r: 32, hp: 495000, shield: 200000, speed: 250, bulletDmg: 20000, bulletSpeed: 4500, shootRange: 550,
   },
   npc_Reflector_Mimesis: {
     name: "-=[ Reflector Mimesis ]=-",
@@ -1749,7 +1752,7 @@ export const NPC_TYPES = {
     passiveNative: false,
     spriteSpeed: 0,
     bulletSprite: { src: "COMBAT/MUNITIONS/SPECIAL8.png", w: 55, h: 17, glow: true, invert: true },
-    r: 41, hp: 250000, shield: 150000, speed: 250, bulletDmg: 3000, bulletSpeed: 4500, shootRange: 550,
+    r: 41, hp: 4500000, shield: 2500000, speed: 250, bulletDmg: 50000, bulletSpeed: 4500, shootRange: 550,
   },
   npc_Raider_Mimesis: {
     name: "-=[ Raider Mimesis ]=-",
@@ -1758,7 +1761,7 @@ export const NPC_TYPES = {
     passiveNative: false,
     spriteSpeed: 0,
     bulletSprite: { src: "COMBAT/MUNITIONS/SPECIAL8.png", w: 55, h: 17, glow: true, invert: true },
-    r: 32, hp: 250000, shield: 150000, speed: 250, bulletDmg: 3000, bulletSpeed: 4500, shootRange: 550,
+    r: 32, hp: 900000, shield: 600000, speed: 250, bulletDmg: 9500, bulletSpeed: 4500, shootRange: 550,
   },
   npc_Assailant_Mimesis: {
     name: "-=[ Assailant Mimesis ]=-",
@@ -1767,7 +1770,7 @@ export const NPC_TYPES = {
     passiveNative: false,
     spriteSpeed: 0,
     bulletSprite: { src: "COMBAT/MUNITIONS/SPECIAL8.png", w: 55, h: 17, glow: true, invert: true },
-    r: 32, hp: 250000, shield: 150000, speed: 250, bulletDmg: 3000, bulletSpeed: 4500, shootRange: 550,
+    r: 32, hp: 900000, shield: 600000, speed: 250, bulletDmg: 9500, bulletSpeed: 4500, shootRange: 550,
   },
   npc_Medic_Mimesis: {
     name: "-=[ Medic Mimesis ]=-",
@@ -1776,7 +1779,7 @@ export const NPC_TYPES = {
     passiveNative: false,
     spriteSpeed: 0,
     bulletSprite: { src: "COMBAT/MUNITIONS/SPECIAL8.png", w: 55, h: 17, glow: true, invert: true },
-    r: 40, hp: 250000, shield: 150000, speed: 250, bulletDmg: 3000, bulletSpeed: 4500, shootRange: 550,
+    r: 40, hp: 2450000, shield: 1625000, speed: 250, bulletDmg: 15500, bulletSpeed: 4500, shootRange: 550,
   },
   npc_Hardy_Mimesis: {
     name: "-=[ Hardy Mimesis ]=-",
@@ -1785,7 +1788,7 @@ export const NPC_TYPES = {
     passiveNative: false,
     spriteSpeed: 0,
     bulletSprite: { src: "COMBAT/MUNITIONS/SPECIAL8.png", w: 55, h: 17, glow: true, invert: true },
-    r: 32, hp: 250000, shield: 150000, speed: 250, bulletDmg: 3000, bulletSpeed: 4500, shootRange: 550,
+    r: 32, hp: 3000000, shield: 6000000, speed: 250, bulletDmg: 0, bulletSpeed: 4500, shootRange: 550,
   },
   npc_Piercing_Mimesis: {
     name: "-=[ Piercing Mimesis ]=-",
@@ -1794,7 +1797,7 @@ export const NPC_TYPES = {
     passiveNative: false,
     spriteSpeed: 0,
     bulletSprite: { src: "COMBAT/MUNITIONS/SPECIAL8.png", w: 55, h: 17, glow: true, invert: true },
-    r: 40, hp: 250000, shield: 150000, speed: 250, bulletDmg: 3000, bulletSpeed: 4500, shootRange: 550,
+    r: 40, hp: 5250000, shield: 3500000, speed: 250, bulletDmg: 25500, bulletSpeed: 4500, shootRange: 550,
   },
   npc_Obscured_Mimesis: {
     name: "-=[ Obscured Mimesis ]=-",
@@ -1803,7 +1806,7 @@ export const NPC_TYPES = {
     passiveNative: false,
     spriteSpeed: 0,
     bulletSprite: { src: "COMBAT/MUNITIONS/SPECIAL8.png", w: 55, h: 17, glow: true, invert: true },
-    r: 40, hp: 250000, shield: 150000, speed: 250, bulletDmg: 3000, bulletSpeed: 4500, shootRange: 550,
+    r: 40, hp: 4200000, shield: 2800000, speed: 250, bulletDmg: 12000, bulletSpeed: 4500, shootRange: 550,
   },
   npc_Hounding_Mimesis: {
     name: "-=[ Hounding Mimesis ]=-",
@@ -1812,7 +1815,7 @@ export const NPC_TYPES = {
     passiveNative: false,
     spriteSpeed: 0,
     bulletSprite: { src: "COMBAT/MUNITIONS/SPECIAL8.png", w: 55, h: 17, glow: true, invert: true },
-    r: 40, hp: 250000, shield: 150000, speed: 250, bulletDmg: 3000, bulletSpeed: 4500, shootRange: 550,
+    r: 40, hp: 5250000, shield: 3500000, speed: 250, bulletDmg: 25500, bulletSpeed: 4500, shootRange: 550,
   },
   npc_Mirror_Mimesis: {
     name: "-=[ Mirror Mimesis ]=-",
@@ -1821,7 +1824,7 @@ export const NPC_TYPES = {
     passiveNative: false,
     spriteSpeed: 0,
     bulletSprite: { src: "COMBAT/MUNITIONS/SPECIAL8.png", w: 55, h: 17, glow: true, invert: true },
-    r: 40, hp: 250000, shield: 150000, speed: 250, bulletDmg: 3000, bulletSpeed: 4500, shootRange: 550,
+    r: 40, hp: 3000000, shield: 2000000, speed: 250, bulletDmg: 12500, bulletSpeed: 4500, shootRange: 550,
   },
   npc_Mirror_Mimesis_249: {
     name: "-=[ Mirror Mimesis ]=-",
@@ -1830,7 +1833,7 @@ export const NPC_TYPES = {
     passiveNative: false,
     spriteSpeed: 0,
     bulletSprite: { src: "COMBAT/MUNITIONS/SPECIAL8.png", w: 55, h: 17, glow: true, invert: true },
-    r: 40, hp: 250000, shield: 150000, speed: 250, bulletDmg: 3000, bulletSpeed: 4500, shootRange: 550,
+    r: 40, hp: 3000000, shield: 2000000, speed: 250, bulletDmg: 12500, bulletSpeed: 4500, shootRange: 550,
   },
   npc_Sniper_Mimesis: {
     name: "-=[ Sniper Mimesis ]=-",
@@ -1839,7 +1842,7 @@ export const NPC_TYPES = {
     passiveNative: false,
     spriteSpeed: 0,
     bulletSprite: { src: "COMBAT/MUNITIONS/SPECIAL8.png", w: 55, h: 17, glow: true, invert: true },
-    r: 54, hp: 250000, shield: 150000, speed: 250, bulletDmg: 3000, bulletSpeed: 4500, shootRange: 550,
+    r: 54, hp: 5250000, shield: 3500000, speed: 250, bulletDmg: 28500, bulletSpeed: 4500, shootRange: 550,
   },
   npc_Marker_Mimesis: {
     name: "-=[ Marker Mimesis ]=-",
@@ -1848,7 +1851,7 @@ export const NPC_TYPES = {
     passiveNative: false,
     spriteSpeed: 0,
     bulletSprite: { src: "COMBAT/MUNITIONS/SPECIAL8.png", w: 55, h: 17, glow: true, invert: true },
-    r: 54, hp: 250000, shield: 150000, speed: 250, bulletDmg: 3000, bulletSpeed: 4500, shootRange: 550,
+    r: 54, hp: 6750000, shield: 4500000, speed: 250, bulletDmg: 30000, bulletSpeed: 4500, shootRange: 550,
   },
   npc_Troublemaker_Cyborg: {
     name: "-=[ Troublemaker Cyborg ]=-",
@@ -1992,7 +1995,7 @@ export const NPC_TYPES = {
     passiveNative: false,
     spriteSpeed: 0,
     bulletSprite: { src: "COMBAT/MUNITIONS/SPECIAL8.png", w: 55, h: 17, glow: true, invert: true },
-    r: 32, hp: 250000, shield: 150000, speed: 250, bulletDmg: 3000, bulletSpeed: 4500, shootRange: 550,
+    r: 32, hp: 2100000, shield: 0, speed: 0, bulletDmg: 6000, bulletSpeed: 4500, shootRange: 550,
   },
   npc_Dreadfyre_Fortress: {
     name: "-=[ Dreadfyre Fortress ]=-",
@@ -2218,7 +2221,7 @@ export const NPC_TYPES = {
     passiveNative: false,
     spriteSpeed: 0,
     bulletSprite: { src: "COMBAT/MUNITIONS/SPECIAL8.png", w: 55, h: 17, glow: true, invert: true },
-    r: 41, hp: 250000, shield: 150000, speed: 250, bulletDmg: 3000, bulletSpeed: 4500, shootRange: 550,
+    r: 41, hp: 495000, shield: 200000, speed: 250, bulletDmg: 6500, bulletSpeed: 4500, shootRange: 550,
   },
   npc_Inspirit_Mimesis: {
     name: "-=[ Inspirit Mimesis ]=-",
@@ -2227,7 +2230,7 @@ export const NPC_TYPES = {
     passiveNative: false,
     spriteSpeed: 0,
     bulletSprite: { src: "COMBAT/MUNITIONS/SPECIAL8.png", w: 55, h: 17, glow: true, invert: true },
-    r: 41, hp: 250000, shield: 150000, speed: 250, bulletDmg: 3000, bulletSpeed: 4500, shootRange: 550,
+    r: 41, hp: 2800000, shield: 1750000, speed: 250, bulletDmg: 15500, bulletSpeed: 4500, shootRange: 550,
   },
   npc_Uber_Interceptor: {
     name: "[ Uber Interceptor ]",
@@ -3690,3 +3693,32 @@ for (const spec of HALLOWEEN_VARIANT_SPECS) {
   if (!base) throw new Error(`Base Halloween manquante pour ${key}`);
   NPC_TYPES[key] = buildHalloweenVariant(base, Number(spec.mapId.split("-")[1]), spec.role);
 }
+
+// GG d'hiver : attaquants du convoi du Père Noël. Variantes <=< Nom >=> :
+// stats, sprites et récompenses de la base (soute : famille de base,
+// NPC_CARGO). L'Ice Meteoroid ne libère pas d'Icy (minions gérés côté
+// serveur pour le type de base) mais tire à 25 000.
+export const WINTER_CONVOY_NPC_BASES = Object.freeze({
+  npc_Convoy_Kristallin: "npc_Kristallin",
+  npc_Convoy_Boss_Kristallin: "npc_Boss_Kristallin",
+  npc_Convoy_Kristallon: "npc_Kristallon",
+  npc_Convoy_Boss_Kristallon: "npc_Boss_Kristallon",
+  npc_Convoy_Ice_Meteoroid: "npc_Ice_Meteoroid",
+  npc_Convoy_Super_Ice_Meteoroid: "npc_Super_Ice_Meteoroid",
+  npc_Convoy_Uber_Kristallin: "npc_Uber_Kristallin",
+  npc_Convoy_Uber_Kristallon: "npc_Uber_Kristallon",
+  npc_Convoy_Emperor_Kristallon: "npc_Emperor_Kristallon",
+});
+for (const [type, baseType] of Object.entries(WINTER_CONVOY_NPC_BASES)) {
+  const base = NPC_TYPES[baseType];
+  const bare = String(base.name).replace(/^[^A-Za-z]+|[^A-Za-z]+$/g, "");
+  const variant = { ...base, sprite: { ...base.sprite }, name: `<=< ${bare} >=>` };
+  delete variant.onKill;
+  NPC_TYPES[type] = variant;
+}
+NPC_TYPES.npc_Convoy_Ice_Meteoroid.bulletDmg = 25000;
+NPC_TYPES.npc_Convoy_Super_Ice_Meteoroid.bulletDmg = 75000;
+// Ice et Super Ice : munition du Boss Kristallon.
+for (const type of ["npc_Convoy_Ice_Meteoroid", "npc_Convoy_Super_Ice_Meteoroid"]) NPC_TYPES[type].bulletSprite = { ...NPC_TYPES.npc_Boss_Kristallon.bulletSprite };
+// L'Emperor (100) n'irait pas plus vite que le convoi.
+NPC_TYPES.npc_Convoy_Emperor_Kristallon.speed = 150;
