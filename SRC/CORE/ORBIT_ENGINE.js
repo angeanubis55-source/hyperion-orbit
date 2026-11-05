@@ -32398,6 +32398,8 @@ if (hwDropRole === "boss") {
 if (
   ownsNpcLoot &&
   !e.noRewards &&
+  // GG d'hiver : aucune cargo box.
+  rules?.convoy !== true &&
   e.type !== "npc_Protegit" &&
   e.type !== "npc_Barrage_Seeker_Rocket" &&
   // ✅ Gate Eternal : aucun cargo (ni minerais ni box).
@@ -46688,7 +46690,7 @@ function tickWinterConvoy(dt) {
       // Victoire sans dégât infligé : aucune part de la récompense.
       leaveWinterGate("Le convoi a tenu 30 minutes — aucune part (aucun dégât infligé)");
       return;
-    } else if (st.phase === "closed") {
+    } else if (st.phase === "closed" && !(prev === "" && winterGateSession().open)) {
       const slot = winterGateWindowLabel();
       leaveWinterGate(prev === "run" ? "GG d'hiver interrompue" : `GG d'hiver fermée — entrée de ${slot.open} à ${slot.start}`);
       return;

@@ -142,8 +142,21 @@ function statePayload(now) {
   };
 }
 
-// Dernier état (nouveaux arrivants sur la map).
+// Nouvelle heure : nouvelle session (convoi neuf, nouveau circuit). Un run
+// finit toujours avant (départ + 30 min) : rien d'autre à conserver.
+function rollSession(now, sim) {
+  const session = winterGateSession(now);
+  if (gate.hourAt === session.hourAt) return false;
+  if (gate.phase !== "closed") closeGate(sim);
+  if (session.open) openLobby(session, sim);
+  else gate.hourAt = session.hourAt;
+  return true;
+}
+
+// Dernier état (nouveaux arrivants sur la map). Session à jour même si le
+// contrôleur n'a pas encore tourné (premier arrivant de l'heure).
 export function getWinterGateState(now = Date.now()) {
+  if (isWinterEventActive(new Date(now))) rollSession(now, null);
   return statePayload(now);
 }
 
@@ -175,15 +188,12 @@ function tickInner(room, sim, ctx, now, dt) {
     if (gate.phase !== "closed") closeGate(sim);
     return;
   }
-  // Nouvelle heure : nouvelle session (convoi neuf, nouveau circuit). Un run
-  // finit toujours avant (départ :05 + 30 min) : rien d'autre à conserver.
-  if (gate.hourAt !== session.hourAt) {
-    if (gate.phase !== "closed") closeGate(sim);
-    if (session.open) openLobby(session, sim);
-    else gate.hourAt = session.hourAt;
-    return;
+  if (rollSession(now, sim)) return;
+  // Session changée hors tick (arrivant) : restes de l'ancienne retirés.
+  if (sim.convoy !== gate.convoy) {
+    try { sim.clearConvoyAttackers(); } catch {}
+    attachSim(sim);
   }
-  if (sim.convoy !== gate.convoy) attachSim(sim);
   const present = presentPlayers(room);
 
   if (gate.phase === "lobby") {

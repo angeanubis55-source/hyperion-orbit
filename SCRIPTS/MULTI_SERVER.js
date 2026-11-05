@@ -1857,6 +1857,8 @@ function collectableAllowedOnMap(cfg, mapId) {
   // même si maps/deny OK.
   if (!collectableEventOn(cfg)) return false;
   const id = String(mapId || "").toLowerCase();
+  // GG d'hiver : aucune box ni ressource à ramasser.
+  if (id === "winter") return false;
   const deny = cfg?.denyMaps ?? cfg?.blockedMaps ?? cfg?.disabledMaps ?? cfg?.excludeMaps;
   for (const value of (Array.isArray(deny) ? deny : deny != null ? [deny] : [])) {
     const denied = String(value || "").toLowerCase();
