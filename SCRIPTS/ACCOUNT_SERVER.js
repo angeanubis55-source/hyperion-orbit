@@ -1377,16 +1377,19 @@ export function adminGiveCredits(pseudo, amount) {
 export function adminListAccounts() {
   try {
     initAccountDb();
-    const rows = db.prepare("SELECT id, pseudo, faction, data, created_at, updated_at FROM users ORDER BY pseudo COLLATE NOCASE LIMIT 5000").all();
+    // Seuls ces champs sont extraits (par SQLite) : parser 5000 comptes
+    // complets en JS gelait la boucle de jeu à chaque ouverture de la liste.
+    const rows = db.prepare(`SELECT id, pseudo, faction,
+        json_extract(data, '$.credits', '$.stats.exp', '$.stats.honor', '$.galaxyGates.completed') AS fields,
+        created_at, updated_at FROM users ORDER BY pseudo COLLATE NOCASE LIMIT 5000`).all();
     return rows.map((r) => {
       let credits = 0, exp = 0, honor = 0;
       let gg = {};
       try {
-        const data = JSON.parse(r.data || "{}");
-        credits = Math.max(0, Math.floor(Number(data.credits) || 0));
-        exp = Math.max(0, Math.floor(Number(data?.stats?.exp) || 0));
-        honor = Math.max(0, Math.floor(Number(data?.stats?.honor) || 0));
-        const completed = data?.galaxyGates?.completed;
+        const [rawCredits, rawExp, rawHonor, completed] = JSON.parse(r.fields || "[]");
+        credits = Math.max(0, Math.floor(Number(rawCredits) || 0));
+        exp = Math.max(0, Math.floor(Number(rawExp) || 0));
+        honor = Math.max(0, Math.floor(Number(rawHonor) || 0));
         if (completed && typeof completed === "object") {
           for (const [gate, count] of Object.entries(completed)) {
             const n = Math.max(0, Math.floor(Number(count) || 0));
@@ -1619,7 +1622,7 @@ export function listFriends(userId) {
     initAccountDb();
     const uid = String(userId || "");
     if (!uid) return [];
-    return db.prepare(`SELECT u.id AS id, u.pseudo AS pseudo, u.faction AS faction, u.data AS data, u.updated_at AS updatedAt,
+    return db.prepare(`SELECT u.id AS id, u.pseudo AS pseudo, u.faction AS faction, json_extract(u.data, '$.stats') AS stats, u.updated_at AS updatedAt,
         f.created_at AS since, c.tag AS clanTag, COALESCE(p.kills, 0) AS pvpKills
       FROM friends f JOIN users u ON u.id = f.friend_id
       LEFT JOIN clan_members m ON m.user_id = u.id LEFT JOIN clans c ON c.id = m.clan_id
@@ -1632,7 +1635,7 @@ export function listFriends(userId) {
         since: Math.max(0, Number(r.since) || 0),
         lastSeen: Math.max(0, Number(r.updatedAt) || 0),
         pvpKills: Math.max(0, Math.floor(Number(r.pvpKills) || 0)),
-        ...clanStatsOfData(r.data),
+        ...clanStatsOfData(r.stats),
       }));
   } catch { return []; }
 }
@@ -2070,11 +2073,13 @@ function clanPresenceOf(userId) {
   try { return clanPresenceProvider?.(String(userId)) || null; } catch { return null; }
 }
 
-// Chiffres publics d'un compte (blob) : exp, honneur, points de grade, kills NPC.
+// Chiffres publics d'un compte : exp, honneur, points de grade, kills NPC.
+// `raw` = json_extract(u.data, '$.stats') : SQLite n'extrait que ce petit
+// objet, au lieu de parser en JS le compte complet (jusqu'à 1,5 Mo) de
+// chaque ami / membre dans la boucle de jeu.
 function clanStatsOfData(raw) {
-  let data = {};
-  try { data = typeof raw === "string" ? (JSON.parse(raw || "{}") || {}) : (raw || {}); } catch { data = {}; }
-  const stats = data.stats || {};
+  let stats = {};
+  try { stats = typeof raw === "string" ? (JSON.parse(raw || "{}") || {}) : (raw || {}); } catch { stats = {}; }
   const exp = Math.max(0, Math.floor(Number(stats.exp) || 0));
   const honor = Math.floor(Number(stats.honor) || 0);
   // Kills NPC = somme du détail par type (incrémenté par le serveur à chaque
@@ -2094,7 +2099,7 @@ function clanStatsOfData(raw) {
 function clanMemberRows(clanId) {
   const now = Date.now();
   return db.prepare(`SELECT m.user_id AS id, u.pseudo AS pseudo, m.role AS role, m.joined_at AS joinedAt,
-      m.bank_received AS bankReceived, u.data AS data, u.updated_at AS updatedAt, COALESCE(p.kills, 0) AS pvpKills
+      m.bank_received AS bankReceived, json_extract(u.data, '$.stats') AS stats, u.updated_at AS updatedAt, COALESCE(p.kills, 0) AS pvpKills
     FROM clan_members m JOIN users u ON u.id = m.user_id LEFT JOIN pvp_stats p ON p.user_id = m.user_id
     WHERE m.clan_id = ? ORDER BY CASE m.role WHEN 'leader' THEN 0 WHEN 'officer' THEN 1 ELSE 2 END, m.joined_at`).all(String(clanId))
     .map((r) => {
@@ -2110,7 +2115,7 @@ function clanMemberRows(clanId) {
         bankReceived: Math.max(0, Math.floor(Number(r.bankReceived) || 0)),
         bankAllowance: quota.allowance,
         bankNextAt: quota.nextAt,
-        ...clanStatsOfData(r.data),
+        ...clanStatsOfData(r.stats),
       };
     });
 }
@@ -2293,7 +2298,7 @@ export function listClanRanking() {
     const now = Date.now();
     if (now - clanRankingCache.at < 30_000) return clanRankingCache.list;
     const byClan = new Map();
-    const rows = db.prepare(`SELECT c.id AS clanId, c.name AS name, c.tag AS tag, c.created_at AS createdAt, u.data AS data, COALESCE(p.kills, 0) AS pvpKills
+    const rows = db.prepare(`SELECT c.id AS clanId, c.name AS name, c.tag AS tag, c.created_at AS createdAt, json_extract(u.data, '$.stats') AS stats, COALESCE(p.kills, 0) AS pvpKills
       FROM clans c JOIN clan_members m ON m.clan_id = c.id JOIN users u ON u.id = m.user_id LEFT JOIN pvp_stats p ON p.user_id = m.user_id`).all();
     for (const r of rows) {
       const id = String(r.clanId);
@@ -2303,7 +2308,7 @@ export function listClanRanking() {
           createdAt: Number(r.createdAt) || 0, members: 0, rankPoints: 0, honor: 0, exp: 0, npcKills: 0, pvpKills: 0 };
         byClan.set(id, entry);
       }
-      const st = clanStatsOfData(r.data);
+      const st = clanStatsOfData(r.stats);
       entry.members++;
       entry.rankPoints += st.rankPoints;
       entry.honor += Math.max(0, st.honor);
@@ -2320,6 +2325,7 @@ export function listClanRanking() {
   } catch { return []; }
 }
 function invalidateClanRanking() { clanRankingCache = { at: 0, list: [] }; }
+let generalRankingCache = { at: 0, body: null };
 
 // Liste publique de tous les clans : [{ id, name, tag, description,
 // leader, memberCount }] triés par taille puis nom.
@@ -3899,7 +3905,14 @@ export function handleAccountApi(req, res) {
     // Points = kills PvP * 10 (0 si aucun) + xp_total / 1000 + honneur_total / 100.
     try {
       if (rateLimited(`${ip}:/api/rankings`, 60)) return json(res, 429, { ok: false, error: "Trop de tentatives, reessaie dans une minute." });
-      const rows = db.prepare("SELECT u.pseudo, u.data, s.kills FROM users u LEFT JOIN pvp_stats s ON s.user_id = u.id LIMIT 2000").all();
+      // Classement identique pour tous : recalculé au plus toutes les 30 s.
+      if (Date.now() - generalRankingCache.at < 30_000) return json(res, 200, generalRankingCache.body);
+      // SQLite extrait seulement ces champs : parser en JS 2000 comptes
+      // complets gelait la boucle de jeu à chaque ouverture du classement.
+      const rows = db.prepare(`SELECT u.pseudo AS pseudo, s.kills AS kills,
+          json_extract(u.data, '$.stats.rankPoints', '$.stats.honor', '$.stats.exp', '$.faction',
+            '$.eternalGate.bestWaves', '$.winter.frostPoints') AS fields
+        FROM users u LEFT JOIN pvp_stats s ON s.user_id = u.id LIMIT 2000`).all();
       const list = [];
       for (const r of rows) {
         const kills = Math.max(0, Math.floor(Number(r.kills) || 0));
@@ -3910,22 +3923,22 @@ export function handleAccountApi(req, res) {
         let eternalWaves = 0;
         let frostPoints = 0;
         try {
-          const data = JSON.parse(r.data || "{}");
-          rankPoints = Math.max(0, Math.floor(Number(data?.stats?.rankPoints) || 0));
-          honor = Math.max(0, Math.floor(Number(data?.stats?.honor) || 0));
+          const [rawRankPoints, rawHonor, rawExp, rawFaction, rawWaves, rawFrost] = JSON.parse(r.fields || "[]");
+          rankPoints = Math.max(0, Math.floor(Number(rawRankPoints) || 0));
+          honor = Math.max(0, Math.floor(Number(rawHonor) || 0));
           // XP / honneur TOTAUX du compte pour les points de classement.
-          const te = Math.floor(Number(data?.stats?.exp));
+          const te = Math.floor(Number(rawExp));
           if (Number.isFinite(te) && te >= 0) totalExp = te;
-          const th = Math.floor(Number(data?.stats?.honor));
+          const th = Math.floor(Number(rawHonor));
           if (Number.isFinite(th) && th >= 0) totalHonneur = th;
-          const fa = String(data?.faction || "").toLowerCase();
+          const fa = String(rawFaction || "").toLowerCase();
           if (fa === "mmo" || fa === "eic" || fa === "vru") faction = fa;
           // ✅ record Eternal : meilleur total de vagues (jamais réinitialisé,
           // remplacé uniquement si le joueur fait mieux).
-          const ew = Math.floor(Number(data?.eternalGate?.bestWaves));
+          const ew = Math.floor(Number(rawWaves));
           if (Number.isFinite(ew) && ew > 0) eternalWaves = ew;
           // GG d'hiver : points givrés cumulés (box de Noël).
-          const fp = Math.floor(Number(data?.winter?.frostPoints));
+          const fp = Math.floor(Number(rawFrost));
           if (Number.isFinite(fp) && fp > 0) frostPoints = fp;
         } catch {}
         list.push({
@@ -3950,7 +3963,9 @@ export function handleAccountApi(req, res) {
       const winterTop = list.filter((row) => row.frostPoints > 0)
         .sort((a, b) => b.frostPoints - a.frostPoints)
         .slice(0, 100).map(rowFields);
-      return json(res, 200, { ok: true, list: list.slice(0, 100).map(rowFields), eternal: eternalTop, winter: winterTop });
+      const body = { ok: true, list: list.slice(0, 100).map(rowFields), eternal: eternalTop, winter: winterTop };
+      generalRankingCache = { at: Date.now(), body };
+      return json(res, 200, body);
     } catch {
       return json(res, 500, { ok: false, error: "Erreur serveur." });
     }
@@ -5062,21 +5077,29 @@ export function adminActionLog({ before = 0, limit = 200, q = "" } = {}) {
 export function adminStats() {
   try {
     initAccountDb();
-    const rows = db.prepare("SELECT id, pseudo, faction, data, created_at, updated_at FROM users").all();
+    // SQLite extrait seulement ces champs : parser tous les comptes complets
+    // en JS gelait la boucle de jeu plusieurs secondes.
+    const rows = db.prepare(`SELECT id, pseudo, faction, created_at, updated_at,
+        json_extract(data, '$.credits', '$.stats.exp', '$.stats.honor', '$.stats.lifetimeKills', '$.faction', '$.ship') AS fields,
+        (SELECT json_extract(h.value, '$.shipId') FROM json_each(users.data, '$.hangars') h
+          WHERE json_extract(h.value, '$.active') = 1 LIMIT 1) AS activeShip
+      FROM users`).all();
     const now = Date.now(), day = 86_400_000;
     const factions = {}, ships = {}, createdByDay = {}, activeByDay = {};
     const players = [];
     let credits = 0, exp = 0, honor = 0;
     for (const r of rows) {
-      const d = adminParseData(r);
+      let fields = [];
+      try { fields = JSON.parse(r.fields || "[]") || []; } catch {}
+      const [rawCredits, rawExp, rawHonor, rawKills, rawFaction, rawShip] = fields;
       const p = { pseudo: String(r.pseudo || ""), id: `u_${r.id}`,
-        credits: Math.max(0, Math.floor(Number(d.credits) || 0)), exp: Math.floor(Number(d.stats?.exp) || 0),
-        honor: Math.floor(Number(d.stats?.honor) || 0), kills: Math.floor(Number(d.stats?.lifetimeKills) || 0) };
+        credits: Math.max(0, Math.floor(Number(rawCredits) || 0)), exp: Math.floor(Number(rawExp) || 0),
+        honor: Math.floor(Number(rawHonor) || 0), kills: Math.floor(Number(rawKills) || 0) };
       players.push(p);
       credits += p.credits; exp += p.exp; honor += p.honor;
-      const f = norm(r.faction || d.faction) || "?";
+      const f = norm(r.faction || rawFaction) || "?";
       factions[f] = (factions[f] || 0) + 1;
-      const ship = String((d.hangars || []).find((h) => h?.active)?.shipId || d.ship || "?");
+      const ship = String(r.activeShip || rawShip || "?");
       const base = String(getShipDesignBaseId(ship) || ship);
       ships[base] = (ships[base] || 0) + 1;
       const created = Number(r.created_at) || 0, updated = Number(r.updated_at) || 0;
