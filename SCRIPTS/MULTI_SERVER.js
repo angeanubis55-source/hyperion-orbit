@@ -574,7 +574,7 @@ function trackAbilityFx(state, profile, skill, msg, room, id, now, sim = null) {
   return true;
 }
 import { loadServerMaps, mapTransition, validArrival, reviveArrival, baseArrival, respawnMap } from "./MAP_RULES.js";
-import { getFactionHomeMap } from "../SRC/CORE/FACTIONS.js";
+import { getFaction, getFactionHomeMap } from "../SRC/CORE/FACTIONS.js";
 import { handleSocialMessage, socialPeerGone, socialPeerChanged, socialDescribeGroup, socialGroupOf } from "./SOCIAL_ROOM.js";
 import { getAuctionSync, handleAuctionBid, pollAuctionCycle, auctionRoomStatus } from "./AUCTION_ROOM.js";
 import { getStationSync, handleStationInstall, handleStationUninstall, handleStationBuild, handleStationReplace, handleStationCancelReplace, handleStationRepair, handleStationDeflectToggle, handleStationHit, hasStationMap, getStationDefense, stationShotReady, stationShotFired, isStationFoe, isStationRetaliation, applyStationPassiveHeal, getClanBaseBonuses, getStationOwners, getClanBasesReport } from "./STATION_ROOM.js";
@@ -2023,6 +2023,7 @@ async function handleStarJumpRequest(ws, peer, fromMap, target, setMapId) {
   }
 }
 
+const HANGAR_SESSION_MAPS = new Set(["winter", "low"]);
 function handleHangarArrivalRequest(ws, peer, accountId, fromMap, hangarId, setMapId) {
   const { id, state } = peer, now = Date.now();
   const reply = body => { if (ws.readyState === 1) ws.send(JSON.stringify({ t: 'hangarArrival', hangarId, ...body })); };
@@ -2036,11 +2037,18 @@ function handleHangarArrivalRequest(ws, peer, accountId, fromMap, hangarId, setM
   const current = user?.hangars?.find(h => h?.active);
   const target = user?.hangars?.find(h => String(h?.id) === hangarId);
   if (!target || target === current) return deny('hangar');
-  const map = String(target.lastMap || getFactionHomeMap(user.faction)).toLowerCase();
+  const savedMap = String(target.lastMap || getFactionHomeMap(user.faction)).toLowerCase();
+  // GG d'hiver / raid Low : entrée contrôlée par session. Un hangar laissé
+  // là (échange de vaisseau dans la zone d'attente) ressort en X-3, devant le
+  // portail d'où il était entré, au lieu d'y entrer hors session.
+  const sessionMap = HANGAR_SESSION_MAPS.has(savedMap);
+  const map = sessionMap ? `${getFaction(user.faction).sector}-3` : savedMap;
   const world = serverMaps.get(map)?.world;
   if (!world) return deny('destination');
   const base = baseArrival(serverMaps, map, user.faction);
-  const x = Number(target.lastPos?.x ?? base.x), y = Number(target.lastPos?.y ?? base.y);
+  const gate = sessionMap ? serverMaps.get(map).portals.find(p => String(p?.toMap).toLowerCase() === savedMap) : null;
+  const spot = sessionMap ? (gate || base) : (target.lastPos || base);
+  const x = Number(spot.x ?? base.x), y = Number(spot.y ?? base.y);
   if (!Number.isFinite(x) || !Number.isFinite(y) || x < 18 || y < 18 || x > world.w - 18 || y > world.h - 18) return deny('destination');
   // Seule la position du hangar possede et sauvegarde donne droit au transfert.
   // Le client ne fournit aucune coordonnee ni exemption de mouvement.

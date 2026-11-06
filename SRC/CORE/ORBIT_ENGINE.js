@@ -26411,7 +26411,9 @@ function isPetFetchEligible(c, gears, alRange, arRange) {
   if (petBoxRefused(c.id)) return false;
   const type = String(c?.type || "");
   const dp = Math.hypot(c.x - player.x, c.y - player.y);
-  if (gears.al > 0 && dp <= alRange && PET_GEAR_AUTOLOOT_TYPES.includes(type)) return true;
+  // Soute pleine : les cargos de NPC sont ignorés d'emblée, sinon le REX
+  // s'arrête sur chacun et n'atteint plus les bonus / Winter Gift Box.
+  if (gears.al > 0 && dp <= alRange && PET_GEAR_AUTOLOOT_TYPES.includes(type)) return !npcCargoBoxRefused(c);
   if (gears.ar > 0 && dp <= arRange && PET_GEAR_ORE_TYPES.includes(type)) return true;
   return false;
 }
@@ -28463,6 +28465,19 @@ function refreshUpgradeSlotDom(slot) {
   }
 }
 
+// Cargo de NPC dont aucun minerai ne rentre en soute : refusé au ramassage.
+function npcCargoBoxRefused(c, cargoCap = currentCargo().capacity) {
+  if (String(c?.type || "") !== "Cargo_Box" || !c?.fromNpc) return false;
+  if (!account.user) loadAccountUser();
+  if (!account.user) return false;
+  const pending = c.oreRemainder || getNpcCargoOres(c.fromNpc, currentMapId());
+  const ids = Object.keys(pending);
+  if (!ids.length) return false;
+  const resources = account.user.inventory?.resources || {};
+  const mult = playerBoosterMults().res * playerPilotMults().cargoLoot;
+  return !ids.some(id => cargoAdd(resources, id, Math.floor(Number(pending[id]) * mult), cargoCap).added > 0);
+}
+
 function currentCargo() {
   const resources = account.user?.inventory?.resources || {};
   const used = cargoUsed(resources);
@@ -29336,19 +29351,8 @@ function applyCollectableReward(c) {
 
   // Refus anticipé Cargo_Box : si aucun minerai du cargo ne rentre en soute,
   // on ne touche à rien (même pas les débris) et la box reste entière.
-  let cargoRefuseUpfront = false;
   const cargoCap = currentCargo().capacity;
-  if (String(c?.type || "") === "Cargo_Box" && c?.fromNpc) {
-    if (!account.user) loadAccountUser();
-    const pendingUpfront = c.oreRemainder || getNpcCargoOres(c.fromNpc, currentMapId());
-    const upfrontIds = Object.keys(pendingUpfront);
-    if (upfrontIds.length && account.user) {
-      const resUpfront = account.user.inventory?.resources || {};
-      const multUpfront = playerBoosterMults().res * playerPilotMults().cargoLoot;
-      const fits = upfrontIds.some(id => cargoAdd(resUpfront, id, Math.floor(Number(pendingUpfront[id]) * multUpfront), cargoCap).added > 0);
-      if (!fits) cargoRefuseUpfront = true;
-    }
-  }
+  const cargoRefuseUpfront = npcCargoBoxRefused(c, cargoCap);
 
   if (reward.resources && typeof reward.resources === "object" && !(String(c?.type || "") === "Cargo_Box" && (c?.cargoTaken === true || cargoRefuseUpfront))) {
     if (!account.user) loadAccountUser();
@@ -50213,7 +50217,14 @@ async function activateHangarAtSavedLocation(hangarId) {
   // Compatibilité avec les hangars créés avant l'enregistrement systématique
   // de leur emplacement : une donnée absente signifie « stationné à la base
   // mère », jamais « activation impossible ».
-  if (!destinationMap || !Number.isFinite(savedX) || !Number.isFinite(savedY)) {
+  // Hangar laissé dans la GG d'hiver ou le raid Low (entrée par session) :
+  // il ressort en X-3, devant le portail de la gate (position fixée par le serveur).
+  if (destinationMap === "winter" || destinationMap === "low") {
+    const sector = getFaction(u?.faction).sector;
+    const gate = destinationMap === "winter" ? { x: 5500, y: 3500 } : { x: String(sector) === "3" ? 10000 : 1000, y: 1000 };
+    destinationMap = `${sector}-3`;
+    destination = { ...destination, map: destinationMap, pos: gate };
+  } else if (!destinationMap || !Number.isFinite(savedX) || !Number.isFinite(savedY)) {
     destinationMap = String(getFactionHomeMap(u?.faction) || "1-1").toLowerCase();
     const baseSpawn = getFactionBaseSpawn(u?.faction);
     destination = {
