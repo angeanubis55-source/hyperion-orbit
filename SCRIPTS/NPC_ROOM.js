@@ -177,8 +177,6 @@ export class ZoneNpcSim {
     // par SCRIPTS/WINTER_GATE.js ; ses attaquants le visent et l'abîment ici.
     this.convoy = null;
     this.convoySeq = 0;
-    // Dégâts d'un joueur sur un attaquant du convoi (partage de la récompense).
-    this.onConvoyDamage = null;
     ensureMapSlots(this.universe, this.mapId, camps, Date.now());
   }
 
@@ -2030,9 +2028,6 @@ drainPlayerHits() {
     if (applied > 0) {
       const key = `${uid}|${clientId}`;
       this.feed.set(key, { uid, by: String(clientId), total: Math.round((this.feed.get(key)?.total || 0) + applied) });
-      if (entry.convoyAttacker === true) {
-        try { this.onConvoyDamage?.(String(clientId), applied); } catch {}
-      }
     }
     // Preuve console : le x15 dominical est bien appliqué (une fois par UFONIT).
     if (applied > 0 && isSundayBossVariant(entry.type) && !entry._sunLogged) {

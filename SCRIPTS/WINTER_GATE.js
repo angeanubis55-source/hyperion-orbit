@@ -5,16 +5,16 @@
 //               la session est sautée) ;
 //   30 min      run : étapes + vagues cumulatives, les NPC ne visent que
 //               le convoi ;
-//   fin         victoire (convoi en vie) = récompense partagée selon les
-//               dégâts infligés aux attaquants, ou défaite (convoi détruit) ;
-//               puis fermée jusqu'à l'heure suivante (les joueurs restants
-//               sont renvoyés à leur base).
+//   fin         chrono écoulé ou convoi détruit : même récompense pour
+//               tous les présents, selon la vague atteinte (course contre la
+//               montre), puis fermée jusqu'à l'heure suivante (les joueurs
+//               restants sont renvoyés à leur base).
 // Le contrôleur est branché sur la boucle 50 ms de MULTI_SERVER (room "winter").
 
 import { isWinterEventActive } from "../NPC/NPC_WINTER.js";
 import {
-  WINTER_CONVOY_DURATION, WINTER_CONVOY_HP, WINTER_CONVOY_LEG, WINTER_CONVOY_SPEED,
-  createWinterConvoyRoute, winterConvoyWave, winterGateSession, winterGateShares,
+  WINTER_CONVOY_DURATION, WINTER_CONVOY_HP, WINTER_CONVOY_LEG, WINTER_CONVOY_SPEED, WINTER_CONVOY_WAVE_HEAL,
+  createWinterConvoyRoute, winterConvoyReward, winterConvoyWave, winterGateSession,
 } from "../SRC/CORE/WINTER_CONVOY.js";
 
 // Fin de session affichée avant la fermeture (récompense, retour base).
@@ -33,10 +33,8 @@ const gate = {
   stopAt: 0,
   moving: false,
   wave: 0,
-  success: false,
+  reason: "", // fin : "time" (chrono écoulé) | "destroyed" (convoi tombé)
   doneAt: 0,
-  // id joueur -> dégâts infligés aux attaquants pendant le run.
-  dmgBy: new Map(),
   convoy: null, // { x, y, vx, vy, angle, hp, hpMax }
   lastTick: 0,
   lastSentAt: 0,
@@ -69,9 +67,8 @@ function openLobby(session, sim) {
   gate.stopAt = 0;
   gate.moving = false;
   gate.wave = 0;
-  gate.success = false;
+  gate.reason = "";
   gate.doneAt = 0;
-  gate.dmgBy = new Map();
   gate.convoy = { x: 0, y: 0, vx: 0, vy: 0, angle: 0, hp: WINTER_CONVOY_HP, hpMax: WINTER_CONVOY_HP };
   placeConvoy();
   attachSim(sim);
@@ -84,17 +81,12 @@ function closeGate(sim) {
   if (sim) {
     try { sim.clearConvoyAttackers(); } catch {}
     sim.convoy = null;
-    sim.onConvoyDamage = null;
   }
 }
 
 function attachSim(sim) {
   if (!sim) return;
   sim.convoy = gate.convoy;
-  sim.onConvoyDamage = (pid, dmg) => {
-    if (gate.phase !== "run") return;
-    gate.dmgBy.set(pid, (gate.dmgBy.get(pid) || 0) + Math.max(0, Number(dmg) || 0));
-  };
 }
 
 // Départ d'une étape : vague cumulative + prochain arrêt.
@@ -104,20 +96,18 @@ function startLeg(sim, ctx) {
   gate.moving = true;
 }
 
-function finish(success, room, sim, ctx, now) {
+function finish(reason, room, sim, ctx, now) {
   gate.phase = "done";
-  gate.success = success;
+  gate.reason = reason;
   gate.doneAt = now;
   if (gate.convoy) { gate.convoy.vx = 0; gate.convoy.vy = 0; }
   try { sim?.clearConvoyAttackers(); } catch {}
-  if (!success) return;
-  // Récompense partagée selon les dégâts, aux joueurs encore présents.
-  const present = new Set(presentPlayers(room));
-  const ratio = gate.convoy ? gate.convoy.hp / gate.convoy.hpMax : 0;
-  const shares = winterGateShares([...gate.dmgBy].filter(([pid]) => present.has(pid)), ratio);
-  for (const [pid, share, reward] of shares) {
+  // Même récompense pour tous les joueurs présents, selon la vague atteinte.
+  const finalWave = gate.wave + 1;
+  const reward = winterConvoyReward(finalWave);
+  for (const pid of presentPlayers(room)) {
     try {
-      ctx.sendTo(pid, { t: "winterGateReward", hourAt: gate.hourAt, share, life: ratio, reward });
+      ctx.sendTo(pid, { t: "winterGateReward", hourAt: gate.hourAt, reason, wave: finalWave, reward });
     } catch {}
   }
 }
@@ -131,7 +121,7 @@ function statePayload(now) {
     endAt: gate.endAt,
     nextOpenAt: winterGateSession(now).nextOpenAt,
     wave: gate.wave + 1,
-    success: gate.success,
+    reason: gate.reason,
     now,
     ...(c ? {
       x: Math.round(c.x), y: Math.round(c.y),
@@ -217,15 +207,19 @@ function tickInner(room, sim, ctx, now, dt) {
       return;
     }
     if (!(c.hp > 0)) {
-      finish(false, room, sim, ctx, now);
+      finish("destroyed", room, sim, ctx, now);
       return;
     }
     if (now >= gate.startAt + WINTER_CONVOY_DURATION * 1000) {
-      finish(true, room, sim, ctx, now);
+      finish("time", room, sim, ctx, now);
       return;
     }
-    // Dernier attaquant tué : vague suivante (cumulative) avec une étape.
+    // Dernier attaquant tué : le convoi récupère 10 % de sa vie max (+0 s'il
+    // est plein), puis vague suivante (cumulative) avec une étape.
     if (sim.convoyAttackersAlive() === 0) {
+      const healed = Math.min(c.hpMax - c.hp, Math.round(c.hpMax * WINTER_CONVOY_WAVE_HEAL));
+      c.hp += healed;
+      try { ctx.broadcast({ t: "winterGateHeal", amount: Math.max(0, healed) }); } catch {}
       gate.wave++;
       startLeg(sim, ctx);
     }

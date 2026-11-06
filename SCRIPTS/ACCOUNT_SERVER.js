@@ -3749,6 +3749,7 @@ export function handleAccountApi(req, res) {
         let totalHonneur = 0;
         let faction = "";
         let eternalWaves = 0;
+        let frostPoints = 0;
         try {
           const data = JSON.parse(r.data || "{}");
           rankPoints = Math.max(0, Math.floor(Number(data?.stats?.rankPoints) || 0));
@@ -3764,6 +3765,9 @@ export function handleAccountApi(req, res) {
           // remplacé uniquement si le joueur fait mieux).
           const ew = Math.floor(Number(data?.eternalGate?.bestWaves));
           if (Number.isFinite(ew) && ew > 0) eternalWaves = ew;
+          // GG d'hiver : points givrés cumulés (box de Noël).
+          const fp = Math.floor(Number(data?.winter?.frostPoints));
+          if (Number.isFinite(fp) && fp > 0) frostPoints = fp;
         } catch {}
         list.push({
           pseudo: String(r.pseudo || "Pilote").slice(0, 20),
@@ -3772,17 +3776,22 @@ export function handleAccountApi(req, res) {
           honor: totalHonneur,
           rankPoints, faction,
           eternalWaves,
+          frostPoints,
           _kills: kills,
         });
       }
       list.sort((a, b) => b.points - a.points || b._kills - a._kills);
-      const rowFields = ({ pseudo, points, exp, rankPoints, honor, faction, eternalWaves }) =>
-        ({ pseudo, points, exp: exp || 0, rankPoints, honor, faction, eternalWaves: eternalWaves || 0 });
+      const rowFields = ({ pseudo, points, exp, rankPoints, honor, faction, eternalWaves, frostPoints }) =>
+        ({ pseudo, points, exp: exp || 0, rankPoints, honor, faction, eternalWaves: eternalWaves || 0, frostPoints: frostPoints || 0 });
       // ✅ classement Eternal : top 100 par vagues terminées (indépendant du top points).
       const eternalTop = list.filter((row) => row.eternalWaves > 0)
         .sort((a, b) => b.eternalWaves - a.eternalWaves)
         .slice(0, 100).map(rowFields);
-      return json(res, 200, { ok: true, list: list.slice(0, 100).map(rowFields), eternal: eternalTop });
+      // ✅ classement Winter : top 100 par points givrés.
+      const winterTop = list.filter((row) => row.frostPoints > 0)
+        .sort((a, b) => b.frostPoints - a.frostPoints)
+        .slice(0, 100).map(rowFields);
+      return json(res, 200, { ok: true, list: list.slice(0, 100).map(rowFields), eternal: eternalTop, winter: winterTop });
     } catch {
       return json(res, 500, { ok: false, error: "Erreur serveur." });
     }

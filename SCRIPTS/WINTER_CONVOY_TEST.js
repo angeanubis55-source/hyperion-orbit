@@ -5,9 +5,9 @@ import { readFileSync } from "node:fs";
 import {
   WINTER_CONVOY_DURATION, WINTER_CONVOY_HP, WINTER_CONVOY_LEG, WINTER_CONVOY_LOOP_POINTS,
   WINTER_CONVOY_REWARD, WINTER_CONVOY_SPAWN_DISTANCE, WINTER_CONVOY_SPEED, WINTER_CONVOY_SWAY,
-  WINTER_CONVOY_WAVE_ADDS, WINTER_CONVOY_WAVE_GROWTH_MAX, WINTER_CONVOY_WORLD, WINTER_CONVOY_ID, WINTER_GATE_ENTRY_MS, WINTER_GATE_OPEN_MINUTE,
+  WINTER_CONVOY_WAVE_BOSSES, WINTER_CONVOY_WAVE_CAP, WINTER_CONVOY_WAVE_RATE, WINTER_CONVOY_WAVE_TYPES, WINTER_CONVOY_WORLD, WINTER_CONVOY_ID, WINTER_GATE_ENTRY_MS, WINTER_GATE_OPEN_MINUTE,
   createWinterConvoyRoute, newWinterConvoySeed, winterConvoyReward, winterConvoySpawnPoint, winterConvoyWave,
-  winterGateArrival, winterGateSession, winterGateShares,
+  winterConvoyWaveCount, winterGateArrival, winterGateSession,
 } from "../SRC/CORE/WINTER_CONVOY.js";
 import { ZoneNpcSim } from "./NPC_ROOM.js";
 import { selectNpcCombatTarget } from "../NPC/NPC_COMBAT.js";
@@ -34,7 +34,7 @@ test("Convoi : map WINTER partagée (zone), survie de 30 minutes", () => {
   assert.match(map, /mode: "zone"/);
   assert.match(map, /convoy: true/);
   assert.equal(WINTER_CONVOY_DURATION, 30 * 60);
-  assert.equal(WINTER_CONVOY_HP, 650000000);
+  assert.equal(WINTER_CONVOY_HP, 1000000000);
 });
 
 test("Convoi : circuit différent à chaque GG, identique pour une même graine", () => {
@@ -74,12 +74,15 @@ for (const seed of SEEDS) {
 
 test("Convoi : vagues de plus en plus nombreuses et grosses", () => {
   const durability = (types) => types.reduce((sum, type) => sum + NPC_TYPES[type].hp + NPC_TYPES[type].shield, 0);
-  // Début : 12 Kristallin.
-  assert.deepEqual(winterConvoyWave(0), Array(12).fill("npc_Convoy_Kristallin"));
+  // Début : 10 Kristallin.
+  assert.deepEqual(winterConvoyWave(0), Array(10).fill("npc_Convoy_Kristallin"));
+  // Croissance exponentielle douce, plafonnée.
+  assert.ok(WINTER_CONVOY_WAVE_RATE > 1 && WINTER_CONVOY_WAVE_RATE <= 1.12);
+  assert.equal(winterConvoyWaveCount(200), WINTER_CONVOY_WAVE_CAP);
   let prev = 0, prevCount = 0;
-  for (let i = 0; i < WINTER_CONVOY_WAVE_ADDS.length + WINTER_CONVOY_WAVE_GROWTH_MAX + 3; i++) {
+  for (let i = 0; i < 45; i++) {
     const wave = winterConvoyWave(i);
-    assert.ok(wave.length > 0 && wave.length <= 120, `taille vague ${i + 1}`);
+    assert.ok(wave.length > 0 && wave.length <= WINTER_CONVOY_WAVE_CAP + 4, `taille vague ${i + 1}`);
     // Cumulative : contient toute la vague précédente.
     if (i > 0) {
       const left = [...wave];
@@ -101,7 +104,11 @@ test("Convoi : vagues de plus en plus nombreuses et grosses", () => {
     prevCount = Math.max(prevCount, wave.length);
   }
   // Au-delà de la dernière : plafonnée (plus de croissance infinie).
-  const cap = WINTER_CONVOY_WAVE_ADDS.length - 1 + WINTER_CONVOY_WAVE_GROWTH_MAX;
+  const cap = 60;
+  // Emperor et Super Ice : 3 au plus.
+  for (const type of ["npc_Convoy_Emperor_Kristallon", "npc_Convoy_Super_Ice_Meteoroid"]) {
+    assert.equal(winterConvoyWave(cap + 10).filter((t) => t === type).length, 3, type);
+  }
   assert.deepEqual(winterConvoyWave(cap + 10), winterConvoyWave(cap));
   // Étape : le convoi roule un moment entre deux vagues.
   assert.ok(WINTER_CONVOY_LEG / WINTER_CONVOY_SPEED >= 20);
@@ -121,11 +128,10 @@ test("Convoi : les NPC apparaissent autour du convoi, hors écran, dans la map",
   }
 });
 
-test("Convoi : récompense proportionnelle à la vie restante", () => {
+test("Convoi : récompense = base × vague finale (sans la vie du convoi)", () => {
   assert.deepEqual(winterConvoyReward(1), { ...WINTER_CONVOY_REWARD });
-  assert.deepEqual(winterConvoyReward(0.5), Object.fromEntries(Object.entries(WINTER_CONVOY_REWARD).map(([k, v]) => [k, Math.floor(v / 2)])));
+  assert.deepEqual(winterConvoyReward(25), Object.fromEntries(Object.entries(WINTER_CONVOY_REWARD).map(([k, v]) => [k, v * 25])));
   assert.deepEqual(winterConvoyReward(0), Object.fromEntries(Object.keys(WINTER_CONVOY_REWARD).map((k) => [k, 0])));
-  assert.deepEqual(winterConvoyReward(2), winterConvoyReward(1));
 });
 
 test("Convoi : les NPC visent le convoi plutôt que le joueur", () => {
@@ -180,7 +186,7 @@ test("Convoi : Mimesis aux stats officielles (wiki), hors du convoi", () => {
     assert.deepEqual([npc.hp, npc.shield, npc.bulletDmg], [hp, shield, dmg], type);
     assert.deepEqual(resolveNpcReward(type), { credits, exp, honor }, type);
   }
-  const used = new Set(WINTER_CONVOY_WAVE_ADDS.flatMap((adds) => adds.map(([type]) => type)));
+  const used = new Set(winterConvoyWave(60));
   assert.ok(![...used].some((type) => /Mimesis/.test(type)));
   assert.ok(!Object.keys(NPC_TYPES).some((type) => /^npc_(Xmas|Frost)_/.test(type)));
 });
@@ -212,8 +218,10 @@ test("Convoi : attaquants <=< Kristallin >=> & co (stats, récompenses, soute de
   assert.equal(NPC_TYPES.npc_Convoy_Ice_Meteoroid.bulletDmg, 25000);
   assert.equal(NPC_TYPES.npc_Convoy_Super_Ice_Meteoroid.bulletDmg, 75000);
   // Toutes les vagues n'utilisent que ces variantes + l'Icy.
-  const used = new Set(WINTER_CONVOY_WAVE_ADDS.flatMap((adds) => adds.map(([type]) => type)));
-  assert.deepEqual([...used].sort(), [...Object.keys(expected), "npc_Meteoroid_Icy"].sort());
+  const used = new Set(winterConvoyWave(60));
+  assert.deepEqual([...used].sort(), Object.keys(expected).sort());
+  assert.ok(WINTER_CONVOY_WAVE_TYPES.every(([type]) => expected[type]));
+  assert.ok(Object.values(WINTER_CONVOY_WAVE_BOSSES).flat().every((type) => expected[type]));
 });
 
 test("Convoi : les attaquants se traversent (aucune collision entre eux)", () => {
@@ -246,18 +254,6 @@ test("Session : entrée de :00 à :05, départ commun à :05, 30 minutes, même 
   assert.ok(Math.hypot(a.x - p.x, a.y - p.y) <= 501);
 });
 
-test("Récompense : partagée selon les dégâts infligés aux attaquants", () => {
-  const shares = winterGateShares([["u_a", 300], ["u_b", 100], ["u_c", 0]], 1);
-  assert.deepEqual(shares.map(([id, share]) => [id, share]), [["u_a", 0.75], ["u_b", 0.25]]);
-  assert.equal(shares[0][2].credits, Math.floor(WINTER_CONVOY_REWARD.credits * 0.75));
-  for (const key of Object.keys(WINTER_CONVOY_REWARD)) {
-    assert.ok(shares.reduce((sum, [, , r]) => sum + r[key], 0) <= WINTER_CONVOY_REWARD[key]);
-  }
-  // Vie restante : la cagnotte baisse d'autant.
-  assert.equal(winterGateShares([["u_a", 1]], 0.5)[0][2].credits, Math.floor(WINTER_CONVOY_REWARD.credits / 2));
-  assert.deepEqual(winterGateShares([], 1), []);
-});
-
 test("Serveur : les attaquants visent le convoi, jamais les joueurs", async () => {
   const sim = await ZoneNpcSim.create("winter");
   assert.ok(sim, "simulation NPC de la GG d'hiver");
@@ -272,11 +268,6 @@ test("Serveur : les attaquants visent le convoi, jamais les joueurs", async () =
   assert.equal(sim.playerHits.length, 0, "aucun tir sur le joueur");
   const snap = sim.snapshot();
   assert.ok(snap.list.length === 6 && snap.list.every((e) => e.aggro === WINTER_CONVOY_ID));
-  // Dégâts des joueurs comptés pour le partage.
-  const dmg = new Map();
-  sim.onConvoyDamage = (pid, d) => dmg.set(pid, (dmg.get(pid) || 0) + d);
-  sim.applyHit("u_1", { uid: snap.list[0].uid, dmg: 1000 });
-  assert.ok(dmg.get("u_1") > 0);
   sim.clearConvoyAttackers();
   assert.equal(sim.convoyAttackersAlive(), 0);
 });
@@ -301,8 +292,10 @@ test("Convoi : branché (serveur : session, PvP coupé ; client : affichage de l
   assert.match(engine, /ctx\.fillText\(`Convoi du Père Noël — \$\{winterConvoyTimeLeft\(\)\}`, sx, by - 12\);/);
   assert.match(engine, /if \(String\(aggro\) === WINTER_CONVOY_ID\) return winterConvoy\?\.esc\?\.hp > 0 \? winterConvoy\.esc : null;/);
   assert.match(engine, /else if \(bulletTarget\._netConvoy !== true\) \{/);
-  assert.match(engine, /completeSpecialGate: \{ gateId: "winter", name: "Convoi d'hiver", reward: won\.reward \}/);
-  assert.match(engine, /leaveWinterGate\("Le convoi a été détruit — GG d'hiver ratée"\);/);
+  assert.match(engine, /completeSpecialGate: \{ gateId: "winter", name: "Convoi d'hiver", reward: done\.reward \}/);
+  // Fin (chrono ou convoi tombé) : même récompense pour tous, selon la vague.
+  assert.match(read("./WINTER_GATE.js"), /finish\("destroyed", room, sim, ctx, now\);/);
+  assert.match(read("./WINTER_GATE.js"), /const reward = winterConvoyReward\(finalWave\);\s+for \(const pid of presentPlayers\(room\)\)/);
   assert.match(engine, /if \(!session\.open\) \{\s+SFX\.play\("swDeny"\);/);
   assert.match(engine, /if \(\(t\._netPlayer \|\| t\._netPet\) && rules\?\.convoy === true\) \{/);
   assert.match(engine, /"rgba\(255,80,100,0\.95\)", \{ text: DMG_FMT\.format\(dmg\), size: 21/);

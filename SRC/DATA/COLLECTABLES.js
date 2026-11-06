@@ -521,6 +521,36 @@ export const COLLECTABLE_TYPES = Object.freeze({
     ],
   },
 
+  // Box de Noël : drop de chaque NPC tué dans la GG d'hiver (100 %), points
+  // givrés selon la vie max du NPC (winterFrostPoints, WINTER_CONVOY.js),
+  // cumulés sur le compte (user.winter.frostPoints) pour le classement Winter.
+  // Pas de spawn ambiant (qty 0), reste au sol indéfiniment (pas de timer).
+  Christmas_Box: {
+    name: "Box de Noël",
+    maps: ["winter"],
+    qty: 0,
+    spawnBatch: 1,
+    minSpacing: 100,
+    avoidPlayer: 0,
+    npcDespawnAfter: 0,
+    r: 30,
+    pickupRadius: 50,
+    bob: 5,
+    sprite: {
+      path: "ASSETS/COLLECTABLES/CHRISTMAS_BOX/",
+      frames: 20,
+      firstNumber: 1,
+      ext: ".png",
+      fps: 20,
+      w: 96,
+      h: 100,
+      scale: 1,
+      randomStart: true,
+      glow: false,
+    },
+    rewards: { resources: {} },
+  },
+
   // Box de Cucurbitors : drop des Curcubitors normaux (100 %), bonbons uniquement.
   // Reste au sol indéfiniment (pas de timer).
   // Jamais sur la map maudite.

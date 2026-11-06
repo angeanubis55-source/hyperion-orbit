@@ -17,6 +17,7 @@ export function initRankingsUI() {
     exp: { body: document.getElementById("rankingRowsExp"), status: document.getElementById("rankingStatusExp") },
     honor: { body: document.getElementById("rankingRowsHonor"), status: document.getElementById("rankingStatusHonor") },
     eternal: { body: document.getElementById("rankingRowsEternal"), status: document.getElementById("rankingStatusEternal") },
+    winter: { body: document.getElementById("rankingRowsWinter"), status: document.getElementById("rankingStatusWinter") },
   };
   if (!boards.board.body) return;
 
@@ -35,6 +36,11 @@ export function initRankingsUI() {
     } else if (kind === "eternal") {
       // ✅ vagues Eternal terminées (triées côté serveur, seules les >0 sont envoyées).
       valueOf = (row) => Number(row.eternalWaves) || 0;
+      sorted = sorted.filter((row) => valueOf(row) > 0);
+      sorted.sort((a, b) => valueOf(b) - valueOf(a));
+    } else if (kind === "winter") {
+      // ✅ points givrés de la GG d'hiver (triés côté serveur, seuls les >0 sont envoyés).
+      valueOf = (row) => Number(row.frostPoints) || 0;
       sorted = sorted.filter((row) => valueOf(row) > 0);
       sorted.sort((a, b) => valueOf(b) - valueOf(a));
     } else {
@@ -82,6 +88,7 @@ export function initRankingsUI() {
       renderBoard("exp", out.list);
       renderBoard("honor", out.list);
       renderBoard("eternal", Array.isArray(out.eternal) ? out.eternal : []);
+      renderBoard("winter", Array.isArray(out.winter) ? out.winter : []);
     } catch {
       if (!shouldRefreshWindow("rankingWindow")) return;
       Object.values(boards).forEach((t) => { if (t.status) t.status.textContent = "Hors ligne (serveur injoignable)"; });
@@ -122,7 +129,7 @@ export function initRankingsUI() {
         document.querySelectorAll("#rankingWindow [data-ranking-pane]").forEach((pane) => {
           pane.classList.toggle("active", pane.dataset.rankingPane === next);
         });
-        if (next === "board" || next === "exp" || next === "honor" || next === "eternal") load();
+        if (next === "board" || next === "exp" || next === "honor" || next === "eternal" || next === "winter") load();
         else try { window.dispatchEvent(new CustomEvent("orbit:ranking-npcs-shown")); } catch {}
       });
     });

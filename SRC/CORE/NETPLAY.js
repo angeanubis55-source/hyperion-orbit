@@ -559,8 +559,13 @@ export function takeNetNpcReward(mapId, uid, seq) {
 // de récompense de victoire (SCRIPTS/WINTER_GATE.js).
 let netWinterGate = null;
 let netWinterGateReward = null;
+// Réparations de fin de vague (montants, +0 si plein) à afficher.
+const netWinterGateHeals = [];
 export function getNetWinterGate() {
   return netWinterGate;
+}
+export function drainNetWinterGateHeals() {
+  return netWinterGateHeals.splice(0);
 }
 export function takeNetWinterGateReward() {
   const reward = netWinterGateReward;
@@ -1537,7 +1542,7 @@ export function ensureNetplayConnection() {
         phase: String(msg.phase || "closed"),
         startAt: num(msg.startAt), endAt: num(msg.endAt), nextOpenAt: num(msg.nextOpenAt),
         wave: Math.max(1, Math.floor(num(msg.wave))),
-        success: msg.success === true,
+        reason: String(msg.reason || ""),
         convoy: Number.isFinite(Number(msg.x)) && Number.isFinite(Number(msg.y)) ? {
           x: num(msg.x), y: num(msg.y), vx: num(msg.vx), vy: num(msg.vy), angle: num(msg.angle),
           hp: Math.max(0, num(msg.hp)), hpMax: Math.max(1, num(msg.hpMax)),
@@ -1548,12 +1553,16 @@ export function ensureNetplayConnection() {
       };
       return;
     }
+    if (msg.t === "winterGateHeal" && msg && typeof msg === "object") {
+      if (netWinterGateHeals.length < 8) netWinterGateHeals.push(Math.max(0, Math.round(Number(msg.amount) || 0)));
+      return;
+    }
     if (msg.t === "winterGateReward" && msg && typeof msg === "object") {
       const reward = msg.reward && typeof msg.reward === "object" ? msg.reward : {};
       netWinterGateReward = {
-        share: Math.max(0, Math.min(1, Number(msg.share) || 0)),
-        life: Math.max(0, Math.min(1, Number(msg.life) || 0)),
-        reward: Object.fromEntries(["credits", "exp", "honor", "x4"].map((k) => [k, Math.max(0, Math.floor(Number(reward[k]) || 0))])),
+        reason: msg.reason === "destroyed" ? "destroyed" : "time",
+        wave: Math.max(0, Math.floor(Number(msg.wave) || 0)),
+        reward: Object.fromEntries(["credits", "exp", "honor", "ice"].map((k) => [k, Math.max(0, Math.floor(Number(reward[k]) || 0))])),
       };
       return;
     }

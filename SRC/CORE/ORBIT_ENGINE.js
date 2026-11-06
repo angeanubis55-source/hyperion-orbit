@@ -42,8 +42,8 @@ import {
 import { drawEngineTrailParticles, updateEngineTrailParticles } from "./ENGINE_TRAILS.js";
 import { computeBotCombatMove, computeBotWallMove, isPointInWall } from "./BOT_NAVIGATION.js";
 import {
-  WINTER_CONVOY_HP, WINTER_CONVOY_ID, WINTER_CONVOY_RADIUS,
-  createWinterConvoyRoute, winterGateArrival, winterGateSession, winterGateWindowLabel,
+  WINTER_CONVOY_HP, WINTER_CONVOY_ID, WINTER_CONVOY_RADIUS, WINTER_CONVOY_SCALE,
+  createWinterConvoyRoute, winterFrostPoints, winterGateArrival, winterGateSession, winterGateWindowLabel,
 } from "./WINTER_CONVOY.js";
 import { blacklightSearchTarget } from "./BOT_SEARCH.js";
 import { botCatalogGroups, botMapGroupKey, botMapGroupLabel, botMapsLabel, buildBotNpcCatalog } from "./BOT_NPC_CATALOG.js";
@@ -171,7 +171,7 @@ import { renderSpeedGuard } from "./SPEED_GUARD_UI.js";
 import { netServerMessageAge, netSimulationStep, netGameTimeMs, netSpeedGuardActive, queueGameLogForServer } from "./NETPLAY.js";
   import { pushNetplayLocal, sendNetplayBackgroundState, netplayLocalUpdateDue, getNetplayRemotes, tickNetplayRemotes, getNetNpcs, getNetDeaths, drainNetGone, getNetBoxes, drainNetBoxInbox, drainNetDmgInbox, drainNetHealInbox, drainNetShotEvents, drainNetSkillInbox, drainNetSkillDenied, clearNetShots, clearNetplayGameplay, sendShotEvent, sendSkillUse, sendHealAlly, sendPvpHit, sendPvpPetHit, getNetSelf, setNetInstanceMode, clearNetBoxes, claimNetBox, requestBoxSync, netBoxSyncAgeMs, netBoxSnapshotReady, netInInstance, sendNetHit, netMyId, netplayStatus, sendPing, netLatencyMs, netPongAge, netHelloAckAge, netServerVersion, netConnected, forceNetReconnect, ensureNetplayConnection, drainNetPvpKillInbox, drainNetPvpPetKillInbox, takeNetNpcReward, sendPvpLoot, sendPvpLootTake, drainNetPvpLootInbox,
   drainNetPvpLootTakeInbox, drainNetAdminKickInbox, drainNetAdminBoomInbox, drainNetBannedInbox, drainNetCheatInbox, netDisconnect, drainNetSunInbox, drainNetSundayInbox, drainNetDecloakInbox, drainNetIemHitInbox, drainNetStationDmgInbox, getNetClanBases, getNetStationOwners,
-  getNetGroup, getNetLowRaid, takeNetLowRaidReward, getNetWinterGate, takeNetWinterGateReward, setNetNpcRewardHandler, getNetServerRestartAt, consumeNetServerRestart, getMyClanTag, getClanRelation, setMyClanTag, setNetDiplo, netIsAuthed, sendStationInstall, sendStationUninstall, sendStationBuild, sendStationReplace, sendStationCancelReplace, sendStationRepair, sendStationDeflectToggle, requestStationSync, sendStationHit, requestStarJumpArrival, requestHangarArrival, finishHangarArrival } from "./NETPLAY.js";
+  getNetGroup, getNetLowRaid, takeNetLowRaidReward, getNetWinterGate, takeNetWinterGateReward, drainNetWinterGateHeals, setNetNpcRewardHandler, getNetServerRestartAt, consumeNetServerRestart, getMyClanTag, getClanRelation, setMyClanTag, setNetDiplo, netIsAuthed, sendStationInstall, sendStationUninstall, sendStationBuild, sendStationReplace, sendStationCancelReplace, sendStationRepair, sendStationDeflectToggle, requestStationSync, sendStationHit, requestStarJumpArrival, requestHangarArrival, finishHangarArrival } from "./NETPLAY.js";
 import {
   createGatePortalState,
   getGateReturnMap as resolveGateReturnMap,
@@ -29319,6 +29319,21 @@ function applyCollectableReward(c) {
     }
   }
 
+  // Box de Noël : points givrés selon la vie max du NPC tué (refresh inclus),
+  // cumulés sur le compte pour le classement Winter.
+  if (String(c?.type || "") === "Christmas_Box") {
+    if (!account.user) loadAccountUser();
+    const points = winterFrostPoints(NPC_TYPES[c.fromNpc]?.hp);
+    if (account.user) {
+      account.user.winter ||= {};
+      account.user.winter.frostPoints = Math.max(0, Math.floor(Number(account.user.winter.frostPoints) || 0)) + points;
+      parts.push(`+${formatInteger(points)} Points givrés`);
+      goldTerms.push(formatInteger(points));
+      changed = true;
+      grantedAny = true;
+    }
+  }
+
   // Refus anticipé Cargo_Box : si aucun minerai du cargo ne rentre en soute,
   // on ne touche à rien (même pas les débris) et la box reste entière.
   let cargoRefuseUpfront = false;
@@ -32385,6 +32400,11 @@ if (e.type === "npc_Mindfire_Behemoth") {
   dropType = "Mindfire_Sun_Box";
 }
 
+// GG d'hiver : box de Noël (points givrés) à la place du cargo.
+if (rules?.convoy === true) {
+  dropType = "Christmas_Box";
+}
+
 // Event Halloween : les Curcubitors droppent des box à bonbons
 // (boss 100 %, normaux 45 %). Seul le propriétaire du loot la voit,
 // comme les cargos (ownsNpcLoot ci-dessous).
@@ -32398,8 +32418,6 @@ if (hwDropRole === "boss") {
 if (
   ownsNpcLoot &&
   !e.noRewards &&
-  // GG d'hiver : aucune cargo box.
-  rules?.convoy !== true &&
   e.type !== "npc_Protegit" &&
   e.type !== "npc_Barrage_Seeker_Rocket" &&
   // ✅ Gate Eternal : aucun cargo (ni minerais ni box).
@@ -32430,7 +32448,8 @@ if (
 //   En multi, le direct est autoritaire serveur (ACCOUNT_SERVER.awardNpcKill)
 //   : pas de roll local ici, sinon double attribution ou écrasement par la
 //   version serveur (toast sans rinusk / rinusk perdu).
-if (ownsNpcLoot && !e.noRewards) {
+// GG d'hiver : seulement la box de Noël (pas de box d'assemblage).
+if (ownsNpcLoot && !e.noRewards && rules?.convoy !== true) {
   const asmBox = rollNpcAssemblyBox(e.type);
   if (asmBox && COLLECTABLE_DEFS[asmBox.box]) {
     // Box d'assemblage : reste au sol indéfiniment (comme les bonus box),
@@ -32756,7 +32775,8 @@ function scheduleGalaxyGateCompletion(gateId, completion) {
     // ✅ GG terminée : les ressources non ramassées à l'intérieur sont
     // effacées avant le départ (pas d'accumulation sur les runs enchaînés).
     // Placé ici (et pas au kill) pour laisser les 8,5 s de loot final.
-    try { purgeGateCollectables(gateId); } catch {}
+    // GG d'hiver : les box de Noël non ramassées restent pour la session suivante.
+    if (gateId !== "winter") { try { purgeGateCollectables(gateId); } catch {} }
     setRespawnOverride({ map: destinationMap, baseCenter: true, fallback: getFactionBaseSpawn(user?.faction) });
     addGameLog(`Retour vers la base mère ${destinationMap}`, "info");
     if (typeof window.__SWITCH_MAP__ === "function" && String(destinationMap) !== gateId) {
@@ -33013,9 +33033,15 @@ function runOnKillAction(action, pos = null) {
     const experience = Math.max(0, Math.floor(Number(specialReward.exp) || 0));
     const honor = Math.max(0, Math.floor(Number(specialReward.honor) || 0));
     const x4 = Math.max(0, Math.floor(Number(specialReward.x4) || 0));
+    // Munitions ICE (GG d'hiver).
+    const ice = Math.max(0, Math.floor(Number(specialReward.ice) || 0));
     const resourceMessages = [];
     player.credits += credits;
     player.ammo.x4 += x4;
+    if (ice > 0) {
+      player.ammo.ice = Math.max(0, Math.floor(Number(player.ammo.ice) || 0)) + ice;
+      resourceMessages.push(`Vous avez reçu ${formatInteger(ice)} ICE-100`);
+    }
     if (!account.user) loadAccountUser();
     if (account.user && specialReward.resources && typeof specialReward.resources === "object") {
       account.user.inventory ||= {};
@@ -46601,7 +46627,7 @@ function startWinterConvoy() {
   const sp = WINTER_CONVOY_SPRITE;
   for (let i = 0; i < sp.frames; i++) loadImage(`${sp.path}${(sp.firstNumber || 1) + i}${sp.ext || ".png"}`, { priority: true });
   // Sprites des attaquants chargés d'avance : toute la vague s'affiche d'un coup.
-  for (const type of Object.keys(NPC_TYPES)) if (/^npc_Convoy_/.test(type) || type === "npc_Meteoroid_Icy") ensureNpcLoaded(type);
+  for (const type of Object.keys(NPC_TYPES)) if (/^npc_Convoy_/.test(type)) ensureNpcLoaded(type);
   winterConvoy = {
     esc, phase: "", wave: 0, leaving: false,
     // Vie au tick précédent : une baisse = dégâts reçus (affichés).
@@ -46635,13 +46661,21 @@ function tickWinterConvoy(dt) {
   const c = winterConvoy;
   if (!c || c.leaving || !started || mapSwitchInProgress) return;
   const esc = c.esc;
-  // Victoire : part de la récompense selon les dégâts infligés, puis fin de
-  // GG habituelle (message, retour à la base mère).
-  const won = takeNetWinterGateReward();
-  if (won) {
+  // Fin de GG (chrono écoulé ou convoi tombé) : même récompense pour tous,
+  // selon la vague atteinte, puis fin de GG habituelle (décompte, message,
+  // retour à la base mère).
+  const done = takeNetWinterGateReward();
+  if (done) {
     c.leaving = true;
-    showNotification(`Le convoi a tenu 30 minutes (${Math.round(won.life * 100)} % de vie) — ta part : ${Math.round(won.share * 100)} % des dégâts`, 5, "info");
-    runOnKillAction({ completeSpecialGate: { gateId: "winter", name: "Convoi d'hiver", reward: won.reward } });
+    if (done.reason === "destroyed") {
+      try { spawnExplosion(esc.x, esc.y, 2); } catch {}
+      const i = escortShips.indexOf(esc);
+      if (i >= 0) escortShips.splice(i, 1);
+    }
+    showNotification(done.reason === "destroyed"
+      ? `Le convoi est tombé à la vague ${done.wave}`
+      : `Temps écoulé — vous avez atteint la vague ${done.wave}`, 5, "info");
+    runOnKillAction({ completeSpecialGate: { gateId: "winter", name: "Convoi d'hiver", reward: done.reward } });
     return;
   }
   const st = getNetWinterGate();
@@ -46669,26 +46703,25 @@ function tickWinterConvoy(dt) {
   const life = esc.hp;
   if (life < c.lastLife) {
     const dmg = Math.round(c.lastLife - life);
-    addFloatText(esc.x + (Math.random() - 0.5) * 80, esc.y - WINTER_CONVOY_SPRITE.h / 2 - 40 - Math.random() * 20, dmg,
+    addFloatText(esc.x + (Math.random() - 0.5) * 80, esc.y - WINTER_CONVOY_SPRITE.h * WINTER_CONVOY_SCALE / 2 - 40 - Math.random() * 20, dmg,
       "rgba(255,80,100,0.95)", { text: DMG_FMT.format(dmg), size: 21, pop: 0.3, shake: 0.6, life: 1, glow: 1, weight: 900, impact: true });
   }
   c.lastLife = life;
+  // Fin de vague : réparation de 10 % de la vie max, "+x" en vert (+0 si plein).
+  for (const healed of drainNetWinterGateHeals()) {
+    addFloatText(esc.x + (Math.random() - 0.5) * 80, esc.y - WINTER_CONVOY_SPRITE.h * WINTER_CONVOY_SCALE / 2 - 40 - Math.random() * 20, healed,
+      "rgba(80,255,125,0.98)", { text: `+${DMG_FMT.format(healed)}`, size: 21, pop: 0.3, shake: 0.6, life: 1, glow: 1, weight: 900, impact: true });
+  }
   if (st.phase !== c.phase) {
     const prev = c.phase;
     c.phase = st.phase;
     if (st.phase === "lobby") {
       showNotification(`GG d'hiver — le convoi part à ${winterGateWindowLabel().start} pour tout le monde`, 4, "info");
     } else if (st.phase === "run") {
-      showNotification("Protège le convoi pendant 30 minutes !", 3, "info");
-    } else if (st.phase === "done" && !st.success) {
-      try { spawnExplosion(esc.x, esc.y, 2); } catch {}
-      const i = escortShips.indexOf(esc);
-      if (i >= 0) escortShips.splice(i, 1);
-      leaveWinterGate("Le convoi a été détruit — GG d'hiver ratée");
-      return;
+      showNotification("Course contre la montre : un maximum de vagues en 30 minutes !", 3, "info");
     } else if (st.phase === "done") {
-      // Victoire sans dégât infligé : aucune part de la récompense.
-      leaveWinterGate("Le convoi a tenu 30 minutes — aucune part (aucun dégât infligé)");
+      // Fin sans récompense reçue (arrivé après la fin) : retour à la base.
+      leaveWinterGate("GG d'hiver terminée");
       return;
     } else if (st.phase === "closed" && !(prev === "" && winterGateSession().open)) {
       const slot = winterGateWindowLabel();
@@ -46706,15 +46739,30 @@ function drawWinterConvoy(ox, oy) {
   const c = winterConvoy;
   const esc = c?.esc;
   if (!c || !(esc.hp > 0) || !escortShips.includes(esc)) return;
-  // Santa-1100101 + barre de vie façon joueur (UI_CANVAS_HUD), en plus
-  // grand (pas de bouclier), nom et chrono juste au-dessus.
+  // Santa-1100101 (sa barre de vie, son nom et son chrono : drawWinterConvoyHud).
   ctx.save();
   const sp = WINTER_CONVOY_SPRITE;
   const frame = angleToFrameIndex(esc.angle + (sp.angleOffset || 0), sp.frames);
   const img = getCachedImage(`${sp.path}${(sp.firstNumber || 1) + frame}${sp.ext || ".png"}`);
   const sx = esc.x + ox, sy = esc.y + oy;
-  if (isImgReady(img)) ctx.drawImage(img, sx - sp.w / 2, sy - sp.h / 2, sp.w, sp.h);
-  const bw = 220, bh = 7, bx = sx - bw / 2, by = sy - sp.h / 2 - 12;
+  // Agrandi (WINTER_CONVOY_SCALE) avec le lissage le plus fin.
+  const dw = sp.w * WINTER_CONVOY_SCALE, dh = sp.h * WINTER_CONVOY_SCALE;
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
+  if (isImgReady(img)) ctx.drawImage(img, sx - dw / 2, sy - dh / 2, dw, dh);
+  ctx.restore();
+}
+
+// Nom, chrono et barre de vie du convoi : dessinés en dernier (au-dessus des
+// NPC, tirs, explosions et vaisseaux), juste avant l'interface.
+function drawWinterConvoyHud(ox, oy) {
+  const c = winterConvoy;
+  const esc = c?.esc;
+  if (!c || !(esc.hp > 0) || !escortShips.includes(esc)) return;
+  ctx.save();
+  const sx = esc.x + ox, sy = esc.y + oy;
+  const dh = WINTER_CONVOY_SPRITE.h * WINTER_CONVOY_SCALE;
+  const bw = 220, bh = 7, bx = sx - bw / 2, by = sy - dh / 2 - 12;
   const hpPct = clamp(esc.hp / esc.hpMax, 0, 1);
   ctx.globalAlpha = 0.95;
   ctx.lineWidth = 1.5;
@@ -46729,6 +46777,10 @@ function drawWinterConvoy(ox, oy) {
   ctx.font = "800 16px system-ui";
   ctx.textAlign = "center";
   ctx.fillText(`Convoi du Père Noël — ${winterConvoyTimeLeft()}`, sx, by - 12);
+  // Vie restante en clair, sous la barre.
+  ctx.font = "700 14px system-ui";
+  ctx.textBaseline = "top";
+  ctx.fillText(`Vie restante : ${formatInteger(Math.ceil(esc.hp))}`, sx, by + bh + 5);
   ctx.restore();
 }
 
@@ -47986,6 +48038,8 @@ function draw() {
   if (isPlayerCloaked() || isPlayerHoloHidden() || player.cpuCloak === true) ctx.globalAlpha = 0.5;
   drawPlayerBars(px, py);
   ctx.restore();
+  // GG d'hiver : nom, chrono et vie du convoi toujours au premier plan.
+  drawWinterConvoyHud(ox, oy);
   drawMinimap();
   drawStarJumpHud(px, py);
   drawToast();
