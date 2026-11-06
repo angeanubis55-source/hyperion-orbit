@@ -350,11 +350,13 @@ test("le cache gameplay verifie la revision et ne sert pas un autre compte ou un
   const start = source.indexOf('export function getAccountGameplayData('), end = source.indexOf('\n}', start);
   let row = { data: JSON.stringify({ id: 'test', hangars: [{ id: 'h1' }] }), faction: 'mmo', revision: 1 };
   let fullReads = 0;
-  const c = vm.createContext({ initAccountDb() {}, db: { prepare: sql => ({ get: () => {
+  const stubDb = { prepare: sql => ({ get: () => {
     if (!row) return undefined;
     if (sql.startsWith('SELECT revision')) return { revision: row.revision };
     fullReads++; return row;
-  } }) } });
+  } }) };
+  const c = vm.createContext({ initAccountDb() {}, db: stubDb, rawDb: stubDb, npcAccounts: new Map(),
+    mountedShipModules: () => [], withNpcRewards: previous => previous });
   vm.runInContext(source.slice(start, end + 2).replace(/^export /, ''), c);
   const first = c.getAccountGameplayData('test');
   for (let i = 0; i < 30; i++) assert.equal(c.getAccountGameplayData('test', first), first);

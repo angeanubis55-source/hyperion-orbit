@@ -99,7 +99,9 @@ test("fin de l'event : clés et progression effacées pour un compte hors ligne,
   const cleared = row();
   assert.equal(cleared.inventory.resources.battlepass_key, undefined);
   assert.equal(cleared.inventory.resources.candy, 900);
-  assert.deepEqual(cleared.inventory.shipModules, [{ id: "m1" }]);
+  // Les modules vivent dans la table ship_modules, jamais dans le JSON du compte.
+  assert.equal(cleared.inventory.shipModules, undefined);
+  assert.deepEqual(db.prepare("SELECT data FROM ship_modules WHERE user_id = 'hors-ligne'").all().map(r => JSON.parse(r.data)), [{ id: "m1" }]);
   assert.equal(cleared.battlepass.progress.hw_kill_1, 0);
   assert.deepEqual(cleared.battlepass.claimed, []);
   assert.equal(cleared.rev, 5);
@@ -138,15 +140,16 @@ test("un blocage du serveur est rattrapé par les NPC au lieu de les faire recul
   assert.ok(start >= 0 && end > start);
   let now = 10000, tick;
   const context = vm.createContext({ Date: { now: () => now }, setInterval: fn => { tick = fn; } });
-  vm.runInContext(server.slice(start, end) + "\nreturn npcSteps;\n});", context);
+  vm.runInContext(server.slice(start, end) + "\nreturn { npcSteps, npcStepSec };\n});", context);
   let elapsed = 0, simulated = 0;
   for (const ms of [99, 1, 49, 51, 51, 49, 1300, ...Array(30).fill(51)]) {
     now += ms; elapsed += ms;
-    const steps = tick(); simulated += steps * 50;
-    assert.ok(steps >= 0 && steps <= 12, "rattrapage borne par tour");
-    assert.ok(simulated <= elapsed, `${simulated} ms simulees pour ${elapsed} ms reelles`);
+    const { npcSteps, npcStepSec } = tick(); simulated += npcSteps * npcStepSec * 1000;
+    assert.ok(npcSteps >= 1 && npcSteps <= 12, "rattrapage borne par tour");
+    assert.ok(npcStepSec <= 0.05 + 1e-9, "sous-pas de 50 ms max");
+    assert.ok(simulated <= elapsed + 1e-6, `${simulated} ms simulees pour ${elapsed} ms reelles`);
   }
-  assert.ok(elapsed - simulated < 50, "le reliquat et les longs blocages sont rattrapes");
+  assert.ok(elapsed - simulated < 1e-6, "le reliquat et les longs blocages sont rattrapes");
   assert.match(server, /for \(let step = 0; step < npcSteps; step\+\+\) sim\.tick\(/);
 });
 

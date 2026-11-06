@@ -4805,6 +4805,9 @@ const NPC_STEP_MS = 50;
 const NPC_MAX_CATCHUP_MS = 600;
 const SERVER_LAG_LOG_MS = 250;
 let lastNpcStepAt = Date.now();
+// Conserver le temps non rattrape : le jeter provoque un rollback visuel
+// (le client predit plus loin, puis recoit un serveur en retard).
+let npcTimeDebtMs = 0;
 let lastServerLagLogAt = 0;
 setInterval(() => {
   const now = Date.now();
@@ -4815,7 +4818,9 @@ setInterval(() => {
   // tombe à ~62 ms ; des pas fixes de 50 ms alternaient 1 et 2 pas par
   // paquet, le client voyait la vitesse osciller (x0,8 / x1,6) et
   // extrapolait trop loin puis reculait (saccades / rollbacks).
-  const npcTimeMs = Math.min(NPC_MAX_CATCHUP_MS, Math.max(0, elapsedMs));
+  const totalNpcTimeMs = Math.max(0, elapsedMs) + npcTimeDebtMs;
+  const npcTimeMs = Math.min(NPC_MAX_CATCHUP_MS, totalNpcTimeMs);
+  npcTimeDebtMs = totalNpcTimeMs - npcTimeMs;
   const npcSteps = Math.max(1, Math.ceil(npcTimeMs / NPC_STEP_MS));
   const npcStepSec = npcTimeMs / npcSteps / 1000;
   if (elapsedMs >= SERVER_LAG_LOG_MS && now - lastServerLagLogAt >= 10_000) {

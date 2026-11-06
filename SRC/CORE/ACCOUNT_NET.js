@@ -761,9 +761,22 @@ async function api(path, { method = "GET", body, bodyJson, token, timeout = 1500
     clearTimeout(timer);
   }
   if (out.modulesOmitted === true && out.user?.inventory) {
-    // Liste figée de la référence serveur : jamais modifiée sur place.
-    if (knownModules && String(out.user.id) === knownModules.id) out.user.inventory.shipModules = knownModules.list;
-    else out = { ...out, ok: false, user: undefined, error: "Modules manquants." };
+    const changes = out.moduleChanges;
+    if (!knownModules || String(out.user.id) !== knownModules.id
+      || (changes && (changes.from !== knownModules.rev || !Array.isArray(changes.set) || !Array.isArray(changes.del)))) {
+      out = { ...out, ok: false, user: undefined, error: "Modules manquants." };
+    } else if (changes) {
+      // Écart depuis notre version : la liste figée de la référence n'est
+      // jamais modifiée sur place, on en construit une nouvelle.
+      const del = new Set(changes.del), set = new Map(changes.set.map(module => [module?.id, module]));
+      const list = [];
+      for (const module of knownModules.list) {
+        if (del.has(module?.id)) continue;
+        if (set.has(module?.id)) { list.push(set.get(module.id)); set.delete(module.id); } else list.push(module);
+      }
+      for (const module of set.values()) list.push(module);
+      out.user.inventory.shipModules = list;
+    } else out.user.inventory.shipModules = knownModules.list;
   }
   // Serveur sans gzip : il n'a rien pu lire, donc rien enregistre -> on
   // renvoie la meme requete en clair une fois et on n'insiste plus.

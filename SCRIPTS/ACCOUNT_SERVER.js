@@ -265,12 +265,14 @@ function shipModuleKey(module, text) {
 
 // stored : Map(module_id -> json) de la table, qui suit l'écriture.
 // Sans stored, la liste n'ajoute ou ne modifie que ses propres modules.
+// Retourne les clés écrites ({ set, del }).
 function syncShipModules(uid, list, stored) {
   const userId = String(uid);
   const upsert = rawDb.prepare(`INSERT INTO ship_modules (user_id, module_id, pos, data) VALUES (?, ?, ?, ?)
     ON CONFLICT(user_id, module_id) DO UPDATE SET data = excluded.data WHERE ship_modules.data <> excluded.data`);
   const seen = new Set();
-  let changed = false, nextPos = null;
+  const changes = { set: new Set(), del: new Set() };
+  let nextPos = null;
   for (const module of list) {
     if (!module || typeof module !== "object") continue;
     const text = JSON.stringify(module);
@@ -279,7 +281,7 @@ function syncShipModules(uid, list, stored) {
     seen.add(key);
     if (stored && stored.get(key) === text) continue;
     nextPos ??= Number(rawDb.prepare("SELECT COALESCE(MAX(pos), -1) + 1 AS pos FROM ship_modules WHERE user_id = ?").get(userId)?.pos) || 0;
-    if (Number(upsert.run(userId, key, nextPos++, text)?.changes) > 0) changed = true;
+    if (Number(upsert.run(userId, key, nextPos++, text)?.changes) > 0) changes.set.add(key);
     stored?.set(key, text);
   }
   if (stored) {
@@ -288,10 +290,55 @@ function syncShipModules(uid, list, stored) {
       if (seen.has(key)) continue;
       remove.run(userId, key);
       stored.delete(key);
-      changed = true;
+      changes.del.add(key);
     }
   }
-  return changed;
+  return changes;
+}
+
+// Derniers changements par compte : uid -> Map(shipModulesRev -> { set, del }).
+// Une réponse au jeu peut alors porter seulement ces changements au lieu de
+// toute la liste (après un tirage, une vente, un don admin...). Mémoire
+// seule : après un redémarrage, la liste complète repart une fois.
+const MODULE_LOG_REVS = 32;
+const MODULE_LOG_ACCOUNTS = 5000;
+const moduleChangeLog = new Map();
+function noteShipModuleChanges(uid, rev, changes) {
+  const key = String(uid);
+  let log = moduleChangeLog.get(key);
+  if (log) moduleChangeLog.delete(key);
+  else log = new Map();
+  moduleChangeLog.set(key, log);
+  log.delete(rev);
+  log.set(rev, changes);
+  while (log.size > MODULE_LOG_REVS) log.delete(log.keys().next().value);
+  while (moduleChangeLog.size > MODULE_LOG_ACCOUNTS) moduleChangeLog.delete(moduleChangeLog.keys().next().value);
+}
+function bumpShipModulesRev(data, uid, changes) {
+  if (!changes.set.size && !changes.del.size) return false;
+  data.shipModulesRev = Math.max(0, Math.floor(Number(data.shipModulesRev) || 0)) + 1;
+  noteShipModuleChanges(uid, data.shipModulesRev, changes);
+  return true;
+}
+function shipModuleChangesSince(uid, from, to) {
+  const log = moduleChangeLog.get(String(uid));
+  if (!log) return null;
+  const set = new Set(), del = new Set();
+  for (let rev = from + 1; rev <= to; rev++) {
+    const changes = log.get(rev);
+    if (!changes) return null;
+    for (const key of changes.set) { set.add(key); del.delete(key); }
+    for (const key of changes.del) { del.add(key); set.delete(key); }
+  }
+  if (set.size + del.size > 2000 || [...set, ...del].some((key) => key.startsWith("~noid:"))) return null;
+  const get = rawDb.prepare("SELECT data FROM ship_modules WHERE user_id = ? AND module_id = ?");
+  const modules = [];
+  for (const key of set) {
+    const row = get.get(String(uid), key);
+    if (!row) { del.add(key); continue; }
+    try { modules.push(JSON.parse(row.data)); } catch { return null; }
+  }
+  return { from, to, set: modules, del: [...del] };
 }
 
 // JSON du compte à écrire : jamais la liste des modules (voir plus haut).
@@ -299,9 +346,7 @@ function accountDataJson(data, uid) {
   const inventory = data?.inventory;
   const desc = inventory && typeof inventory === "object" ? Object.getOwnPropertyDescriptor(inventory, "shipModules") : null;
   if (!desc) return JSON.stringify(data);
-  if (!desc.get && Array.isArray(desc.value) && syncShipModules(uid, desc.value, moduleSnapshots.get(data) || null)) {
-    data.shipModulesRev = Math.max(0, Math.floor(Number(data.shipModulesRev) || 0)) + 1;
-  }
+  if (!desc.get && Array.isArray(desc.value)) bumpShipModulesRev(data, uid, syncShipModules(uid, desc.value, moduleSnapshots.get(data) || null));
   delete inventory.shipModules;
   try { return JSON.stringify(data); }
   finally { Object.defineProperty(inventory, "shipModules", desc); }
@@ -309,10 +354,13 @@ function accountDataJson(data, uid) {
 
 // Sauvegarde du jeu : { set: [modules ajoutés/modifiés], del: [ids] }.
 function applyShipModuleDiff(uid, diff) {
-  let changed = syncShipModules(uid, diff.set, null);
+  const changes = syncShipModules(uid, diff.set, null);
   const remove = rawDb.prepare("DELETE FROM ship_modules WHERE user_id = ? AND module_id = ?");
-  for (const id of diff.del) if (Number(remove.run(String(uid), String(id).slice(0, 200))?.changes) > 0) changed = true;
-  return changed;
+  for (const id of diff.del) {
+    const key = String(id).slice(0, 200);
+    if (Number(remove.run(String(uid), key)?.changes) > 0) { changes.del.add(key); changes.set.delete(key); }
+  }
+  return changes;
 }
 function shipModuleCount(uid) {
   return Number(rawDb.prepare("SELECT COUNT(*) AS n FROM ship_modules WHERE user_id = ?").get(String(uid))?.n) || 0;
@@ -320,7 +368,8 @@ function shipModuleCount(uid) {
 
 // Tout compte renvoyé au jeu porte ses modules, sauf si le jeu possède déjà
 // cette version de la liste (en-tête x-orbit-modules "id:rev") : la réponse
-// indique alors `modulesOmitted` et le jeu garde sa copie.
+// indique alors `modulesOmitted` et le jeu garde sa copie. Si sa version est
+// plus ancienne mais connue du journal, `moduleChanges` porte l'écart.
 function withAccountModules(res, obj) {
   const user = obj?.user;
   const inventory = user?.inventory;
@@ -328,10 +377,12 @@ function withAccountModules(res, obj) {
   if (!Object.hasOwn(inventory, "shipModules")) attachShipModules(user, String(user.id));
   const known = res?._orbitModules;
   const rev = Math.floor(Number(user.shipModulesRev) || 0);
-  if (!known || !(rev > 0) || known.id !== String(user.id) || known.rev !== rev) return obj;
+  if (!known || !(rev > 0) || known.id !== String(user.id) || known.rev > rev) return obj;
+  const moduleChanges = known.rev < rev ? shipModuleChangesSince(user.id, known.rev, rev) : null;
+  if (known.rev < rev && !moduleChanges) return obj;
   const lean = {};
   for (const key of Object.keys(inventory)) if (key !== "shipModules") lean[key] = inventory[key];
-  return { ...obj, user: { ...user, inventory: lean }, modulesOmitted: true };
+  return { ...obj, user: { ...user, inventory: lean }, modulesOmitted: true, ...(moduleChanges ? { moduleChanges } : null) };
 }
 
 // Une fois : sort les modules de chaque users.data vers ship_modules.
@@ -1076,13 +1127,33 @@ function serverModuleDailyKey(date = new Date()) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
 
+// Les modules eux-mêmes sont en table (voir addShipModule) : ne pas
+// toucher inventory.shipModules, qui chargerait toute la liste.
 function ensureServerModuleInventory(data) {
   data.inventory ||= {};
   data.inventory.counts ||= {};
   data.inventory.resources ||= {};
-  data.inventory.shipModules ||= [];
   data.inventory.moduleRollHistory ||= [];
   data.stats ||= {};
+}
+
+// Opérations sur un seul module, directement en table : un tirage ou une
+// vente ne charge plus les milliers d'autres modules du compte.
+const newShipModuleChanges = () => ({ set: new Set(), del: new Set() });
+function getShipModule(uid, id) {
+  const row = rawDb.prepare("SELECT data FROM ship_modules WHERE user_id = ? AND module_id = ?").get(String(uid), String(id).slice(0, 200));
+  if (!row) return null;
+  try { return JSON.parse(row.data); } catch { return null; }
+}
+function addShipModule(uid, module, changes) {
+  for (const key of syncShipModules(uid, [module], null).set) { changes.set.add(key); changes.del.delete(key); }
+}
+function removeShipModule(uid, id, changes) {
+  const key = String(id).slice(0, 200);
+  if (Number(rawDb.prepare("DELETE FROM ship_modules WHERE user_id = ? AND module_id = ?").run(String(uid), key)?.changes) > 0) {
+    changes.del.add(key);
+    changes.set.delete(key);
+  }
 }
 
 // Journal des tirages : tenu par le serveur (tirages /api/modules, dimanche),
@@ -1109,7 +1180,7 @@ function payServerModuleRoll(data, cost, payWith = "auto") {
   return { type: "credits", amount: price };
 }
 
-function applyServerModuleOperation(data, body) {
+function applyServerModuleOperation(data, body, uid, changes) {
   ensureServerModuleInventory(data);
   const action = String(body?.action || "");
   if (action === "roll") {
@@ -1131,16 +1202,15 @@ function applyServerModuleOperation(data, body) {
     }
     const module = generateShipModule(data);
     module.rerolls = 0; module.rerollCredits = 0;
-    data.inventory.shipModules.push(module);
+    addShipModule(uid, module, changes);
     data.inventory.moduleRollHistory.push({ ...module, rollPayment: payment });
     capServerHistory(data);
     return { module, payment };
   }
   if (action === "reroll") {
     const oldId = String(body?.moduleId || "");
-    const index = data.inventory.shipModules.findIndex(module => String(module?.id || "") === oldId);
-    if (index < 0) throw Object.assign(new Error("Module plus en inventaire : relance impossible."), { client: true });
-    const old = data.inventory.shipModules[index];
+    const old = oldId ? getShipModule(uid, oldId) : null;
+    if (!old) throw Object.assign(new Error("Module plus en inventaire : relance impossible."), { client: true });
     const rerolls = Math.max(0, Math.floor(Number(old.rerolls) || 0));
     const cost = MODULE_ROLL_COST * Math.pow(5, rerolls + 1);
     // Choix explicite du client ("credits" / "ticket"), "auto" = ticket
@@ -1164,7 +1234,8 @@ function applyServerModuleOperation(data, body) {
     });
     module.rerolls = rerolls + 1;
     module.rerollCredits = moduleRerollCredits(old) + (payment.type === "credits" ? cost : 0);
-    data.inventory.shipModules.splice(index, 1, module);
+    removeShipModule(uid, oldId, changes);
+    addShipModule(uid, module, changes);
     data.inventory.moduleRollHistory.push({ ...module, rollPayment: payment });
     capServerHistory(data);
     return { module, payment };
@@ -1181,7 +1252,7 @@ function applyServerModuleOperation(data, body) {
       const forced = PASS_MODULE_FORCED[offer.rarity];
       module = generateShipModule(data, forced);
       module.rerolls = 0; module.rerollCredits = 0;
-      data.inventory.shipModules.push(module);
+      addShipModule(uid, module, changes);
       data.inventory.moduleRollHistory.push({ ...module, rollPayment: { type: "keys", amount: offer.cost } });
       capServerHistory(data);
     } else if (offer.kind === "resources") {
@@ -3128,8 +3199,24 @@ export function verifyWsToken(token) {
   } catch { return null; }
 }
 
+// Liste de modules jamais lue pendant la requête (connexion, /api/me...) :
+// le JSON stocké en table est recopié tel quel, sans parser puis
+// resérialiser des milliers de modules.
+function accountResponseJson(obj) {
+  const inventory = obj?.user?.inventory;
+  const desc = inventory && typeof inventory === "object" ? Object.getOwnPropertyDescriptor(inventory, "shipModules") : null;
+  if (!desc?.get || !obj.user.id) return JSON.stringify(obj);
+  const marker = `__orbit_modules_${randomBytes(6).toString("hex")}__`;
+  Object.defineProperty(inventory, "shipModules", { value: marker, writable: true, enumerable: true, configurable: true });
+  try {
+    const text = JSON.stringify(obj);
+    const rows = loadShipModuleRows(obj.user.id);
+    return text.replace(`"${marker}"`, () => `[${rows.map((row) => row.data).join(",")}]`);
+  } finally { Object.defineProperty(inventory, "shipModules", desc); }
+}
+
 function json(res, code, obj) {
-  const body = JSON.stringify(withAccountModules(res, obj));
+  const body = accountResponseJson(withAccountModules(res, obj));
   res.writeHead(code, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
   res.end(body);
   return true;
@@ -4016,14 +4103,14 @@ async function handleSave(req, body, res) {
   if (data.inventory && typeof data.inventory === "object") delete data.inventory.shipModules;
   try {
     db.exec("BEGIN IMMEDIATE");
-    const modulesChanged = moduleDiff !== undefined ? applyShipModuleDiff(me.id, moduleDiff)
-      : fullModules ? syncShipModules(me.id, fullModules, storedShipModules(me.id)) : false;
+    const moduleChanges = moduleDiff !== undefined ? applyShipModuleDiff(me.id, moduleDiff)
+      : fullModules ? syncShipModules(me.id, fullModules, storedShipModules(me.id)) : null;
     // Différences calculées sur une autre liste que celle du serveur : on
     // annule et le jeu refusionne depuis le compte complet.
     if (moduleDiff !== undefined && shipModuleCount(me.id) !== body.moduleCount) {
       throw Object.assign(new Error("modules"), { moduleMismatch: true });
     }
-    if (modulesChanged) data.shipModulesRev += 1;
+    if (moduleChanges) bumpShipModulesRev(data, me.id, moduleChanges);
     db.prepare("UPDATE users SET pseudo = ?, pseudo_norm = ?, email = ?, faction = ?, password_hash = ?, data = ?, revision = ?, updated_at = ? WHERE id = ?")
       .run(finalPseudo, norm(finalPseudo), finalEmail, faction, pwHash, accountDataJson(data, me.id), incomingRev, data.updatedAt, me.id);
     if (saveId) {
@@ -4293,7 +4380,9 @@ export function handleAccountApi(req, res) {
         const row = db.prepare("SELECT * FROM users WHERE id = ?").get(me.id);
         if (!row) throw new Error("Compte introuvable");
         const data = rowToPublic(row);
-        const result = applyServerModuleOperation(data, body);
+        const changes = newShipModuleChanges();
+        const result = applyServerModuleOperation(data, body, row.id, changes);
+        bumpShipModulesRev(data, row.id, changes);
         const now = Date.now();
         const revision = Math.max(Math.floor(Number(data.revision) || 0), Number(row.revision) || 0) + 1;
         data.revision = revision; data.updatedAt = now;
@@ -4423,6 +4512,7 @@ export function handleAccountApi(req, res) {
         const data = rowToPublic(row);
         data.inventory ||= {}; data.inventory.counts ||= {}; data.inventory.resources ||= {};
         let soldQuantity = quantity, gainEach = 0, gain = 0, stripped = 0;
+        const sellChanges = newShipModuleChanges();
         if (kind === "ammo") {
           const info = ammoSellInfo(id);
           const store = info?.field === "rockets" ? data.rockets : data.ammo;
@@ -4433,8 +4523,19 @@ export function handleAccountApi(req, res) {
             data.ammoActive = "x1"; data.ammo.active = "x1";
           }
         } else if (kind === "module") {
-          const all = Array.isArray(data.inventory.shipModules) ? data.inventory.shipModules : [];
-          const owned = all.filter(module => serverModuleGroupKey(module) === id);
+          // SQLite présélectionne (type, tier, vaisseau) parmi les milliers de
+          // modules du compte ; la clé complète est vérifiée comme avant.
+          let wanted = null;
+          try { wanted = JSON.parse(id); } catch {}
+          const primitive = (value) => (typeof value === "string" || typeof value === "number" ? value : "");
+          const candidates = wanted && typeof wanted === "object" ? rawDb.prepare(`SELECT data FROM ship_modules WHERE user_id = ?
+              AND COALESCE(json_extract(data, '$.type'), '') = ? AND COALESCE(json_extract(data, '$.tier'), '') = ?
+              AND COALESCE(json_extract(data, '$.shipId'), '') = ? ORDER BY pos`)
+            .all(String(row.id), primitive(wanted.t), primitive(wanted.tier), primitive(wanted.ship)) : [];
+          const owned = [];
+          for (const candidate of candidates) {
+            try { const module = JSON.parse(candidate.data); if (serverModuleGroupKey(module) === id) owned.push(module); } catch {}
+          }
           if (owned.length < quantity) throw Object.assign(new Error("Pas assez d'exemplaires."), { client: true });
           gainEach = serverModuleSellPrice(owned[0]);
           if (!(gainEach > 0)) throw Object.assign(new Error("Ce module ne se vend pas ici."), { client: true });
@@ -4456,7 +4557,7 @@ export function handleAccountApi(req, res) {
               stripped++; return null;
             });
           });
-          data.inventory.shipModules = all.filter(module => !soldIds.has(String(module?.id)));
+          for (const soldId of soldIds) removeShipModule(row.id, soldId, sellChanges);
           gain = gainEach * quantity;
         } else if (kind === "ore") {
           const unit = Math.max(0, Math.floor(Number(ORE_SELL_PRICES[id]) || 0));
@@ -4492,6 +4593,7 @@ export function handleAccountApi(req, res) {
         }
         if (!Number.isSafeInteger(gain) || gain < 0) throw new Error("Gain invalide");
         data.credits = Math.max(0, Math.floor(Number(data.credits) || 0)) + gain;
+        bumpShipModulesRev(data, row.id, sellChanges);
         const now = Date.now();
         const revision = Math.max(Math.floor(Number(data.revision) || 0), Number(row.revision) || 0) + 1;
         data.revision = revision; data.updatedAt = now;
@@ -5133,9 +5235,9 @@ export function adminRemoveOwned(target, kind, id) {
         removed = data.drones.items.length !== list.length;
       }
     } else if (kind === "shipModule") {
-      const list = Array.isArray(data.inventory.shipModules) ? data.inventory.shipModules : [];
-      data.inventory.shipModules = list.filter((m) => String(m?.id) !== key);
-      removed = data.inventory.shipModules.length !== list.length;
+      const changes = newShipModuleChanges();
+      removeShipModule(row.id, key, changes);
+      removed = bumpShipModulesRev(data, row.id, changes);
       if (removed) for (const hangar of data.hangars || []) {
         for (const fit of [hangar?.fit, hangar?.fits?.["1"], hangar?.fits?.["2"]]) {
           if (Array.isArray(fit?.shipMods)) fit.shipMods = fit.shipMods.map((m) => (m === key ? null : m));
