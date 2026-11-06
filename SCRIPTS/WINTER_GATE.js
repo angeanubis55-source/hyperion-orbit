@@ -1,7 +1,7 @@
 // SCRIPTS/WINTER_GATE.js — GG d'hiver partagée : le convoi du Père Noël.
 // Session horaire (SRC/CORE/WINTER_CONVOY.js, winterGateSession) :
-//   :18 -> :23  lobby : entrée ouverte, le convoi attend au départ ;
-//   :23         départ commun pour tous les joueurs présents (personne :
+//   :30 -> :35  lobby : entrée ouverte, le convoi attend au départ ;
+//   :35         départ commun pour tous les joueurs présents (personne :
 //               la session est sautée) ;
 //   30 min      run : étapes + vagues cumulatives, les NPC ne visent que
 //               le convoi ;
@@ -15,7 +15,7 @@ import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { isWinterEventActive } from "../NPC/NPC_WINTER.js";
 import {
-  WINTER_CONVOY_DURATION, WINTER_CONVOY_HP, WINTER_CONVOY_LEG, WINTER_CONVOY_SPEED, WINTER_CONVOY_WAVE_HEAL,
+  WINTER_CONVOY_DURATION, WINTER_CONVOY_HP, WINTER_CONVOY_LEG, WINTER_CONVOY_SPEED, WINTER_CONVOY_WAVE_HEAL, WINTER_CONVOY_WORLD,
   createWinterConvoyRoute, winterConvoyReward, winterConvoyWave, winterGateSession,
 } from "../SRC/CORE/WINTER_CONVOY.js";
 
@@ -29,7 +29,7 @@ const SEND_IDLE_MS = 1000;
 const STATE_FILE = process.env.ORBIT_WINTER_GATE_FILE || join(process.env.ORBIT_DATA_DIR || "SERVER_DATA", "winter_gate.json");
 const PERSIST_MS = 2000;
 // Après une reprise : le temps que les navigateurs rechargent et se reconnectent.
-const RESTORE_GRACE_MS = 60000;
+const RESTORE_GRACE_MS = 120000;
 
 const gate = {
   phase: "closed", // closed | lobby | run | done
@@ -51,6 +51,8 @@ const gate = {
   savedPhase: "",
   restoredUntil: 0, // reprise : absents tolérés jusqu'à cette date
   respawnWave: false, // reprise en run : vague en cours à refaire apparaître
+  players: [], // ids des joueurs présents (sauvegardés avec la session)
+  restoredPlayers: new Set(), // reprise : joueurs qui retournent dans la GG
 };
 
 // final : arrêt du serveur. La sauvegarde est figée, sinon les déconnexions
@@ -62,9 +64,9 @@ export function persistWinterGate(now = Date.now(), { final = false } = {}) {
   gate.savedAt = now;
   gate.savedPhase = gate.phase;
   try {
-    const { phase, hourAt, dist, stopAt, moving, wave, reason, doneAt, convoy } = gate;
+    const { phase, hourAt, dist, stopAt, moving, wave, reason, doneAt, convoy, players } = gate;
     mkdirSync(dirname(STATE_FILE), { recursive: true });
-    writeFileSync(STATE_FILE, JSON.stringify({ phase, hourAt, dist, stopAt, moving, wave, reason, doneAt,
+    writeFileSync(STATE_FILE, JSON.stringify({ phase, hourAt, dist, stopAt, moving, wave, reason, doneAt, players,
       convoy: convoy ? { hp: convoy.hp, hpMax: convoy.hpMax } : null }), "utf8");
   } catch {}
 }
@@ -77,7 +79,10 @@ function restore(now = Date.now()) {
     // Même session horaire seulement (circuit et horaires en découlent).
     const session = winterGateSession(now);
     if (Number(saved.hourAt) !== session.hourAt || !(Number(saved.convoy?.hp) >= 0)) return;
+    const players = (Array.isArray(saved.players) ? saved.players : []).map(String).slice(0, 200);
     Object.assign(gate, {
+      players,
+      restoredPlayers: new Set(players),
       phase: saved.phase,
       hourAt: session.hourAt,
       startAt: session.startAt,
@@ -96,6 +101,24 @@ function restore(now = Date.now()) {
     });
     placeConvoy();
   } catch {}
+}
+
+// Reprise : ce joueur était dans la GG au redémarrage. Il y retourne même si
+// sa dernière sauvegarde de compte n'avait pas encore « winter » (sinon le
+// serveur le replaçait sur sa map précédente, ex. 1-1).
+export function winterGateRejoin(pid, now = Date.now()) {
+  return (gate.phase === "lobby" || gate.phase === "run") && now < gate.restoredUntil
+    && gate.restoredPlayers.has(String(pid));
+}
+
+// Point de retour : juste derrière le convoi, à sa position actuelle.
+export function winterGateRejoinSpot() {
+  const c = gate.convoy;
+  const margin = 400;
+  return {
+    x: Math.max(margin, Math.min(WINTER_CONVOY_WORLD.w - margin, c.x - Math.cos(c.angle) * 500)),
+    y: Math.max(margin, Math.min(WINTER_CONVOY_WORLD.h - margin, c.y - Math.sin(c.angle) * 500)),
+  };
 }
 
 function presentPlayers(room) {
@@ -126,6 +149,8 @@ function openLobby(session, sim) {
   gate.wave = 0;
   gate.reason = "";
   gate.doneAt = 0;
+  gate.players = [];
+  gate.restoredPlayers = new Set();
   gate.convoy = { x: 0, y: 0, vx: 0, vy: 0, angle: 0, hp: WINTER_CONVOY_HP, hpMax: WINTER_CONVOY_HP };
   placeConvoy();
   attachSim(sim);
@@ -135,6 +160,8 @@ function closeGate(sim) {
   gate.phase = "closed";
   gate.convoy = null;
   gate.route = null;
+  gate.players = [];
+  gate.restoredPlayers = new Set();
   if (sim) {
     try { sim.clearConvoyAttackers(); } catch {}
     sim.convoy = null;
@@ -207,7 +234,7 @@ export function getWinterGateState(now = Date.now()) {
   return statePayload(now);
 }
 
-// Entrée autorisée : saison d'hiver et session ouverte (:18 -> :23).
+// Entrée autorisée : saison d'hiver et session ouverte (:30 -> :35).
 export function winterGateEntryOpen(now = Date.now()) {
   return isWinterEventActive(new Date(now)) && winterGateSession(now).open;
 }
@@ -243,6 +270,11 @@ function tickInner(room, sim, ctx, now, dt) {
     attachSim(sim);
   }
   const present = presentPlayers(room);
+  // Participants sauvegardés avec la session. Pendant la reprise, ceux qui
+  // ne sont pas encore revenus restent dans la liste (second redémarrage).
+  if (present.length && (gate.phase === "lobby" || gate.phase === "run")) {
+    gate.players = now < gate.restoredUntil ? [...new Set([...gate.restoredPlayers, ...present])] : present;
+  }
 
   if (gate.phase === "lobby") {
     if (now < gate.startAt) return;

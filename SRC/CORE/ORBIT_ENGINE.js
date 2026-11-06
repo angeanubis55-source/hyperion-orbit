@@ -15064,11 +15064,6 @@ function tickBot(dt) {
   try { botTickCargoView(dt); } catch {}
   if (!Bot.active) return;
   if (StarJump.channel) return;
-  // GG d'hiver : l'escorte du convoi se fait à la main.
-  if (winterConvoy) {
-    Bot.status = "Indisponible dans la GG d'hiver";
-    return;
-  }
   if (!started || player.dead) {
     Bot.cloakPendingMap = null;
     Bot.fleeCloakUsed = false;
@@ -18527,7 +18522,7 @@ function startZonePortalJump(ptl, entryConfirmed = false) {
   // Niveau requis façon DarkOrbit officiel (voir SRC/CORE/MAP_ACCESS.js).
   // Vérifié avant les coûts : inutile de payer si le niveau bloque.
   const targetMapId = String(ptl.toMap || "").toLowerCase();
-  // ✅ GG d'hiver : saison d'hiver, entrée de :18 à :23 (départ commun à :23).
+  // ✅ GG d'hiver : saison d'hiver, entrée de :30 à :35 (départ commun à :35).
   if (targetMapId === "winter") {
     if (!isWinterEventActive()) {
       SFX.play("swDeny");

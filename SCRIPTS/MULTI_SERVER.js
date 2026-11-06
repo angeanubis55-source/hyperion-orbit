@@ -27,7 +27,7 @@ const {
   PET_LEASH,
 } = AC;
 import { tickLowRaid, getLowRaidState } from "./LOW_RAID.js";
-import { tickWinterGate, getWinterGateState, persistWinterGate } from "./WINTER_GATE.js";
+import { tickWinterGate, getWinterGateState, persistWinterGate, winterGateRejoin, winterGateRejoinSpot } from "./WINTER_GATE.js";
 import { damagePlayerLayers } from "../COMBAT/COMBAT_RULES.js";
 import { handleAccountApi, getAccountGameplayData, verifyWsToken, recordPvpKill, recordPvpPetKill, awardNpcKill, flushNpcRewards, grantSundayModule, grantSundayTickets, grantSundayAmmo, listFriends, friendFollowers, findUserByPseudo, hasFriendRequest, isBlockedBy, clanIdOfUser, clanTagOfUser, clanMemberUserIds, setClanPresenceProvider, setClanBasesProvider, recordClanWarKill, adminGiveCredits, adminGiveExperience, adminGiveHonor, adminGiveModule, adminGiveTitle, adminListAccounts, adminDebugAccount, adminDeleteAccount, adminResetGalaxyGate, adminGiveGalaxyGate, adminDroneDesigns, adminGiveDroneDesign, adminShipFamilies, adminCatalog, adminInventory, adminGiveItem, adminAdjustStock, adminRemoveOwned, adminSetPosition, adminRename, adminSetFaction, adminResetPassword, appendPlayerLogs, adminPlayerLogs, adminLogAction, adminActionLog, adminStats } from "./ACCOUNT_SERVER.js";
 import { combatProfile, validateCombatHit, syncDeclaredFormation, accountWithFormation } from "./COMBAT_PROFILE.js";
@@ -3759,6 +3759,7 @@ wss.on("connection", (ws) => {
           const who = verifyWsToken(msg.token);
           if (who && who.id) {
             const stableId = `u_${String(who.id).slice(0, 64)}`;
+            let winterRejoinSpot = null;
             const previousState = securityStates.get(stableId) || findPeerState(stableId);
             // Reconnexion et refresh reprennent les effets encore actifs.
             // Conserver leurs echeances serveur : aucun relaunch ni temps ajoute.
@@ -3795,13 +3796,20 @@ wss.on("connection", (ws) => {
               const saved = state._account?.hangars.find(h => h?.active) || state._account?.hangars[0];
               mapId = serverMaps.has(String(saved?.lastMap).toLowerCase()) ? String(saved.lastMap).toLowerCase()
                 : getFactionHomeMap(state._account?.faction);
+              // GG d'hiver reprise après un redémarrage : chaque participant y
+              // retourne, même si sa dernière sauvegarde n'avait pas « winter ».
+              if (mapId !== "winter" && winterGateRejoin(stableId)) {
+                mapId = "winter";
+                winterRejoinSpot = winterGateRejoinSpot();
+                state._winterRejoin = true;
+              }
             }
             const profile = refreshCombatProfile(state, accountId, mapId);
             if (!profile) { ws.close(1008, "Invalid combat profile"); return; }
             if (!previousState) {
               const saved = state._account.hangars.find(h => h?.active) || state._account.hangars[0];
               const base = baseArrival(serverMaps, mapId, state._account.faction);
-              const position = saved.lastPos;
+              const position = winterRejoinSpot || saved.lastPos;
               state.x = Number.isFinite(Number(position?.x)) ? Number(position.x) : base.x;
               state.y = Number.isFinite(Number(position?.y)) ? Number(position.y) : base.y;
               state.hp = state.hpMax * Math.max(0, Math.min(1, Number(saved.lastHpPct ?? 1)));
@@ -3864,6 +3872,12 @@ wss.on("connection", (ws) => {
           mapId = obj.mapId;
         });
         return;
+      }
+      // Retour en GG d'hiver après reprise : un client rechargé sur une autre
+      // map (données locales périmées) y est renvoyé au lieu d'en sortir.
+      if (state._winterRejoin === true) {
+        state._winterRejoin = false;
+        if (nextMap !== "winter" && msg.instance !== true) { correctState(); return; }
       }
       if (!changeMap(nextMap, msg.instance === true)) { correctState(); return; }
       state._joined = true;
