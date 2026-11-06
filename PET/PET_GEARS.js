@@ -56,13 +56,14 @@ export const PET_BUOY_DAMAGE_PCT = 5;
 export const PET_BUOY_HP_PCT = 5;
 
 // Types de collectables aspirés par G-AL (cargo, bonus boxes, scrap,
-// mucosum, plasmide, prismatium — hors green). Event Halloween : les box
-// de l'event suivent aussi.
+// mucosum, plasmide, prismatium — hors green). Events Halloween et hiver :
+// les box de l'event suivent aussi (dont les Box de Noël de la GG d'hiver).
 export const PET_GEAR_AUTOLOOT_TYPES = Object.freeze([
   "Cargo_Box",
   "Bonus_Box",
   "Pumpkin_Box",
   "Winter_Gift_Box",
+  "Christmas_Box",
   "Cucurbitor_Box",
   "Boss_Cucurbitor_Box",
   "Astral_Prime_Box",
