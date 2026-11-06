@@ -191,12 +191,177 @@ export function sweepExpiredBattlepass(now = new Date()) {
       data.revision = Math.max(Math.floor(Number(data.revision) || 0), Number(row.revision) || 0) + 1;
       data.updatedAt = updatedAt;
       db.prepare("UPDATE users SET data = ?, revision = ?, updated_at = ? WHERE id = ?")
-        .run(JSON.stringify(data), data.revision, updatedAt, row.id);
+        .run(accountDataJson(data, row.id), data.revision, updatedAt, row.id);
       cleared += 1;
     }
   } catch (e) { console.error("[battlepass] nettoyage fin d'event :", e?.message || e); }
   if (cleared) console.log(`[battlepass] Fin d'event : ${cleared} compte(s) remis à zéro.`);
   return cleared;
+}
+
+// --- Modules de vaisseau : table ship_modules ---
+// Les modules (des milliers sur certains comptes, 80 % du poids du JSON)
+// ne sont plus dans users.data : chaque écriture du compte les recopiait.
+// Un compte chargé par rowToPublic / adminParseData porte une liste
+// `inventory.shipModules` paresseuse : lue seulement si le code y touche.
+// accountDataJson, appelé à chaque écriture du compte, reporte dans la
+// table les modules ajoutés / modifiés / retirés et sort la liste du JSON.
+// `shipModulesRev` (dans users.data) avance à chaque changement de la table.
+const moduleSnapshots = new WeakMap(); // data -> Map(module_id -> json) lu en table
+
+function loadShipModuleRows(uid) {
+  return rawDb.prepare("SELECT module_id, data FROM ship_modules WHERE user_id = ? ORDER BY pos").all(String(uid));
+}
+function storedShipModules(uid) {
+  return new Map(loadShipModuleRows(uid).map((row) => [row.module_id, row.data]));
+}
+
+function attachShipModules(data, uid) {
+  if (!data || typeof data !== "object" || !uid) return data;
+  if (!data.inventory || typeof data.inventory !== "object" || Array.isArray(data.inventory)) data.inventory = {};
+  const inventory = data.inventory;
+  if (Object.hasOwn(inventory, "shipModules")) return data;
+  const define = (value) => Object.defineProperty(inventory, "shipModules", { value, writable: true, enumerable: true, configurable: true });
+  Object.defineProperty(inventory, "shipModules", {
+    enumerable: true, configurable: true,
+    get() {
+      const rows = loadShipModuleRows(uid);
+      moduleSnapshots.set(data, new Map(rows.map((row) => [row.module_id, row.data])));
+      const list = [];
+      for (const row of rows) { try { list.push(JSON.parse(row.data)); } catch {} }
+      define(list);
+      return list;
+    },
+    set(value) {
+      moduleSnapshots.set(data, storedShipModules(uid));
+      define(value);
+    },
+  });
+  return data;
+}
+
+// Combat / récompenses : seuls les modules équipés comptent.
+function mountedShipModules(uid, data) {
+  const ids = new Set();
+  for (const hangar of Array.isArray(data?.hangars) ? data.hangars : []) {
+    for (const fit of [hangar?.fits?.["1"], hangar?.fits?.["2"], hangar?.fit]) {
+      for (const id of Array.isArray(fit?.shipMods) ? fit.shipMods : []) if (id) ids.add(String(id));
+    }
+  }
+  const list = [];
+  if (!ids.size) return list;
+  const get = rawDb.prepare("SELECT data FROM ship_modules WHERE user_id = ? AND module_id = ?");
+  for (const id of ids) {
+    const row = get.get(String(uid), id);
+    if (row) { try { list.push(JSON.parse(row.data)); } catch {} }
+  }
+  return list;
+}
+
+function shipModuleKey(module, text) {
+  const id = String(module?.id ?? "");
+  return id ? id.slice(0, 200) : `~noid:${createHash("sha1").update(text).digest("hex")}`;
+}
+
+// stored : Map(module_id -> json) de la table, qui suit l'écriture.
+// Sans stored, la liste n'ajoute ou ne modifie que ses propres modules.
+function syncShipModules(uid, list, stored) {
+  const userId = String(uid);
+  const upsert = rawDb.prepare(`INSERT INTO ship_modules (user_id, module_id, pos, data) VALUES (?, ?, ?, ?)
+    ON CONFLICT(user_id, module_id) DO UPDATE SET data = excluded.data WHERE ship_modules.data <> excluded.data`);
+  const seen = new Set();
+  let changed = false, nextPos = null;
+  for (const module of list) {
+    if (!module || typeof module !== "object") continue;
+    const text = JSON.stringify(module);
+    const key = shipModuleKey(module, text);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    if (stored && stored.get(key) === text) continue;
+    nextPos ??= Number(rawDb.prepare("SELECT COALESCE(MAX(pos), -1) + 1 AS pos FROM ship_modules WHERE user_id = ?").get(userId)?.pos) || 0;
+    if (Number(upsert.run(userId, key, nextPos++, text)?.changes) > 0) changed = true;
+    stored?.set(key, text);
+  }
+  if (stored) {
+    const remove = rawDb.prepare("DELETE FROM ship_modules WHERE user_id = ? AND module_id = ?");
+    for (const key of [...stored.keys()]) {
+      if (seen.has(key)) continue;
+      remove.run(userId, key);
+      stored.delete(key);
+      changed = true;
+    }
+  }
+  return changed;
+}
+
+// JSON du compte à écrire : jamais la liste des modules (voir plus haut).
+function accountDataJson(data, uid) {
+  const inventory = data?.inventory;
+  const desc = inventory && typeof inventory === "object" ? Object.getOwnPropertyDescriptor(inventory, "shipModules") : null;
+  if (!desc) return JSON.stringify(data);
+  if (!desc.get && Array.isArray(desc.value) && syncShipModules(uid, desc.value, moduleSnapshots.get(data) || null)) {
+    data.shipModulesRev = Math.max(0, Math.floor(Number(data.shipModulesRev) || 0)) + 1;
+  }
+  delete inventory.shipModules;
+  try { return JSON.stringify(data); }
+  finally { Object.defineProperty(inventory, "shipModules", desc); }
+}
+
+// Sauvegarde du jeu : { set: [modules ajoutés/modifiés], del: [ids] }.
+function applyShipModuleDiff(uid, diff) {
+  let changed = syncShipModules(uid, diff.set, null);
+  const remove = rawDb.prepare("DELETE FROM ship_modules WHERE user_id = ? AND module_id = ?");
+  for (const id of diff.del) if (Number(remove.run(String(uid), String(id).slice(0, 200))?.changes) > 0) changed = true;
+  return changed;
+}
+function shipModuleCount(uid) {
+  return Number(rawDb.prepare("SELECT COUNT(*) AS n FROM ship_modules WHERE user_id = ?").get(String(uid))?.n) || 0;
+}
+
+// Tout compte renvoyé au jeu porte ses modules, sauf si le jeu possède déjà
+// cette version de la liste (en-tête x-orbit-modules "id:rev") : la réponse
+// indique alors `modulesOmitted` et le jeu garde sa copie.
+function withAccountModules(res, obj) {
+  const user = obj?.user;
+  const inventory = user?.inventory;
+  if (!user || typeof user !== "object" || !user.id || !inventory || typeof inventory !== "object") return obj;
+  if (!Object.hasOwn(inventory, "shipModules")) attachShipModules(user, String(user.id));
+  const known = res?._orbitModules;
+  const rev = Math.floor(Number(user.shipModulesRev) || 0);
+  if (!known || !(rev > 0) || known.id !== String(user.id) || known.rev !== rev) return obj;
+  const lean = {};
+  for (const key of Object.keys(inventory)) if (key !== "shipModules") lean[key] = inventory[key];
+  return { ...obj, user: { ...user, inventory: lean }, modulesOmitted: true };
+}
+
+// Une fois : sort les modules de chaque users.data vers ship_modules.
+function migrateShipModules() {
+  const rows = rawDb.prepare("SELECT id, data FROM users WHERE json_type(data, '$.inventory.shipModules') = 'array'").all();
+  if (!rows.length) return;
+  const started = Date.now();
+  let modules = 0;
+  rawDb.exec("BEGIN IMMEDIATE");
+  try {
+    const insert = rawDb.prepare("INSERT OR IGNORE INTO ship_modules (user_id, module_id, pos, data) VALUES (?, ?, ?, ?)");
+    const update = rawDb.prepare("UPDATE users SET data = ? WHERE id = ?");
+    for (const row of rows) {
+      const data = JSON.parse(row.data);
+      let pos = 0;
+      for (const module of data.inventory.shipModules) {
+        if (!module || typeof module !== "object") continue;
+        const text = JSON.stringify(module);
+        if (Number(insert.run(String(row.id), shipModuleKey(module, text), pos++, text)?.changes) > 0) modules++;
+      }
+      delete data.inventory.shipModules;
+      data.shipModulesRev = Math.max(1, Math.floor(Number(data.shipModulesRev) || 0) + 1);
+      update.run(JSON.stringify(data), row.id);
+    }
+    rawDb.exec("COMMIT");
+  } catch (e) {
+    try { rawDb.exec("ROLLBACK"); } catch {}
+    throw e;
+  }
+  console.log(`[account] Modules déplacés en table : ${modules} modules, ${rows.length} comptes (${Date.now() - started} ms).`);
 }
 
 // --- Récompenses NPC en mémoire ---
@@ -516,6 +681,19 @@ export function initAccountDb() {
     try { db.exec("UPDATE users SET email_verified_at = created_at WHERE email_verified_at = 0"); } catch {}
   }
   // Menage des sessions expirees (toutes les heures).
+  rawDb.exec(`
+    CREATE TABLE IF NOT EXISTS ship_modules (
+      user_id TEXT NOT NULL,
+      module_id TEXT NOT NULL,
+      pos INTEGER NOT NULL,
+      data TEXT NOT NULL,
+      PRIMARY KEY (user_id, module_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_ship_modules_pos ON ship_modules(user_id, pos);
+    CREATE TRIGGER IF NOT EXISTS trg_users_delete_ship_modules AFTER DELETE ON users
+      BEGIN DELETE FROM ship_modules WHERE user_id = OLD.id; END;
+  `);
+  migrateShipModules();
   const purge = () => {
     try { db.prepare("DELETE FROM sessions WHERE expires_at < ?").run(Date.now()); } catch {}
     try { db.prepare("DELETE FROM account_auth_tokens WHERE expires_at < ? OR used_at > 0").run(Date.now()); } catch {}
@@ -602,6 +780,7 @@ function rowToPublic(row) {
     data.faction = row.faction;
     // Le hash reste en base (colonne password_hash) : il ne sort jamais.
     delete data.password;
+    attachShipModules(data, String(row.id));
   }
   return data;
 }
@@ -634,7 +813,9 @@ export function awardNpcKill(accountId, npcType, mapId, rewardPercent, ownsKill,
     const hangars = Array.isArray(data.hangars) ? data.hangars : [];
     const hangar = hangars.find((h) => h?.active) || hangars[0] || null;
     let equipment = { bonusExpPct: 0, bonusHonorPct: 0 };
-    try { if (hangar) equipment = computeHangarStats(hangar, data, { mapId }) || equipment; } catch {}
+    entry.mounted ??= mountedShipModules(uid, data);
+    const withModules = { ...data, inventory: { ...(data.inventory || {}), shipModules: entry.mounted } };
+    try { if (hangar) equipment = computeHangarStats(hangar, withModules, { mapId }) || equipment; } catch {}
     let boosters = { exp: 1, honor: 1, petXp: 1 };
     try { boosters = activeBoosterMults(data.boosters, Date.now()); } catch {}
     let pilot = {};
@@ -1365,7 +1546,7 @@ export function adminGiveCredits(pseudo, amount) {
     data.revision = newRev;
     data.updatedAt = now;
     db.prepare("UPDATE users SET data = ?, revision = ?, updated_at = ? WHERE id = ?")
-      .run(JSON.stringify(data), newRev, now, row.id);
+      .run(accountDataJson(data, row.id), newRev, now, row.id);
     return { ok: true, id: String(row.id), pseudo: String(row.pseudo || "Pilote").slice(0, 20), before, after, given: delta, revision: newRev };
   } catch { return { ok: false, error: "Erreur serveur." }; }
 }
@@ -1464,7 +1645,7 @@ export function adminDebugAccount(target) {
     data._adminWriteToken = randomBytes(12).toString("hex");
     data.revision = revision;
     data.updatedAt = now;
-    db.prepare("UPDATE users SET data = ?, revision = ?, updated_at = ? WHERE id = ?").run(JSON.stringify(data), revision, now, row.id);
+    db.prepare("UPDATE users SET data = ?, revision = ?, updated_at = ? WHERE id = ?").run(accountDataJson(data, row.id), revision, now, row.id);
     return { ok: true, id: String(row.id), pid: `u_${String(row.id)}`, pseudo: String(row.pseudo || "Pilote").slice(0, 20), ship: starterId, map: home.map, revision };
   } catch { return { ok: false, error: "Erreur serveur." }; }
 }
@@ -1519,7 +1700,7 @@ export function adminGiveGalaxyGate(pseudo, gate) {
     data.revision = newRev;
     data.updatedAt = now;
     db.prepare("UPDATE users SET data = ?, revision = ?, updated_at = ? WHERE id = ?")
-      .run(JSON.stringify(data), newRev, now, row.id);
+      .run(accountDataJson(data, row.id), newRev, now, row.id);
     return { ok: true, id: String(row.id), pseudo: String(row.pseudo || "Pilote").slice(0, 20), gates: targets, before, after, kronosBefore, kronosAfter, revision: newRev };
   } catch { return { ok: false, error: "Erreur serveur." }; }
 }
@@ -1551,7 +1732,7 @@ export function adminResetGalaxyGate(pseudo, gate) {
     data.revision = newRev;
     data.updatedAt = now;
     db.prepare("UPDATE users SET data = ?, revision = ?, updated_at = ? WHERE id = ?")
-      .run(JSON.stringify(data), newRev, now, row.id);
+      .run(accountDataJson(data, row.id), newRev, now, row.id);
     return { ok: true, id: String(row.id), pseudo: String(row.pseudo || "Pilote").slice(0, 20), gates: targets, before, revision: newRev };
   } catch { return { ok: false, error: "Erreur serveur." }; }
 }
@@ -1910,7 +2091,7 @@ function adjustCredits(uid, delta) {
     data.revision = rev;
     data.updatedAt = now;
     db.prepare("UPDATE users SET data = ?, revision = ?, updated_at = ? WHERE id = ?")
-      .run(JSON.stringify(data), rev, now, String(uid));
+      .run(accountDataJson(data, String(uid)), rev, now, String(uid));
     return { ok: true, credits: after };
   } catch { return { ok: false }; }
 }
@@ -2158,7 +2339,7 @@ function writeCreditsInTx(userId, delta) {
   data.revision = Math.max(Math.floor(Number(data.revision) || 0), Number(row.revision) || 0) + 1;
   data.updatedAt = now;
   db.prepare("UPDATE users SET data = ?, revision = ?, updated_at = ? WHERE id = ?")
-    .run(JSON.stringify(data), data.revision, now, row.id);
+    .run(accountDataJson(data, row.id), data.revision, now, row.id);
   return { user: data, before, after: data.credits };
 }
 
@@ -2924,6 +3105,9 @@ export function getAccountGameplayData(accountId, previous = null) {
       data.hangars = [{ id: "starter", shipId: "PhoenixBleu", active: true, activeConfig: 1,
         fit: { lasers: [], gens: [], extras: [], shipMods: [] } }];
     }
+    // Profil de combat : les modules équipés suffisent (lecture seule).
+    if (!data.inventory || typeof data.inventory !== "object") data.inventory = {};
+    data.inventory.shipModules = mountedShipModules(accountId, data);
     return { ...data, faction: row.faction, revision: row.revision };
   } catch { return null; }
 }
@@ -2945,7 +3129,7 @@ export function verifyWsToken(token) {
 }
 
 function json(res, code, obj) {
-  const body = JSON.stringify(obj);
+  const body = JSON.stringify(withAccountModules(res, obj));
   res.writeHead(code, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
   res.end(body);
   return true;
@@ -3035,11 +3219,11 @@ async function handleRegister(body, res) {
   if (!data.schemaVersion) data.schemaVersion = 4;
   try {
     db.prepare("INSERT INTO users (id, pseudo, pseudo_norm, email, faction, password_hash, data, revision, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
-      .run(id, pseudo, keyP, keyE, faction, data.password, JSON.stringify(data), revision, now, now);
+      .run(id, pseudo, keyP, keyE, faction, data.password, accountDataJson(data, id), revision, now, now);
   } catch {
     return json(res, 409, { ok: false, error: "Pseudo ou email déjà utilisé." });
   }
-  const publicUser = rowToPublic({ id, pseudo, email, faction, data: JSON.stringify(data) });
+  const publicUser = rowToPublic({ id, pseudo, email, faction, data: accountDataJson(data, id) });
   // Les domaines .test sont réservés aux tests automatisés locaux. En
   // production, aucun compte réel ne reçoit de session avant confirmation.
   if (testEmailBypass(email)) {
@@ -3076,9 +3260,9 @@ async function handleLogin(body, res) {
     try {
       const data = JSON.parse(u.data || "{}");
       data.password = h;
-      db.prepare("UPDATE users SET password_hash = ?, data = ?, updated_at = ? WHERE id = ?").run(h, JSON.stringify(data), Date.now(), u.id);
+      db.prepare("UPDATE users SET password_hash = ?, data = ?, updated_at = ? WHERE id = ?").run(h, accountDataJson(data, u.id), Date.now(), u.id);
       u.password_hash = h;
-      u.data = JSON.stringify(data);
+      u.data = accountDataJson(data, u.id);
     } catch {}
   }
   const token = newSession(u.id);
@@ -3153,7 +3337,7 @@ async function handleResetPassword(body, res) {
   data.updatedAt = Date.now();
   db.exec("BEGIN IMMEDIATE");
   try {
-    db.prepare("UPDATE users SET password_hash = ?, data = ?, updated_at = ? WHERE id = ?").run(hash, JSON.stringify(data), data.updatedAt, row.user_id);
+    db.prepare("UPDATE users SET password_hash = ?, data = ?, updated_at = ? WHERE id = ?").run(hash, accountDataJson(data, row.user_id), data.updatedAt, row.user_id);
     db.prepare("DELETE FROM sessions WHERE user_id = ?").run(row.user_id);
     db.prepare("DELETE FROM account_auth_tokens WHERE user_id = ?").run(row.user_id);
     db.exec("COMMIT");
@@ -3187,7 +3371,7 @@ export function adminGiveExperience(pseudo, amount) {
     data.revision = newRev;
     data.updatedAt = now;
     db.prepare("UPDATE users SET data = ?, revision = ?, updated_at = ? WHERE id = ?")
-      .run(JSON.stringify(data), newRev, now, row.id);
+      .run(accountDataJson(data, row.id), newRev, now, row.id);
     return { ok: true, id: String(row.id), pseudo: String(row.pseudo || "Pilote").slice(0, 20), before, after, given: delta, revision: newRev };
   } catch { return { ok: false, error: "Erreur serveur." }; }
 }
@@ -3216,7 +3400,7 @@ export function adminGiveHonor(pseudo, amount) {
     data.revision = newRev;
     data.updatedAt = now;
     db.prepare("UPDATE users SET data = ?, revision = ?, updated_at = ? WHERE id = ?")
-      .run(JSON.stringify(data), newRev, now, row.id);
+      .run(accountDataJson(data, row.id), newRev, now, row.id);
     return { ok: true, id: String(row.id), pseudo: String(row.pseudo || "Pilote").slice(0, 20), before, after, given: delta, revision: newRev };
   } catch { return { ok: false, error: "Erreur serveur." }; }
 }
@@ -3259,7 +3443,7 @@ export function adminGiveDroneDesign(pseudo, designId, count = 1) {
     data.revision = newRev;
     data.updatedAt = now;
     db.prepare("UPDATE users SET data = ?, revision = ?, updated_at = ? WHERE id = ?")
-      .run(JSON.stringify(data), newRev, now, row.id);
+      .run(accountDataJson(data, row.id), newRev, now, row.id);
     return { ok: true, id: String(row.id), pseudo: String(row.pseudo || "Pilote").slice(0, 20), design: design.itemId, name: design.name, before, after, given: n, revision: newRev };
   } catch { return { ok: false, error: "Erreur serveur." }; }
 }
@@ -3323,7 +3507,7 @@ export function adminGiveModule(pseudo, shipId, stat, pct) {
     data.revision = newRev;
     data.updatedAt = Date.now();
     db.prepare("UPDATE users SET data = ?, revision = ?, updated_at = ? WHERE id = ?")
-      .run(JSON.stringify(data), newRev, Date.now(), row.id);
+      .run(accountDataJson(data, row.id), newRev, Date.now(), row.id);
     return { ok: true, id: String(row.id), pseudo: String(row.pseudo || "Pilote").slice(0, 20), module: mod, revision: newRev };
   } catch { return { ok: false, error: "Erreur serveur." }; }
 }
@@ -3400,7 +3584,7 @@ export function grantSundayModule(accountId, rarity) {
     data.revision = newRev;
     data.updatedAt = Date.now();
     db.prepare("UPDATE users SET data = ?, revision = ?, updated_at = ? WHERE id = ?")
-      .run(JSON.stringify(data), newRev, Date.now(), row.id);
+      .run(accountDataJson(data, row.id), newRev, Date.now(), row.id);
     return { ok: true, module: mod, revision: newRev };
   } catch { return { ok: false, error: "Erreur serveur." }; }
 }
@@ -3425,7 +3609,7 @@ export function grantSundayTickets(accountId, qty) {
     data.revision = newRev;
     data.updatedAt = Date.now();
     db.prepare("UPDATE users SET data = ?, revision = ?, updated_at = ? WHERE id = ?")
-      .run(JSON.stringify(data), newRev, Date.now(), row.id);
+      .run(accountDataJson(data, row.id), newRev, Date.now(), row.id);
     return { ok: true, qty: n, revision: newRev };
   } catch { return { ok: false, error: "Erreur serveur." }; }
 }
@@ -3448,7 +3632,7 @@ export function grantSundayAmmo(accountId, qty) {
     data.revision = newRev;
     data.updatedAt = Date.now();
     db.prepare("UPDATE users SET data = ?, revision = ?, updated_at = ? WHERE id = ?")
-      .run(JSON.stringify(data), newRev, Date.now(), row.id);
+      .run(accountDataJson(data, row.id), newRev, Date.now(), row.id);
     return { ok: true, qty: n, revision: newRev };
   } catch { return { ok: false, error: "Erreur serveur." }; }
 }
@@ -3489,7 +3673,7 @@ export function adminGiveTitle(pseudo, name, color) {
     data.revision = newRev;
     data.updatedAt = Date.now();
     db.prepare("UPDATE users SET data = ?, revision = ?, updated_at = ? WHERE id = ?")
-      .run(JSON.stringify(data), newRev, Date.now(), row.id);
+      .run(accountDataJson(data, row.id), newRev, Date.now(), row.id);
     return { ok: true, id: String(row.id), pseudo: String(row.pseudo || "Pilote").slice(0, 20), title: entry, revision: newRev };
   } catch { return { ok: false, error: "Erreur serveur." }; }
 }
@@ -3556,13 +3740,13 @@ async function handleAccountIdentity(req, body, res, kind) {
     Object.assign(data, { id: me.id, pseudo: next, revision, updatedAt: now });
     try {
       db.prepare("UPDATE users SET pseudo = ?, pseudo_norm = ?, data = ?, revision = ?, updated_at = ?, pseudo_changed_at = ? WHERE id = ?")
-        .run(next, norm(next), JSON.stringify(data), revision, now, now, me.id);
+        .run(next, norm(next), accountDataJson(data, me.id), revision, now, now, me.id);
     } catch {
       // Contrainte d'unicité : un autre pilote a pris ce pseudo entre-temps.
       return json(res, 409, { ok: false, error: "Ce pseudo est déjà utilisé." });
     }
     return json(res, 200, { ok: true, nextAt: now + IDENTITY_COOLDOWN_MS,
-      user: rowToPublic({ id: me.id, pseudo: next, email: me.email, faction: me.faction, data: JSON.stringify(data) }) });
+      user: rowToPublic({ id: me.id, pseudo: next, email: me.email, faction: me.faction, data: accountDataJson(data, me.id) }) });
   }
 
   if (kind === "pet-pseudo") {
@@ -3582,9 +3766,9 @@ async function handleAccountIdentity(req, body, res, kind) {
     data.pet.pseudo = next;
     Object.assign(data, { id: me.id, revision, updatedAt: now });
     db.prepare("UPDATE users SET data = ?, revision = ?, updated_at = ?, pet_pseudo_changed_at = ? WHERE id = ?")
-      .run(JSON.stringify(data), revision, now, now, me.id);
+      .run(accountDataJson(data, me.id), revision, now, now, me.id);
     return json(res, 200, { ok: true, nextAt: now + IDENTITY_COOLDOWN_MS, creditsSpent: PET_RENAME_CREDIT_COST,
-      user: rowToPublic({ id: me.id, pseudo: me.pseudo, email: me.email, faction: me.faction, data: JSON.stringify(data) }) });
+      user: rowToPublic({ id: me.id, pseudo: me.pseudo, email: me.email, faction: me.faction, data: accountDataJson(data, me.id) }) });
   }
 
   if (kind === "email") {
@@ -3684,7 +3868,7 @@ async function handleEmailChangeNew(body, res) {
   db.exec("BEGIN IMMEDIATE");
   try {
     db.prepare("UPDATE users SET email = ?, email_verified_at = ?, data = ?, revision = ?, updated_at = ? WHERE id = ?")
-      .run(pending.new_email, now, JSON.stringify(data), revision, now, row.user_id);
+      .run(pending.new_email, now, accountDataJson(data, row.user_id), revision, now, row.user_id);
     db.prepare("DELETE FROM account_email_change WHERE user_id = ?").run(row.user_id);
     db.prepare("DELETE FROM sessions WHERE user_id = ?").run(row.user_id);
     db.prepare("DELETE FROM account_auth_tokens WHERE user_id = ?").run(row.user_id);
@@ -3702,7 +3886,7 @@ function saveResponseUser(body, user) {
     return { user: safeUser };
   }
   const metadata = {};
-  for (const key of ["id", "pseudo", "email", "faction", "revision", "updatedAt"]) metadata[key] = user[key];
+  for (const key of ["id", "pseudo", "email", "faction", "revision", "updatedAt", "shipModulesRev"]) metadata[key] = user[key];
   return { snapshotAccepted: true, saveId: String(body.saveId).slice(0, 128), user: metadata };
 }
 
@@ -3732,7 +3916,17 @@ async function handleSave(req, body, res) {
     return json(res, 403, { ok: false, error: "Compte refuse." });
   }
   const saveId = String(body.saveId || "").slice(0, 128);
-  const requestHash = saveId ? createHash("sha256").update(JSON.stringify({ user: blob, baseRevision: body.baseRevision })).digest("hex") : "";
+  // Jeu à jour : les modules arrivent en différences (moduleDiff) par
+  // rapport au compte de baseRevision. Ancien jeu : liste complète.
+  const moduleDiff = body.moduleDiff;
+  if (moduleDiff !== undefined && (!moduleDiff || !Array.isArray(moduleDiff.set) || !Array.isArray(moduleDiff.del)
+    || moduleDiff.set.length > 50_000 || moduleDiff.del.length > 50_000
+    || body.baseRevision === undefined || !Number.isSafeInteger(body.moduleCount))) {
+    return json(res, 400, { ok: false, error: "Modules invalides." });
+  }
+  const requestHash = saveId ? createHash("sha256").update(JSON.stringify(moduleDiff !== undefined
+    ? { user: blob, baseRevision: body.baseRevision, moduleDiff, moduleCount: body.moduleCount }
+    : { user: blob, baseRevision: body.baseRevision })).digest("hex") : "";
   if (saveId) {
     const receipt = db.prepare("SELECT request_hash, metadata FROM account_save_tx WHERE user_id = ? AND save_id = ?").get(me.id, saveId);
     if (receipt) {
@@ -3816,13 +4010,25 @@ async function handleSave(req, body, res) {
   // (changement uniquement par le lien envoyé par email).
   const pwHash = me.password_hash;
   data.password = pwHash;
+  // La version de la liste de modules appartient au serveur.
+  data.shipModulesRev = Math.max(0, Math.floor(Number(serverData.shipModulesRev) || 0));
+  const fullModules = moduleDiff === undefined && Array.isArray(data.inventory?.shipModules) ? data.inventory.shipModules : null;
+  if (data.inventory && typeof data.inventory === "object") delete data.inventory.shipModules;
   try {
     db.exec("BEGIN IMMEDIATE");
+    const modulesChanged = moduleDiff !== undefined ? applyShipModuleDiff(me.id, moduleDiff)
+      : fullModules ? syncShipModules(me.id, fullModules, storedShipModules(me.id)) : false;
+    // Différences calculées sur une autre liste que celle du serveur : on
+    // annule et le jeu refusionne depuis le compte complet.
+    if (moduleDiff !== undefined && shipModuleCount(me.id) !== body.moduleCount) {
+      throw Object.assign(new Error("modules"), { moduleMismatch: true });
+    }
+    if (modulesChanged) data.shipModulesRev += 1;
     db.prepare("UPDATE users SET pseudo = ?, pseudo_norm = ?, email = ?, faction = ?, password_hash = ?, data = ?, revision = ?, updated_at = ? WHERE id = ?")
-      .run(finalPseudo, norm(finalPseudo), finalEmail, faction, pwHash, JSON.stringify(data), incomingRev, data.updatedAt, me.id);
+      .run(finalPseudo, norm(finalPseudo), finalEmail, faction, pwHash, accountDataJson(data, me.id), incomingRev, data.updatedAt, me.id);
     if (saveId) {
       const metadata = { id: data.id, pseudo: data.pseudo, email: data.email, faction: data.faction,
-        revision: data.revision, updatedAt: data.updatedAt };
+        revision: data.revision, updatedAt: data.updatedAt, shipModulesRev: data.shipModulesRev };
       db.prepare("INSERT INTO account_save_tx (user_id, save_id, request_hash, metadata, created_at) VALUES (?, ?, ?, ?, ?)")
         .run(me.id, saveId, requestHash, JSON.stringify(metadata), data.updatedAt);
       // Petits reçus seulement ; conserver les 256 dernières opérations.
@@ -3830,12 +4036,17 @@ async function handleSave(req, body, res) {
         .run(me.id, me.id);
     }
     db.exec("COMMIT");
-  } catch {
+  } catch (error) {
     try { db.exec("ROLLBACK"); } catch {}
+    if (error?.moduleMismatch) {
+      res._orbitModules = null;
+      console.warn(`[account] modules désynchronisés pour ${me.id} : le jeu refusionne le compte complet.`);
+      return json(res, 409, { ok: false, stale: true, error: "Modules désynchronisés.", user: rowToPublic(me) });
+    }
     return json(res, 409, { ok: false, error: "Pseudo ou email déjà utilisé." });
   }
   const responseUser = body.compactSave === true && saveId ? data
-    : rowToPublic({ id: me.id, pseudo: finalPseudo, email: finalEmail, faction, data: JSON.stringify(data) });
+    : rowToPublic({ id: me.id, pseudo: finalPseudo, email: finalEmail, faction, data: accountDataJson(data, me.id) });
   return json(res, 200, { ok: true, conflict: conflict || undefined,
     ...(moduleRollsCorrected || battlepassCorrected ? { user: responseUser } : saveResponseUser(body, responseUser)) });
 }
@@ -3846,6 +4057,8 @@ export function handleAccountApi(req, res) {
   try { pathname = decodeURIComponent(new URL(req.url, "http://localhost").pathname); } catch {}
   if (!pathname.startsWith("/api/")) return false;
   const ip = req.socket?.remoteAddress || "local";
+  const knownModules = /^([^:]{1,128}):(\d{1,15})$/.exec(String(req.headers?.["x-orbit-modules"] || ""));
+  if (knownModules) res._orbitModules = { id: knownModules[1], rev: Number(knownModules[2]) };
   if (pathname === "/api/ping" && req.method === "GET") {
     json(res, 200, { ok: true, game: "hyperion-orbit" });
     return true;
@@ -4033,7 +4246,7 @@ export function handleAccountApi(req, res) {
         const revision = Math.max(Math.floor(Number(data.revision) || 0), Number(row.revision) || 0) + 1;
         data.revision = revision; data.updatedAt = now;
         db.prepare("UPDATE users SET data = ?, revision = ?, updated_at = ? WHERE id = ?")
-          .run(JSON.stringify(data), revision, now, row.id);
+          .run(accountDataJson(data, row.id), revision, now, row.id);
         db.exec("COMMIT"); inTx = false;
         return json(res, 200, { ok: true, user: data, ...result });
       } catch (error) {
@@ -4059,7 +4272,7 @@ export function handleAccountApi(req, res) {
         const revision = Math.max(Math.floor(Number(data.revision) || 0), Number(row.revision) || 0) + 1;
         data.revision = revision; data.updatedAt = now;
         db.prepare("UPDATE users SET data = ?, revision = ?, updated_at = ? WHERE id = ?")
-          .run(JSON.stringify(data), revision, now, row.id);
+          .run(accountDataJson(data, row.id), revision, now, row.id);
         db.exec("COMMIT"); inTx = false;
         return json(res, 200, { ok: true, user: data, ...result });
       } catch (error) {
@@ -4085,7 +4298,7 @@ export function handleAccountApi(req, res) {
         const revision = Math.max(Math.floor(Number(data.revision) || 0), Number(row.revision) || 0) + 1;
         data.revision = revision; data.updatedAt = now;
         db.prepare("UPDATE users SET data = ?, revision = ?, updated_at = ? WHERE id = ?")
-          .run(JSON.stringify(data), revision, now, row.id);
+          .run(accountDataJson(data, row.id), revision, now, row.id);
         db.exec("COMMIT"); inTx = false;
         return json(res, 200, { ok: true, user: data, ...result });
       } catch (error) {
@@ -4181,7 +4394,7 @@ export function handleAccountApi(req, res) {
         const revision = Math.max(Math.floor(Number(data.revision) || 0), Number(row.revision) || 0) + 1;
         data.revision = revision; data.updatedAt = now;
         db.prepare("UPDATE users SET data = ?, revision = ?, updated_at = ? WHERE id = ?")
-          .run(JSON.stringify(data), revision, now, row.id);
+          .run(accountDataJson(data, row.id), revision, now, row.id);
         db.exec("COMMIT"); inTx = false;
         return json(res, 200, { ok: true, user: data, ...result });
       } catch (error) {
@@ -4283,7 +4496,7 @@ export function handleAccountApi(req, res) {
         const revision = Math.max(Math.floor(Number(data.revision) || 0), Number(row.revision) || 0) + 1;
         data.revision = revision; data.updatedAt = now;
         db.prepare("UPDATE users SET data = ?, revision = ?, updated_at = ? WHERE id = ?")
-          .run(JSON.stringify(data), revision, now, row.id);
+          .run(accountDataJson(data, row.id), revision, now, row.id);
         db.exec("COMMIT"); inTx = false;
         return json(res, 200, { ok: true, user: data, quantity: soldQuantity, gain, gained: gain, gainEach, stripped });
       } catch (error) {
@@ -4319,7 +4532,7 @@ export function handleAccountApi(req, res) {
         const revision = Math.max(Math.floor(Number(data.revision) || 0), Number(row.revision) || 0) + 1;
         data.revision = revision; data.updatedAt = now;
         db.prepare("UPDATE users SET data = ?, revision = ?, updated_at = ? WHERE id = ?")
-          .run(JSON.stringify(data), revision, now, row.id);
+          .run(accountDataJson(data, row.id), revision, now, row.id);
         db.exec("COMMIT"); inTx = false;
         return json(res, 200, { ok: true, user: data, ...purchase });
       } catch {
@@ -4724,7 +4937,9 @@ function adminFindRow(target) {
   return db.prepare("SELECT * FROM users WHERE id = ?").get(accountId) || findUserRowByPseudo(raw);
 }
 function adminParseData(row) {
-  try { return JSON.parse(row.data || "{}") || {}; } catch { return {}; }
+  let data = {};
+  try { data = JSON.parse(row.data || "{}") || {}; } catch { return {}; }
+  return attachShipModules(data, String(row.id));
 }
 function adminWriteData(row, data, extraSql = "", extraArgs = []) {
   const now = Date.now();
@@ -4733,7 +4948,7 @@ function adminWriteData(row, data, extraSql = "", extraArgs = []) {
   data.revision = revision;
   data.updatedAt = now;
   db.prepare(`UPDATE users SET data = ?, revision = ?, updated_at = ?${extraSql} WHERE id = ?`)
-    .run(JSON.stringify(data), revision, now, ...extraArgs, row.id);
+    .run(accountDataJson(data, row.id), revision, now, ...extraArgs, row.id);
   return revision;
 }
 const adminWho = (row) => ({ id: String(row.id), pid: `u_${String(row.id)}`, pseudo: String(row.pseudo || "Pilote").slice(0, 20) });

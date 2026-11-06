@@ -421,7 +421,34 @@ function accountSaveJson(sent) {
     user = { ...user, inventory: { ...user.inventory } };
     delete user.inventory.moduleRollHistory;
   }
-  return `{"user":${accountJson(user)},"baseRevision":${cacheJson(sent.baseRevision)},"saveId":${cacheJson(sent.saveId)},"compactSave":true}`;
+  // Modules : seulement les différences figées dans le reçu (voir shipModuleDiff).
+  let modules = "";
+  if (sent.moduleDiff && user?.inventory) {
+    user = { ...user, inventory: { ...user.inventory } };
+    delete user.inventory.shipModules;
+    modules = `,"moduleDiff":${cacheJson(sent.moduleDiff)},"moduleCount":${cacheJson(sent.moduleCount)}`;
+  }
+  return `{"user":${accountJson(user)},"baseRevision":${cacheJson(sent.baseRevision)},"saveId":${cacheJson(sent.saveId)},"compactSave":true${modules}}`;
+}
+
+// Serveur à jour (shipModulesRev) : la sauvegarde n'envoie que les modules
+// ajoutés, modifiés ou retirés depuis la référence serveur, plus le total
+// attendu (contrôle serveur). Sinon, ancienne forme : liste complète.
+function shipModuleDiff(base, user) {
+  const before = base?.inventory?.shipModules, after = user?.inventory?.shipModules;
+  if (!(Number(base?.shipModulesRev) > 0) || !Array.isArray(before) || !Array.isArray(after)) return null;
+  const validId = module => typeof module?.id === "string" && module.id.length > 0 && module.id.length <= 200;
+  if (!before.every(validId) || !after.every(validId)) return null;
+  const previous = new Map(before.map(module => [module.id, module]));
+  const set = [], ids = new Set();
+  for (const module of after) {
+    if (ids.has(module.id)) continue;
+    ids.add(module.id);
+    if (!same(previous.get(module.id), module)) set.push(module);
+  }
+  const del = [...previous.keys()].filter(id => !ids.has(id));
+  // Forme JSON dès maintenant : un renvoi depuis le cache reste identique.
+  return { moduleDiff: JSON.parse(cacheJson({ set, del })), moduleCount: ids.size };
 }
 function inlineCacheJson(state) {
   const retry = state.retrySave;
@@ -709,11 +736,17 @@ async function api(path, { method = "GET", body, bodyJson, token, timeout = 1500
   const ctrl = new AbortController();
   const timer = setTimeout(() => { try { ctrl.abort(); } catch {} }, Math.max(500, timeout));
   let out;
+  // Liste de modules déjà connue : le serveur ne la renvoie pas tant
+  // qu'elle n'a pas changé (modulesOmitted) et on réutilise la nôtre.
+  const knownModules = token && serverBase && memUser && String(serverBase.id) === String(memUser.id)
+    && Number(serverBase.shipModulesRev) > 0 && Array.isArray(serverBase.inventory?.shipModules)
+    ? { id: String(serverBase.id), rev: Math.floor(Number(serverBase.shipModulesRev)), list: serverBase.inventory.shipModules } : null;
   try {
     const headers = {};
     if (payload !== undefined) headers["content-type"] = "application/json; charset=utf-8";
     if (compressed) headers["content-encoding"] = "gzip";
     if (token) headers.Authorization = `Bearer ${token}`;
+    if (knownModules) headers["x-orbit-modules"] = `${knownModules.id}:${knownModules.rev}`;
     const res = await fetch(path, {
       method,
       headers,
@@ -726,6 +759,11 @@ async function api(path, { method = "GET", body, bodyJson, token, timeout = 1500
     out = { status: res.status, ...(data && typeof data === "object" ? data : {}) };
   } finally {
     clearTimeout(timer);
+  }
+  if (out.modulesOmitted === true && out.user?.inventory) {
+    // Liste figée de la référence serveur : jamais modifiée sur place.
+    if (knownModules && String(out.user.id) === knownModules.id) out.user.inventory.shipModules = knownModules.list;
+    else out = { ...out, ok: false, user: undefined, error: "Modules manquants." };
   }
   // Serveur sans gzip : il n'a rien pu lire, donc rien enregistre -> on
   // renvoie la meme requete en clair une fois et on n'insiste plus.
@@ -1388,6 +1426,8 @@ async function pushSnapshotScoped() {
       omitHistory: true,
     };
     retrySave.user.revision = Math.max(Number(retrySave.user.revision) || 0, retrySave.baseRevision + 1);
+    const modules = shipModuleDiff(serverBase, retrySave.user);
+    if (modules) Object.assign(retrySave, modules);
   }
   const sent = retrySave;
   writeCache(memUser, true);
