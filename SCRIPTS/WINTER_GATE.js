@@ -1,7 +1,7 @@
 // SCRIPTS/WINTER_GATE.js — GG d'hiver partagée : le convoi du Père Noël.
 // Session horaire (SRC/CORE/WINTER_CONVOY.js, winterGateSession) :
-//   :00 -> :05  lobby : entrée ouverte, le convoi attend au départ ;
-//   :05         départ commun pour tous les joueurs présents (personne :
+//   :18 -> :23  lobby : entrée ouverte, le convoi attend au départ ;
+//   :23         départ commun pour tous les joueurs présents (personne :
 //               la session est sautée) ;
 //   30 min      run : étapes + vagues cumulatives, les NPC ne visent que
 //               le convoi ;
@@ -11,6 +11,8 @@
 //               restants sont renvoyés à leur base).
 // Le contrôleur est branché sur la boucle 50 ms de MULTI_SERVER (room "winter").
 
+import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { isWinterEventActive } from "../NPC/NPC_WINTER.js";
 import {
   WINTER_CONVOY_DURATION, WINTER_CONVOY_HP, WINTER_CONVOY_LEG, WINTER_CONVOY_SPEED, WINTER_CONVOY_WAVE_HEAL,
@@ -22,6 +24,12 @@ export const WINTER_GATE_DONE_MS = 12000;
 // Diffusion de la position du convoi (le client interpole entre deux).
 const SEND_RUN_MS = 100;
 const SEND_IDLE_MS = 1000;
+// Session sauvegardée sur disque : un redémarrage serveur pendant la GG la
+// reprend (même convoi, même vague) au lieu de renvoyer tout le monde à la base.
+const STATE_FILE = process.env.ORBIT_WINTER_GATE_FILE || join(process.env.ORBIT_DATA_DIR || "SERVER_DATA", "winter_gate.json");
+const PERSIST_MS = 2000;
+// Après une reprise : le temps que les navigateurs rechargent et se reconnectent.
+const RESTORE_GRACE_MS = 60000;
 
 const gate = {
   phase: "closed", // closed | lobby | run | done
@@ -39,7 +47,56 @@ const gate = {
   lastTick: 0,
   lastSentAt: 0,
   sentPhase: "",
+  savedAt: 0,
+  savedPhase: "",
+  restoredUntil: 0, // reprise : absents tolérés jusqu'à cette date
+  respawnWave: false, // reprise en run : vague en cours à refaire apparaître
 };
+
+// final : arrêt du serveur. La sauvegarde est figée, sinon les déconnexions
+// de l'arrêt fermeraient la session et l'écraseraient avant la sortie.
+let persistFrozen = false;
+export function persistWinterGate(now = Date.now(), { final = false } = {}) {
+  if (persistFrozen) return;
+  if (final) persistFrozen = true;
+  gate.savedAt = now;
+  gate.savedPhase = gate.phase;
+  try {
+    const { phase, hourAt, dist, stopAt, moving, wave, reason, doneAt, convoy } = gate;
+    mkdirSync(dirname(STATE_FILE), { recursive: true });
+    writeFileSync(STATE_FILE, JSON.stringify({ phase, hourAt, dist, stopAt, moving, wave, reason, doneAt,
+      convoy: convoy ? { hp: convoy.hp, hpMax: convoy.hpMax } : null }), "utf8");
+  } catch {}
+}
+
+function restore(now = Date.now()) {
+  try {
+    const saved = JSON.parse(readFileSync(STATE_FILE, "utf8") || "{}");
+    if (!["lobby", "run", "done"].includes(saved?.phase)) return;
+    if (!isWinterEventActive(new Date(now))) return;
+    // Même session horaire seulement (circuit et horaires en découlent).
+    const session = winterGateSession(now);
+    if (Number(saved.hourAt) !== session.hourAt || !(Number(saved.convoy?.hp) >= 0)) return;
+    Object.assign(gate, {
+      phase: saved.phase,
+      hourAt: session.hourAt,
+      startAt: session.startAt,
+      endAt: session.endAt,
+      route: createWinterConvoyRoute(session.seed),
+      dist: Math.max(0, Number(saved.dist) || 0),
+      stopAt: Math.max(0, Number(saved.stopAt) || 0),
+      moving: saved.moving === true,
+      wave: Math.max(0, Math.floor(Number(saved.wave) || 0)),
+      reason: String(saved.reason || ""),
+      doneAt: Number(saved.doneAt) || 0,
+      convoy: { x: 0, y: 0, vx: 0, vy: 0, angle: 0, hp: Number(saved.convoy.hp), hpMax: Number(saved.convoy.hpMax) || WINTER_CONVOY_HP },
+      restoredUntil: now + RESTORE_GRACE_MS,
+      respawnWave: saved.phase === "run",
+      savedPhase: saved.phase,
+    });
+    placeConvoy();
+  } catch {}
+}
 
 function presentPlayers(room) {
   const list = [];
@@ -150,7 +207,7 @@ export function getWinterGateState(now = Date.now()) {
   return statePayload(now);
 }
 
-// Entrée autorisée : saison d'hiver et session ouverte (:00 -> :05).
+// Entrée autorisée : saison d'hiver et session ouverte (:18 -> :23).
 export function winterGateEntryOpen(now = Date.now()) {
   return isWinterEventActive(new Date(now)) && winterGateSession(now).open;
 }
@@ -162,6 +219,7 @@ export function tickWinterGate(room, sim, ctx) {
   try {
     tickInner(room, sim, ctx, now, dt);
   } finally {
+    if (gate.phase !== gate.savedPhase || (gate.phase === "run" && now - gate.savedAt >= PERSIST_MS)) persistWinterGate(now);
     const every = gate.phase === "run" ? SEND_RUN_MS : SEND_IDLE_MS;
     if (gate.phase !== gate.sentPhase || now - gate.lastSentAt >= every) {
       gate.sentPhase = gate.phase;
@@ -190,6 +248,7 @@ function tickInner(room, sim, ctx, now, dt) {
     if (now < gate.startAt) return;
     // Départ commun ; personne au rendez-vous : session sautée.
     if (!present.length) {
+      if (now < gate.restoredUntil) return;
       closeGate(sim);
       return;
     }
@@ -201,10 +260,18 @@ function tickInner(room, sim, ctx, now, dt) {
 
   if (gate.phase === "run") {
     const c = gate.convoy;
-    // Tout le monde est parti : session abandonnée.
+    // Tout le monde est parti : session abandonnée (sauf juste après une
+    // reprise, le temps que les joueurs se reconnectent).
     if (!present.length) {
+      if (now < gate.restoredUntil) return;
       closeGate(sim);
       return;
+    }
+    // Reprise : les attaquants ont disparu avec le redémarrage, la vague en
+    // cours réapparaît (sinon elle compterait comme tuée).
+    if (gate.respawnWave) {
+      gate.respawnWave = false;
+      try { sim.spawnConvoyAttackers(winterConvoyWave(gate.wave)); } catch {}
     }
     if (!(c.hp > 0)) {
       finish("destroyed", room, sim, ctx, now);
@@ -245,3 +312,6 @@ function tickInner(room, sim, ctx, now, dt) {
     }
   }
 }
+
+// Reprise de la session en cours après un redémarrage du serveur.
+restore();

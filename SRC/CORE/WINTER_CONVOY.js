@@ -4,8 +4,8 @@
 // GG D'HIVER : LE CONVOI DU PÈRE NOËL (map partagée, pilotée par le serveur :
 // SCRIPTS/WINTER_GATE.js).
 // ============================================================================
-// Session horaire commune : entrée ouverte de :00 à :05, départ du convoi à
-// :05 pour tous les joueurs présents, fermée le reste de l'heure. Pas de PvP,
+// Session horaire commune : entrée ouverte de :18 à :23, départ du convoi à
+// :23 pour tous les joueurs présents, fermée le reste de l'heure. Pas de PvP,
 // les NPC ne visent que le convoi. Récompense de victoire partagée selon les
 // dégâts infligés aux attaquants.
 // Survie : le Santa-1100101 tourne sur un circuit fermé (tiré pour chaque
@@ -48,8 +48,8 @@ export const WINTER_CONVOY_WAVE_HEAL = 0.1;
 // Identifiant partagé du convoi (cible serveur des attaquants).
 export const WINTER_CONVOY_ID = "winter_convoy";
 // Entrée ouverte pendant 5 minutes chaque heure, à partir de la minute
-// WINTER_GATE_OPEN_MINUTE (0 : entrée de :00 à :05, départ à :05).
-export const WINTER_GATE_OPEN_MINUTE = 0;
+// WINTER_GATE_OPEN_MINUTE (18 : entrée de :18 à :23, départ à :23).
+export const WINTER_GATE_OPEN_MINUTE = 18;
 export const WINTER_GATE_ENTRY_MS = 5 * 60 * 1000;
 const HOUR_MS = 60 * 60 * 1000;
 const OPEN_OFFSET_MS = WINTER_GATE_OPEN_MINUTE * 60 * 1000;
@@ -208,7 +208,7 @@ export function winterFrostPoints(hpMax) {
 }
 
 // Session de l'heure en cours (heures pleines : identiques à Paris).
-// open = entrée autorisée (avant le départ de :05).
+// open = entrée autorisée (avant le départ de :23).
 export function winterGateSession(nowMs = Date.now()) {
   // hourAt = ouverture de la session en cours (ou de la dernière).
   const hourAt = Math.floor((Number(nowMs) - OPEN_OFFSET_MS) / HOUR_MS) * HOUR_MS + OPEN_OFFSET_MS;

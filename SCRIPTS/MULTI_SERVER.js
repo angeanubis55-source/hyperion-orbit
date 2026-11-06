@@ -27,7 +27,7 @@ const {
   PET_LEASH,
 } = AC;
 import { tickLowRaid, getLowRaidState } from "./LOW_RAID.js";
-import { tickWinterGate, getWinterGateState } from "./WINTER_GATE.js";
+import { tickWinterGate, getWinterGateState, persistWinterGate } from "./WINTER_GATE.js";
 import { damagePlayerLayers } from "../COMBAT/COMBAT_RULES.js";
 import { handleAccountApi, getAccountGameplayData, verifyWsToken, recordPvpKill, recordPvpPetKill, awardNpcKill, flushNpcRewards, grantSundayModule, grantSundayTickets, grantSundayAmmo, listFriends, friendFollowers, findUserByPseudo, hasFriendRequest, isBlockedBy, clanIdOfUser, clanTagOfUser, clanMemberUserIds, setClanPresenceProvider, setClanBasesProvider, recordClanWarKill, adminGiveCredits, adminGiveExperience, adminGiveHonor, adminGiveModule, adminGiveTitle, adminListAccounts, adminDebugAccount, adminDeleteAccount, adminResetGalaxyGate, adminGiveGalaxyGate, adminDroneDesigns, adminGiveDroneDesign, adminShipFamilies, adminCatalog, adminInventory, adminGiveItem, adminAdjustStock, adminRemoveOwned, adminSetPosition, adminRename, adminSetFaction, adminResetPassword, appendPlayerLogs, adminPlayerLogs, adminLogAction, adminActionLog, adminStats } from "./ACCOUNT_SERVER.js";
 import { combatProfile, validateCombatHit, syncDeclaredFormation, accountWithFormation } from "./COMBAT_PROFILE.js";
@@ -5285,6 +5285,7 @@ for (const signal of ["SIGINT", "SIGTERM"]) {
     try { broadcastAll(JSON.stringify({ t: "maintenance", reason: "deploy", retryMs: 3000 })); } catch {}
     try { saveNpcRespawns(); } catch {}
     try { flushNpcRewards(); } catch {}
+    try { persistWinterGate(Date.now(), { final: true }); } catch {}
     setTimeout(() => {
       try {
         for (const client of wss.clients) {
