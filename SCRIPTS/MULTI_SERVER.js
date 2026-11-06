@@ -29,7 +29,7 @@ const {
 import { tickLowRaid, getLowRaidState } from "./LOW_RAID.js";
 import { tickWinterGate, getWinterGateState } from "./WINTER_GATE.js";
 import { damagePlayerLayers } from "../COMBAT/COMBAT_RULES.js";
-import { handleAccountApi, getAccountGameplayData, verifyWsToken, recordPvpKill, recordPvpPetKill, awardNpcKill, grantSundayModule, grantSundayTickets, grantSundayAmmo, listFriends, friendFollowers, findUserByPseudo, hasFriendRequest, isBlockedBy, clanIdOfUser, clanTagOfUser, clanMemberUserIds, setClanPresenceProvider, setClanBasesProvider, recordClanWarKill, adminGiveCredits, adminGiveExperience, adminGiveHonor, adminGiveModule, adminGiveTitle, adminListAccounts, adminDebugAccount, adminDeleteAccount, adminResetGalaxyGate, adminGiveGalaxyGate, adminDroneDesigns, adminGiveDroneDesign, adminShipFamilies, adminCatalog, adminInventory, adminGiveItem, adminAdjustStock, adminRemoveOwned, adminSetPosition, adminRename, adminSetFaction, adminResetPassword, appendPlayerLogs, adminPlayerLogs, adminLogAction, adminActionLog, adminStats } from "./ACCOUNT_SERVER.js";
+import { handleAccountApi, getAccountGameplayData, verifyWsToken, recordPvpKill, recordPvpPetKill, awardNpcKill, flushNpcRewards, grantSundayModule, grantSundayTickets, grantSundayAmmo, listFriends, friendFollowers, findUserByPseudo, hasFriendRequest, isBlockedBy, clanIdOfUser, clanTagOfUser, clanMemberUserIds, setClanPresenceProvider, setClanBasesProvider, recordClanWarKill, adminGiveCredits, adminGiveExperience, adminGiveHonor, adminGiveModule, adminGiveTitle, adminListAccounts, adminDebugAccount, adminDeleteAccount, adminResetGalaxyGate, adminGiveGalaxyGate, adminDroneDesigns, adminGiveDroneDesign, adminShipFamilies, adminCatalog, adminInventory, adminGiveItem, adminAdjustStock, adminRemoveOwned, adminSetPosition, adminRename, adminSetFaction, adminResetPassword, appendPlayerLogs, adminPlayerLogs, adminLogAction, adminActionLog, adminStats } from "./ACCOUNT_SERVER.js";
 import { combatProfile, validateCombatHit, syncDeclaredFormation, accountWithFormation } from "./COMBAT_PROFILE.js";
 import { profileAbilityCooldown } from "../DRONE/DRONE_DESIGNS.js";
 import { selectNpcSnapshot } from "./NPC_SNAPSHOT.js";
@@ -4802,21 +4802,22 @@ let snapshotTick = 0;
 // Un serveur bloqué n'avance plus les NPC, alors que chaque client continue de
 // les prédire : sans rattrapage, tous reculent d'un coup au paquet suivant.
 const NPC_STEP_MS = 50;
-const NPC_MAX_CATCHUP_STEPS = 12;
+const NPC_MAX_CATCHUP_MS = 600;
 const SERVER_LAG_LOG_MS = 250;
 let lastNpcStepAt = Date.now();
-// Conserver le temps non rattrape : le jeter provoque un rollback visuel
-// (le client predit plus loin, puis recoit un serveur en retard).
-let npcStepDebtMs = 0;
 let lastServerLagLogAt = 0;
 setInterval(() => {
   const now = Date.now();
   const elapsedMs = now - lastNpcStepAt;
   lastNpcStepAt = now;
-  const totalNpcTimeMs = Math.max(0, elapsedMs) + npcStepDebtMs;
-  const wantedNpcSteps = Math.floor(totalNpcTimeMs / NPC_STEP_MS);
-  const npcSteps = Math.min(NPC_MAX_CATCHUP_STEPS, wantedNpcSteps);
-  npcStepDebtMs = Math.max(0, totalNpcTimeMs - npcSteps * NPC_STEP_MS);
+  // Les NPC avancent exactement du temps écoulé, en sous-pas de 50 ms max :
+  // la position envoyée correspond toujours à `at`. Sous Windows ce timer
+  // tombe à ~62 ms ; des pas fixes de 50 ms alternaient 1 et 2 pas par
+  // paquet, le client voyait la vitesse osciller (x0,8 / x1,6) et
+  // extrapolait trop loin puis reculait (saccades / rollbacks).
+  const npcTimeMs = Math.min(NPC_MAX_CATCHUP_MS, Math.max(0, elapsedMs));
+  const npcSteps = Math.max(1, Math.ceil(npcTimeMs / NPC_STEP_MS));
+  const npcStepSec = npcTimeMs / npcSteps / 1000;
   if (elapsedMs >= SERVER_LAG_LOG_MS && now - lastServerLagLogAt >= 10_000) {
     lastServerLagLogAt = now;
     console.warn(`[multi:lag] boucle de jeu bloquee ${elapsedMs} ms.`);
@@ -4867,7 +4868,7 @@ setInterval(() => {
         if (typeof sim.prunePlayers === "function") {
           try { sim.prunePlayers([...room.keys()]); } catch {}
         }
-        for (let step = 0; step < npcSteps; step++) sim.tick(NPC_STEP_MS / 1000);
+        for (let step = 0; step < npcSteps; step++) sim.tick(npcStepSec);
         // Les tirs NPC partages retirent les PV dans le meme pool autoritaire
         // que le PvP. Les soins du client (reparateur, regen) remontent ce
         // pool via les pos ; les degats serveur restent prioritaires.
@@ -5270,6 +5271,7 @@ for (const signal of ["SIGINT", "SIGTERM"]) {
     // puis ferme toutes les sockets avec le code standard "service restart".
     try { broadcastAll(JSON.stringify({ t: "maintenance", reason: "deploy", retryMs: 3000 })); } catch {}
     try { saveNpcRespawns(); } catch {}
+    try { flushNpcRewards(); } catch {}
     setTimeout(() => {
       try {
         for (const client of wss.clients) {

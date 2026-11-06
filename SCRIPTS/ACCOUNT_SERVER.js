@@ -199,12 +199,161 @@ export function sweepExpiredBattlepass(now = new Date()) {
   return cleared;
 }
 
+// --- Récompenses NPC en mémoire ---
+// Un kill ne relit ni ne réécrit plus le compte complet (jusqu'à 1,5 Mo de
+// JSON) pour chaque membre du groupe dans la boucle de jeu : ça gelait la
+// simulation NPC de toutes les maps (rollbacks côté client). Le compte parsé
+// reste en mémoire, les gains s'y ajoutent et l'écriture est groupée.
+// Toute autre requête sur `users` passe par guardUsersTable : elle écrit
+// d'abord les gains en attente, et une écriture étrangère invalide le cache.
+const NPC_REWARD_FLUSH_AGE_MS = 2000;
+const NPC_ACCOUNT_IDLE_MS = 120_000;
+// uid -> { uid, data, revision, dbRevision, base, dirtySince, txKeys, usedAt }
+const npcAccounts = new Map();
+
+function dropNpcAccount(uid) {
+  const entry = npcAccounts.get(uid);
+  if (entry && !entry.dirtySince) npcAccounts.delete(uid);
+}
+function dropNpcAccounts() {
+  for (const [uid, entry] of npcAccounts) if (!entry.dirtySince) npcAccounts.delete(uid);
+}
+
+// uid : ce compte seulement ; minAgeMs : seulement les gains assez anciens.
+export function flushNpcRewards(uid = null, minAgeMs = 0) {
+  if (!rawDb) return;
+  const now = Date.now();
+  const due = [];
+  for (const entry of uid === null ? npcAccounts.values() : [npcAccounts.get(uid)].filter(Boolean)) {
+    if (entry.dirtySince && now - entry.dirtySince >= minAgeMs) due.push(entry);
+  }
+  if (!due.length) return;
+  const own = !rawDb.isTransaction;
+  const written = [], lost = [];
+  try {
+    if (own) rawDb.exec("BEGIN IMMEDIATE");
+    const update = rawDb.prepare("UPDATE users SET data = ?, revision = ?, updated_at = ? WHERE id = ? AND revision = ?");
+    const tx = rawDb.prepare("INSERT OR IGNORE INTO npc_reward_tx (tx_key, user_id, created_at) VALUES (?, ?, ?)");
+    for (const entry of due) {
+      const changed = update.run(JSON.stringify(entry.data), entry.revision, Number(entry.data.updatedAt) || now, entry.uid, entry.dbRevision);
+      if (!(Number(changed?.changes) > 0)) { lost.push(entry); continue; }
+      for (const [key, at] of entry.txKeys) tx.run(key, entry.uid, at);
+      written.push(entry);
+    }
+    if (own) rawDb.exec("COMMIT");
+  } catch (e) {
+    if (own) { try { rawDb.exec("ROLLBACK"); } catch {} }
+    console.error("[account] écriture des récompenses NPC :", e?.message || e);
+    return;
+  }
+  for (const entry of written) {
+    entry.dbRevision = entry.revision;
+    entry.dirtySince = 0;
+    entry.txKeys.clear();
+  }
+  for (const entry of lost) {
+    // Compte modifié hors de ce serveur (script GIVE_*...) entre deux écritures.
+    npcAccounts.delete(entry.uid);
+    console.error(`[account] récompenses NPC perdues pour ${entry.uid} : compte modifié ailleurs.`);
+  }
+}
+
+function npcRewardAccount(uid) {
+  let entry = npcAccounts.get(uid);
+  if (entry && !entry.dirtySince) {
+    const current = rawDb.prepare("SELECT revision FROM users WHERE id = ?").get(uid);
+    if (!current || Number(current.revision) !== entry.dbRevision) { npcAccounts.delete(uid); entry = null; }
+  }
+  if (!entry) {
+    const row = rawDb.prepare("SELECT data, revision FROM users WHERE id = ?").get(uid);
+    if (!row) return null;
+    let data = null;
+    try { data = JSON.parse(row.data || "{}"); } catch {}
+    if (!data || typeof data !== "object") return null;
+    const dbRevision = Number(row.revision) || 0;
+    entry = {
+      uid, data, dbRevision, base: dbRevision,
+      revision: Math.max(Math.floor(Number(data.revision) || 0), dbRevision),
+      dirtySince: 0, txKeys: new Map(), usedAt: 0,
+    };
+    npcAccounts.set(uid, entry);
+  }
+  entry.usedAt = Date.now();
+  return entry;
+}
+
+// Depuis `base`, seuls les gains NPC ont changé : on recopie ces champs (petits)
+// sur la version déjà chargée au lieu de reparser tout le compte.
+function withNpcRewards(previous, entry) {
+  const data = entry.data;
+  return {
+    ...previous,
+    credits: data.credits,
+    stats: structuredClone(data.stats),
+    inventory: { ...(previous.inventory || {}), resources: structuredClone(data.inventory?.resources || {}) },
+    drones: data.drones ? { ...(previous.drones || {}), items: structuredClone(data.drones.items) } : previous.drones,
+    pet: data.pet ? structuredClone(data.pet) : previous.pet,
+    updatedAt: data.updatedAt,
+    revision: entry.revision,
+  };
+}
+
+const USERS_SQL = /\busers\b/i;
+const USERS_WRITE_SQL = /^\s*(?:INSERT|UPDATE|DELETE|REPLACE)\b/i;
+const USERS_BY_ID_SQL = /\bWHERE\s+id\s*=\s*\?\s*$/i;
+function guardUsersTable(raw) {
+  const bind = (target, prop) => {
+    const value = target[prop];
+    return typeof value === "function" ? value.bind(target) : value;
+  };
+  const statement = (stmt, sql) => {
+    const write = USERS_WRITE_SQL.test(sql), byId = USERS_BY_ID_SQL.test(sql);
+    const call = (method, args) => {
+      const uid = byId ? String(args[args.length - 1] ?? "") : null;
+      flushNpcRewards(uid);
+      const out = stmt[method](...args);
+      if (write) { if (uid !== null) dropNpcAccount(uid); else dropNpcAccounts(); }
+      return out;
+    };
+    return new Proxy(stmt, {
+      get(target, prop) {
+        if (prop === "run" || prop === "get" || prop === "all" || prop === "iterate") return (...args) => call(prop, args);
+        return bind(target, prop);
+      },
+    });
+  };
+  return new Proxy(raw, {
+    get(target, prop) {
+      if (prop === "prepare") return (sql) => {
+        const stmt = target.prepare(sql);
+        return USERS_SQL.test(String(sql)) ? statement(stmt, String(sql)) : stmt;
+      };
+      if (prop === "exec") return (sql) => {
+        const text = String(sql), users = USERS_SQL.test(text);
+        // Avant une transaction étrangère : rien ne doit rester en attente dedans.
+        if (users || /^\s*BEGIN\b/i.test(text)) flushNpcRewards();
+        const out = target.exec(sql);
+        if (users) dropNpcAccounts();
+        return out;
+      };
+      return bind(target, prop);
+    },
+  });
+}
+
 // --- Base ---
 let db = null;
+let rawDb = null;
 export function initAccountDb() {
   if (db) return db;
   mkdirSync(DB_DIR, { recursive: true });
-  db = new DatabaseSync(DB_PATH);
+  rawDb = new DatabaseSync(DB_PATH);
+  // WAL : un commit n'attend plus un fsync complet du fichier ; les lectures
+  // ne bloquent plus les écritures. NORMAL reste sûr en WAL (pas de corruption,
+  // au pire la dernière transaction perdue sur coupure de courant).
+  try { rawDb.exec("PRAGMA journal_mode = WAL"); } catch {}
+  try { rawDb.exec("PRAGMA synchronous = NORMAL"); } catch {}
+  db = guardUsersTable(rawDb);
   let hadEmailVerifiedColumn = false;
   try { hadEmailVerifiedColumn = db.prepare("PRAGMA table_info(users)").all().some(row => row.name === "email_verified_at"); } catch {}
   db.exec(`
@@ -384,6 +533,14 @@ export function initAccountDb() {
   setInterval(purge, 3600_000).unref?.();
   sweepExpiredBattlepass();
   setInterval(sweepExpiredBattlepass, 60_000).unref?.();
+  // Chaque compte part sur le disque ~2 s après son premier gain en attente,
+  // en une seule écriture quel que soit le nombre de kills entre-temps.
+  setInterval(() => {
+    flushNpcRewards(null, NPC_REWARD_FLUSH_AGE_MS);
+    const idle = Date.now() - NPC_ACCOUNT_IDLE_MS;
+    for (const [uid, entry] of npcAccounts) if (!entry.dirtySince && entry.usedAt < idle) npcAccounts.delete(uid);
+  }, 500).unref?.();
+  process.on("exit", () => { try { flushNpcRewards(); } catch {} });
   // Clans : recrutement ouvert/fermé pour les bases existantes.
   try { db.exec("ALTER TABLE clans ADD COLUMN open INTEGER NOT NULL DEFAULT 1"); } catch {}
   // Clans : annonce (message du jour) et banque de crédits.
@@ -455,9 +612,11 @@ function bearerToken(req) {
   return m ? m[1].slice(0, 128) : "";
 }
 
-// Kill NPC de zone : transaction persistante et idempotente. Le serveur lit
-// lui-meme l'equipement, les boosters et l'arbre pilote du compte ; aucun
-// montant annonce par le navigateur n'est accepte.
+// Kill NPC de zone : idempotent (tx_key). Le serveur lit lui-meme
+// l'equipement, les boosters et l'arbre pilote du compte ; aucun montant
+// annonce par le navigateur n'est accepte. Les gains s'appliquent au compte
+// en memoire, l'ecriture (compte + tx_key, meme transaction) est groupee
+// par flushNpcRewards.
 export function awardNpcKill(accountId, npcType, mapId, rewardPercent, ownsKill, txKey, shipPassivesEnabled = true) {
   initAccountDb();
   const uid = String(accountId || "");
@@ -467,20 +626,11 @@ export function awardNpcKill(accountId, npcType, mapId, rewardPercent, ownsKill,
   if (!uid || !key || !reward) return null;
   const pct = Math.max(0, Math.min(100, Number(rewardPercent) || 0));
   if (pct <= 0) return null;
-  let inTx = false;
   try {
-    db.exec("BEGIN IMMEDIATE");
-    inTx = true;
-    const inserted = db.prepare("INSERT OR IGNORE INTO npc_reward_tx (tx_key, user_id, created_at) VALUES (?, ?, ?)")
-      .run(key, uid, Date.now());
-    if (!(Number(inserted?.changes) > 0)) {
-      db.exec("ROLLBACK");
-      return { duplicate: true };
-    }
-    const row = db.prepare("SELECT * FROM users WHERE id = ?").get(uid);
-    if (!row) throw new Error("Compte introuvable");
-    let data = {};
-    try { data = JSON.parse(row.data || "{}") || {}; } catch { data = {}; }
+    const entry = npcRewardAccount(uid);
+    if (!entry) return null;
+    if (entry.txKeys.has(key) || rawDb.prepare("SELECT 1 FROM npc_reward_tx WHERE tx_key = ?").get(key)) return { duplicate: true };
+    const data = entry.data;
     const hangars = Array.isArray(data.hangars) ? data.hangars : [];
     const hangar = hangars.find((h) => h?.active) || hangars[0] || null;
     let equipment = { bonusExpPct: 0, bonusHonorPct: 0 };
@@ -545,13 +695,12 @@ export function awardNpcKill(accountId, npcType, mapId, rewardPercent, ownsKill,
       data.pet.level = getPetLevel(data.pet.exp);
     }
     const now = Date.now();
-    const revision = Math.max(Math.floor(Number(data.revision) || 0), Number(row.revision) || 0) + 1;
+    const revision = entry.revision + 1;
+    entry.revision = revision;
     data.revision = revision;
     data.updatedAt = now;
-    db.prepare("UPDATE users SET data = ?, revision = ?, updated_at = ? WHERE id = ?")
-      .run(JSON.stringify(data), revision, now, uid);
-    db.exec("COMMIT");
-    inTx = false;
+    entry.txKeys.set(key, now);
+    entry.dirtySince ||= now;
     return {
       credits, exp, honor, baseExp, baseHonor, petExp, revision, direct,
       totalCredits: Math.max(0, Math.floor(Number(data.credits) || 0)),
@@ -560,7 +709,6 @@ export function awardNpcKill(accountId, npcType, mapId, rewardPercent, ownsKill,
       ownsKill: ownsKill === true, type, txKey: key,
     };
   } catch {
-    if (inTx) { try { db.exec("ROLLBACK"); } catch {} }
     return null;
   }
 }
@@ -2747,9 +2895,20 @@ export function getAccountGameplayData(accountId, previous = null) {
   // Le poll WS reste a une seconde. Une revision inchangee ne justifie pas
   // de relire et parser le JSON complet de l'inventaire a chaque passage.
   if (previous && String(previous.id) === String(accountId)) {
-    const current = db.prepare("SELECT revision FROM users WHERE id = ?").get(String(accountId));
+    const uid = String(accountId);
+    // Gains NPC en attente : la version en memoire fait foi, sans forcer
+    // l'ecriture ni reparser le compte complet apres chaque kill.
+    const pending = npcAccounts.get(uid);
+    if (pending?.dirtySince) {
+      if (pending.revision === Number(previous.revision)) return previous;
+      if (Number(previous.revision) >= pending.base) return withNpcRewards(previous, pending);
+    }
+    const current = rawDb.prepare("SELECT revision FROM users WHERE id = ?").get(uid);
     if (!current) return null;
     if (Number(current.revision) === Number(previous.revision)) return previous;
+    const cached = npcAccounts.get(uid);
+    if (cached && !cached.dirtySince && cached.dbRevision === Number(current.revision)
+      && Number(previous.revision) >= cached.base) return withNpcRewards(previous, cached);
   }
   const row = db.prepare("SELECT data, faction, revision FROM users WHERE id = ?").get(String(accountId));
   if (!row) return null;
