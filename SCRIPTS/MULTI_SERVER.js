@@ -1973,6 +1973,8 @@ async function handleStarJumpRequest(ws, peer, fromMap, target, setMapId) {
   try {
     const { id, state } = peer;
     if (!target || !serverMaps.has(target) || STAR_JUMP_BLOCKED_MAPS.has(target)) return deny("unreachable");
+    // GG d'hiver : on n'en sort que par la fin de session (pas de saut).
+    if (String(fromMap || "").toLowerCase() === "winter") return deny("unreachable");
     if (target === String(fromMap || "").toLowerCase()) return deny("same-map");
     if (now < Number(state.starJumpCdUntil || 0) || now < Number(state.portalCdUntil || 0)) return deny("cooldown");
     const world = serverMaps.get(target)?.world || { w: 11000, h: 7000 };

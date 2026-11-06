@@ -49888,7 +49888,7 @@ function refreshStarMap() {
       const reuseLeft = starMapJumpReuseLeftSec();
       const canJump = !!sel && sel.jumpable === true
         && normalizeMapId(sel.id) !== normalizeMapId(cur)
-        && !ch && reuseLeft <= 0 && started && !player.dead && rules?.mode !== "gate";
+        && !ch && reuseLeft <= 0 && started && !player.dead && rules?.mode !== "gate" && rules?.convoy !== true;
       btn.disabled = !canJump;
       btn.classList.toggle("channel", !!ch);
       if (ch && sel && String(ch.target).toLowerCase() === String(sel.id).toLowerCase()) {
@@ -49922,12 +49922,21 @@ function isPlayerMovementLocked() {
     || hangarSwapFx || StarJump.channel || isPortalJumpInProgress());
 }
 
+// Fenêtre affichée à l'écran (ni cachée, ni réduite, ni en train de se réduire).
+function starMapWindowShown(id) {
+  const el = document.getElementById(id);
+  return !!el && el.style.display !== "none" && getComputedStyle(el).display !== "none"
+    && !el.classList.contains("gameWinMinimized") && !el.classList.contains("gameWinClosing");
+}
+
 function startStarJump() {
   try {
     if (!started || player.dead) { showToast("Vaisseau indisponible.", 1.4); return false; }
     if (StarJump.channel) { showToast("Saut en cours…", 1.2); return false; }
     if (hangarSwapFx || hangarActivationPreparation) { showToast("Échange en cours…", 1.2); return false; }
     if (rules?.mode === "gate") { showToast("Impossible en Galaxy Gate.", 1.6); return false; }
+    // GG d'hiver : on n'en sort que par la fin de session.
+    if (rules?.convoy === true) { showToast("Impossible dans la GG d'hiver.", 1.6); return false; }
     const sel = StarJump.selected ? starMapById.get(String(StarJump.selected).toLowerCase()) : null;
     if (!sel) { showToast("Choisis une carte.", 1.4); return false; }
     if (sel.jumpable !== true) { showToast(sel.reason || "Destination indisponible.", 1.6); return false; }
@@ -49955,11 +49964,13 @@ function startStarJump() {
     updateStarJumpCountdown(StarJump.channel);
     if (ui.starMapStatus) ui.starMapStatus.textContent = `Saut vers ${String(sel.id).toUpperCase()}…`;
     refreshStarMap();
+    // Les deux fenêtres se réduisent ensemble. On se fie à ce qui est
+    // réellement affiché : l'état "ouvert" mémorisé peut être périmé.
     const manager = window.GameWindowManager;
-    if (manager?.isOpen('starMapWindow')) manager.minimize('starMapWindow');
-    if (manager?.isOpen('starMapInfoWindow')) {
+    if (manager?.isOpen('starMapWindow') || starMapWindowShown('starMapWindow')) manager?.minimize('starMapWindow');
+    if (manager?.isOpen('starMapInfoWindow') || starMapWindowShown('starMapInfoWindow')) {
       StarJump.restoreInfoOnOpen = true;
-      manager.minimize('starMapInfoWindow');
+      manager?.minimize('starMapInfoWindow');
     }
     return true;
   } catch { return false; }
@@ -50058,7 +50069,7 @@ function tickStarJump(dt) {
     const open = ui.starMapWindow && ui.starMapWindow.style.display !== "none"
       && !ui.starMapWindow.classList.contains("gameWinMinimized")
       && !ui.starMapWindow.classList.contains("gameWinClosing");
-    if (!open && window.GameWindowManager?.isOpen('starMapInfoWindow')) {
+    if (!open && (window.GameWindowManager?.isOpen('starMapInfoWindow') || starMapWindowShown('starMapInfoWindow'))) {
       StarJump.restoreInfoOnOpen = true;
       window.GameWindowManager.minimize('starMapInfoWindow');
     }
