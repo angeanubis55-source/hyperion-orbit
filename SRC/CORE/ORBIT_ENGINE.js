@@ -11727,8 +11727,12 @@ const BOT_MAPS = [
   "1-1", "1-2", "1-3", "1-4", "1-5", "1-6", "1-7", "1-8", "4-1",
   "2-1", "2-2", "2-3", "2-4", "2-5", "2-6", "2-7", "2-8", "4-2",
   "3-1", "3-2", "3-3", "3-4", "3-5", "3-6", "3-7", "3-8", "4-3",
-  "4-4", "4-5", "5-2", "MAUDITE", "1-BL", "2-BL", "3-BL",
+  "4-4", "4-5", "5-2", "MAUDITE", "1-BL", "2-BL", "3-BL", "winter",
 ];
+// Libellé d'une map de travail du bot.
+function botMapLabel(id) {
+  return String(id || "").toLowerCase() === "winter" ? "GG d'hiver" : String(id || "").toUpperCase();
+}
 // Munitions laser sélectionnables par NPC (vide = auto / ne pas changer).
 const BOT_AMMO_IDS = ["x1", "x2", "x3", "x4", "x6", "sab", "rcb", "cbo", "job", "rb", "pib", "idb", "vb", "emaa", "sbl", "abl", "tent", "ice"];
 const BOT_AMMO_NAMES = Object.freeze({
@@ -13270,12 +13274,12 @@ function wireBotWindow() {
   const mapSelect = document.getElementById("botMapSelect");
   if (mapSelect && !mapSelect.options.length) {
     mapSelect.innerHTML = [`<option value="">— Rester sur la map —</option>`,
-      ...BOT_MAPS.map((id) => `<option value="${escapeHtml(id)}">${escapeHtml(id.toUpperCase())}</option>`)].join("");
+      ...BOT_MAPS.map((id) => `<option value="${escapeHtml(id)}">${escapeHtml(botMapLabel(id))}</option>`)].join("");
     mapSelect.value = Bot.targetMap || "";
     mapSelect.addEventListener("change", () => {
       Bot.targetMap = String(mapSelect.value || "");
       botSaveConfig();
-      if (Bot.targetMap) botLog(`Carte cible : ${Bot.targetMap.toUpperCase()}`);
+      if (Bot.targetMap) botLog(`Carte cible : ${botMapLabel(Bot.targetMap)}`);
     });
   }
   const npcList = document.getElementById("botNpcList");
@@ -14496,6 +14500,12 @@ function botFindRoute(from, to) {
   to = String(to || "").toLowerCase();
   if (!from || !to) return null;
   if (from === to) return [to];
+  // GG d'hiver (hors index des portails) : par la X-3 de sa faction.
+  if (to === "winter") {
+    const user = account.user || getCurrentUserFull();
+    const route = botFindRoute(from, `${getFaction(user?.faction).sector}-3`);
+    return route ? [...route, "winter"] : null;
+  }
   const idx = botPortalIndex;
   if (!idx) return null;
   const prev = new Map([[from, null]]);
@@ -15385,18 +15395,18 @@ function tickBot(dt) {
     Bot.jumpCd -= dt;
     botApplyMoveProfile("travel");
     if (!botPortalIndex) {
-      Bot.status = `Voyage → ${String(effRaw).toUpperCase()}`;
+      Bot.status = `Voyage → ${botMapLabel(effRaw)}`;
       Bot.target = "Cartographie des portails…";
       botRefreshHudThrottled(dt);
       return;
     }
     const route = botFindRoute(curMap, wantMap);
     if (!route) {
-      Bot.status = `Voyage → ${String(effRaw).toUpperCase()}`;
+      Bot.status = `Voyage → ${botMapLabel(effRaw)}`;
       Bot.target = "Aucune route physique";
       if (Bot.travelCd <= 0) {
         Bot.travelCd = 15;
-        botLog(`Aucune route physique vers ${String(effRaw).toUpperCase()} — nouvel essai dans 15 s`);
+        botLog(`Aucune route physique vers ${botMapLabel(effRaw)} — nouvel essai dans 15 s`);
       }
       botRefreshHudThrottled(dt);
       return;
@@ -15405,25 +15415,38 @@ function tickBot(dt) {
     // ✅ jamais de départ via un portail caché (marqueur d'arrivée d'aller simple).
     const portal = (zonePortals || []).find((p) => !p?.hidden && String(p.toMap || "").toLowerCase() === nextHop);
     if (!portal) {
-      Bot.status = `Voyage → ${String(effRaw).toUpperCase()}`;
+      Bot.status = `Voyage → ${botMapLabel(effRaw)}`;
       Bot.target = `Portail vers ${nextHop.toUpperCase()} introuvable ici`;
       botRefreshHudThrottled(dt);
       return;
     }
     const step = route.length > 2 ? ` (via ${nextHop.toUpperCase()})` : "";
-    Bot.status = `Voyage → ${String(effRaw).toUpperCase()}${step}`;
+    Bot.status = `Voyage → ${botMapLabel(effRaw)}${step}`;
     Bot.target = `Portail (${Math.round(Math.hypot(portal.x - player.x, portal.y - player.y))}m)`;
+    // GG d'hiver fermée : attente au portail jusqu'à l'ouverture.
+    let winterClosed = false;
+    if (nextHop === "winter") {
+      const session = winterGateSession();
+      if (!isWinterEventActive()) {
+        winterClosed = true;
+        Bot.status = "GG d'hiver fermée hors saison";
+      } else if (!session.open) {
+        winterClosed = true;
+        Bot.status = `Attente GG d'hiver (ouverture à ${winterGateWindowLabel().open})`;
+        Bot.target = `Ouverture dans ${winterConvoyClock(session.nextOpenAt - Date.now())}`;
+      }
+    }
     if (performance.now() - Bot.manualT < 2500) { botRefreshHudThrottled(dt); return; }
     if (attackActive) { try { stopAttack(); } catch {} }
     try { cancelCollectableTarget(); } catch {}
     moveTarget.active = true;
     moveTarget.x = clamp(portal.x, 80, WORLD.w - 80);
     moveTarget.y = clamp(portal.y, 80, WORLD.h - 80);
-    if (isPlayerNearPortal(portal) && mapPortalLock <= 0 && !portal.jumping && Bot.jumpCd <= 0) {
+    if (!winterClosed && isPlayerNearPortal(portal) && mapPortalLock <= 0 && !portal.jumping && Bot.jumpCd <= 0) {
       Bot.jumpCd = 3;
       try {
         if (startZonePortalJump(portal)) {
-          botLog(route.length > 2 ? `Saut vers ${nextHop.toUpperCase()} (étape)` : `Arrivée sur ${wantMap.toUpperCase()}`);
+          botLog(route.length > 2 ? `Saut vers ${nextHop.toUpperCase()} (étape)` : `Arrivée sur ${botMapLabel(wantMap)}`);
         } else {
           Bot.target = "Portail : action requise (coût, niveau…)";
         }
