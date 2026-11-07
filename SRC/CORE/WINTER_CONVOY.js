@@ -4,8 +4,8 @@
 // GG D'HIVER : LE CONVOI DU PÈRE NOËL (map partagée, pilotée par le serveur :
 // SCRIPTS/WINTER_GATE.js).
 // ============================================================================
-// Session horaire commune : entrée ouverte de :55 à :00, départ du convoi à
-// :00 pour tous les joueurs présents, fermée le reste de l'heure. Pas de PvP,
+// Session horaire commune : entrée ouverte de :00 à :05, départ du convoi à
+// :05 pour tous les joueurs présents, fermée le reste de l'heure. Pas de PvP,
 // les NPC ne visent que le convoi. Récompense de victoire partagée selon les
 // dégâts infligés aux attaquants.
 // Survie : le Santa-1100101 tourne sur un circuit fermé (tiré pour chaque
@@ -49,8 +49,8 @@ export const WINTER_CONVOY_RADIUS = Math.round(60 * WINTER_CONVOY_SCALE);
 // Identifiant partagé du convoi (cible serveur des attaquants).
 export const WINTER_CONVOY_ID = "winter_convoy";
 // Entrée ouverte pendant 5 minutes chaque heure, à partir de la minute
-// WINTER_GATE_OPEN_MINUTE (55 : entrée de :55 à :00, départ à :00).
-export const WINTER_GATE_OPEN_MINUTE = 55;
+// WINTER_GATE_OPEN_MINUTE (0 : entrée de :00 à :05, départ à :05).
+export const WINTER_GATE_OPEN_MINUTE = 0;
 export const WINTER_GATE_ENTRY_MS = 5 * 60 * 1000;
 const HOUR_MS = 60 * 60 * 1000;
 const OPEN_OFFSET_MS = WINTER_GATE_OPEN_MINUTE * 60 * 1000;
