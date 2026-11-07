@@ -3736,16 +3736,3 @@ NPC_TYPES.npc_Convoy_Ultra_Kristallon = {
   exp: convoyEmperor.exp * 2,
   honor: convoyEmperor.honor * 2,
 };
-// Kristalidzione (GG d'hiver uniquement) : double de l'Ultra en tout.
-const convoyUltra = NPC_TYPES.npc_Convoy_Ultra_Kristallon;
-NPC_TYPES.npc_Convoy_Kristalidzione = {
-  ...convoyUltra,
-  name: "<=< Kristalidzione >=>",
-  sprite: { path: "NPC/NPC_SPRITES/KRISTALIDZIONE/", frames: 166, firstNumber: 1, ext: ".webp", w: 1024, h: 1024 },
-  hp: convoyUltra.hp * 2,
-  shield: convoyUltra.shield * 2,
-  bulletDmg: convoyUltra.bulletDmg * 2,
-  value: convoyUltra.value * 2,
-  exp: convoyUltra.exp * 2,
-  honor: convoyUltra.honor * 2,
-};

@@ -18522,7 +18522,7 @@ function startZonePortalJump(ptl, entryConfirmed = false) {
   // Niveau requis façon DarkOrbit officiel (voir SRC/CORE/MAP_ACCESS.js).
   // Vérifié avant les coûts : inutile de payer si le niveau bloque.
   const targetMapId = String(ptl.toMap || "").toLowerCase();
-  // ✅ GG d'hiver : saison d'hiver, entrée de :30 à :35 (départ commun à :35).
+  // ✅ GG d'hiver : saison d'hiver, entrée de :33 à :38 (départ commun à :38).
   if (targetMapId === "winter") {
     if (!isWinterEventActive()) {
       SFX.play("swDeny");
@@ -46146,7 +46146,7 @@ if ((e.type === "npc_Cubikon" || e.cubikonMinions) && e._animPhase) {
         // Emperor Kristallon : sprite joué en boucle en continu (comme les
         // autres kristallons), solo comme multi — même après un JAMX/Creed
         // qui l'avait figé (spritePlay remis à false).
-        if (!e.spritePlay && (e.type === "npc_Emperor_Kristallon" || e.type === "npc_Convoy_Ultra_Kristallon" || e.type === "npc_Convoy_Kristalidzione")) {
+        if (!e.spritePlay && (e.type === "npc_Emperor_Kristallon" || e.type === "npc_Convoy_Ultra_Kristallon")) {
           e.spritePlay = true;
           e.spriteAcc = 0;
         }

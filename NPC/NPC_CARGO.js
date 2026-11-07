@@ -39,7 +39,6 @@ const BASE_CARGO = Object.freeze({
   npc_Emperor_Lordakium: Object.freeze({ ...tri(2560, 2560, 2560), prometid: 512, duranium: 512, promerium: 64, xenomit: 64 }),
   npc_Emperor_Kristallon: Object.freeze({ ...tri(2560, 2560, 2560), prometid: 1024, duranium: 1024, promerium: 128, xenomit: 128 }),
   npc_Ultra_Kristallon: Object.freeze({ ...tri(5120, 5120, 5120), prometid: 2048, duranium: 2048, promerium: 256, xenomit: 256 }),
-  npc_Kristalidzione: Object.freeze({ ...tri(10240, 10240, 10240), prometid: 4096, duranium: 4096, promerium: 512, xenomit: 512 }),
   npc_Emperor_Streuner: Object.freeze({ prometium: 160, endurium: 160 }),
   npc_Century_Falcon: Object.freeze({ prometium: 1, endurium: 1, terbium: 1, prometid: 1, duranium: 1, promerium: 1, xenomit: 1 }),
   npc_StreuneR8: Object.freeze({ ...tri(160, 160, 160), prometid: 15, duranium: 15, promerium: 1, xenomit: 4 }),

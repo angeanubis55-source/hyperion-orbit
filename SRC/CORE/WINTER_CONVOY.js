@@ -4,8 +4,8 @@
 // GG D'HIVER : LE CONVOI DU PÈRE NOËL (map partagée, pilotée par le serveur :
 // SCRIPTS/WINTER_GATE.js).
 // ============================================================================
-// Session horaire commune : entrée ouverte de :30 à :35, départ du convoi à
-// :35 pour tous les joueurs présents, fermée le reste de l'heure. Pas de PvP,
+// Session horaire commune : entrée ouverte de :33 à :38, départ du convoi à
+// :38 pour tous les joueurs présents, fermée le reste de l'heure. Pas de PvP,
 // les NPC ne visent que le convoi. Récompense de victoire partagée selon les
 // dégâts infligés aux attaquants.
 // Survie : le Santa-1100101 tourne sur un circuit fermé (tiré pour chaque
@@ -49,8 +49,8 @@ export const WINTER_CONVOY_RADIUS = Math.round(60 * WINTER_CONVOY_SCALE);
 // Identifiant partagé du convoi (cible serveur des attaquants).
 export const WINTER_CONVOY_ID = "winter_convoy";
 // Entrée ouverte pendant 5 minutes chaque heure, à partir de la minute
-// WINTER_GATE_OPEN_MINUTE (30 : entrée de :30 à :35, départ à :35).
-export const WINTER_GATE_OPEN_MINUTE = 30;
+// WINTER_GATE_OPEN_MINUTE (33 : entrée de :33 à :38, départ à :38).
+export const WINTER_GATE_OPEN_MINUTE = 33;
 export const WINTER_GATE_ENTRY_MS = 5 * 60 * 1000;
 const HOUR_MS = 60 * 60 * 1000;
 const OPEN_OFFSET_MS = WINTER_GATE_OPEN_MINUTE * 60 * 1000;
@@ -73,7 +73,6 @@ export const WINTER_CONVOY_WAVE_TYPES = Object.freeze([
   ["npc_Convoy_Super_Ice_Meteoroid", 15, 1, 7],
   ["npc_Convoy_Emperor_Kristallon", 17, 1, 9],
   ["npc_Convoy_Ultra_Kristallon", 20, 1, 15],
-  ["npc_Convoy_Kristalidzione", 25, 1, 25],
 ].map((entry) => Object.freeze(entry)));
 
 // Récompense de fin, la même pour tous les joueurs présents : base
