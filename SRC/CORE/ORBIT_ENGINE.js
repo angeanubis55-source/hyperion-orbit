@@ -42,7 +42,7 @@ import {
 import { drawEngineTrailParticles, updateEngineTrailParticles } from "./ENGINE_TRAILS.js";
 import { computeBotCombatMove, computeBotWallMove, isPointInWall } from "./BOT_NAVIGATION.js";
 import {
-  WINTER_CONVOY_HP, WINTER_CONVOY_ID, WINTER_CONVOY_RADIUS, WINTER_CONVOY_SCALE,
+  WINTER_CONVOY_DURATION, WINTER_CONVOY_HP, WINTER_CONVOY_ID, WINTER_CONVOY_RADIUS, WINTER_CONVOY_SCALE,
   createWinterConvoyRoute, winterFrostPoints, winterGateArrival, winterGateSession, winterGateWindowLabel,
 } from "./WINTER_CONVOY.js";
 import { blacklightSearchTarget } from "./BOT_SEARCH.js";
@@ -171,7 +171,7 @@ import { renderSpeedGuard } from "./SPEED_GUARD_UI.js";
 import { netServerMessageAge, netSimulationStep, netGameTimeMs, netSpeedGuardActive, queueGameLogForServer } from "./NETPLAY.js";
   import { pushNetplayLocal, sendNetplayBackgroundState, netplayLocalUpdateDue, getNetplayRemotes, tickNetplayRemotes, getNetNpcs, getNetDeaths, drainNetGone, getNetBoxes, drainNetBoxInbox, drainNetDmgInbox, drainNetHealInbox, drainNetShotEvents, drainNetSkillInbox, drainNetSkillDenied, clearNetShots, clearNetplayGameplay, sendShotEvent, sendSkillUse, sendHealAlly, sendPvpHit, sendPvpPetHit, getNetSelf, setNetInstanceMode, clearNetBoxes, claimNetBox, requestBoxSync, netBoxSyncAgeMs, netBoxSnapshotReady, netInInstance, sendNetHit, netMyId, netplayStatus, sendPing, netLatencyMs, netPongAge, netHelloAckAge, netServerVersion, netConnected, forceNetReconnect, ensureNetplayConnection, drainNetPvpKillInbox, drainNetPvpPetKillInbox, takeNetNpcReward, sendPvpLoot, sendPvpLootTake, drainNetPvpLootInbox,
   drainNetPvpLootTakeInbox, drainNetAdminKickInbox, drainNetAdminBoomInbox, drainNetBannedInbox, drainNetCheatInbox, netDisconnect, drainNetSunInbox, drainNetSundayInbox, drainNetDecloakInbox, drainNetIemHitInbox, drainNetStationDmgInbox, getNetClanBases, getNetStationOwners,
-  getNetGroup, getNetLowRaid, takeNetLowRaidReward, getNetWinterGate, takeNetWinterGateReward, drainNetWinterGateHeals, setNetNpcRewardHandler, getNetServerRestartAt, consumeNetServerRestart, getMyClanTag, getClanRelation, setMyClanTag, setNetDiplo, netIsAuthed, sendStationInstall, sendStationUninstall, sendStationBuild, sendStationReplace, sendStationCancelReplace, sendStationRepair, sendStationDeflectToggle, requestStationSync, sendStationHit, requestStarJumpArrival, requestHangarArrival, finishHangarArrival } from "./NETPLAY.js";
+  getNetGroup, getNetLowRaid, takeNetLowRaidReward, getNetWinterGate, takeNetWinterGateReward, setNetNpcRewardHandler, getNetServerRestartAt, consumeNetServerRestart, getMyClanTag, getClanRelation, setMyClanTag, setNetDiplo, netIsAuthed, sendStationInstall, sendStationUninstall, sendStationBuild, sendStationReplace, sendStationCancelReplace, sendStationRepair, sendStationDeflectToggle, requestStationSync, sendStationHit, requestStarJumpArrival, requestHangarArrival, finishHangarArrival } from "./NETPLAY.js";
 import {
   createGatePortalState,
   getGateReturnMap as resolveGateReturnMap,
@@ -46601,7 +46601,7 @@ function drawZoneWalls(ox, oy) {
 // session et vagues : SCRIPTS/WINTER_GATE.js). Le serveur déplace le convoi,
 // fait apparaître les vagues et tranche sa vie ; ici on l'affiche (position
 // interpolée, barre de vie, chrono, dégâts subis) et on suit la session :
-// attente jusqu'à :05, survie de 30 minutes, puis récompense partagée selon
+// attente jusqu'à :05 / :35, survie de 25 minutes, puis récompense partagée selon
 // les dégâts (victoire) ou retour à la base (défaite, session fermée).
 // Le convoi reste une escorte (escortShips) : les NPC serveur le visent
 // (cible partagée WINTER_CONVOY_ID), leurs tirs sur lui sont visuels.
@@ -46729,18 +46729,13 @@ function tickWinterConvoy(dt) {
       "rgba(255,80,100,0.95)", { text: DMG_FMT.format(dmg), size: 21, pop: 0.3, shake: 0.6, life: 1, glow: 1, weight: 900, impact: true });
   }
   c.lastLife = life;
-  // En route : réparation chaque seconde, "+x" en vert (+0 si plein).
-  for (const healed of drainNetWinterGateHeals()) {
-    addFloatText(esc.x + (Math.random() - 0.5) * 80, esc.y - WINTER_CONVOY_SPRITE.h * WINTER_CONVOY_SCALE / 2 - 40 - Math.random() * 20, healed,
-      "rgba(80,255,125,0.98)", { text: `+${DMG_FMT.format(healed)}`, size: 21, pop: 0.3, shake: 0.6, life: 1, glow: 1, weight: 900, impact: true });
-  }
   if (st.phase !== c.phase) {
     const prev = c.phase;
     c.phase = st.phase;
     if (st.phase === "lobby") {
       showNotification(`GG d'hiver — le convoi part à ${winterGateWindowLabel().start} pour tout le monde`, 4, "info");
     } else if (st.phase === "run") {
-      showNotification("Course contre la montre : un maximum de vagues en 30 minutes !", 3, "info");
+      showNotification(`Course contre la montre : un maximum de vagues en ${Math.round(WINTER_CONVOY_DURATION / 60)} minutes !`, 3, "info");
     } else if (st.phase === "done") {
       // Fin sans récompense reçue (arrivé après la fin) : retour à la base.
       leaveWinterGate("GG d'hiver terminée");

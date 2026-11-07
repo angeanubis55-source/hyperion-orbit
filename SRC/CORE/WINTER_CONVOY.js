@@ -4,8 +4,9 @@
 // GG D'HIVER : LE CONVOI DU PÈRE NOËL (map partagée, pilotée par le serveur :
 // SCRIPTS/WINTER_GATE.js).
 // ============================================================================
-// Session horaire commune : entrée ouverte de :00 à :05, départ du convoi à
-// :05 pour tous les joueurs présents, fermée le reste de l'heure. Pas de PvP,
+// Deux sessions communes par heure : entrée ouverte de :00 à :05 et de :30 à
+// :35, départ du convoi à :05 / :35 pour tous les joueurs présents, 25 min de
+// run, fermée le reste du temps. Pas de PvP,
 // les NPC ne visent que le convoi. Récompense de victoire partagée selon les
 // dégâts infligés aux attaquants.
 // Survie : le Santa-1100101 tourne sur un circuit fermé (tiré pour chaque
@@ -22,8 +23,8 @@
 
 export const WINTER_CONVOY_WORLD = Object.freeze({ w: 30000, h: 12000 });
 
-// Durée de la survie (secondes).
-export const WINTER_CONVOY_DURATION = 30 * 60;
+// Durée de la survie (secondes) : finit pile à l'ouverture suivante.
+export const WINTER_CONVOY_DURATION = 25 * 60;
 
 // Circuit : points répartis autour du centre de la map sur une ellipse,
 // rayons et angles perturbés.
@@ -39,20 +40,19 @@ export const WINTER_CONVOY_SWAY_HALF_WAVE = 1600;
 export const WINTER_CONVOY_SPEED = 100;
 // Coque seule, pas de bouclier.
 export const WINTER_CONVOY_HP = 1000000000;
-// Pendant qu'il roule (entre deux arrêts), le convoi regagne cette vie par
-// seconde, sans dépasser son maximum.
-export const WINTER_CONVOY_MOVE_REGEN = 1000000;
 // Taille d'affichage du Santa (sprite natif 289 x 256, pas de source plus
 // grande) : au-delà de ~1,3 il devient flou.
 export const WINTER_CONVOY_SCALE = 1.3;
 export const WINTER_CONVOY_RADIUS = Math.round(60 * WINTER_CONVOY_SCALE);
 // Identifiant partagé du convoi (cible serveur des attaquants).
 export const WINTER_CONVOY_ID = "winter_convoy";
-// Entrée ouverte pendant 5 minutes chaque heure, à partir de la minute
-// WINTER_GATE_OPEN_MINUTE (0 : entrée de :00 à :05, départ à :05).
+// Une session toutes les WINTER_GATE_PERIOD_MS (30 min) : entrée ouverte
+// 5 minutes à partir de la minute WINTER_GATE_OPEN_MINUTE de chaque période
+// (0 : entrées de :00 à :05 et de :30 à :35, départs à :05 et :35).
 export const WINTER_GATE_OPEN_MINUTE = 0;
 export const WINTER_GATE_ENTRY_MS = 5 * 60 * 1000;
-const HOUR_MS = 60 * 60 * 1000;
+export const WINTER_GATE_PERIOD_MS = 30 * 60 * 1000;
+const HOUR_MS = WINTER_GATE_PERIOD_MS;
 const OPEN_OFFSET_MS = WINTER_GATE_OPEN_MINUTE * 60 * 1000;
 
 // Étape : distance roulée avant l'arrêt suivant.
@@ -189,8 +189,8 @@ export function winterFrostPoints(hpMax) {
   return Math.max(1, Math.round(Math.max(0, Number(hpMax) || 0) / WINTER_FROST_POINT_HP));
 }
 
-// Session de l'heure en cours (heures pleines : identiques à Paris).
-// open = entrée autorisée (avant le départ de :35).
+// Session de la période en cours (demi-heures : identiques à Paris).
+// open = entrée autorisée (avant le départ).
 export function winterGateSession(nowMs = Date.now()) {
   // hourAt = ouverture de la session en cours (ou de la dernière).
   const hourAt = Math.floor((Number(nowMs) - OPEN_OFFSET_MS) / HOUR_MS) * HOUR_MS + OPEN_OFFSET_MS;
@@ -204,10 +204,14 @@ export function winterGateSession(nowMs = Date.now()) {
   };
 }
 
-// Créneau affiché aux joueurs : { open: ":20", start: ":25" }.
-export function winterGateWindowLabel() {
+// Créneau affiché aux joueurs : { open: ":30", start: ":35" }. Session en
+// cours tant que l'entrée est ouverte, sinon la prochaine.
+export function winterGateWindowLabel(nowMs = Date.now()) {
+  const session = winterGateSession(nowMs);
+  const openAt = session.open ? session.hourAt : session.nextOpenAt;
+  const minuteOf = (ms) => new Date(ms).getUTCMinutes();
   const mm = (minute) => `:${String(minute % 60).padStart(2, "0")}`;
-  return { open: mm(WINTER_GATE_OPEN_MINUTE), start: mm(WINTER_GATE_OPEN_MINUTE + WINTER_GATE_ENTRY_MS / 60000) };
+  return { open: mm(minuteOf(openAt)), start: mm(minuteOf(openAt + WINTER_GATE_ENTRY_MS)) };
 }
 
 // Point d'arrivée des joueurs : juste derrière le convoi à son départ.

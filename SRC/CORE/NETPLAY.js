@@ -559,13 +559,8 @@ export function takeNetNpcReward(mapId, uid, seq) {
 // de récompense de victoire (SCRIPTS/WINTER_GATE.js).
 let netWinterGate = null;
 let netWinterGateReward = null;
-// Réparations du convoi en route (montants, +0 si plein) à afficher.
-const netWinterGateHeals = [];
 export function getNetWinterGate() {
   return netWinterGate;
-}
-export function drainNetWinterGateHeals() {
-  return netWinterGateHeals.splice(0);
 }
 export function takeNetWinterGateReward() {
   const reward = netWinterGateReward;
@@ -1551,10 +1546,6 @@ export function ensureNetplayConnection() {
         skew: Date.now() - num(msg.now),
         at: Date.now(),
       };
-      return;
-    }
-    if (msg.t === "winterGateHeal" && msg && typeof msg === "object") {
-      if (netWinterGateHeals.length < 8) netWinterGateHeals.push(Math.max(0, Math.round(Number(msg.amount) || 0)));
       return;
     }
     if (msg.t === "winterGateReward" && msg && typeof msg === "object") {

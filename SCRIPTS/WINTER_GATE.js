@@ -1,13 +1,13 @@
 // SCRIPTS/WINTER_GATE.js — GG d'hiver partagée : le convoi du Père Noël.
-// Session horaire (SRC/CORE/WINTER_CONVOY.js, winterGateSession) :
-//   :30 -> :35  lobby : entrée ouverte, le convoi attend au départ ;
-//   :35         départ commun pour tous les joueurs présents (personne :
+// Deux sessions par heure (SRC/CORE/WINTER_CONVOY.js, winterGateSession) :
+//   :00 -> :05  lobby : entrée ouverte, le convoi attend au départ (idem
+//               :30 -> :35) ;
+//   :05 / :35   départ commun pour tous les joueurs présents (personne :
 //               la session est sautée) ;
-//   30 min      run : étapes + vagues cumulatives, les NPC ne visent que
-//               le convoi ;
+//   25 min      run : étapes + vagues, les NPC ne visent que le convoi ;
 //   fin         chrono écoulé ou convoi détruit : même récompense pour
 //               tous les présents, selon la vague atteinte (course contre la
-//               montre), puis fermée jusqu'à l'heure suivante (les joueurs
+//               montre), puis fermée jusqu'à la session suivante (les joueurs
 //               restants sont renvoyés à leur base).
 // Le contrôleur est branché sur la boucle 50 ms de MULTI_SERVER (room "winter").
 
@@ -15,7 +15,7 @@ import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { isWinterEventActive } from "../NPC/NPC_WINTER.js";
 import {
-  WINTER_CONVOY_DURATION, WINTER_CONVOY_HP, WINTER_CONVOY_LEG, WINTER_CONVOY_MOVE_REGEN, WINTER_CONVOY_SPEED, WINTER_CONVOY_WORLD,
+  WINTER_CONVOY_DURATION, WINTER_CONVOY_HP, WINTER_CONVOY_LEG, WINTER_CONVOY_SPEED, WINTER_CONVOY_WORLD,
   createWinterConvoyRoute, winterConvoyReward, winterConvoyWave, winterGateSession,
 } from "../SRC/CORE/WINTER_CONVOY.js";
 
@@ -178,9 +178,6 @@ function startLeg(sim, ctx) {
   try { sim.spawnConvoyAttackers(winterConvoyWave(gate.wave)); } catch {}
   gate.stopAt = gate.dist + WINTER_CONVOY_LEG;
   gate.moving = true;
-  // Premier "+x" une seconde après le départ.
-  gate.regenAcc = 0;
-  gate.regenAt = Date.now();
 }
 
 function finish(reason, room, sim, ctx, now) {
@@ -219,8 +216,8 @@ function statePayload(now) {
   };
 }
 
-// Nouvelle heure : nouvelle session (convoi neuf, nouveau circuit). Un run
-// finit toujours avant (départ + 30 min) : rien d'autre à conserver.
+// Nouvelle période : nouvelle session (convoi neuf, nouveau circuit). Un run
+// finit au plus tard à ce moment (départ + 25 min) : rien d'autre à conserver.
 function rollSession(now, sim) {
   const session = winterGateSession(now);
   if (gate.hourAt === session.hourAt) return false;
@@ -237,7 +234,7 @@ export function getWinterGateState(now = Date.now()) {
   return statePayload(now);
 }
 
-// Entrée autorisée : saison d'hiver et session ouverte (:30 -> :35).
+// Entrée autorisée : saison d'hiver et session ouverte (:00 -> :05, :30 -> :35).
 export function winterGateEntryOpen(now = Date.now()) {
   return isWinterEventActive(new Date(now)) && winterGateSession(now).open;
 }
@@ -264,6 +261,12 @@ function tickInner(room, sim, ctx, now, dt) {
   const session = winterGateSession(now);
   if (!isWinterEventActive(new Date(now))) {
     if (gate.phase !== "closed") closeGate(sim);
+    return;
+  }
+  // Fin du chrono : récompense avant de passer à la session suivante (le run
+  // finit pile à l'ouverture d'après).
+  if (gate.phase === "run" && gate.convoy && now >= gate.startAt + WINTER_CONVOY_DURATION * 1000) {
+    finish("time", room, sim, ctx, now);
     return;
   }
   if (rollSession(now, sim)) return;
@@ -316,7 +319,8 @@ function tickInner(room, sim, ctx, now, dt) {
       finish("time", room, sim, ctx, now);
       return;
     }
-    // Dernier attaquant tué : vague suivante avec une étape.
+    // Dernier attaquant tué : vague suivante avec une étape (le convoi ne
+    // récupère jamais de vie).
     if (sim.convoyAttackersAlive() === 0) {
       gate.wave++;
       startLeg(sim, ctx);
@@ -326,16 +330,6 @@ function tickInner(room, sim, ctx, now, dt) {
       c.vx = 0;
       c.vy = 0;
       return;
-    }
-    // En route : +WINTER_CONVOY_MOVE_REGEN PV/s jusqu'au prochain arrêt,
-    // "+x" envoyé aux clients chaque seconde (+0 si plein).
-    const healed = Math.min(c.hpMax - c.hp, WINTER_CONVOY_MOVE_REGEN * dt);
-    c.hp += healed;
-    gate.regenAcc = (gate.regenAcc || 0) + healed;
-    if (!(now - (gate.regenAt || 0) < 1000)) {
-      try { ctx.broadcast({ t: "winterGateHeal", amount: Math.max(0, Math.round(gate.regenAcc)) }); } catch {}
-      gate.regenAcc = 0;
-      gate.regenAt = now;
     }
     const x0 = c.x, y0 = c.y;
     gate.dist = Math.min(gate.stopAt, gate.dist + WINTER_CONVOY_SPEED * dt);
