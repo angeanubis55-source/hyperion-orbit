@@ -559,7 +559,7 @@ export function takeNetNpcReward(mapId, uid, seq) {
 // de récompense de victoire (SCRIPTS/WINTER_GATE.js).
 let netWinterGate = null;
 let netWinterGateReward = null;
-// Réparations de fin de vague (montants, +0 si plein) à afficher.
+// Réparations du convoi en route (montants, +0 si plein) à afficher.
 const netWinterGateHeals = [];
 export function getNetWinterGate() {
   return netWinterGate;

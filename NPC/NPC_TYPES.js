@@ -3722,3 +3722,30 @@ NPC_TYPES.npc_Convoy_Super_Ice_Meteoroid.bulletDmg = 75000;
 for (const type of ["npc_Convoy_Ice_Meteoroid", "npc_Convoy_Super_Ice_Meteoroid"]) NPC_TYPES[type].bulletSprite = { ...NPC_TYPES.npc_Boss_Kristallon.bulletSprite };
 // L'Emperor (100) n'irait pas plus vite que le convoi.
 NPC_TYPES.npc_Convoy_Emperor_Kristallon.speed = 150;
+// Ultra Kristallon (GG d'hiver uniquement) : Emperor du convoi à épines,
+// vie, bouclier, dégâts et récompenses doublés.
+const convoyEmperor = NPC_TYPES.npc_Convoy_Emperor_Kristallon;
+NPC_TYPES.npc_Convoy_Ultra_Kristallon = {
+  ...convoyEmperor,
+  name: "<=< Ultra Kristallon >=>",
+  sprite: { path: "NPC/NPC_SPRITES/ULTRA_KRISTALLON/", frames: 83, firstNumber: 1, ext: ".png", w: 339, h: 339 },
+  hp: convoyEmperor.hp * 2,
+  shield: convoyEmperor.shield * 2,
+  bulletDmg: convoyEmperor.bulletDmg * 2,
+  value: convoyEmperor.value * 2,
+  exp: convoyEmperor.exp * 2,
+  honor: convoyEmperor.honor * 2,
+};
+// Kristalidzione (GG d'hiver uniquement) : double de l'Ultra en tout.
+const convoyUltra = NPC_TYPES.npc_Convoy_Ultra_Kristallon;
+NPC_TYPES.npc_Convoy_Kristalidzione = {
+  ...convoyUltra,
+  name: "<=< Kristalidzione >=>",
+  sprite: { path: "NPC/NPC_SPRITES/KRISTALIDZIONE/", frames: 166, firstNumber: 1, ext: ".webp", w: 1024, h: 1024 },
+  hp: convoyUltra.hp * 2,
+  shield: convoyUltra.shield * 2,
+  bulletDmg: convoyUltra.bulletDmg * 2,
+  value: convoyUltra.value * 2,
+  exp: convoyUltra.exp * 2,
+  honor: convoyUltra.honor * 2,
+};

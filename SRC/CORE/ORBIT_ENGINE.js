@@ -46146,7 +46146,7 @@ if ((e.type === "npc_Cubikon" || e.cubikonMinions) && e._animPhase) {
         // Emperor Kristallon : sprite joué en boucle en continu (comme les
         // autres kristallons), solo comme multi — même après un JAMX/Creed
         // qui l'avait figé (spritePlay remis à false).
-        if (!e.spritePlay && e.type === "npc_Emperor_Kristallon") {
+        if (!e.spritePlay && (e.type === "npc_Emperor_Kristallon" || e.type === "npc_Convoy_Ultra_Kristallon" || e.type === "npc_Convoy_Kristalidzione")) {
           e.spritePlay = true;
           e.spriteAcc = 0;
         }
@@ -46706,7 +46706,7 @@ function tickWinterConvoy(dt) {
       "rgba(255,80,100,0.95)", { text: DMG_FMT.format(dmg), size: 21, pop: 0.3, shake: 0.6, life: 1, glow: 1, weight: 900, impact: true });
   }
   c.lastLife = life;
-  // Fin de vague : réparation de 10 % de la vie max, "+x" en vert (+0 si plein).
+  // En route : réparation chaque seconde, "+x" en vert (+0 si plein).
   for (const healed of drainNetWinterGateHeals()) {
     addFloatText(esc.x + (Math.random() - 0.5) * 80, esc.y - WINTER_CONVOY_SPRITE.h * WINTER_CONVOY_SCALE / 2 - 40 - Math.random() * 20, healed,
       "rgba(80,255,125,0.98)", { text: `+${DMG_FMT.format(healed)}`, size: 21, pop: 0.3, shake: 0.6, life: 1, glow: 1, weight: 900, impact: true });

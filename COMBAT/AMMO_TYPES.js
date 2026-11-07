@@ -24,8 +24,9 @@ export const AMMO = {
   abl: { mult: 4.0, vsMatch: [/Invoke/, /Mindfire/], vsMult: 8.0, color: "rgba(255,110,180,0.95)" },
   tent: { mult: 4.0, vsMatch: [/Lordakium/], vsMult: 8.0, color: "rgba(122,111,255,0.95)" },
   // ICE : comme SBL (Sibelons) / TENT (Lordakiums), mais bonus réservé
-  // au seul Emperor Kristallon (pas les Kristallon/Kristallin normaux, Boss, Uber).
-  ice: { mult: 4.0, vsMatch: [/Emperor_Kristallon/], vsMult: 8.0, color: "rgba(150,225,255,0.95)" },
+  // à l'Emperor Kristallon, à l'Ultra Kristallon et au Kristalidzione de la GG d'hiver (pas les
+  // Kristallon/Kristallin normaux, Boss, Uber).
+  ice: { mult: 4.0, vsMatch: [/Emperor_Kristallon/, /Ultra_Kristallon/, /Kristalidzione/], vsMult: 8.0, color: "rgba(150,225,255,0.95)" },
 };
 
 const AMMO_DESCRIPTIONS = Object.freeze({

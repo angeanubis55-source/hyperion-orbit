@@ -39,12 +39,13 @@ export const WINTER_CONVOY_SWAY_HALF_WAVE = 1600;
 export const WINTER_CONVOY_SPEED = 100;
 // Coque seule, pas de bouclier.
 export const WINTER_CONVOY_HP = 1000000000;
+// Pendant qu'il roule (entre deux arrêts), le convoi regagne cette vie par
+// seconde, sans dépasser son maximum.
+export const WINTER_CONVOY_MOVE_REGEN = 1000000;
 // Taille d'affichage du Santa (sprite natif 289 x 256, pas de source plus
 // grande) : au-delà de ~1,3 il devient flou.
 export const WINTER_CONVOY_SCALE = 1.3;
 export const WINTER_CONVOY_RADIUS = Math.round(60 * WINTER_CONVOY_SCALE);
-// Réparation à chaque vague nettoyée (part de la vie max).
-export const WINTER_CONVOY_WAVE_HEAL = 0.1;
 // Identifiant partagé du convoi (cible serveur des attaquants).
 export const WINTER_CONVOY_ID = "winter_convoy";
 // Entrée ouverte pendant 5 minutes chaque heure, à partir de la minute
@@ -56,34 +57,24 @@ const OPEN_OFFSET_MS = WINTER_GATE_OPEN_MINUTE * 60 * 1000;
 
 // Étape : distance roulée avant l'arrêt suivant.
 export const WINTER_CONVOY_LEG = 3000;
-// Vagues (une par étape), autour du convoi, hors écran. Cumulatives : chaque
-// vague garde toute la précédente et la complète. Croissance exponentielle
-// plafonnée : la vague n compte WINTER_CONVOY_WAVE_BASE ×
-// WINTER_CONVOY_WAVE_RATE^(n - 1) NPC, au plus WINTER_CONVOY_WAVE_CAP.
-// Les ajouts sont répartis entre les types débloqués à ce rang (selon leur
-// poids, répartition lissée et identique à chaque session) ; l'Emperor et le
-// Super Ice n'arrivent qu'aux paliers WINTER_CONVOY_WAVE_BOSSES (3 de chaque).
+// Vagues (une par étape), autour du convoi, hors écran. Chaque type arrive à
+// sa vague de départ avec son nombre initial, puis gagne 1 NPC toutes les
+// `every` vagues (sans plafond).
 export const WINTER_CONVOY_SPAWN_DISTANCE = Object.freeze([1100, 1500]);
-export const WINTER_CONVOY_WAVE_BASE = 10;
-export const WINTER_CONVOY_WAVE_RATE = 1.085;
-export const WINTER_CONVOY_WAVE_CAP = 100;
-// [type, vague de déblocage, poids]
+// [type, vague de départ, nombre initial, +1 toutes les N vagues]
 export const WINTER_CONVOY_WAVE_TYPES = Object.freeze([
-  ["npc_Convoy_Kristallin", 1, 3],
-  ["npc_Convoy_Boss_Kristallin", 3, 3],
-  ["npc_Convoy_Kristallon", 5, 3],
-  ["npc_Convoy_Boss_Kristallon", 7, 3],
-  ["npc_Convoy_Uber_Kristallin", 8, 2],
-  ["npc_Convoy_Ice_Meteoroid", 10, 1],
-  ["npc_Convoy_Uber_Kristallon", 10, 2],
+  ["npc_Convoy_Kristallin", 1, 10, 1],
+  ["npc_Convoy_Boss_Kristallin", 3, 3, 2],
+  ["npc_Convoy_Kristallon", 5, 1, 3],
+  ["npc_Convoy_Boss_Kristallon", 7, 1, 4],
+  ["npc_Convoy_Uber_Kristallin", 9, 1, 3],
+  ["npc_Convoy_Ice_Meteoroid", 11, 1, 5],
+  ["npc_Convoy_Uber_Kristallon", 13, 1, 5],
+  ["npc_Convoy_Super_Ice_Meteoroid", 15, 1, 7],
+  ["npc_Convoy_Emperor_Kristallon", 17, 1, 9],
+  ["npc_Convoy_Ultra_Kristallon", 20, 1, 15],
+  ["npc_Convoy_Kristalidzione", 25, 1, 25],
 ].map((entry) => Object.freeze(entry)));
-export const WINTER_CONVOY_WAVE_BOSSES = Object.freeze({
-  14: Object.freeze(["npc_Convoy_Super_Ice_Meteoroid"]),
-  15: Object.freeze(["npc_Convoy_Emperor_Kristallon"]),
-  19: Object.freeze(["npc_Convoy_Super_Ice_Meteoroid"]),
-  20: Object.freeze(["npc_Convoy_Emperor_Kristallon"]),
-  25: Object.freeze(["npc_Convoy_Super_Ice_Meteoroid", "npc_Convoy_Emperor_Kristallon"]),
-});
 
 // Récompense de fin, la même pour tous les joueurs présents : base
 // multipliée par la vague finale (vague en cours quand le chrono finit ou
@@ -151,35 +142,26 @@ export function createWinterConvoyRoute(seed) {
   return Object.freeze({ seed, points: Object.freeze(points.map((p) => Object.freeze(p))), length, pointAt });
 }
 
-// Taille de la vague n° `n` (1 = première).
-export function winterConvoyWaveCount(n) {
+// Nombre de `type` dans la vague n° `n` (1 = première).
+export function winterConvoyTypeCount(type, n) {
   const wave = Math.max(1, Math.floor(Number(n) || 1));
-  return Math.min(WINTER_CONVOY_WAVE_CAP, Math.round(WINTER_CONVOY_WAVE_BASE * WINTER_CONVOY_WAVE_RATE ** (wave - 1)));
+  const entry = WINTER_CONVOY_WAVE_TYPES.find(([t]) => t === type);
+  if (!entry || wave < entry[1]) return 0;
+  const [, from, start, every] = entry;
+  return start + Math.floor((wave - from) / every);
 }
 
-// Vague n° `index` (0 = première) : liste de types à faire apparaître (la
-// vague précédente + les nouveaux).
+// Taille de la vague n° `n` (1 = première).
+export function winterConvoyWaveCount(n) {
+  return WINTER_CONVOY_WAVE_TYPES.reduce((sum, [type]) => sum + winterConvoyTypeCount(type, n), 0);
+}
+
+// Vague n° `index` (0 = première) : liste de types à faire apparaître.
 export function winterConvoyWave(index) {
-  const last = Math.max(0, Math.floor(Number(index) || 0)) + 1;
+  const n = Math.max(0, Math.floor(Number(index) || 0)) + 1;
   const types = [];
-  // Répartition lissée (round-robin pondéré) : chaque type gagne son poids à
-  // chaque ajout, le plus en avance est choisi puis repart en arrière.
-  const credit = new Map();
-  for (let n = 1; n <= last; n++) {
-    types.push(...(WINTER_CONVOY_WAVE_BOSSES[n] || []));
-    const unlocked = WINTER_CONVOY_WAVE_TYPES.filter(([, from]) => n >= from);
-    const total = unlocked.reduce((sum, [, , weight]) => sum + weight, 0);
-    // Type tout juste débloqué : il passe en premier.
-    for (const [type, from] of unlocked) if (from === n) credit.set(type, total);
-    for (let add = winterConvoyWaveCount(n) - types.length; add > 0; add--) {
-      let best = null;
-      for (const [type, , weight] of unlocked) {
-        credit.set(type, (credit.get(type) || 0) + weight);
-        if (best == null || credit.get(type) > credit.get(best)) best = type;
-      }
-      credit.set(best, credit.get(best) - total);
-      types.push(best);
-    }
+  for (const [type] of WINTER_CONVOY_WAVE_TYPES) {
+    for (let k = winterConvoyTypeCount(type, n); k > 0; k--) types.push(type);
   }
   return types;
 }

@@ -61,6 +61,10 @@ export const NPC_REWARDS = Object.freeze({
   npc_Emperor_Sibelon: { credits: 42000000, exp: 15360000, honor: 61440 },
   npc_Emperor_Lordakium: { credits: 60000000, exp: 23040000, honor: 122880 },
   npc_Emperor_Kristallon: { credits: 150000000, exp: 30720000, honor: 245760 },
+  // Ultra Kristallon (GG d'hiver, npc_Convoy_Ultra_Kristallon) : double de l'Emperor.
+  npc_Ultra_Kristallon: { credits: 300000000, exp: 61440000, honor: 491520 },
+  // Kristalidzione (GG d'hiver, npc_Convoy_Kristalidzione) : double de l'Ultra.
+  npc_Kristalidzione: { credits: 600000000, exp: 122880000, honor: 983040 },
   npc_Vagrant: { credits: 45000, exp: 9000, honor: 12 },
   npc_Marauder: { credits: 90000, exp: 18000, honor: 24 },
   npc_Outcast: { credits: 150000, exp: 27000, honor: 36 },

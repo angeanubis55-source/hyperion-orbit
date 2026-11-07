@@ -15,7 +15,7 @@ import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { isWinterEventActive } from "../NPC/NPC_WINTER.js";
 import {
-  WINTER_CONVOY_DURATION, WINTER_CONVOY_HP, WINTER_CONVOY_LEG, WINTER_CONVOY_SPEED, WINTER_CONVOY_WAVE_HEAL, WINTER_CONVOY_WORLD,
+  WINTER_CONVOY_DURATION, WINTER_CONVOY_HP, WINTER_CONVOY_LEG, WINTER_CONVOY_MOVE_REGEN, WINTER_CONVOY_SPEED, WINTER_CONVOY_WORLD,
   createWinterConvoyRoute, winterConvoyReward, winterConvoyWave, winterGateSession,
 } from "../SRC/CORE/WINTER_CONVOY.js";
 
@@ -178,6 +178,9 @@ function startLeg(sim, ctx) {
   try { sim.spawnConvoyAttackers(winterConvoyWave(gate.wave)); } catch {}
   gate.stopAt = gate.dist + WINTER_CONVOY_LEG;
   gate.moving = true;
+  // Premier "+x" une seconde après le départ.
+  gate.regenAcc = 0;
+  gate.regenAt = Date.now();
 }
 
 function finish(reason, room, sim, ctx, now) {
@@ -313,12 +316,8 @@ function tickInner(room, sim, ctx, now, dt) {
       finish("time", room, sim, ctx, now);
       return;
     }
-    // Dernier attaquant tué : le convoi récupère 10 % de sa vie max (+0 s'il
-    // est plein), puis vague suivante (cumulative) avec une étape.
+    // Dernier attaquant tué : vague suivante avec une étape.
     if (sim.convoyAttackersAlive() === 0) {
-      const healed = Math.min(c.hpMax - c.hp, Math.round(c.hpMax * WINTER_CONVOY_WAVE_HEAL));
-      c.hp += healed;
-      try { ctx.broadcast({ t: "winterGateHeal", amount: Math.max(0, healed) }); } catch {}
       gate.wave++;
       startLeg(sim, ctx);
     }
@@ -327,6 +326,16 @@ function tickInner(room, sim, ctx, now, dt) {
       c.vx = 0;
       c.vy = 0;
       return;
+    }
+    // En route : +WINTER_CONVOY_MOVE_REGEN PV/s jusqu'au prochain arrêt,
+    // "+x" envoyé aux clients chaque seconde (+0 si plein).
+    const healed = Math.min(c.hpMax - c.hp, WINTER_CONVOY_MOVE_REGEN * dt);
+    c.hp += healed;
+    gate.regenAcc = (gate.regenAcc || 0) + healed;
+    if (!(now - (gate.regenAt || 0) < 1000)) {
+      try { ctx.broadcast({ t: "winterGateHeal", amount: Math.max(0, Math.round(gate.regenAcc)) }); } catch {}
+      gate.regenAcc = 0;
+      gate.regenAt = now;
     }
     const x0 = c.x, y0 = c.y;
     gate.dist = Math.min(gate.stopAt, gate.dist + WINTER_CONVOY_SPEED * dt);
