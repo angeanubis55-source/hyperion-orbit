@@ -24,6 +24,7 @@ import {
   WINTER_TYPES,
   isWinterEventActive,
 } from "../../NPC/NPC_WINTER.js";
+import { WINTER_CONVOY_WAVE_TYPES } from "./WINTER_CONVOY.js";
 
 // Icy des (Super) Ice Meteoroid (variante <=< Icy >=>, minions façon Cubikon).
 export const WINTER_ICY_TYPE = "npc_Meteoroid_Icy";
@@ -63,12 +64,25 @@ export const BOT_EVENT_NPCS = Object.freeze([
       { key: `event:winter:${WINTER_ICY_TYPE}`, name: "<=< Icy >=>", types: [WINTER_ICY_TYPE], maps: [...WINTER_MAPS] },
     ],
   }),
+  // GG d'hiver (map "winter") : attaquants du convoi, un par type de vague.
+  Object.freeze({
+    id: "winter_gg",
+    label: "GG d'hiver",
+    isActive: (now) => isWinterEventActive(now),
+    rows: ({ npcTypes = {} } = {}) => WINTER_CONVOY_WAVE_TYPES.map(([type]) => ({
+      key: `event:winter_gg:${type}`,
+      name: String(npcTypes?.[type]?.name || type),
+      types: [type],
+      maps: ["winter"],
+    })),
+  }),
 ]);
 
 // Types d'événement : jamais listés depuis les maps (ils n'y sont pas, mais
 // une base d'event qui y traînerait ne doit pas rester après l'event).
 function isEventType(type) {
   if (WINTER_TYPES.includes(String(type)) || String(type) === WINTER_ICY_TYPE) return true;
+  if (/^npc_Convoy_/.test(String(type))) return true;
   try { return halloweenRoleOf(type) != null; } catch { return false; }
 }
 
@@ -96,10 +110,11 @@ export function botMapGroupLabel(key) {
     return `Galaxy Gates ${GATE_NAMES[id] || id.charAt(0).toUpperCase() + id.slice(1)}`;
   }
   if (k === "event") return "Événement en cours";
+  if (k === "winter") return "GG d'hiver";
   return k.toUpperCase();
 }
 
-// Ordre d'affichage : X-1..X-8, X-BL, puis 4-x, 5-x, autres, Galaxy Gates (Alpha..QZ).
+// Ordre d'affichage : X-1..X-8, X-BL, puis 4-x, 5-x, autres, Galaxy Gates (Alpha..QZ), GG d'hiver.
 function groupRank(key) {
   const k = String(key);
   if (k === "event") return [0, 0, ""];
@@ -112,6 +127,7 @@ function groupRank(key) {
     const i = GATE_ORDER.indexOf(k.slice(3));
     return [9, i < 0 ? GATE_ORDER.length : i, k];
   }
+  if (k === "winter") return [10, 0, k];
   return [5, 0, k];
 }
 export function compareBotMapGroups(a, b) {
@@ -134,7 +150,7 @@ export function botMapsLabel(maps) {
   }
   const rest = ids.filter((m) => !used.has(m.toLowerCase()));
   rest.sort((a, b) => compareBotMapGroups(botMapGroupKey(a), botMapGroupKey(b)) || a.localeCompare(b, "fr", { numeric: true }));
-  return [...parts, ...rest.map((m) => (/^gate\s/i.test(m) ? m.replace(/^gate\s+/i, "GG ") : m.toUpperCase()))].join(", ");
+  return [...parts, ...rest.map((m) => (/^gate\s/i.test(m) ? m.replace(/^gate\s+/i, "GG ") : m.toLowerCase() === "winter" ? "GG d'hiver" : m.toUpperCase()))].join(", ");
 }
 
 function cleanName(name) {
@@ -153,7 +169,7 @@ export function buildBotNpcCatalog({ locations = {}, npcTypes = {}, now = new Da
     let active = false;
     try { active = event.isActive(now) === true; } catch { active = false; }
     if (!active) continue;
-    for (const row of event.rows() || []) {
+    for (const row of event.rows({ npcTypes }) || []) {
       if (!row?.types?.length) continue;
       rows.push({ key: row.key, name: row.name, types: [...row.types], maps: [...(row.maps || [])], event: event.label });
     }
