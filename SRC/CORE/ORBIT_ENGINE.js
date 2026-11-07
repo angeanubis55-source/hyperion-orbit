@@ -46146,7 +46146,7 @@ if ((e.type === "npc_Cubikon" || e.cubikonMinions) && e._animPhase) {
         // Emperor Kristallon : sprite joué en boucle en continu (comme les
         // autres kristallons), solo comme multi — même après un JAMX/Creed
         // qui l'avait figé (spritePlay remis à false).
-        if (!e.spritePlay && (e.type === "npc_Emperor_Kristallon" || e.type === "npc_Convoy_Ultra_Kristallon")) {
+        if (!e.spritePlay && (e.type === "npc_Emperor_Kristallon" || e.type === "npc_Convoy_Ultra_Kristallon" || e.type === "npc_Convoy_Kristalidzione")) {
           e.spritePlay = true;
           e.spriteAcc = 0;
         }

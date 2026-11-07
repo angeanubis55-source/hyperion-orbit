@@ -73,6 +73,7 @@ export const WINTER_CONVOY_WAVE_TYPES = Object.freeze([
   ["npc_Convoy_Super_Ice_Meteoroid", 15, 1, 7],
   ["npc_Convoy_Emperor_Kristallon", 17, 1, 9],
   ["npc_Convoy_Ultra_Kristallon", 20, 1, 15],
+  ["npc_Convoy_Kristalidzione", 25, 1, 25],
 ].map((entry) => Object.freeze(entry)));
 
 // Récompense de fin, la même pour tous les joueurs présents : base
