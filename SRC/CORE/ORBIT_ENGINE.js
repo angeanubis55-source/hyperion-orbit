@@ -15697,8 +15697,21 @@ function tickBot(dt) {
     botApplyMoveProfile("explore");
     const blTarget = botBlacklightSearch(dt);
     Bot.roamT -= dt;
+    // GG d'hiver : repli autour du Père Noël, sur un point qui change souvent
+    // (décalage fixe par rapport au convoi, qui le suit quand il roule).
+    const convoyEsc = winterConvoy?.esc?.hp > 0 ? winterConvoy.esc : null;
     if (blTarget) {
       botOrderMove(blTarget.x, blTarget.y, "search-bl");
+    } else if (convoyEsc) {
+      if (Bot.roamT <= 0 || !moveTarget.active) {
+        Bot.roamT = 2.5 + Math.random() * 2;
+        const a = Math.random() * Math.PI * 2, r = 350 + Math.random() * 400;
+        Bot.roamX = Math.cos(a) * r;
+        Bot.roamY = Math.sin(a) * r;
+      }
+      moveTarget.active = true;
+      moveTarget.x = clamp(convoyEsc.x + Bot.roamX, 80, WORLD.w - 80);
+      moveTarget.y = clamp(convoyEsc.y + Bot.roamY, 80, WORLD.h - 80);
     } else if (Bot.roamT <= 0 || !moveTarget.active) {
       Bot.roamT = 6;
       Bot.roamX = 120 + Math.random() * Math.max(240, WORLD.w - 240);
@@ -15725,6 +15738,7 @@ function tickBot(dt) {
     Bot.status = Bot.mode === "collect" ? "Collecte — patrouille" : Bot.mode === "kill" ? "Chasse — patrouille" : "Farm — patrouille";
     Bot.target = "Recherche de cible…";
     if (blTarget) Bot.target = `Recherche : ${NPC_TYPES[blTarget.type]?.name || blTarget.type}`;
+    else if (convoyEsc) Bot.target = "Repli autour du Père Noël";
     if (Bot.module === "quest") {
       Bot.status = "Quêtes — patrouille";
       Bot.target = "Aucune cible (accepte des quêtes)";
