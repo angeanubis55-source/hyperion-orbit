@@ -120,7 +120,7 @@ export const CATALOG = {
     desc: "Dégâts quadruplés (×4), ×8 contre les Lordakiums.", effect: "Tirs violet-bleu." },
   { id: "ammo_ice", name: "ICE-100", price: 55000000, give: { ammo: { ice: 1000 } },
     code: "ICE-100", mult: 4, laser: "glace",
-    desc: "Dégâts quadruplés (×4), ×8 contre l'Emperor Kristallon uniquement.", effect: "Tirs glacés." },
+    desc: "Dégâts quadruplés (×4), ×8 contre l'Emperor Kristallon et tous les NPC de la GG d'hiver.", effect: "Tirs glacés." },
   ].map((item) => {
     const ammoId = Object.keys(item.give.ammo)[0];
     return { ...item, desc: ammoDescription(ammoId) };

@@ -267,7 +267,7 @@ function pageMunitions() {
     card("Quelle munition utiliser ?", list([
       `<b>Petits NPC :</b> X1 (infinie) ou X2.`,
       `<b>Gros NPC :</b> X3 / X4, ou ${gold("JOB-100")} (×3,5 contre NPC).`,
-      `<b>NPC précis :</b> SBL (Sibelons), TENT (Lordakiums), RB (Demaners), VB (Styxus / Charopos), EMAA (Mimesis), ICE (Emperor Kristallon) : ×7 à ×8.`,
+      `<b>NPC précis :</b> SBL (Sibelons), TENT (Lordakiums), RB (Demaners), VB (Styxus / Charopos), EMAA (Mimesis), ICE (Emperor Kristallon, NPC de la GG d'hiver) : ×7 à ×8.`,
       `<b>Survie :</b> SAB-50 vole du bouclier pour recharger le tien.`,
       `<b>Burst :</b> RSB-75 (×6) et RCB-140 (×7) en salve, recharge 5 s.`,
     ]), { span: true }),

@@ -23,10 +23,9 @@ export const AMMO = {
   sbl: { mult: 4.0, vsMatch: [/^npc_(?!.*Sibelonit).*Sibelon/], vsMult: 8.0, color: "rgba(80,220,255,0.95)" },
   abl: { mult: 4.0, vsMatch: [/Invoke/, /Mindfire/], vsMult: 8.0, color: "rgba(255,110,180,0.95)" },
   tent: { mult: 4.0, vsMatch: [/Lordakium/], vsMult: 8.0, color: "rgba(122,111,255,0.95)" },
-  // ICE : comme SBL (Sibelons) / TENT (Lordakiums), mais bonus réservé
-  // à l'Emperor Kristallon, à l'Ultra Kristallon et au Kristalidzione de la GG d'hiver (pas les
-  // Kristallon/Kristallin normaux, Boss, Uber).
-  ice: { mult: 4.0, vsMatch: [/Emperor_Kristallon/, /Ultra_Kristallon/, /Kristalidzione/], vsMult: 8.0, color: "rgba(150,225,255,0.95)" },
+  // ICE : comme SBL (Sibelons) / TENT (Lordakiums), bonus contre l'Emperor
+  // Kristallon et tous les NPC de la GG d'hiver (npc_Convoy_*).
+  ice: { mult: 4.0, vsMatch: [/Emperor_Kristallon/, /^npc_Convoy_/], vsMult: 8.0, color: "rgba(150,225,255,0.95)" },
 };
 
 const AMMO_DESCRIPTIONS = Object.freeze({
@@ -47,7 +46,7 @@ const AMMO_DESCRIPTIONS = Object.freeze({
   sbl: "Dégâts ×4 contre les NPC et les JOUEURS.\nou ×8 contre les Sibelons (Boss, Uber, Emperor).",
   abl: "Dégâts ×4, ou ×8 contre Invoke et Mindfire Behemoth.",
   tent: "Dégâts ×4 contre les NPC et les JOUEURS.\nou ×8 contre les Lordakiums (Boss, Uber, Emperor).",
-  ice: "Dégâts ×4 contre les NPC et les JOUEURS.\nou ×8 contre l'Emperor Kristallon uniquement.",
+  ice: "Dégâts ×4 contre les NPC et les JOUEURS.\nou ×8 contre l'Emperor Kristallon et tous les NPC de la GG d'hiver.",
 });
 
 export function ammoDescription(id) {
