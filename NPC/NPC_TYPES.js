@@ -3728,7 +3728,7 @@ const convoyEmperor = NPC_TYPES.npc_Convoy_Emperor_Kristallon;
 NPC_TYPES.npc_Convoy_Ultra_Kristallon = {
   ...convoyEmperor,
   name: "<=< Ultra Kristallon >=>",
-  sprite: { path: "NPC/NPC_SPRITES/ULTRA_KRISTALLON/", frames: 83, firstNumber: 1, ext: ".png", w: 339, h: 339 },
+  sprite: { path: "NPC/NPC_SPRITES/ULTRA_KRISTALLON/", frames: 83, firstNumber: 1, ext: ".png", w: 300, h: 300 },
   hp: convoyEmperor.hp * 2,
   shield: convoyEmperor.shield * 2,
   bulletDmg: convoyEmperor.bulletDmg * 2,
@@ -3742,7 +3742,7 @@ const convoyUltra = NPC_TYPES.npc_Convoy_Ultra_Kristallon;
 NPC_TYPES.npc_Convoy_Kristalidzione = {
   ...convoyUltra,
   name: "<=< Kristalidzione >=>",
-  sprite: { path: "NPC/NPC_SPRITES/KRISTALIDZIONE/", frames: 166, firstNumber: 1, ext: ".png", w: 250, h: 250 },
+  sprite: { path: "NPC/NPC_SPRITES/KRISTALIDZIONE/", frames: 166, firstNumber: 1, ext: ".png", w: 350, h: 350 },
   spriteSpeed: convoyUltra.spriteSpeed * 2,
   hp: convoyUltra.hp * 2,
   shield: convoyUltra.shield * 2,

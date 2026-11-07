@@ -1856,6 +1856,7 @@ function renderNpcStats(u) {
   if (npcNextRankName) npcNextRankName.textContent = rank.next?.name || "Grade maximal atteint";
 
   const npcRows = Object.entries(NPC_TYPES)
+      .filter(([type]) => !type.startsWith("npc_Jpc_")) // bots JPC exclus
       .map(([type, npc]) => {
         const count = Math.max(0, Number(kills[type] || 0));
         const creditsEach = Math.max(0, Number(npc.value || 0));

@@ -18522,7 +18522,7 @@ function startZonePortalJump(ptl, entryConfirmed = false) {
   // Niveau requis façon DarkOrbit officiel (voir SRC/CORE/MAP_ACCESS.js).
   // Vérifié avant les coûts : inutile de payer si le niveau bloque.
   const targetMapId = String(ptl.toMap || "").toLowerCase();
-  // ✅ GG d'hiver : saison d'hiver, entrée de :33 à :38 (départ commun à :38).
+  // ✅ GG d'hiver : saison d'hiver, entrée de :55 à :00 (départ commun à :00).
   if (targetMapId === "winter") {
     if (!isWinterEventActive()) {
       SFX.play("swDeny");
