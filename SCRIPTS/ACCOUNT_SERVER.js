@@ -29,7 +29,7 @@ import { CARGO_CAPACITY, RESOURCE_TYPES, cargoAdd, getRefineryRecipe, ORE_SELL_P
 import { getPetTradeBonusPct } from "../PET/PET_GEARS.js";
 import { CRAFTING_ENABLED, getCraftingRecipe } from "../SRC/DATA/CRAFTING.js";
 import { isHalloweenEventActive } from "../NPC/NPC_HALLOWEEN.js";
-import { winterPeriodFrostPoints } from "../SRC/CORE/WINTER_CONVOY.js";
+import { compareWinterStanding, winterFinalStandings, winterFrostPointsFor, winterPeriodFrostPoints, winterRankingPeriods } from "../SRC/CORE/WINTER_CONVOY.js";
 import { normalizeBattlepassState } from "../QUEST/BATTLEPASS.js";
 import { getPassShopOffer, PASS_MODULE_FORCED } from "../SRC/DATA/PASS_SHOP.js";
 import { SKYLAB_INSTANT_TRANSPORT_COST, SKYLAB_MAX_ROBOTS, SKYLAB_RESOURCE_IDS, SKYLAB_ROBOT_CREDIT_COST, SKYLAB_ROBOT_LIFETIME_MS, SKYLAB_TRANSPORT_COOLDOWN_SEC, canStartSkylabUpgrade, getSkylabModuleDef, isCollectorModule, normalizeSkylabState, skylabRobotCount, skylabStorageCap, tickSkylabState } from "../SRC/DATA/SKYLAB.js";
@@ -808,6 +808,26 @@ export function initAccountDb() {
     );
     CREATE INDEX IF NOT EXISTS idx_friend_blocks_blocked ON friend_blocks(blocked_id);`);
   } catch {}
+  // Classement Winter : versements faits (un par classement terminé) et gains
+  // de chaque pilote du top, crédités au compte quand le jeu les réclame.
+  try {
+    db.exec(`CREATE TABLE IF NOT EXISTS winter_ranking_payouts (
+      period_key TEXT PRIMARY KEY,
+      winners INTEGER NOT NULL DEFAULT 0,
+      paid_at INTEGER NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS winter_ranking_rewards (
+      period_key TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      rank INTEGER NOT NULL,
+      frost_points INTEGER NOT NULL,
+      reward TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      claimed_at INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY (period_key, user_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_winter_ranking_rewards_user ON winter_ranking_rewards(user_id, claimed_at);`);
+  } catch {}
   // Le rang Chef affiche tous les droits, banque comprise.
   try { db.exec("UPDATE clan_ranks SET rights = 31 WHERE builtin = 'leader' AND rights != 31"); } catch {}
   // Migration : colonne pseudo_norm pour les bases existantes (casse affichee preservee).
@@ -819,6 +839,9 @@ export function initAccountDb() {
   try { db.exec("DROP INDEX IF EXISTS idx_users_pseudo"); } catch {}
   try { db.exec("CREATE INDEX IF NOT EXISTS idx_users_pseudo_lower ON users(pseudo_norm)"); } catch {}
   try { db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_pseudo_exact ON users(pseudo)"); } catch {}
+  // Fin de classement Winter : top 30 figé quelques minutes après minuit.
+  try { payoutWinterRankings(); } catch {}
+  setInterval(() => { try { payoutWinterRankings(); } catch {} }, 60_000).unref?.();
   return db;
 }
 
@@ -1853,6 +1876,7 @@ export function adminDeleteAccount(target) {
     try { db.prepare("DELETE FROM pvp_ship_kills WHERE user_id = ?").run(uid); } catch {}
     try { db.prepare("DELETE FROM pvp_pet_kills WHERE user_id = ?").run(uid); } catch {}
     try { db.prepare("DELETE FROM npc_reward_tx WHERE user_id = ?").run(uid); } catch {}
+    try { db.prepare("DELETE FROM winter_ranking_rewards WHERE user_id = ?").run(uid); } catch {}
     try { db.prepare("DELETE FROM friends WHERE user_id = ? OR friend_id = ?").run(uid, uid); } catch {}
     try { db.prepare("DELETE FROM friend_requests WHERE from_id = ? OR to_id = ?").run(uid, uid); } catch {}
     // Clan : départ propre (succession du chef ou dissolution si dernier).
@@ -3622,6 +3646,118 @@ function sundayRollPct(min, max) {
   }
   return value;
 }
+// --- Classement Winter : gains de fin de classement ---
+// Quelques minutes après la fin d'un classement (dernières sauvegardes des
+// joueurs arrivées), le top 30 est figé une seule fois : une ligne par
+// gagnant dans winter_ranking_rewards (gain copié tel quel), le classement
+// noté dans winter_ranking_payouts. Le jeu réclame ensuite ses gains
+// (/api/winter/claim) : crédits, XP, honneur et ICE-100 ajoutés au compte
+// en une transaction, le compte renvoyé est adopté par le client. Un joueur
+// hors ligne les reçoit à sa prochaine connexion.
+export const WINTER_RANKING_PAYOUT_DELAY_MS = 3 * 60_000;
+// Aucun versement pour les saisons d'avant le classement Winter.
+const WINTER_RANKING_FIRST_SEASON = 2026;
+
+function winterStandingsFor(periodKey) {
+  const rows = db.prepare(`SELECT id, pseudo,
+      json_extract(data, '$.winter.frostPoints') AS frost_points,
+      json_extract(data, '$.winter.frostPeriod') AS frost_period
+    FROM users`).all();
+  return winterFinalStandings(rows.map((r) => ({
+    id: String(r.id),
+    pseudo: String(r.pseudo || "Pilote").slice(0, 20),
+    frostPoints: winterFrostPointsFor({ frostPoints: r.frost_points, frostPeriod: r.frost_period ?? undefined }, periodKey),
+  })));
+}
+
+// Fige les classements terminés pas encore versés. Idempotent.
+export function payoutWinterRankings(now = Date.now()) {
+  initAccountDb();
+  const paid = [];
+  const year = new Date(now).getUTCFullYear();
+  for (const season of [year - 1, year]) {
+    if (season < WINTER_RANKING_FIRST_SEASON) continue;
+    for (const period of winterRankingPeriods(season)) {
+      if (period.endAt + WINTER_RANKING_PAYOUT_DELAY_MS > now) continue;
+      if (db.prepare("SELECT 1 FROM winter_ranking_payouts WHERE period_key = ?").get(period.key)) continue;
+      let inTx = false;
+      try {
+        db.exec("BEGIN IMMEDIATE"); inTx = true;
+        // Un autre processus a pu le faire entre-temps.
+        if (db.prepare("SELECT 1 FROM winter_ranking_payouts WHERE period_key = ?").get(period.key)) {
+          db.exec("ROLLBACK"); inTx = false;
+          continue;
+        }
+        const winners = winterStandingsFor(period.key);
+        const insert = db.prepare(`INSERT OR IGNORE INTO winter_ranking_rewards
+          (period_key, user_id, rank, frost_points, reward, created_at) VALUES (?, ?, ?, ?, ?, ?)`);
+        for (const w of winners) {
+          const { credits, exp, honor, ice } = w.reward;
+          insert.run(period.key, w.id, w.rank, w.frostPoints, JSON.stringify({ credits, exp, honor, ice }), now);
+        }
+        db.prepare("INSERT INTO winter_ranking_payouts (period_key, winners, paid_at) VALUES (?, ?, ?)").run(period.key, winners.length, now);
+        db.exec("COMMIT"); inTx = false;
+        paid.push({ periodKey: period.key, winners: winners.map(({ pseudo, rank, frostPoints }) => ({ pseudo, rank, frostPoints })) });
+        console.info(`[winter] classement ${period.key} terminé : ${winners.length} gagnant(s)`);
+      } catch (e) {
+        if (inTx) { try { db.exec("ROLLBACK"); } catch {} }
+        console.error(`[winter] versement du classement ${period.key} :`, e?.message || e);
+      }
+    }
+  }
+  return paid;
+}
+
+// Crédite au compte tous ses gains Winter non réclamés.
+// { ok, rewards: [{ periodKey, rank, frostPoints, credits, exp, honor, ice }], user? }
+export function claimWinterRankingRewards(userId, now = Date.now()) {
+  let inTx = false;
+  try {
+    initAccountDb();
+    const uid = String(userId || "");
+    if (!uid) return { ok: false, error: "NOT_FOUND" };
+    payoutWinterRankings(now);
+    db.exec("BEGIN IMMEDIATE"); inTx = true;
+    const pending = db.prepare(`SELECT period_key, rank, frost_points, reward FROM winter_ranking_rewards
+      WHERE user_id = ? AND claimed_at = 0 ORDER BY period_key`).all(uid);
+    if (!pending.length) {
+      db.exec("COMMIT"); inTx = false;
+      return { ok: true, rewards: [] };
+    }
+    const row = db.prepare("SELECT * FROM users WHERE id = ?").get(uid);
+    if (!row) {
+      db.exec("ROLLBACK"); inTx = false;
+      return { ok: false, error: "NOT_FOUND" };
+    }
+    const data = rowToPublic(row);
+    const amount = (v) => Math.max(0, Math.floor(Number(v) || 0));
+    const rewards = pending.map((p) => {
+      let r = {};
+      try { r = JSON.parse(p.reward) || {}; } catch {}
+      return { periodKey: String(p.period_key), rank: amount(p.rank), frostPoints: amount(p.frost_points),
+        credits: amount(r.credits), exp: amount(r.exp), honor: amount(r.honor), ice: amount(r.ice) };
+    });
+    const total = (k) => rewards.reduce((sum, r) => sum + r[k], 0);
+    data.credits = amount(data.credits) + total("credits");
+    data.stats ||= { honor: 0, exp: 0, rankPoints: 0, lifetimeKills: 0 };
+    data.stats.exp = amount(data.stats.exp) + total("exp");
+    data.stats.honor = Math.floor(Number(data.stats.honor) || 0) + total("honor");
+    data.stats.rankPoints = calculateRankPoints(data.stats);
+    data.ammo ||= {};
+    data.ammo.ice = amount(data.ammo.ice) + total("ice");
+    data.revision = Math.max(Math.floor(Number(data.revision) || 0), Number(row.revision) || 0) + 1;
+    data.updatedAt = now;
+    db.prepare("UPDATE users SET data = ?, revision = ?, updated_at = ? WHERE id = ?")
+      .run(accountDataJson(data, row.id), data.revision, now, row.id);
+    db.prepare("UPDATE winter_ranking_rewards SET claimed_at = ? WHERE user_id = ? AND claimed_at = 0").run(now, uid);
+    db.exec("COMMIT"); inTx = false;
+    return { ok: true, rewards, user: data };
+  } catch {
+    if (inTx) { try { db.exec("ROLLBACK"); } catch {} }
+    return { ok: false, error: "SERVER" };
+  }
+}
+
 export function grantSundayModule(accountId, rarity) {
   try {
     initAccountDb();
@@ -4266,7 +4402,7 @@ export function handleAccountApi(req, res) {
         .slice(0, 100).map(rowFields);
       // ✅ classement Winter : top 100 par points givrés.
       const winterTop = list.filter((row) => row.frostPoints > 0)
-        .sort((a, b) => b.frostPoints - a.frostPoints)
+        .sort(compareWinterStanding)
         .slice(0, 100).map(rowFields);
       const body = { ok: true, list: list.slice(0, 100).map(rowFields), eternal: eternalTop, winter: winterTop };
       generalRankingCache = { at: Date.now(), body };
@@ -4274,6 +4410,15 @@ export function handleAccountApi(req, res) {
     } catch {
       return json(res, 500, { ok: false, error: "Erreur serveur." });
     }
+  }
+  if (pathname === "/api/winter/claim" && req.method === "POST") {
+    // Gains de fin de classement Winter (voir claimWinterRankingRewards).
+    if (rateLimited(`${ip}:/api/winter/claim`, 30)) return json(res, 429, { ok: false, error: "Trop de tentatives, reessaie dans une minute." });
+    const me = authUser(req);
+    if (!me) return json(res, 401, { ok: false, error: "Session invalide." });
+    const r = claimWinterRankingRewards(me.id);
+    if (!r.ok) return json(res, r.error === "NOT_FOUND" ? 404 : 500, { ok: false, error: "Erreur serveur." });
+    return json(res, 200, { ok: true, rewards: r.rewards, user: r.user || undefined });
   }
   if (pathname === "/api/pvp/me" && req.method === "GET") {
     // Stats PvP personnelles (tableau Destruction Joueurs).

@@ -1015,6 +1015,41 @@ export async function apiClanBank(action, body = {}) {
   }
 }
 
+// Gains de fin de classement Winter : le serveur les ajoute au compte et le
+// renvoie (même circuit que la banque de clan : gains jamais dupliqués ni
+// écrasés par une sauvegarde en attente). rewards vide = rien à recevoir.
+export async function apiWinterRankingClaim() {
+  if (!netActive()) return { ok: false, error: "Session serveur inactive." };
+  const busy = accountWriteNotice();
+  const operationKey = "winterRankingClaim";
+  if (!beginAuthoritativeOperation(operationKey)) return busy;
+  const token = memToken;
+  const userId = memUser.id;
+  let writer = null;
+  try {
+    if (saveInFlight) await saveInFlight;
+    if (netHasPendingSave()) {
+      await flushNetUser();
+      if (retrySave) return busy;
+    }
+    if (!netActive() || memToken !== token || memUser.id !== userId) return { ok: false, ignored: true };
+    writer = authoritativeWriter ? await waitForAuthoritativeWriter() : createAuthoritativeWriter();
+    if (!netActive() || memToken !== token || memUser.id !== userId) return { ok: false, ignored: true };
+    clearTimeout(saveTimer); saveTimer = null;
+    const out = await api("/api/winter/claim", { method: "POST", body: {}, token });
+    if (!netActive() || memToken !== token || memUser.id !== userId) return { ok: false, ignored: true };
+    if (out?.ok && out.user) {
+      adoptServerUser(out.user, { reason: "winterRanking" });
+      try { window.dispatchEvent(new CustomEvent("orbit:user-updated", { detail: { userId: memUser.id, revision: memUser.revision, source: "winterRanking" } })); } catch {}
+    }
+    return out || { ok: false, error: "Réponse serveur invalide." };
+  } catch {
+    return { ok: false, error: "Réseau." };
+  } finally {
+    finishAuthoritativeOperation(writer, operationKey);
+  }
+}
+
 export async function apiProduction(action, recipeId, quantity = 1) {
   if (!netActive()) return { ok: false, error: "Session serveur inactive." };
   const busy = accountWriteNotice();

@@ -106,7 +106,7 @@ import {
   refreshCurrentUserTitles,
 } from "./ACCOUNT.js";
 import { pumpSharedAuction } from "./AUCTION_NET.js";
-import { flushNetUser, netActive, netList, noteNetConsumption, noteNetCreditGain, noteNetPetFuelConsumed, noteNetPurchase, noteNetResourceGain, noteNetServerReward, noteNetUpgradeConsumed } from "./ACCOUNT_NET.js";
+import { apiWinterRankingClaim, flushNetUser, netActive, netList, noteNetConsumption, noteNetCreditGain, noteNetPetFuelConsumed, noteNetPurchase, noteNetResourceGain, noteNetServerReward, noteNetUpgradeConsumed } from "./ACCOUNT_NET.js";
 import {
   GALAXY_GATE_BUILD_LIMIT,
   normalizeGalaxyGateWave, GALAXY_GATE_DEFINITIONS,
@@ -46657,6 +46657,46 @@ function drawZoneWalls(ox, oy) {
     viewportHeight: innerHeight,
   });
 }
+
+// Classement Winter : gains de fin de classement (figés par le serveur
+// quelques minutes après minuit, voir ACCOUNT_SERVER.js). Réclamés au
+// lancement, toutes les 10 min et juste après chaque fin de classement ;
+// le compte renvoyé est adopté (crédits, XP, honneur, ICE-100 à jour).
+const WINTER_CLAIM_EVERY_MS = 10 * 60_000;
+const WINTER_CLAIM_AFTER_END_MS = 3 * 60_000 + 20_000;
+let winterClaimBusy = false;
+let winterClaimTimer = null;
+async function claimWinterRankingRewards() {
+  if (winterClaimBusy || !netActive()) return;
+  winterClaimBusy = true;
+  try {
+    const out = await apiWinterRankingClaim();
+    if (!out?.ok || !Array.isArray(out.rewards)) return;
+    for (const r of out.rewards) {
+      const place = Number(r.rank) === 1 ? "1er" : `${formatInteger(r.rank)}e`;
+      const terms = [`${formatInteger(r.credits)} crédits`, `${formatInteger(r.exp)} XP`, `${formatInteger(r.honor)} honneur`, `${formatInteger(r.ice)} ICE-100`];
+      showNotificationGroup([
+        `Classement Winter terminé : tu as fini ${place} !`,
+        ...terms.map((t) => `Vous avez reçu ${t}`),
+      ], "info", { goldTerms: [place, ...terms] });
+    }
+    if (out.rewards.length) {
+      try { updateAmmoUI(); } catch {}
+      try { drawUI(); } catch {}
+    }
+  } catch {} finally {
+    winterClaimBusy = false;
+  }
+}
+function scheduleWinterRankingClaim() {
+  clearTimeout(winterClaimTimer);
+  const period = winterRankingPeriod();
+  const untilEnd = period ? period.endAt + WINTER_CLAIM_AFTER_END_MS - Date.now() : Infinity;
+  winterClaimTimer = setTimeout(() => {
+    claimWinterRankingRewards().finally(scheduleWinterRankingClaim);
+  }, Math.max(1000, Math.min(WINTER_CLAIM_EVERY_MS, untilEnd)));
+}
+setTimeout(() => { claimWinterRankingRewards().finally(scheduleWinterRankingClaim); }, 8000);
 
 // ============================================================================
 // GG d'hiver partagée : convoi du Père Noël (réglages : WINTER_CONVOY.js,

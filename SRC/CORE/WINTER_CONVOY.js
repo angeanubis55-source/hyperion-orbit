@@ -198,20 +198,22 @@ export function winterFrostPoints(hpMax) {
 // du classement sont indisponibles. user.winter.frostPeriod = classement des
 // frostPoints ; un autre classement compte pour 0.
 export const WINTER_RANKING_ENDS = Object.freeze([[10, 9], [10, 16], [10, 23], [10, 30], [11, 7], [11, 14]]);
-let winterPeriodCache = null;
-function winterRankingPeriods(year) {
-  if (winterPeriodCache?.year !== year) {
+const winterPeriodCache = new Map();
+// Les 6 classements de la saison de novembre de `year`.
+export function winterRankingPeriods(year) {
+  let list = winterPeriodCache.get(year);
+  if (!list) {
     const s = WINTER_START;
     let startAt = winterParisTime(year, s.month, s.day, s.hour, s.minute);
-    const list = WINTER_RANKING_ENDS.map(([month, day], index) => {
+    list = Object.freeze(WINTER_RANKING_ENDS.map(([month, day], index) => {
       const endAt = winterParisTime(year, month, day);
       const period = Object.freeze({ index, key: `${year}-${index + 1}`, startAt, endAt });
       startAt = endAt;
       return period;
-    });
-    winterPeriodCache = { year, list };
+    }));
+    winterPeriodCache.set(year, list);
   }
-  return winterPeriodCache.list;
+  return list;
 }
 // Classement en cours ({ index, key, startAt, endAt }) ou null hors saison.
 export function winterRankingPeriod(nowMs = Date.now()) {
@@ -239,11 +241,32 @@ export const WINTER_RANKING_REWARDS = Object.freeze(Array.from({ length: WINTER_
   Object.freeze({ rank: i + 1, ...Object.fromEntries(Object.entries(WINTER_RANKING_FIRST).map(([k, v]) => [k, Math.max(WINTER_RANKING_MIN[k] || 0, Math.floor(v / 2 ** Math.min(i, WINTER_RANKING_FIXED_FROM - 1)))])) })));
 // Comptes d'avant les classements (pas de frostPeriod) : 1er classement 2026.
 export const WINTER_LEGACY_PERIOD = "2026-1";
-export function winterPeriodFrostPoints(winter, nowMs = Date.now()) {
-  const period = winterRankingPeriod(nowMs);
-  if (!period) return 0;
+// Points givrés du compte pour le classement `periodKey` (0 sinon).
+export function winterFrostPointsFor(winter, periodKey) {
   const key = winter?.frostPeriod == null ? WINTER_LEGACY_PERIOD : String(winter.frostPeriod);
-  return key === period.key ? Math.max(0, Math.floor(Number(winter?.frostPoints) || 0)) : 0;
+  return periodKey && key === String(periodKey) ? Math.max(0, Math.floor(Number(winter?.frostPoints) || 0)) : 0;
+}
+// Points givrés du classement en cours (0 hors saison).
+export function winterPeriodFrostPoints(winter, nowMs = Date.now()) {
+  return winterFrostPointsFor(winter, winterRankingPeriod(nowMs)?.key);
+}
+// Ordre du classement : points givrés décroissants, puis pseudo (égalités
+// départagées pareil à l'affichage et au versement des gains).
+export function compareWinterStanding(a, b) {
+  return (Number(b?.frostPoints) || 0) - (Number(a?.frostPoints) || 0)
+    || String(a?.pseudo || "").localeCompare(String(b?.pseudo || ""), "fr");
+}
+export function winterRankingReward(rank) {
+  return WINTER_RANKING_REWARDS[Math.floor(Number(rank)) - 1] || null;
+}
+// Classement final : [{ ...ligne, rank, reward }] pour les WINTER_RANKING_TOP
+// premiers ayant au moins 1 point givré.
+export function winterFinalStandings(rows) {
+  return (Array.isArray(rows) ? rows : [])
+    .filter((row) => Number(row?.frostPoints) > 0)
+    .sort(compareWinterStanding)
+    .slice(0, WINTER_RANKING_TOP)
+    .map((row, i) => ({ ...row, rank: i + 1, reward: winterRankingReward(i + 1) }));
 }
 
 // Session de la période en cours (demi-heures : identiques à Paris).
