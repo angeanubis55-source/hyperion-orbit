@@ -977,7 +977,7 @@ function addInventoryCount(data, itemId, quantity) {
 }
 
 function applyCatalogPurchase(data, item, requestedQuantity, options = {}) {
-  const isUnique = !!(item.ship?.id || item.design?.id || item.pet?.id || item.drone || item.formation);
+  const isUnique = !!(item.ship?.id || item.design?.id || item.petDesign?.id || item.pet?.id || item.drone || item.formation);
   let quantity = isUnique ? 1 : Math.min(item.give?.ammo ? 1_000_000 : 5000,
     Math.max(1, Math.floor(Number(requestedQuantity) || 1)));
   let totalPrice = Math.max(0, Math.floor(Number(item.price) || 0)) * quantity;
@@ -1011,6 +1011,10 @@ function applyCatalogPurchase(data, item, requestedQuantity, options = {}) {
     data.inventory.shipDesigns ||= [];
     const designId = String(item.design.id);
     if (data.inventory.shipDesigns.includes(designId) || data.inventory.ships.includes(designId)) return { error: "Design deja possede." };
+  }
+  if (item.petDesign?.id) {
+    data.inventory.petDesigns ||= [];
+    if (data.inventory.petDesigns.includes(String(item.petDesign.id))) return { error: "Design P.E.T deja possede." };
   }
   if (item.pet?.id && (data.pet?.owned === true || Number(data.inventory.counts[item.id] || 0) > 0)) return { error: "P.E.T deja possede." };
   if (item.petGear || item.petProtocol) {
@@ -1079,6 +1083,7 @@ function applyCatalogPurchase(data, item, requestedQuantity, options = {}) {
     }
   }
   if (item.design?.id) data.inventory.shipDesigns.push(String(item.design.id));
+  if (item.petDesign?.id) data.inventory.petDesigns.push(String(item.petDesign.id));
   if (item.pet?.id) {
     addInventoryCount(data, item.id, 1);
     data.pet = createPet(String(item.pet.id), { pseudo: options.petPseudo, faction: data.faction });
@@ -4573,7 +4578,7 @@ export function handleAccountApi(req, res) {
         } else {
           const item = findCatalogItem(id);
           if (!item) throw Object.assign(new Error("Item introuvable."), { client: true });
-          if (item.ship || item.design || item.pet || item.ticket || !(Number(item.price) > 0)) {
+          if (item.ship || item.design || item.petDesign || item.pet || item.ticket || !(Number(item.price) > 0)) {
             throw Object.assign(new Error("Cet article ne peut pas etre vendu."), { client: true });
           }
           const owned = Math.max(0, Math.floor(Number(data.inventory.counts[id]) || 0));
@@ -5067,7 +5072,7 @@ export function adminCatalog() {
     for (const item of list) {
       if (!item?.id) continue;
       items.push({ id: String(item.id), name: String(item.name || item.id), category,
-        unique: !!(item.ship?.id || item.design?.id || item.pet?.id || item.drone || item.formation) });
+        unique: !!(item.ship?.id || item.design?.id || item.petDesign?.id || item.pet?.id || item.drone || item.formation) });
       for (const id of Object.keys(item.give?.ammo || {})) if (id !== "x1") ammo.push({ id, name: String(item.code || item.name || id) });
       for (const id of Object.keys(item.give?.rockets || {})) rockets.push({ id, name: String(item.name || id).replace(/^Roquette\s+/i, "") });
     }

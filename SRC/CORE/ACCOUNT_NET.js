@@ -1255,7 +1255,7 @@ function rebaseValue(base, local, remote, path = "") {
       }
       return path === "inventory.moduleRollHistory" ? result.slice(-500) : result;
     }
-    if (["inventory.modules", "inventory.ships", "inventory.shipDesigns", "drones.formations", "quests.completed"].includes(path)) {
+    if (["inventory.modules", "inventory.ships", "inventory.shipDesigns", "inventory.petDesigns", "drones.formations", "quests.completed"].includes(path)) {
       const b = new Set(before), l = new Set(local), r = new Set(remote);
       for (const id of b) if (!l.has(id)) r.delete(id);
       for (const id of l) if (!b.has(id)) r.add(id);

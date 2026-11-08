@@ -1098,6 +1098,9 @@ function ensureUserShape(u) {
   // designs de vaisseaux (variantes cosmétiques possédées, sans hangar)
   if (!Array.isArray(u.inventory.shipDesigns)) u.inventory.shipDesigns = [];
   u.inventory.shipDesigns = [...new Set(u.inventory.shipDesigns.map(String).filter(Boolean))];
+  // designs P.E.T (cosmétiques possédés)
+  if (!Array.isArray(u.inventory.petDesigns)) u.inventory.petDesigns = [];
+  u.inventory.petDesigns = [...new Set(u.inventory.petDesigns.map(String).filter(Boolean))];
 
   // starter ship toujours owned
   if (!u.inventory.ships.includes(STARTER_SHIP_ID)) u.inventory.ships.push(STARTER_SHIP_ID);
@@ -1842,6 +1845,7 @@ export function buyItem(itemId, requestedQuantity = 1, options = {}) {
   const isDesign = !!item.design?.id;
   const isBooster = !!item.booster?.id;
   const isPet = !!item.pet?.id;
+  const isPetDesign = !!item.petDesign?.id;
   const isHull = !!item.petHull;
   // Coque+ : achats groupés possibles (prix exponentiel selon le nombre déjà possédé).
   if (isHull) {
@@ -1877,7 +1881,7 @@ export function buyItem(itemId, requestedQuantity = 1, options = {}) {
     saveUser(u);
     return { ok: true, user: u, quantity: buyQty, totalPrice: fuelPrice };
   }
-  const quantity = (isShip || isDesign || isPet)
+  const quantity = (isShip || isDesign || isPet || isPetDesign)
     ? 1
     : item.give?.ammo
       // Munitions : pas de plafond (packs ×1000, achats en gros possibles).
@@ -1909,6 +1913,14 @@ export function buyItem(itemId, requestedQuantity = 1, options = {}) {
   if (item.pet?.id) {
     if (u.pet?.owned === true || Number(u.inventory?.counts?.[item.id] || 0) > 0) {
       return { ok: false, error: "P.E.T déjà possédé." };
+    }
+  }
+
+  // Designs P.E.T : uniques
+  if (isPetDesign) {
+    u.inventory.petDesigns ??= [];
+    if (u.inventory.petDesigns.includes(String(item.petDesign.id))) {
+      return { ok: false, error: "Design P.E.T déjà possédé." };
     }
   }
 
@@ -2010,6 +2022,13 @@ export function buyItem(itemId, requestedQuantity = 1, options = {}) {
     const designId = String(item.design.id);
     u.inventory.shipDesigns ??= [];
     if (!u.inventory.shipDesigns.includes(designId)) u.inventory.shipDesigns.push(designId);
+  }
+
+  // design P.E.T => juste la collection
+  if (isPetDesign) {
+    const designId = String(item.petDesign.id);
+    u.inventory.petDesigns ??= [];
+    if (!u.inventory.petDesigns.includes(designId)) u.inventory.petDesigns.push(designId);
   }
 
   // P.E.T purchase => collection unique + flag u.pet (niveau 0, comme l'officiel)
@@ -3233,7 +3252,7 @@ export function sellItem(itemId, qty = 1, options = {}) {
   if (it.ship) return { ok: false, error: "Impossible de vendre un vaisseau ici." };
 
   // pas de vente de designs ici
-  if (it.design) return { ok: false, error: "Impossible de vendre un design." };
+  if (it.design || it.petDesign) return { ok: false, error: "Impossible de vendre un design." };
 
   // pas de vente de P.E.T ici (unique)
   if (it.pet) return { ok: false, error: "Impossible de vendre un P.E.T." };

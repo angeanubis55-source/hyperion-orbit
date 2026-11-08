@@ -4,6 +4,7 @@
 import { SHIP_PACKS, getShipDesignBaseId, getShipPackById, isRemovedShipPack } from "../../SHIP/SHIP_PACKS.js";
 import { DRONE_FORMATIONS, SPECIAL_DRONE_PRICE, getDroneShopStillPath } from "../../DRONE/DRONE_TYPES.js";
 import { DRONE_DESIGNS, droneDesignBonusLabel } from "../../DRONE/DRONE_DESIGNS.js";
+import { PET_DESIGNS, PET_DESIGN_PRICE } from "../../PET/PET_DESIGNS.js";
 import { ammoDescription } from "../../COMBAT/AMMO_TYPES.js";
 import { ROCKET_TYPES, rocketDescription, rocketShopIcon } from "../../COMBAT/ROCKET_TYPES.js";
 import { BOOSTERS } from "../DATA/BOOSTERS.js";
@@ -234,6 +235,12 @@ export const CATALOG = {
     { id: "pet_fuel", name: "Essence P.E.T", price: 100, icon: "/PET/pet-fuel_100x100.png", petFuel: { units: 1 }, desc: "Recharge le réservoir du REX (+1 carburant / unité)." },
     { id: "pet_hull", name: "Coque+ P.E.T", price: 50000, icon: "/PET/upgrade-g-hp1_100x100.png", petHull: { hp: 10000 }, desc: "+10 000 HP définitifs au REX (10 achats max, prix ×2 à chaque achat)." },
   ],
+
+  // Designs P.E.T : cosmétiques uniques (inventory.petDesigns).
+  petDesigns: Object.values(PET_DESIGNS).map(design => ({
+    id: design.itemId, name: design.name, price: PET_DESIGN_PRICE, icon: design.icon, preview: design.icon,
+    petDesign: { id: design.id },
+  })),
 
   // Tickets : relance gratuite à la roulette des modules (image fournie plus tard).
   tickets: [

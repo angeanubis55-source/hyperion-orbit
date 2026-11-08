@@ -760,6 +760,10 @@ function alreadyOwnsDesign(u, shipId) {
   );
 }
 
+function alreadyOwnsPetDesign(u, designId) {
+  return !!designId && Array.isArray(u?.inventory?.petDesigns) && u.inventory.petDesigns.includes(String(designId));
+}
+
 // id de vaisseau représenté par un item de boutique (base OU design)
 function itemShipId(it) {
   return String(it?.ship?.id || it?.design?.id || "");
@@ -2499,7 +2503,7 @@ function renderShopMeasured(user) {
   if (shopCredits) shopCredits.textContent = formatNumber(user.credits || 0);
   if (!shopList || !shopPreview) return;
   const listSignature = JSON.stringify([shopTab, user.inventory?.ships,
-    user.inventory?.shipDesigns, user.drones?.items?.map(drone => [drone.id, drone.type]),
+    user.inventory?.shipDesigns, user.inventory?.petDesigns, user.drones?.items?.map(drone => [drone.id, drone.type]),
     user.drones?.formations, user.drones?.activeFormation,
     user.pet?.owned, getPetLevel(user.pet?.exp), user.inventory?.counts?.["pet_niveau1"],
     shopTab === "designs" ? designSearchQuery : "",
@@ -2602,6 +2606,7 @@ function renderShopMeasured(user) {
     const ownedDrone = it.drone ? (user?.drones?.items || []).filter(drone => drone.type === it.drone.type).length : 0;
     const ownedFormation = it.formation ? user?.drones?.formations?.includes(it.formation.id) : false;
     const ownedPet = it.pet ? (user?.pet?.owned === true || Number(user?.inventory?.counts?.[it.id] || 0) > 0) : false;
+    const ownedPetDesign = it.petDesign ? alreadyOwnsPetDesign(user, it.petDesign.id) : false;
     const ownedHullRow = it?.petHull ? hullBuysRow >= PET_HULL_MAX_BUYS : false;
     const groupLevels = Array.isArray(it?.levels) ? it.levels : null;
     const ownedPetGear = groupLevels
@@ -2621,7 +2626,7 @@ function renderShopMeasured(user) {
     img.style.imageRendering = (shopTab === "ships" || shopTab === "designs" || shopTab === "drones") ? "pixelated" : "auto";
     if (shopTab === "drones") img.classList.add("droneShopRowImage");
     if (shopTab === "formations") img.classList.add("formationShopRowImage");
-    if (it.pet) img.classList.add("petShopRowImage");
+    if (it.pet || it.petDesign) img.classList.add("petShopRowImage");
     img.onerror = () => {
       img.onerror = null;
       img.src = FALLBACK_ICON;
@@ -2660,7 +2665,7 @@ function renderShopMeasured(user) {
     row.appendChild(img);
     row.appendChild(meta);
     // Check "possédé" collé à droite (hors zone grise .shopMeta).
-    if (ownedShip || ownedFormation || ownedPet || ownedHullRow) {
+    if (ownedShip || ownedFormation || ownedPet || ownedPetDesign || ownedHullRow) {
       const check = document.createElement("span");
       check.className = "shopOwnedCheck";
       check.title = "Possédé";
@@ -3979,14 +3984,18 @@ function renderShopPreview(user, it, cat) {
   const isShipLike = isShip || isDesign;
   const isDrone = cat === "drones";
   const isFormation = cat === "formations";
-  const isPet = !!it?.pet?.id;
+  // Designs P.E.T : même aperçu que le P.E.T (sprite taille réelle, achat unique).
+  const isPet = !!it?.pet?.id || !!it?.petDesign?.id;
+  const isPetDesign = !!it?.petDesign?.id;
   const isFuel = !!it?.petFuel;
   const isHull = !!it?.petHull;
   const shipId = it?.ship?.id || it?.design?.id || null;
   const droneCount = isDrone ? (user?.drones?.items || []).filter(drone => drone.type === it?.drone?.type).length : 0;
   const droneLimit = it?.drone?.type === "iris" ? 8 : 1;
   const formationOwned = isFormation && user?.drones?.formations?.includes(it?.formation?.id);
-  const petOwned = isPet && (user?.pet?.owned === true || Number(user?.inventory?.counts?.[it?.id] || 0) > 0);
+  const petOwned = isPetDesign
+    ? alreadyOwnsPetDesign(user, it.petDesign.id)
+    : isPet && (user?.pet?.owned === true || Number(user?.inventory?.counts?.[it?.id] || 0) > 0);
   const fuelOwned = isFuel && user?.pet?.owned === true;
   const hullOwned = isHull && hullBuys >= PET_HULL_MAX_BUYS;
   const fuelNow = isFuel ? Math.max(0, Math.floor(Number(user?.pet?.fuel) || 0)) : 0;
@@ -4309,7 +4318,8 @@ if (isDrone) {
   // Drones : même présentation (le nom contient déjà "Drone").
   // Formations : idem (le nom contient déjà "Formation").
   const droneCostBlockHtml = `
-        <p class="shopAmmoCost shipCostBlock"><span class="shopAmmoWord">Coût d'achat pour</span> <span class="shopAmmoGold">${escapeHtml(it?.name || it?.id)}</span> <span class="shopAmmoWord">:</span> <span id="shopPurchaseTotal">${formatNumber(price)}</span> <span class="shopAmmoWord">crédits</span></p>`;
+        <p class="shopAmmoCost shipCostBlock"><span class="shopAmmoWord">Coût d'achat pour</span> <span class="shopAmmoGold">${isPetDesign ? "Design " : ""}${escapeHtml(it?.name || it?.id)}</span> <span class="shopAmmoWord">:</span> <span id="shopPurchaseTotal">${formatNumber(price)}</span> <span class="shopAmmoWord">crédits</span></p>
+        ${(isPetDesign && user?.pet?.owned !== true) ? `<p class="shopDesignWarn" style="margin:6px 0 0;text-align:center;font-size:12px;font-weight:600;">Vous ne possédez pas de P.E.T.</p>` : ""}`;
   const shipCostBlockHtml = `
         <p class="shopAmmoCost shipCostBlock"><span class="shopAmmoWord">Coût d'achat pour</span> ${isDesign ? `<span class="shopAmmoGold">Design ${escapeHtml(it?.name || it?.id)}</span>` : `<span class="shopAmmoWord">Vaisseau</span> <span class="shopAmmoGold">${escapeHtml(it?.name || it?.id)}</span>`} <span class="shopAmmoWord">:</span> <span id="shopPurchaseTotal">${formatNumber(price)}</span> <span class="shopAmmoWord">crédits</span></p>
         ${(isDesign && !alreadyOwnsShip(user, it?.design?.base)) ? `<p class="shopDesignWarn" style="margin:6px 0 0;text-align:center;font-size:12px;font-weight:600;">Vous ne possédez pas le vaisseau.</p>` : ""}`;
@@ -4670,7 +4680,7 @@ if (isDrone) {
     const itemName = it?.name || it?.id;
 
     // REX : fenêtre temporaire pour choisir son pseudo (la firme est native : celle du vaisseau).
-    if (isPet && !petOwned) {
+    if (isPet && !isPetDesign && !petOwned) {
       showPetNamingModal({
         itemName,
         totalPrice,
