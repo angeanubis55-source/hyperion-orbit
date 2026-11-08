@@ -7531,6 +7531,62 @@ tr.clanRankTop3 .clanRankPos { color:#e0a070; }
   text-align:right;
   white-space:nowrap;
 }
+/* « ? » du classement Winter : même rendu que celui des Galaxy Gates. */
+.rankingHelp {
+  flex:0 0 auto;
+  width:22px;
+  height:22px;
+  margin:-3px 0;
+  padding:0;
+  display:grid;
+  place-items:center;
+  border:1px solid rgba(124,240,255,.4);
+  border-radius:50%;
+  background:rgba(3,20,33,.85);
+  color:#8fcddd;
+  font-size:13px;
+  font-weight:900;
+  cursor:help;
+}
+.rankingRewardsTip {
+  display:none;
+  position:fixed;
+  inset:auto;
+  transform:translate(-50%,-50%);
+  z-index:100050;
+  margin:0;
+  width:max-content;
+  max-width:min(340px,calc(100vw - 24px));
+  max-height:calc(100vh - 24px);
+  min-height:0;
+  box-sizing:border-box;
+  overflow:auto;
+  text-align:center;
+  background:#031421;
+  box-shadow:0 8px 28px rgba(0,0,0,.65);
+}
+.rankingRewardsTip.is-open {
+  display:grid;
+}
+.rankingRewardsTip .rankingRewardTier {
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  column-gap:14px;
+  padding:7px 0;
+  border-bottom:1px solid rgba(124,240,255,.12);
+}
+.rankingRewardsTip .rankingRewardTier:last-child {
+  border-bottom:0;
+}
+.rankingRewardsTip .rankingRewardTier b {
+  grid-column:1 / -1;
+  display:block;
+  margin-bottom:3px;
+  color:#e2f4ff;
+  font-size:12px;
+  font-weight:900;
+  letter-spacing:.4px;
+}
 .rankingHead,.rankingRow {
   display:grid;
   grid-template-columns:34px 40px 56px minmax(0,1fr) minmax(90px,max-content);

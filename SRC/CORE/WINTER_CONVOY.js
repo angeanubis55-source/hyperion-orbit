@@ -228,6 +228,15 @@ export function isWinterGateActive(nowMs = Date.now()) {
   } catch {}
   return winterRankingPeriod(nowMs) !== null;
 }
+// Gains de fin de classement Winter, du 1er au 5e puis 6e -> 30e (décroissants).
+export const WINTER_RANKING_REWARDS = Object.freeze([
+  Object.freeze({ from: 1, to: 1, credits: 50000000, exp: 500000000, honor: 500000, ice: 200000 }),
+  Object.freeze({ from: 2, to: 2, credits: 35000000, exp: 350000000, honor: 350000, ice: 140000 }),
+  Object.freeze({ from: 3, to: 3, credits: 25000000, exp: 250000000, honor: 250000, ice: 100000 }),
+  Object.freeze({ from: 4, to: 4, credits: 15000000, exp: 150000000, honor: 150000, ice: 60000 }),
+  Object.freeze({ from: 5, to: 5, credits: 10000000, exp: 100000000, honor: 100000, ice: 40000 }),
+  Object.freeze({ from: 6, to: 30, credits: 5000000, exp: 50000000, honor: 50000, ice: 20000 }),
+]);
 // Comptes d'avant les classements (pas de frostPeriod) : 1er classement 2026.
 export const WINTER_LEGACY_PERIOD = "2026-1";
 export function winterPeriodFrostPoints(winter, nowMs = Date.now()) {

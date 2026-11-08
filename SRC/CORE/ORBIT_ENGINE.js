@@ -17501,7 +17501,12 @@ function placeGalaxyDiscountBadge() {
   const multiplier = document.getElementById("ggMultiplierBtn")?.getBoundingClientRect();
   const parent = badge.offsetParent?.getBoundingClientRect();
   if (!help?.width || !multiplier?.width || !parent) return;
-  const gap = multiplier.left - help.right;
+  // Les rects incluent le scale de l'animation d'ouverture : on ramène tout
+  // à l'échelle 1 pour placer le badge correctement dès l'ouverture.
+  const win = ui.galaxyGateWindow;
+  const ratio = win?.offsetWidth ? win.getBoundingClientRect().width / win.offsetWidth : 1;
+  if (!(ratio > 0)) return;
+  const gap = (multiplier.left - help.right) / ratio;
   const scale = Math.min(1, (gap - 16) / GG_DISCOUNT_VISIBLE.w);
   if (scale < 0.5) {
     badge.style.left = badge.style.top = badge.style.transform = "";
@@ -17509,10 +17514,11 @@ function placeGalaxyDiscountBadge() {
   }
   badge.style.transformOrigin = `${GG_DISCOUNT_VISIBLE.cx}px ${GG_DISCOUNT_VISIBLE.cy}px`;
   badge.style.transform = `scale(${scale.toFixed(3)})`;
-  badge.style.left = `${help.right + gap / 2 - parent.left - GG_DISCOUNT_VISIBLE.cx}px`;
-  badge.style.top = `${(help.top + help.bottom) / 2 - parent.top - GG_DISCOUNT_VISIBLE.cy}px`;
+  badge.style.left = `${(help.right - parent.left) / ratio + gap / 2 - GG_DISCOUNT_VISIBLE.cx}px`;
+  badge.style.top = `${((help.top + help.bottom) / 2 - parent.top) / ratio - GG_DISCOUNT_VISIBLE.cy}px`;
 }
 window.addEventListener("resize", placeGalaxyDiscountBadge);
+ui.galaxyGateWindow?.addEventListener("animationend", placeGalaxyDiscountBadge);
 if (typeof ResizeObserver === "function" && ui.galaxyGateWindow) new ResizeObserver(placeGalaxyDiscountBadge).observe(ui.galaxyGateWindow);
 
 function renderEternalGatePanel(user, state) {

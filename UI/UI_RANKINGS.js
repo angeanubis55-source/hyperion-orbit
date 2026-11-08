@@ -6,7 +6,7 @@ import { getRankInfo } from "../SRC/CORE/PROGRESSION.js";
 import { getFaction } from "../SRC/CORE/FACTIONS.js";
 import { formatInteger } from "../SRC/CORE/NUMBER_FORMAT.js";
 import { escapeHtml } from "./UI_DOM.js";
-import { winterRankingPeriod } from "../SRC/CORE/WINTER_CONVOY.js";
+import { WINTER_RANKING_REWARDS, winterRankingPeriod } from "../SRC/CORE/WINTER_CONVOY.js";
 
 let started = false;
 
@@ -41,6 +41,57 @@ export function initRankingsUI() {
     winterTimer.textContent = `Fin du classement hebdomadaire dans ${d} jour${d > 1 ? "s" : ""} ${h} h ${m} min ${s} s`;
   }
   setInterval(tickWinterTimer, 1000);
+
+  // « ? » du classement Winter : gains par place, panneau centré sur la
+  // fenêtre (survol ou clic), comme les récompenses des Galaxy Gates.
+  {
+    const trigger = document.getElementById("rankingWinterHelp");
+    const tip = document.getElementById("rankingWinterRewards");
+    const win = document.getElementById("rankingWindow");
+    const topLayer = typeof tip?.showPopover === "function";
+    if (!topLayer) tip?.removeAttribute("popover");
+    const place = (n) => (n === 1 ? "1er" : `${n}e`);
+    if (tip) {
+      tip.innerHTML = `<strong>Gains du classement Winter</strong>` + WINTER_RANKING_REWARDS.map((r) =>
+        `<div class="rankingRewardTier"><b>${r.from === r.to ? place(r.from) : `${place(r.from)} → ${place(r.to)}`}</b>` +
+        `<span>${formatInteger(r.credits)} crédits</span><span>${formatInteger(r.exp)} XP</span>` +
+        `<span>${formatInteger(r.honor)} honneur</span><span>${formatInteger(r.ice)} ICE-100</span></div>`).join("");
+    }
+    const show = () => {
+      if (!tip || !win) return;
+      const b = win.getBoundingClientRect();
+      tip.style.left = `${b.left + b.width / 2}px`;
+      tip.style.top = `${b.top + b.height / 2}px`;
+      tip.classList.add("is-open");
+      if (topLayer && !tip.matches(":popover-open")) tip.showPopover();
+      trigger?.setAttribute("aria-expanded", "true");
+    };
+    const hide = () => {
+      if (!tip) return;
+      if (topLayer && tip.matches(":popover-open")) tip.hidePopover();
+      tip.classList.remove("is-open");
+      trigger?.setAttribute("aria-expanded", "false");
+    };
+    const leave = (event) => {
+      if (trigger?.contains(event.relatedTarget) || tip?.contains(event.relatedTarget)) return;
+      if (trigger?.matches(":hover") || tip?.matches(":hover")) return;
+      hide();
+    };
+    trigger?.setAttribute("aria-controls", "rankingWinterRewards");
+    trigger?.setAttribute("aria-expanded", "false");
+    trigger?.addEventListener("pointerenter", show);
+    trigger?.addEventListener("pointerleave", leave);
+    trigger?.addEventListener("click", show);
+    tip?.addEventListener("pointerleave", leave);
+    document.addEventListener("pointerdown", (event) => {
+      if (!trigger?.contains(event.target) && !tip?.contains(event.target)) hide();
+    });
+    document.addEventListener("keydown", (event) => { if (event.key === "Escape") hide(); });
+    window.addEventListener("orbit:window-minimized", (event) => {
+      if (event.detail?.id === "rankingWindow") hide();
+    });
+    document.querySelectorAll("#rankingWindow [data-ranking-tab]").forEach((btn) => btn.addEventListener("click", hide));
+  }
 
   function renderBoard(kind, list) {
     const target = boards[kind];
