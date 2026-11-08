@@ -499,6 +499,8 @@ function normalizePetFitValue(value, level = 0) {
     gears: normalizeArraySize(value?.gears, slots.gears, null),
     protocols: normalizeArraySize(value?.protocols, slots.protocols, null),
     ability: value?.ability || null,
+    // Design P.E.T de cette config (id PET_DESIGNS, null = sprite de base).
+    design: typeof value?.design === "string" && value.design ? value.design : null,
   };
   // Migration ancien format {equipment:[...]} : lasers → lasers, boucliers → générateurs.
   if (Array.isArray(value?.equipment) && !Array.isArray(value?.lasers) && !Array.isArray(value?.generators)) {
@@ -2976,6 +2978,7 @@ export function saveHangarLoadout(hangarId, { ship, drones = {}, pet = null }, c
   if (u.pet?.owned === true) {
     const level = getPetLevel(u.pet.exp);
     const value = normalizePetFitValue(pet ?? getPetFit(u.pet, h.id, cfg), level);
+    if (value.design && !(u.inventory.petDesigns || []).includes(value.design)) return { ok: false, error: "Design P.E.T non possédé." };
     for (const group of ["lasers", "generators", "gears", "protocols"]) {
       for (const id of value[group].filter(Boolean)) {
         const error = petFitSlotError(id, group, level);

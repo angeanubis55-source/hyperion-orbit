@@ -7516,6 +7516,21 @@ tr.clanRankTop3 .clanRankPos { color:#e0a070; }
   text-transform:uppercase;
   letter-spacing:.7px;
 }
+.rankingStatusBar {
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+}
+.rankingWeekTimer {
+  margin-left:auto;
+  color:#e2f4ff;
+  text-shadow:0 0 6px rgba(117,232,255,.55);
+  text-transform:none;
+  letter-spacing:.3px;
+  text-align:right;
+  white-space:nowrap;
+}
 .rankingHead,.rankingRow {
   display:grid;
   grid-template-columns:34px 40px 56px minmax(0,1fr) minmax(90px,max-content);
@@ -27360,3 +27375,66 @@ display: flex;
 @media (prefers-reduced-motion:reduce) {
   .qtPanel * { transition:none !important; }
 }
+
+/* Équipement > P.E.T : en-tête sans sprite (niveau / XP sur toute la largeur). */
+#fitCard .petHeaderCard {
+  grid-template-columns:minmax(0,1fr) !important;
+}
+/* Sélecteur de design P.E.T (barre du haut, entre CONFIG. et les actions). */
+#fitCard .fitPetDesignBar {
+  display:flex;
+  align-items:center;
+  margin-left:24px;
+  min-width:0;
+}
+#fitCard .fitPetDesignBar[hidden] { display:none !important; }
+#fitCard .fitPetDesignPicker { position:relative; }
+#fitCard .fitPetDesignBtn,
+#fitCard .fitPetDesignList > button {
+  display:flex;
+  align-items:center;
+  gap:8px;
+  width:100%;
+  padding:3px 10px 3px 4px;
+  border:1px solid rgba(105,233,255,.28);
+  border-radius:5px;
+  background:linear-gradient(100deg,#0a1e2b,#06121c);
+  color:#effcff;
+  font-size:12px;
+  font-weight:700;
+  text-align:left;
+  cursor:pointer;
+}
+#fitCard .fitPetDesignBtn { min-width:240px; height:34px; }
+#fitCard .fitPetDesignBtn > b { margin-left:auto; color:#70dceb; }
+#fitCard .fitPetDesignBtn img,
+#fitCard .fitPetDesignList img {
+  width:30px;
+  height:26px;
+  object-fit:contain;
+  flex:0 0 30px;
+}
+#fitCard .fitPetDesignBtn span,
+#fitCard .fitPetDesignList span {
+  overflow:hidden;
+  white-space:nowrap;
+  text-overflow:ellipsis;
+}
+#fitCard .fitPetDesignList {
+  position:absolute;
+  top:calc(100% + 4px);
+  left:0;
+  z-index:50;
+  width:100%;
+  max-height:320px;
+  overflow-y:auto;
+  padding:3px;
+  border:1px solid rgba(105,233,255,.28);
+  border-radius:5px;
+  background:#071622;
+  box-shadow:0 8px 24px rgba(0,0,0,.55);
+}
+#fitCard .fitPetDesignList[hidden] { display:none !important; }
+#fitCard .fitPetDesignList > button { border-color:transparent; background:transparent; margin-bottom:2px; }
+#fitCard .fitPetDesignList > button:hover { background:rgba(105,233,255,.10); }
+#fitCard .fitPetDesignList > button.active { border-color:rgba(255,213,106,.55); color:#ffd56a; }

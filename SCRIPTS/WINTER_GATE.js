@@ -13,10 +13,9 @@
 
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { isWinterEventActive } from "../NPC/NPC_WINTER.js";
 import {
   WINTER_CONVOY_DURATION, WINTER_CONVOY_HP, WINTER_CONVOY_LEG, WINTER_CONVOY_SPEED, WINTER_CONVOY_WORLD,
-  createWinterConvoyRoute, winterConvoyReward, winterConvoyWave, winterGateSession,
+  createWinterConvoyRoute, isWinterGateActive, winterConvoyReward, winterConvoyWave, winterGateSession,
 } from "../SRC/CORE/WINTER_CONVOY.js";
 
 // Fin de session affichée avant la fermeture (récompense, retour base).
@@ -75,7 +74,7 @@ function restore(now = Date.now()) {
   try {
     const saved = JSON.parse(readFileSync(STATE_FILE, "utf8") || "{}");
     if (!["lobby", "run", "done"].includes(saved?.phase)) return;
-    if (!isWinterEventActive(new Date(now))) return;
+    if (!isWinterGateActive(now)) return;
     // Même session horaire seulement (circuit et horaires en découlent).
     const session = winterGateSession(now);
     if (Number(saved.hourAt) !== session.hourAt || !(Number(saved.convoy?.hp) >= 0)) return;
@@ -230,13 +229,13 @@ function rollSession(now, sim) {
 // Dernier état (nouveaux arrivants sur la map). Session à jour même si le
 // contrôleur n'a pas encore tourné (premier arrivant de l'heure).
 export function getWinterGateState(now = Date.now()) {
-  if (isWinterEventActive(new Date(now))) rollSession(now, null);
+  if (isWinterGateActive(now)) rollSession(now, null);
   return statePayload(now);
 }
 
 // Entrée autorisée : saison d'hiver et session ouverte (:00 -> :05, :30 -> :35).
 export function winterGateEntryOpen(now = Date.now()) {
-  return isWinterEventActive(new Date(now)) && winterGateSession(now).open;
+  return isWinterGateActive(now) && winterGateSession(now).open;
 }
 
 export function tickWinterGate(room, sim, ctx) {
@@ -259,7 +258,7 @@ export function tickWinterGate(room, sim, ctx) {
 function tickInner(room, sim, ctx, now, dt) {
   if (!sim || typeof sim.spawnConvoyAttackers !== "function") return;
   const session = winterGateSession(now);
-  if (!isWinterEventActive(new Date(now))) {
+  if (!isWinterGateActive(now)) {
     if (gate.phase !== "closed") closeGate(sim);
     return;
   }

@@ -34,6 +34,7 @@ import { measureGameTask } from "../SRC/CORE/PERFORMANCE_TIMINGS.js";
 import { apiAccountIdentity, apiAccountStatus, apiPseudoFree, flushNetUser, netActive, netList, noteServerModuleQuota } from "../SRC/CORE/ACCOUNT_NET.js";
 
 import { CATALOG, findCatalogItem } from "../SRC/CORE/CATALOG.js";
+import { getPetDesign } from "../PET/PET_DESIGNS.js";
 import { SHIP_PACKS, getShipFamilyId, getShipFamilyIds, getShipFamilyMembers, getShipFamilyName, getShipDesignBaseId, getShipDesignIds, getShipPackById } from "../SHIP/SHIP_PACKS.js";
 import { getShipBonusInfo } from "../SHIP/SHIP_BONUSES.js";
 import { getAbilitiesForShip, getAbilityInfo, policeAbilityIds, abilityShipKeyFor, formatAbilityTiming } from "../SHIP/SHIP_ABILITIES.js";
@@ -4754,6 +4755,7 @@ function buildFitWindow() {
             <button class="fitCfgBtn" data-cfg="2" type="button">2</button>
           </div>
         </div>
+        <div id="fitPetDesignBar" class="fitPetDesignBar" hidden></div>
         <div class="fitWindowActions">
           <div class="fitActionsRight">
             <span class="fitHelpTooltip" tabindex="0" aria-label="Aide sur la sélection">?
@@ -4990,6 +4992,7 @@ let fitState = {
   // Brouillons locaux drones/REX (jamais persistés sans Appliquer).
   droneDrafts: null, // { [droneId]: { equipment: [...], ability } }
   petDraft: null, // { lasers, generators, gears, protocols, ability }
+  petDesign: null, // design P.E.T de la config éditée (id PET_DESIGNS ou null = base)
   // Brouillons mis de côté par config (1/2) quand on bascule sans appliquer.
   stash: null,
   used: null,
@@ -5081,6 +5084,7 @@ function initFitDrafts(hangarId, configNo) {
     protocols: padGroup(pf?.protocols, petSizes.protocols),
     ability: pf?.ability || null,
   };
+  fitState.petDesign = pf?.design || null;
   // Anciennes sauvegardes avec trous : on tasse tout en haut à gauche dès l'ouverture.
   fitState.draft = compactFitDraft(fitState.draft, fitState.slots);
   compactAllDroneDrafts();
@@ -5164,6 +5168,7 @@ function setFitSection(section = "ship") {
   if (shipSlots) shipSlots.hidden = fitState.section !== "ship";
   if (droneWorkspace) droneWorkspace.hidden = fitState.section !== "drones";
   if (petWorkspace) petWorkspace.hidden = fitState.section !== "pet";
+  renderPetDesignPicker();
   if (configBar) configBar.hidden = fitState.section !== "ship";
   if (inventoryPane) inventoryPane.hidden = false;
   if ((fitState.section === "drones" || fitState.section === "pet") && inventoryFilter) inventoryFilter.value = "all";
@@ -5441,6 +5446,47 @@ function renderDroneEquipment(userOverride) {
   refreshFitApplyButton();
 }
 
+// Sélecteur de design P.E.T (barre du haut, mode P.E.T) : designs possédés,
+// un choix par config (brouillon fitState.petDesign, persisté via Sauvegarder).
+let petDesignPickerOutsideBound = false;
+function renderPetDesignPicker() {
+  const bar = document.getElementById("fitPetDesignBar");
+  if (!bar) return;
+  const pet = user?.pet?.owned === true ? user.pet : null;
+  bar.hidden = fitState.section !== "pet" || !pet;
+  if (bar.hidden) return;
+  const owned = [...new Set(user?.inventory?.petDesigns || [])].map(getPetDesign).filter(Boolean)
+    .sort((a, b) => a.name.localeCompare(b.name));
+  const current = owned.find((design) => design.id === fitState.petDesign) || null;
+  const entry = (design) => `<img src="${design ? design.icon : getPetSpritePath(pet, 21)}" alt=""><span>${escapeHtml(design ? design.name : "Design de base")}</span>`;
+  bar.innerHTML = `<div class="fitPetDesignPicker">`
+    + `<button type="button" class="fitPetDesignBtn" aria-haspopup="listbox" aria-expanded="false" title="Design du P.E.T (config ${fitState.configNo})">${entry(current)}<b aria-hidden="true">▾</b></button>`
+    + `<div class="fitPetDesignList" role="listbox" hidden>${[null, ...owned].map((design) =>
+      `<button type="button" role="option" data-pet-design="${escapeHtml(design?.id || "")}"${(design?.id || null) === (current?.id || null) ? ` class="active" aria-selected="true"` : ""}>${entry(design)}</button>`).join("")}</div>`
+    + `</div>`;
+  const btn = bar.querySelector(".fitPetDesignBtn");
+  const list = bar.querySelector(".fitPetDesignList");
+  btn.addEventListener("click", () => {
+    list.hidden = !list.hidden;
+    btn.setAttribute("aria-expanded", String(!list.hidden));
+  });
+  list.querySelectorAll("[data-pet-design]").forEach((option) => option.addEventListener("click", () => {
+    fitState.petDesign = option.dataset.petDesign || null;
+    renderPetDesignPicker();
+    refreshFitApplyButton();
+  }));
+  if (!petDesignPickerOutsideBound) {
+    petDesignPickerOutsideBound = true;
+    document.addEventListener("pointerdown", (event) => {
+      const openList = document.querySelector("#fitPetDesignBar .fitPetDesignList:not([hidden])");
+      if (openList && !event.target.closest?.("#fitPetDesignBar")) {
+        openList.hidden = true;
+        document.querySelector("#fitPetDesignBar .fitPetDesignBtn")?.setAttribute("aria-expanded", "false");
+      }
+    });
+  }
+}
+
 function renderPetEquipment(userOverride) {
   const root = document.getElementById("fitPetWorkspace");
   if (!root) return;
@@ -5474,12 +5520,12 @@ function renderPetEquipment(userOverride) {
   }).join("");
   root.innerHTML = `<div class="petCards">`
     + `<article class="petHeaderCard">`
-    + `<img class="droneCardSprite" src="${getPetSpritePath(pet, 21)}" alt="P.E.T">`
     + `<div class="droneCardIdentity"><strong>P.E.T · Niveau ${level}</strong><span>${xpText} · +5 % de ton XP · ${escapeHtml(getPetLevelBonus(level))}</span></div>`
     + `<div class="droneXp"><i style="width:${pct}%"></i></div>`
     + `</article>`
     + `<article class="petSlotsCard"><div class="petGroups">${groupsHtml}</div>`
     + `</article></div>`;
+  renderPetDesignPicker();
   root.querySelectorAll("[data-pet-slot]").forEach(slot => {
     const itemId = slot.dataset.itemId;
     const groupKey = slot.dataset.petGroup;
@@ -6895,6 +6941,7 @@ function setFitModalConfig(configNo) {
     draft: fitState.draft,
     droneDrafts: fitState.droneDrafts,
     petDraft: fitState.petDraft,
+    petDesign: fitState.petDesign,
   };
 
   const h = (user?.hangars || []).find((x) => x?.id === fitState.hangarId);
@@ -6906,6 +6953,7 @@ function setFitModalConfig(configNo) {
     fitState.draft = stashed.draft;
     fitState.droneDrafts = stashed.droneDrafts;
     fitState.petDraft = stashed.petDraft;
+    fitState.petDesign = stashed.petDesign ?? null;
   } else if (!initFitDrafts(fitState.hangarId, nextConfig)) {
     return;
   }
@@ -6997,7 +7045,7 @@ function saveFitModal() {
   const out = saveHangarLoadout(fitState.hangarId, {
     ship: fitState.draft,
     drones: fitState.droneDrafts || {},
-    pet: user?.pet?.owned === true ? fitState.petDraft : null,
+    pet: user?.pet?.owned === true ? { ...fitState.petDraft, design: fitState.petDesign } : null,
   }, fitState.configNo);
   if (!out.ok) {
     showFitError(out.error || "Sauvegarde impossible");
@@ -7015,7 +7063,7 @@ function saveFitModal() {
       const outOther = saveHangarLoadout(fitState.hangarId, {
         ship: stashed.draft,
         drones: stashed.droneDrafts || {},
-        pet: fresh?.pet?.owned === true ? stashed.petDraft : null,
+        pet: fresh?.pet?.owned === true ? { ...stashed.petDraft, design: stashed.petDesign ?? null } : null,
       }, otherNo);
       if (!outOther.ok) {
         showFitError(`Config ${otherNo} : ${outOther.error || "Sauvegarde impossible"}`);
@@ -7299,6 +7347,7 @@ function closeFitModal() {
   // Fermer = tout annuler : les brouillons sont jetés, rien n'est persisté.
   fitState.droneDrafts = null;
   fitState.petDraft = null;
+  fitState.petDesign = null;
   fitState.stash = null;
   fitState.used = null;
 

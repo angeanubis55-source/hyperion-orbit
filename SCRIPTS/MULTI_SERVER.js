@@ -4471,6 +4471,7 @@ wss.on("connection", (ws) => {
           && Math.hypot(Number(c[0]) - Number(state.x), Number(c[1]) - Number(state.y)) <= PET_LEASH)
           .map(c => [Math.round(Number(c[0])), Math.round(Number(c[1])), Math.round(Number(c[2]) * 100) / 100]) : [];
       if (typeof msg.petn === "string") state.petn = String(msg.petn).slice(0, 32);
+      if (typeof msg.petdz === "string") state.petdz = String(msg.petdz).slice(0, 48);
       if (typeof msg.petf === "string") state.petf = String(msg.petf).slice(0, 16);
       // PV du PET (lock info allie) : 0..1 declare, jamais de montee serveur.
       if (Number.isFinite(Number(msg.petHp))) state.petHp = Math.max(0, Math.min(1, Number(msg.petHp)));
@@ -5160,7 +5161,7 @@ setInterval(() => {
           && s._abilityFx?.ability_zephyr_tbr?.until > now ? s.tbrClones || [] : [],
         tbrT: s.peta === 1 && !s.dead && !s.pvpDead && s.petDead !== true
           ? Math.max(0, (Number(s._abilityFx?.ability_zephyr_tbr?.until) || 0) - now) / 1000 : 0,
-        petn: String(s.petn || "").slice(0, 32), petf: String(s.petf || "").slice(0, 16),
+        petn: String(s.petn || "").slice(0, 32), petf: String(s.petf || "").slice(0, 16), petdz: String(s.petdz || "").slice(0, 48),
         petHp: Number.isFinite(Number(s.petHp)) ? Math.max(0, Math.min(1, Number(s.petHp))) : 1,
         petSh: Number.isFinite(Number(s.petSh)) ? Math.max(0, Math.min(1, Number(s.petSh))) : 1,
         // Pool PV du PET (adoption cote proprietaire).
@@ -5207,7 +5208,7 @@ setInterval(() => {
       output.hpPct = Math.max(0, Math.min(1, Number(s.hp) / Math.max(1, Number(s.hpMax) || 1)));
       output.shPct = s.shMax > 0 ? Math.max(0, Math.min(1, Number(s.sh) / Number(s.shMax))) : 0;
       const staticSignature = [output.pseudo, output.clan, output.shipId, output.drones, output.dform, output.dslots, output.gg,
-        output.rank, output.firm, output.title, output.showTitle, output.titleT, output.titleC, output.dind, output.ficon, output.mind, output.petl, output.petn, output.petf].join("|");
+        output.rank, output.firm, output.title, output.showTitle, output.titleT, output.titleC, output.dind, output.ficon, output.mind, output.petl, output.petn, output.petf, output.petdz].join("|");
       output._staticChanged = staticSignature !== s._lastStaticSignature;
       output._staticSignature = staticSignature;
     }
@@ -5252,6 +5253,7 @@ setInterval(() => {
         delete entry.petl;
         delete entry.petn;
         delete entry.petf;
+        delete entry.petdz;
       } else {
         const sourceState = room.get(String(entry.id))?.state;
         if (sourceState) sourceState._lastStaticSignature = entry._staticSignature;

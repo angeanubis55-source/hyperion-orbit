@@ -21,6 +21,8 @@
 // ou quand le convoi tombe ; la récompense dépend de la vague atteinte.
 // ============================================================================
 
+import { WINTER_START, winterDateParts, winterParisTime } from "../../NPC/NPC_WINTER.js";
+
 export const WINTER_CONVOY_WORLD = Object.freeze({ w: 30000, h: 12000 });
 
 // Durée de la survie (secondes) : finit pile à l'ouverture suivante.
@@ -187,6 +189,52 @@ export function winterConvoyReward(finalWave) {
 export const WINTER_FROST_POINT_HP = 50000;
 export function winterFrostPoints(hpMax) {
   return Math.max(1, Math.round(Math.max(0, Number(hpMax) || 0) / WINTER_FROST_POINT_HP));
+}
+
+// Classement Winter : 6 classements par saison (heure de Paris), chaque
+// année. Le premier démarre avec l'hiver (NPC_WINTER.js, WINTER_START), les
+// suivants de minuit à minuit : 1-8 nov., 9-15, 16-22, 23-29,
+// 30 nov.-6 déc., 7-13 déc. Hors de ces dates, GG d'hiver et onglet Winter
+// du classement sont indisponibles. user.winter.frostPeriod = classement des
+// frostPoints ; un autre classement compte pour 0.
+export const WINTER_RANKING_ENDS = Object.freeze([[10, 9], [10, 16], [10, 23], [10, 30], [11, 7], [11, 14]]);
+let winterPeriodCache = null;
+function winterRankingPeriods(year) {
+  if (winterPeriodCache?.year !== year) {
+    const s = WINTER_START;
+    let startAt = winterParisTime(year, s.month, s.day, s.hour, s.minute);
+    const list = WINTER_RANKING_ENDS.map(([month, day], index) => {
+      const endAt = winterParisTime(year, month, day);
+      const period = Object.freeze({ index, key: `${year}-${index + 1}`, startAt, endAt });
+      startAt = endAt;
+      return period;
+    });
+    winterPeriodCache = { year, list };
+  }
+  return winterPeriodCache.list;
+}
+// Classement en cours ({ index, key, startAt, endAt }) ou null hors saison.
+export function winterRankingPeriod(nowMs = Date.now()) {
+  const t = Number(nowMs);
+  if (!Number.isFinite(t)) return null;
+  const { year } = winterDateParts(new Date(t));
+  return winterRankingPeriods(year).find((p) => t >= p.startAt && t < p.endAt) || null;
+}
+// GG d'hiver visible / jouable : pendant un classement seulement.
+export function isWinterGateActive(nowMs = Date.now()) {
+  try {
+    // Test / debug serveur : WINTER_FORCE=1 simule la saison.
+    if (typeof process !== "undefined" && process.env && process.env.WINTER_FORCE === "1") return true;
+  } catch {}
+  return winterRankingPeriod(nowMs) !== null;
+}
+// Comptes d'avant les classements (pas de frostPeriod) : 1er classement 2026.
+export const WINTER_LEGACY_PERIOD = "2026-1";
+export function winterPeriodFrostPoints(winter, nowMs = Date.now()) {
+  const period = winterRankingPeriod(nowMs);
+  if (!period) return 0;
+  const key = winter?.frostPeriod == null ? WINTER_LEGACY_PERIOD : String(winter.frostPeriod);
+  return key === period.key ? Math.max(0, Math.floor(Number(winter?.frostPoints) || 0)) : 0;
 }
 
 // Session de la période en cours (demi-heures : identiques à Paris).

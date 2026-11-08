@@ -6,6 +6,7 @@ import { getRankInfo } from "../SRC/CORE/PROGRESSION.js";
 import { getFaction } from "../SRC/CORE/FACTIONS.js";
 import { formatInteger } from "../SRC/CORE/NUMBER_FORMAT.js";
 import { escapeHtml } from "./UI_DOM.js";
+import { winterRankingPeriod } from "../SRC/CORE/WINTER_CONVOY.js";
 
 let started = false;
 
@@ -20,6 +21,26 @@ export function initRankingsUI() {
     winter: { body: document.getElementById("rankingRowsWinter"), status: document.getElementById("rankingStatusWinter") },
   };
   if (!boards.board.body) return;
+
+  // Classement Winter (WINTER_CONVOY.js) : onglet masqué hors des 6
+  // classements de la saison, sinon compte à rebours jusqu'à sa fin.
+  const winterTimer = document.getElementById("rankingWinterTimer");
+  const winterTab = document.querySelector('#rankingWindow [data-ranking-tab="winter"]');
+  function tickWinterTimer() {
+    const period = winterRankingPeriod();
+    if (winterTab && (winterTab.style.display === "none") !== !period) {
+      winterTab.style.display = period ? "" : "none";
+      if (!period && winterTab.classList.contains("active")) {
+        document.querySelector('#rankingWindow [data-ranking-tab="board"]')?.click();
+      }
+    }
+    if (!winterTimer || !period) return;
+    const left = Math.max(0, Math.floor((period.endAt - Date.now()) / 1000));
+    const d = Math.floor(left / 86400), h = Math.floor(left % 86400 / 3600);
+    const m = Math.floor(left % 3600 / 60), s = left % 60;
+    winterTimer.textContent = `Fin du classement hebdomadaire dans ${d} jour${d > 1 ? "s" : ""} ${h} h ${m} min ${s} s`;
+  }
+  setInterval(tickWinterTimer, 1000);
 
   function renderBoard(kind, list) {
     const target = boards[kind];
@@ -134,4 +155,5 @@ export function initRankingsUI() {
       });
     });
   } catch {}
+  tickWinterTimer();
 }

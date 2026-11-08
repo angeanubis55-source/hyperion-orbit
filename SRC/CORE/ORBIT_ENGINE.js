@@ -44,6 +44,7 @@ import { computeBotCombatMove, computeBotWallMove, isPointInWall } from "./BOT_N
 import {
   WINTER_CONVOY_DURATION, WINTER_CONVOY_HP, WINTER_CONVOY_ID, WINTER_CONVOY_RADIUS, WINTER_CONVOY_SCALE,
   createWinterConvoyRoute, winterFrostPoints, winterGateArrival, winterGateSession, winterGateWindowLabel,
+  isWinterGateActive, winterPeriodFrostPoints, winterRankingPeriod,
 } from "./WINTER_CONVOY.js";
 import { blacklightSearchTarget } from "./BOT_SEARCH.js";
 import { botCatalogGroups, botMapGroupKey, botMapGroupLabel, botMapsLabel, buildBotNpcCatalog } from "./BOT_NPC_CATALOG.js";
@@ -142,6 +143,7 @@ import { abilityFxCodeFor, abilityIdForFxCode, healSpecFor } from "./ABILITY_FX.
 import { DRONE_FORMATIONS, DRONE_MAX_LEVEL, DRONE_TYPES, DRONE_XP_SHARE, formationDockIcon, getActiveDroneFormation, getDroneLevel, getDroneShopSpritePath, getDroneSpritePath, isClassicFormation } from "../../DRONE/DRONE_TYPES.js";
 import { DRONE_DESIGNS, getDroneDesign, getDroneFitForHangar, droneDesignCooldown, droneIndicatorColor } from "../../DRONE/DRONE_DESIGNS.js";
 import { getOfficialDroneFormationPositions } from "../../DRONE/DRONE_FORMATIONS.js";
+import { getPetDesign } from "../../PET/PET_DESIGNS.js";
 import { PET_XP_SHARE, PET_FUEL_MAX, PET_FUEL_TICK_SEC, PET_FUEL_BASE_TICK, PET_FUEL_GEAR_TICK, PET_FUEL_ONESHOT, getPetDamageBonus, getPetLevel, getPetLevelXp, getPetNextLevelXp, getPetStage, getPetStageBase, normalizePetMode, PET_STAGE_DIRS, PET_SPRITE_FRAMES } from "../../PET/PET_TYPES.js";
 import { clamp, circleRectResolve, clampSegmentToWalls, dist2, movingCircleHit, segCircleHit } from "./COLLISION.js";
 import { createKeyboardState, createPointerState } from "./INPUT.js";
@@ -15427,7 +15429,7 @@ function tickBot(dt) {
     let winterClosed = false;
     if (nextHop === "winter") {
       const session = winterGateSession();
-      if (!isWinterEventActive()) {
+      if (!isWinterGateActive()) {
         winterClosed = true;
         Bot.status = "GG d'hiver fermée hors saison";
       } else if (!session.open) {
@@ -16634,11 +16636,13 @@ function updatePetHud() {
   }
   // Sprite de la fenêtre suit le palier de niveau (sans recharger en boucle).
   const stage = has ? getPetStage(level) : 0;
-  if (stage !== lastPetHudStage) {
+  const hudDesign = has ? activePetDesignId() : "";
+  if (stage !== lastPetHudStage || hudDesign !== lastPetHudDesign) {
     lastPetHudStage = stage;
+    lastPetHudDesign = hudDesign;
     if (ui.petSprite && stage > 0) {
-      setHudAttr(ui.petSprite, "src", `${getPetStageBase(level)}21.png`);
-      ui.petSprite.style.background = stage >= 6
+      setHudAttr(ui.petSprite, "src", petSpriteSrc(level, hudDesign, 21));
+      ui.petSprite.style.background = petBaseSpriteSrc(level, hudDesign, 21)
         ? 'url("/PET/PET_SPRITES/NIVEAU5/21.png") center / contain no-repeat'
         : "";
     }
@@ -16646,6 +16650,7 @@ function updatePetHud() {
 }
 
 let lastPetHudStage = 0;
+let lastPetHudDesign = "";
 let lastPetModeSig = "";
 let lastPetNpcSig = "";
 let lastPetPlaySig = "";
@@ -18561,7 +18566,7 @@ function startZonePortalJump(ptl, entryConfirmed = false) {
   const targetMapId = String(ptl.toMap || "").toLowerCase();
   // ✅ GG d'hiver : saison d'hiver, entrée de :00 à :05 (départ commun à :05).
   if (targetMapId === "winter") {
-    if (!isWinterEventActive()) {
+    if (!isWinterGateActive()) {
       SFX.play("swDeny");
       showToast("GG d'hiver — fermée hors saison", 1.8);
       return false;
@@ -20012,8 +20017,8 @@ function getInteractivePortals() {
 
 function isZonePortalAvailable(ptl) {
   const gateId = String(ptl?.toMap || "").toLowerCase();
-  // ✅ GG d'hiver : portail central des X-3, visible pendant la saison seulement.
-  if (gateId === "winter") return isWinterEventActive();
+  // ✅ GG d'hiver : portail central des X-3, visible pendant les classements Winter seulement.
+  if (gateId === "winter") return isWinterGateActive();
   // ✅ Gate Eternal : visible sur la map mère uniquement si posée via CPU (pas de stock).
   if (gateId === "eternal") {
     // Appelé par portail et par frame : pas de relecture complète du compte.
@@ -25413,6 +25418,23 @@ const PET_BUOY_REST_RADIUS = 120;
 // Taille d'affichage : taille réelle des sprites (154×137, sans réduction).
 const PET_DRAW_W = 154;
 const PET_DRAW_H = 137;
+
+// Sprite P.E.T : design choisi dans la config active (taille native du
+// design), sinon sprite du palier de niveau (+ base NIVEAU5 au dernier palier).
+function petSpriteSrc(level, designId, frame) {
+  const design = getPetDesign(designId);
+  return design ? `${design.path}${frame}.png` : `${getPetStageBase(level)}${frame}.png`;
+}
+function petBaseSpriteSrc(level, designId, frame) {
+  return !getPetDesign(designId) && getPetStage(level) >= 6 ? `/PET/PET_SPRITES/NIVEAU5/${frame}.png` : null;
+}
+function petDrawSize(designId, sprite) {
+  if (getPetDesign(designId) && sprite?.naturalWidth > 0) return [sprite.naturalWidth, sprite.naturalHeight];
+  return [PET_DRAW_W, PET_DRAW_H];
+}
+function activePetDesignId() {
+  return petFit()?.design || "";
+}
 // Retirage de la cible riposte toutes les 1 s si plusieurs attaquants.
 const PET_REPICK_DELAY = 1;
 // Un attaquant compte seulement s'il nous a infligé des dégâts il y a moins de 6 s
@@ -27419,11 +27441,11 @@ function drawPet(ox, oy) {
   // Sprite directionnel d'après sa propre orientation. Comme les drones,
   // les sprites P.E.T sont encodés dans le sens opposé : demi-tour (+16).
   const frame = getPetSpriteFrame();
-  const image = getCachedImage(`${getPetStageBase(level)}${frame}.png`);
+  const designId = activePetDesignId();
+  const image = getCachedImage(petSpriteSrc(level, designId, frame));
   // Le dernier palier contient uniquement les pièces à superposer au Niveau5.
-  const baseImage = getPetStage(level) >= 6
-    ? getCachedImage(`/PET/PET_SPRITES/NIVEAU5/${frame}.png`)
-    : null;
+  const baseSrc = petBaseSpriteSrc(level, designId, frame);
+  const baseImage = baseSrc ? getCachedImage(baseSrc) : null;
   ctx.save();
   ctx.translate(x, y);
   ctx.globalCompositeOperation = "source-over";
@@ -27452,7 +27474,8 @@ function drawPet(ox, oy) {
   }
   if (sprite && (baseImage || isImgReady(sprite))) {
     // Lissage du rendu graphique (suivi continu en mouvement).
-    drawCenteredImage(ctx, sprite, PET_DRAW_W, PET_DRAW_H, renderSmoothingOn());
+    const [petW, petH] = petDrawSize(designId, sprite);
+    drawCenteredImage(ctx, sprite, petW, petH, renderSmoothingOn());
     if (GAME_SETTINGS.shipSmoke) petEngine.draw(ctx, petState, sprite, frame, isImgReady);
   }
   else { ctx.fillStyle = "#79f5ff"; ctx.beginPath(); ctx.arc(0, 0, 20, 0, TAU); ctx.fill(); }
@@ -27498,6 +27521,7 @@ function drawTbrClones(ox, oy, remote = null) {
   const pet = account.user?.pet;
   if (!remote && (!pet?.owned || pet?.active !== true)) return;
   const level = remote ? remote.petl : getPetLevel(pet.exp);
+  const designId = remote ? remote.petdz : activePetDesignId();
   const petPseudo = String((remote ? remote.petn : pet?.pseudo) || "P.E.T");
   const petFaction = getFaction(remote ? remote.petf || remote.firm : pet?.faction || account.user?.faction);
   for (const c of clones) {
@@ -27506,9 +27530,9 @@ function drawTbrClones(ox, oy, remote = null) {
     const y = Number(c.ry ?? c.y) + oy;
     if (x < -160 || y < -160 || x > innerWidth + 160 || y > innerHeight + 160) continue;
     const frame = ((angleToFrameIndex(Number(c.rangle ?? c.angle) || 0, 32) + 16) % 32) + 1;
-    const imagePath = `${getPetStageBase(level)}${frame}.png`;
+    const imagePath = petSpriteSrc(level, designId, frame);
     const image = getCachedImage(imagePath);
-    const basePath = getPetStage(level) >= 6 ? `/PET/PET_SPRITES/NIVEAU5/${frame}.png` : null;
+    const basePath = petBaseSpriteSrc(level, designId, frame);
     const baseImage = basePath ? getCachedImage(basePath) : null;
     if (!isImgReady(image)) { try { loadImage(imagePath, { priority: true }); } catch {} }
     if (basePath && !isImgReady(baseImage)) { try { loadImage(basePath, { priority: true }); } catch {} }
@@ -27542,7 +27566,8 @@ function drawTbrClones(ox, oy, remote = null) {
     }
     if (sprite && (baseImage || isImgReady(sprite))) {
       // Lissage du rendu graphique (suivi continu en mouvement).
-      drawCenteredImage(ctx, sprite, PET_DRAW_W, PET_DRAW_H, renderSmoothingOn());
+      const [cloneW, cloneH] = petDrawSize(designId, sprite);
+      drawCenteredImage(ctx, sprite, cloneW, cloneH, renderSmoothingOn());
       // Clé = le clone lui-même (objet stable) pour l'anim des réacteurs.
       if (GAME_SETTINGS.shipSmoke) {
         try { petEngine.draw(ctx, c, sprite, frame, isImgReady); } catch {}
@@ -27662,7 +27687,7 @@ function tickEngineTrails(dt) {
   petEngine.update(petState, dt, GAME_SETTINGS.shipSmoke && pet?.owned && pet?.active === true && petState.ready && !player.dead);
   if (GAME_SETTINGS.shipSmoke && pet?.owned && pet?.active === true && petState.ready && !player.dead) {
     const petFrame = getPetSpriteFrame();
-    const petSprite = getCachedImage(`${getPetStageBase(getPetLevel(pet.exp))}${petFrame}.png`);
+    const petSprite = getCachedImage(petSpriteSrc(getPetLevel(pet.exp), activePetDesignId(), petFrame));
     emitEngineTrail(petState, { sprite: { w: PET_DRAW_W, h: PET_DRAW_H }, speed: 320 }, dt, null, "pet", petFrame, petSprite);
   }
   // Clones TBR : mêmes réacteurs (anim + traînées) que le PET.
@@ -27675,7 +27700,7 @@ function tickEngineTrails(dt) {
       try { petEngine.update(c, dt, tbrOn); } catch {}
       if (!tbrOn) continue;
       const cFrame = ((angleToFrameIndex(Number(c.angle || 0), 32) + 16) % 32) + 1;
-      const cSprite = getCachedImage(`${getPetStageBase(tbrLevel)}${cFrame}.png`);
+      const cSprite = getCachedImage(petSpriteSrc(tbrLevel, activePetDesignId(), cFrame));
       emitEngineTrail(c, { sprite: { w: PET_DRAW_W, h: PET_DRAW_H }, speed: 320 }, dt, null, "pet", cFrame, cSprite);
     }
   }
@@ -29384,7 +29409,10 @@ function applyCollectableReward(c) {
     const points = winterFrostPoints(NPC_TYPES[c.fromNpc]?.hp);
     if (account.user) {
       account.user.winter ||= {};
-      account.user.winter.frostPoints = Math.max(0, Math.floor(Number(account.user.winter.frostPoints) || 0)) + points;
+      // Classement Winter : les points d'un classement passé repartent de 0.
+      account.user.winter.frostPoints = winterPeriodFrostPoints(account.user.winter) + points;
+      account.user.winter.frostPeriod = winterRankingPeriod()?.key || null;
+      delete account.user.winter.frostWeek;
       parts.push(`+${formatInteger(points)} Points givrés`);
       goldTerms.push(formatInteger(points));
       changed = true;
@@ -37808,7 +37836,7 @@ function warmNetplayRemoteAssets(remote) {
   if (String(getShipDesignBaseId(remote.shipId) || remote.shipId).toLowerCase() === "hyperion") {
     try { preloadGravityAnchorImages(); } catch {}
   }
-  const signature = [remote.shipId, remote.rank, remote.firm, remote.ficon, remote.petl, remote.peta, remote.dslots, (remote.afx || []).map(e => e[0]).join(","), remote.fxFlash?.code, remote.lastStandReady].join("|");
+  const signature = [remote.shipId, remote.rank, remote.firm, remote.ficon, remote.petl, remote.petdz, remote.peta, remote.dslots, (remote.afx || []).map(e => e[0]).join(","), remote.fxFlash?.code, remote.lastStandReady].join("|");
   if (remote._assetWarmSignature === signature) return;
   remote._assetWarmSignature = signature;
   try {
@@ -37826,8 +37854,10 @@ function warmNetplayRemoteAssets(remote) {
   if (remote.peta === 1) {
     try {
       const frame = ((angleToFrameIndex(Number(remote.petd ?? remote.angle) || 0, 32) + 16) % 32) + 1;
-      loadImage(`${getPetStageBase(Math.max(1, Number(remote.petl) || 1))}${frame}.png`, { priority: true });
-      if (getPetStage(remote.petl) >= 6) loadImage(`/PET/PET_SPRITES/NIVEAU5/${frame}.png`, { priority: true });
+      const remotePetLevel = Math.max(1, Number(remote.petl) || 1);
+      loadImage(petSpriteSrc(remotePetLevel, remote.petdz, frame), { priority: true });
+      const remotePetBase = petBaseSpriteSrc(remotePetLevel, remote.petdz, frame);
+      if (remotePetBase) loadImage(remotePetBase, { priority: true });
     } catch {}
   }
   // Sprites d'aptitudes des auras actives (rendu distant fidèle au local).
@@ -39694,13 +39724,13 @@ function drawNetplayRemotes(ox, oy) {
           }
           const pframe = ((angleToFrameIndex(Number(r.petd ?? r.angle) || 0, 32) + 16) % 32) + 1;
           const plevel = Math.max(1, Number(r.petl) || 1);
-          const psrc = `${getPetStageBase(plevel)}${pframe}.png`;
+          const psrc = petSpriteSrc(plevel, r.petdz, pframe);
           const pimg = getCachedImage(psrc);
           // Dernier palier : comme notre REX, la couche NIVEAU6_5 ne contient
           // que les pieces a superposer a la base NIVEAU5 (sinon l'allie ne
           // voit que la 6_5).
-          const pbaseSrc = `/PET/PET_SPRITES/NIVEAU5/${pframe}.png`;
-          const pbase = getPetStage(plevel) >= 6 ? getCachedImage(pbaseSrc) : null;
+          const pbaseSrc = petBaseSpriteSrc(plevel, r.petdz, pframe);
+          const pbase = pbaseSrc ? getCachedImage(pbaseSrc) : null;
           let psprite = pimg;
           if (pbase) {
             psprite = petCombinedFrames.get(pframe);
@@ -39749,7 +39779,8 @@ function drawNetplayRemotes(ox, oy) {
             ctx.translate(0, Math.sin(performance.now() / 1000 * 4) * 2);
             ctx.imageSmoothingEnabled = false;
             // Lissage du rendu graphique (suivi continu en mouvement).
-            drawCenteredImage(ctx, psprite, PET_DRAW_W, PET_DRAW_H, renderSmoothingOn());
+            const [remotePetW, remotePetH] = petDrawSize(r.petdz, psprite);
+            drawCenteredImage(ctx, psprite, remotePetW, remotePetH, renderSmoothingOn());
             try { if (GAME_SETTINGS.shipSmoke) petEngine.draw(ctx, peng.holder, psprite, pframe, isImgReady); } catch {}
             // Etiquette du REX distant : pseudo + firme, comme sur son ecran.
             try {
@@ -48779,7 +48810,7 @@ function frame(t) {
       } catch {}
       // PET allie : actif, niveau, position + direction (rendu miroir).
       // + pseudo et firme pour l'etiquette distante (comme sur notre ecran).
-      let petA = 0, petL = 1, petX = 0, petY = 0, petD = 0, petN = "", petF = "";
+      let petA = 0, petL = 1, petX = 0, petY = 0, petD = 0, petN = "", petF = "", petDz = "";
       try {
         const pet = account.user?.pet;
         if (pet && pet.owned && pet.active === true && petState.ready && !player.dead) {
@@ -48790,6 +48821,7 @@ function frame(t) {
           petD = Math.round((Number(petState.angle) || 0) * 100) / 100;
           petN = String(pet.pseudo || "P.E.T").slice(0, 32);
           petF = String(pet.faction || account.user?.faction || "").slice(0, 16);
+          petDz = String(activePetDesignId() || "").slice(0, 48);
         }
       } catch {}
       // Cadence + vitesse : inutiles (les tirs partent en evenements exacts).
@@ -48861,7 +48893,7 @@ function frame(t) {
         absorb: Math.max(0, Math.min(1, Number(player.shAbsorb) || 0.8)),
         evade: Math.max(0, Math.min(0.9, (Number(activeFormationEffects().evasionPct || 0) + Number(player.evasionBonusPct || 0)) / 100)),
         range: Math.max(200, Math.min(5000, Math.round(Number(playerRange) || 800))),
-        peta: petA, petl: petL, petx: petX, pety: petY, petd: petD, petn: petN, petf: petF,
+        peta: petA, petl: petL, petx: petX, pety: petY, petd: petD, petn: petN, petf: petF, petdz: petDz,
         tbrClones: petA === 1 && player.tbrT > 0
           ? (player.tbrClones || []).slice(0, 2).map(c => [c.x, c.y, c.angle]) : [],
         holoClones: player.holoGramPhase === "clones"
@@ -49457,7 +49489,7 @@ function paintStarMapNode(n) {
     for (const p of art.portals || []) {
       if (p.hidden || p.arrival || starMapById.has(String(p.toMap).toLowerCase())) continue;
       if (/^[123]-1$/.test(key) && GALAXY_GATE_DEFINITIONS[String(p.toMap).toLowerCase()]) continue;
-      if (String(p.toMap).toLowerCase() === "winter" && !isWinterEventActive()) continue;
+      if (String(p.toMap).toLowerCase() === "winter" && !isWinterGateActive()) continue;
       // ✅ Gate Eternal : point masqué tant qu'elle n'est pas posée via CPU.
       if (/^[123]-1$/.test(key) && String(p.toMap).toLowerCase() === "eternal"
         && !isEternalGateDeployed(getCurrentUserFull())) continue;

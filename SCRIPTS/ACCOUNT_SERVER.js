@@ -29,6 +29,7 @@ import { CARGO_CAPACITY, RESOURCE_TYPES, cargoAdd, getRefineryRecipe, ORE_SELL_P
 import { getPetTradeBonusPct } from "../PET/PET_GEARS.js";
 import { CRAFTING_ENABLED, getCraftingRecipe } from "../SRC/DATA/CRAFTING.js";
 import { isHalloweenEventActive } from "../NPC/NPC_HALLOWEEN.js";
+import { winterPeriodFrostPoints } from "../SRC/CORE/WINTER_CONVOY.js";
 import { normalizeBattlepassState } from "../QUEST/BATTLEPASS.js";
 import { getPassShopOffer, PASS_MODULE_FORCED } from "../SRC/DATA/PASS_SHOP.js";
 import { SKYLAB_INSTANT_TRANSPORT_COST, SKYLAB_MAX_ROBOTS, SKYLAB_RESOURCE_IDS, SKYLAB_ROBOT_CREDIT_COST, SKYLAB_ROBOT_LIFETIME_MS, SKYLAB_TRANSPORT_COOLDOWN_SEC, canStartSkylabUpgrade, getSkylabModuleDef, isCollectorModule, normalizeSkylabState, skylabRobotCount, skylabStorageCap, tickSkylabState } from "../SRC/DATA/SKYLAB.js";
@@ -4216,7 +4217,7 @@ export function handleAccountApi(req, res) {
       // complets gelait la boucle de jeu à chaque ouverture du classement.
       const rows = db.prepare(`SELECT u.pseudo AS pseudo, s.kills AS kills,
           json_extract(u.data, '$.stats.rankPoints', '$.stats.honor', '$.stats.exp', '$.faction',
-            '$.eternalGate.bestWaves', '$.winter.frostPoints') AS fields
+            '$.eternalGate.bestWaves', '$.winter.frostPoints', '$.winter.frostPeriod') AS fields
         FROM users u LEFT JOIN pvp_stats s ON s.user_id = u.id LIMIT 2000`).all();
       const list = [];
       for (const r of rows) {
@@ -4228,7 +4229,7 @@ export function handleAccountApi(req, res) {
         let eternalWaves = 0;
         let frostPoints = 0;
         try {
-          const [rawRankPoints, rawHonor, rawExp, rawFaction, rawWaves, rawFrost] = JSON.parse(r.fields || "[]");
+          const [rawRankPoints, rawHonor, rawExp, rawFaction, rawWaves, rawFrost, rawFrostPeriod] = JSON.parse(r.fields || "[]");
           rankPoints = Math.max(0, Math.floor(Number(rawRankPoints) || 0));
           honor = Math.max(0, Math.floor(Number(rawHonor) || 0));
           // XP / honneur TOTAUX du compte pour les points de classement.
@@ -4242,9 +4243,8 @@ export function handleAccountApi(req, res) {
           // remplacé uniquement si le joueur fait mieux).
           const ew = Math.floor(Number(rawWaves));
           if (Number.isFinite(ew) && ew > 0) eternalWaves = ew;
-          // GG d'hiver : points givrés cumulés (box de Noël).
-          const fp = Math.floor(Number(rawFrost));
-          if (Number.isFinite(fp) && fp > 0) frostPoints = fp;
+          // GG d'hiver : points givrés du classement Winter en cours (box de Noël).
+          frostPoints = winterPeriodFrostPoints({ frostPoints: rawFrost, frostPeriod: rawFrostPeriod });
         } catch {}
         list.push({
           pseudo: String(r.pseudo || "Pilote").slice(0, 20),

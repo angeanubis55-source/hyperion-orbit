@@ -32,14 +32,14 @@ const winterDateFormat = new Intl.DateTimeFormat("en-GB", {
   hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23",
 });
 
-function winterDateParts(date) {
+export function winterDateParts(date) {
   return Object.fromEntries(winterDateFormat.formatToParts(date)
     .filter((part) => part.type !== "literal")
     .map((part) => [part.type, Number(part.value)]));
 }
 
 // Date civile de Paris -> instant UTC (offset recalculé : hiver UTC+1).
-function winterParisTime(year, month, day, hour = 0, minute = 0, second = 0) {
+export function winterParisTime(year, month, day, hour = 0, minute = 0, second = 0) {
   const target = Date.UTC(year, month, day, hour, minute, second);
   let timestamp = target;
   for (let i = 0; i < 3; i++) {
