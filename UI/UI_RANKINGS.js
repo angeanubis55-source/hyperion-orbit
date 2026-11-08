@@ -55,8 +55,10 @@ export function initRankingsUI() {
       tip.innerHTML = `<strong>Gains du classement Winter</strong>` +
         `<div class="rankingRewardList">` +
         `<div class="rankingRewardTier rankingRewardHead"><b>Place</b><span>Crédits</span><span>XP</span><span>Honneur</span><span>ICE-100</span></div>` +
-        WINTER_RANKING_REWARDS.map((r) =>
-          `<div class="rankingRewardTier"><b>${place(r.rank)}</b><span>${formatInteger(r.credits)}</span><span>${formatInteger(r.exp)}</span>` +
+        // 10e -> 30e : même gain, une seule ligne.
+        WINTER_RANKING_REWARDS.slice(0, 10).map((r) =>
+          `<div class="rankingRewardTier"><b>${r.rank === 10 ? `${place(10)} → ${place(WINTER_RANKING_REWARDS.length)}` : place(r.rank)}</b>` +
+          `<span>${formatInteger(r.credits)}</span><span>${formatInteger(r.exp)}</span>` +
           `<span>${formatInteger(r.honor)}</span><span>${formatInteger(r.ice)}</span></div>`).join("") +
         `</div>`;
     }
