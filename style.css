@@ -7555,37 +7555,58 @@ tr.clanRankTop3 .clanRankPos { color:#e0a070; }
   transform:translate(-50%,-50%);
   z-index:100050;
   margin:0;
-  width:max-content;
-  max-width:min(340px,calc(100vw - 24px));
-  max-height:calc(100vh - 24px);
+  width:min(560px,calc(100vw - 24px));
+  max-height:min(340px,calc(100vh - 24px));
   min-height:0;
   box-sizing:border-box;
-  overflow:auto;
+  overflow:hidden;
   text-align:center;
   background:#031421;
   box-shadow:0 8px 28px rgba(0,0,0,.65);
 }
 .rankingRewardsTip.is-open {
-  display:grid;
+  display:flex;
+  flex-direction:column;
+}
+.rankingRewardList {
+  min-height:0;
+  overflow-y:auto;
+  padding-right:4px;
+  scrollbar-width:thin;
+  scrollbar-color:rgba(124,240,255,.45) rgba(255,255,255,.05);
 }
 .rankingRewardsTip .rankingRewardTier {
   display:grid;
-  grid-template-columns:1fr 1fr;
-  column-gap:14px;
-  padding:7px 0;
-  border-bottom:1px solid rgba(124,240,255,.12);
+  grid-template-columns:44px repeat(4,minmax(0,1fr));
+  align-items:center;
+  column-gap:10px;
+  padding:4px 0;
+  border-bottom:1px solid rgba(124,240,255,.1);
 }
 .rankingRewardsTip .rankingRewardTier:last-child {
   border-bottom:0;
 }
 .rankingRewardsTip .rankingRewardTier b {
-  grid-column:1 / -1;
-  display:block;
-  margin-bottom:3px;
   color:#e2f4ff;
   font-size:12px;
   font-weight:900;
-  letter-spacing:.4px;
+  text-align:left;
+}
+.rankingRewardsTip .rankingRewardTier span {
+  text-align:right;
+  font-variant-numeric:tabular-nums;
+}
+.rankingRewardsTip .rankingRewardHead {
+  position:sticky;
+  top:0;
+  background:#031421;
+}
+.rankingRewardsTip .rankingRewardHead b,
+.rankingRewardsTip .rankingRewardHead span {
+  color:#75e8ff;
+  font-size:10px;
+  text-transform:uppercase;
+  letter-spacing:.6px;
 }
 .rankingHead,.rankingRow {
   display:grid;

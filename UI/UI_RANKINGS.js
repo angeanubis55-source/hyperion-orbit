@@ -52,10 +52,13 @@ export function initRankingsUI() {
     if (!topLayer) tip?.removeAttribute("popover");
     const place = (n) => (n === 1 ? "1er" : `${n}e`);
     if (tip) {
-      tip.innerHTML = `<strong>Gains du classement Winter</strong>` + WINTER_RANKING_REWARDS.map((r) =>
-        `<div class="rankingRewardTier"><b>${r.from === r.to ? place(r.from) : `${place(r.from)} → ${place(r.to)}`}</b>` +
-        `<span>${formatInteger(r.credits)} crédits</span><span>${formatInteger(r.exp)} XP</span>` +
-        `<span>${formatInteger(r.honor)} honneur</span><span>${formatInteger(r.ice)} ICE-100</span></div>`).join("");
+      tip.innerHTML = `<strong>Gains du classement Winter</strong>` +
+        `<div class="rankingRewardList">` +
+        `<div class="rankingRewardTier rankingRewardHead"><b>Place</b><span>Crédits</span><span>XP</span><span>Honneur</span><span>ICE-100</span></div>` +
+        WINTER_RANKING_REWARDS.map((r) =>
+          `<div class="rankingRewardTier"><b>${place(r.rank)}</b><span>${formatInteger(r.credits)}</span><span>${formatInteger(r.exp)}</span>` +
+          `<span>${formatInteger(r.honor)}</span><span>${formatInteger(r.ice)}</span></div>`).join("") +
+        `</div>`;
     }
     const show = () => {
       if (!tip || !win) return;
