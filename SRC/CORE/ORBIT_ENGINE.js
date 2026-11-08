@@ -20325,6 +20325,12 @@ function showNotificationGroup(messages, type = "info", { goldTerms = [], whiteT
     stagger: true,
     durationMs: 4000,
   }))];
+  // Onglet masqué : rAF ne tourne plus, la file grossissait pendant des
+  // heures (bot) puis montait des milliers de nœuds d'un coup au retour =
+  // jeu figé. Seules les dernières restent, tout est déjà dans le journal.
+  if (document.visibilityState === "hidden" && pendingNotificationGroup.length > MAX_VISIBLE_NOTIFICATIONS) {
+    pendingNotificationGroup = pendingNotificationGroup.slice(-MAX_VISIBLE_NOTIFICATIONS);
+  }
   if (!notificationGroupFrame) notificationGroupFrame = requestAnimationFrame(flushLatestNotificationGroup);
 }
 
@@ -20336,6 +20342,11 @@ function showNotification(text, dur = 2, type = "info", { log = true, goldTerms 
   const spec = { value, type, goldTerms, minVisibleMs, stagger, durationMs: Number(dur) * 1000 };
   if (ui.orbitNotifications.children.length >= MAX_VISIBLE_NOTIFICATIONS) {
     pendingNotifications.push(spec);
+    // Même garde qu'au-dessus : timers bridés en arrière-plan, la file ne se
+    // vide presque plus et rejouait des minutes de messages périmés au retour.
+    if (document.visibilityState === "hidden" && pendingNotifications.length > MAX_VISIBLE_NOTIFICATIONS) {
+      pendingNotifications.splice(0, pendingNotifications.length - MAX_VISIBLE_NOTIFICATIONS);
+    }
     makeRoomForLatestNotification();
   } else {
     mountNotification(spec);
