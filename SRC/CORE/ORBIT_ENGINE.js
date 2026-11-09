@@ -22791,9 +22791,122 @@ function drawShipDamages(ox, oy) {
 }
 
 // ============================================================
+// ✅ LASER_DAMAGE FX — impact laser (laserDamage0/1/2.swf, VP6A 160x160, 14 frames)
+// Un des 3 tirés au hasard à chaque laser qui touche (vrais tirs, faux
+// lasers des salves et tirs distants rejoués : tous visibles par chacun).
+// ============================================================
+const LASER_DAMAGE_PACKS = [
+  { path: "COMBAT/EXPLOSIONS/LASER_DAMAGE0/", frames: 14 },
+  { path: "COMBAT/EXPLOSIONS/LASER_DAMAGE1/", frames: 14 },
+  { path: "COMBAT/EXPLOSIONS/LASER_DAMAGE2/", frames: 14 },
+];
+const LASER_DAMAGE_FX = { fps: 30, w: 160, h: 160, scale: 0.8 };
+
+let laserDamageReady = false;
+
+function ensureLaserDamageLoaded() {
+  if (LASER_DAMAGE_FX._promise) return LASER_DAMAGE_FX._promise;
+
+  LASER_DAMAGE_FX._promise = (async () => {
+    const jobs = [];
+    for (const pack of LASER_DAMAGE_PACKS) {
+      pack._imgs = new Array(pack.frames);
+      for (let i = 0; i < pack.frames; i++) {
+        jobs.push(
+          loadImage(`${pack.path}${i + 1}.png`, { priority: false })
+            .then((img) => (pack._imgs[i] = img))
+            .catch(() => (pack._imgs[i] = null))
+        );
+      }
+    }
+    await Promise.all(jobs);
+
+    laserDamageReady = true;
+    return true;
+  })();
+
+  return LASER_DAMAGE_FX._promise;
+}
+
+const laserDamages = [];
+
+// Posé sur le bord de la hitbox côté tireur, ancré à la cible : il suit le
+// vaisseau/NPC touché pendant l'animation.
+function spawnLaserDamage(b, t) {
+  if (!laserDamageReady || !b || !t) return;
+  // SAB : drain de bouclier, aucun impact.
+  if (b.isSab || b.sabReverse || b.key === "sab") return;
+  if (fxDensityMult() === 0) return;
+  try { if (GAME_SETTINGS.npcExplosions === false) return; } catch {}
+
+  const fromX = Number.isFinite(b._oldX) ? b._oldX : b.x;
+  const fromY = Number.isFinite(b._oldY) ? b._oldY : b.y;
+  let dx = fromX - t.x, dy = fromY - t.y;
+  const d = Math.hypot(dx, dy);
+  if (!(d > 0.001)) { dx = -b.vx || 1; dy = -b.vy || 0; }
+  const ang = Math.atan2(dy, dx);
+  const rad = Math.min(d || 0, (t.r || 18) * 0.85);
+
+  pushBounded(laserDamages, {
+    target: t,
+    ox: Math.cos(ang) * rad,
+    oy: Math.sin(ang) * rad,
+    x: t.x + Math.cos(ang) * rad,
+    y: t.y + Math.sin(ang) * rad,
+    pack: Math.floor(Math.random() * LASER_DAMAGE_PACKS.length),
+    t: 0,
+  }, fxDensityCap(ENTITY_LIMITS.laserDamages));
+}
+
+function tickLaserDamages(dt) {
+  if (!laserDamages.length) return;
+
+  const fps = LASER_DAMAGE_FX.fps;
+  for (let i = laserDamages.length - 1; i >= 0; i--) {
+    const ld = laserDamages[i];
+    ld.t += dt;
+    // Suit la cible tant qu'elle est en vie, sinon reste figé sur place.
+    const tg = ld.target;
+    if (tg && tg.hp > 0 && !tg.dead && Number.isFinite(tg.x) && Number.isFinite(tg.y)) {
+      ld.x = tg.x + ld.ox;
+      ld.y = tg.y + ld.oy;
+    } else {
+      ld.target = null;
+    }
+    if (ld.t >= LASER_DAMAGE_PACKS[ld.pack].frames / fps) laserDamages.splice(i, 1);
+  }
+}
+
+function drawLaserDamages(ox, oy) {
+  if (!laserDamageReady || !laserDamages.length) return;
+  try { if (GAME_SETTINGS.npcExplosions === false) return; } catch {}
+
+  const fps = LASER_DAMAGE_FX.fps;
+  const w = LASER_DAMAGE_FX.w * LASER_DAMAGE_FX.scale;
+  const h = LASER_DAMAGE_FX.h * LASER_DAMAGE_FX.scale;
+
+  ctx.save();
+  ctx.imageSmoothingEnabled = true;
+  ctx.globalAlpha = 1;
+  for (const ld of laserDamages) {
+    if (isBeyondSensorRadius(ld.x, ld.y)) continue;
+    const pack = LASER_DAMAGE_PACKS[ld.pack];
+    const img = pack._imgs?.[Math.min(pack.frames - 1, Math.floor(ld.t * fps))];
+    if (!isImgReady(img)) continue;
+
+    const x = ld.x + ox;
+    const y = ld.y + oy;
+    if (x + w / 2 < 0 || y + h / 2 < 0 || x - w / 2 > innerWidth || y - h / 2 > innerHeight) continue;
+
+    ctx.drawImage(img, x - w / 2, y - h / 2, w, h);
+  }
+  ctx.restore();
+}
+
+// ============================================================
 // BASE / PLAYER
 // ============================================================
-const REPAIR = { cooldown: 10.0, ratePct: 0.05, tickInterval: 1.0 };
+const REPAIR ={ cooldown: 10.0, ratePct: 0.05, tickInterval: 1.0 };
 let repairSoundActive = false;
 let shipMoveSoundActive = false;
 let radiationSoundDelay = 0;
@@ -27627,6 +27740,7 @@ const ENTITY_LIMITS = Object.freeze({
   playerBullets: 320,
   enemyBullets: 1500,
   explosions: 48,
+  laserDamages: 96,
   sparks: 180,
   floatTexts: 600,
   lasers: 80,
@@ -44346,6 +44460,7 @@ function update(dt) {
   tickVolleyFloats(dt);
   tickExplosions(dt);
   tickShipDamages(dt);
+  tickLaserDamages(dt);
   tickPulseFx(dt);
   tickSmbFx(dt);
   tickInstaShield(dt);
@@ -45293,6 +45408,8 @@ for (let i = bullets.length - 1; i >= 0; i--) {
       if (b.isRocket) {
         spawnExplosion(b.x, b.y, 0.25, "rocket");
         if (Number(account.user?.pet?.hp) > 0) playRocketImpactStaggered(b.volleyId);
+      } else {
+        spawnLaserDamage(b, t);
       }
       removeProjectile(bullets, i);
       cleanupPlayerMissVolley(b);
@@ -45351,6 +45468,7 @@ for (let i = bullets.length - 1; i >= 0; i--) {
     }
 
     if (b.isRocket) spawnExplosion(b.x, b.y, out.total >= 600 || out.isCrit ? 0.35 : 0.25, "rocket");
+    else spawnLaserDamage(b, t);
     removeProjectile(bullets, i);
     cleanupPlayerMissVolley(b);
     continue;
@@ -48039,6 +48157,8 @@ function draw() {
   // ✅ bubble d'impact PAR-DESSUS le vaisseau : elle reste visible même si
   // le point d'impact est sur la silhouette du vaisseau.
   drawShipDamages(ox, oy);
+  // Impacts laser par-dessus NPC, vaisseaux distants et notre vaisseau.
+  drawLaserDamages(ox, oy);
 
   // Pod de réparation posé (Aegis) + halo vert.
   try { drawDeployedPod(ox, oy); } catch {}
@@ -48433,7 +48553,7 @@ async function prepareGameAssets() {
     jobs.push(...collectOwnedDroneSpriteJobs());
     // Les autres bases sont préparées après DÉPART par startGame.
     // Les effets de combat et high-tech sont prêts avant l'entrée en jeu.
-    jobs.push(ensureLaserLoaded(), ensureExplosionLoaded(), ensureShipDamageLoaded());
+    jobs.push(ensureLaserLoaded(), ensureExplosionLoaded(), ensureShipDamageLoaded(), ensureLaserDamageLoaded());
     // Icones du dock + FX des techs prets des l'entree (pas de clignotement
     // au premier affichage) : petits fichiers, chargement bloquant.
     try {
@@ -48541,6 +48661,7 @@ async function startGame() {
   preloadPetSprites();
   ensureExplosionLoaded();
   ensureShipDamageLoaded();
+  ensureLaserDamageLoaded();
   ensurePulseFxLoaded();
   ensureSmbFxLoaded();
   ensureRepairOrbitLoaded();
