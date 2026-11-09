@@ -1,7 +1,8 @@
 // SRC/I18N/I18N.js
 // Langues du jeu. Le français est la langue source : chaque dictionnaire est
 // indexé par le texte français exact ("Afficher les NPC" -> "Show NPCs").
-// Un texte absent du dictionnaire reste simplement en français.
+// Seule la langue choisie est chargée. Un texte absent de son dictionnaire
+// s'affiche en anglais (EN.js), et à défaut reste en français.
 //
 // - t(texte)      : traduit un texte (canvas, toasts, notifications).
 // - traducteur DOM : en dehors du français, remplace au chargement puis à
@@ -12,14 +13,14 @@
 //   (tchat, pseudos…).
 "use strict";
 
-import EN from "./EN.js";
-
 const LANG_KEY = "orbit_lang";
 export const LANGUAGES = Object.freeze([
-  { id: "fr", label: "🇫🇷 Français" },
-  { id: "en", label: "🇬🇧 English" },
+  { id: "fr", label: "Français", flag: "fr" },
+  { id: "en", label: "English", flag: "en", file: "EN" },
+  { id: "de", label: "Deutsch", flag: "de", file: "DE" },
 ]);
-const DICTS = { en: EN };
+// Drapeaux officiels DarkOrbit (do_img/global/flaggen/plain), 16x11.
+const flagUrl = (code) => new URL(`../../ASSETS/FLAGS/${code}.png`, import.meta.url).href;
 
 function readLang() {
   try {
@@ -30,7 +31,15 @@ function readLang() {
 }
 
 const LANG = readLang();
-const DICT = DICTS[LANG] || null;
+
+async function loadDict(file) {
+  if (!file) return null;
+  try { return (await import(`./${file}.js`)).default; } catch { return null; }
+}
+const LANG_DEF = LANGUAGES.find((l) => l.id === LANG);
+// Anglais en base pour toute langue étrangère, puis la langue par-dessus.
+const DICTS = LANG === "fr" ? [] : [await loadDict("EN"), LANG === "en" ? null : await loadDict(LANG_DEF?.file)].filter(Boolean);
+const DICT = DICTS.length ? DICTS : null;
 
 export function getLang() {
   return LANG;
@@ -48,9 +57,13 @@ export function setLang(id) {
 const exact = new Map();
 const patterns = [];
 if (DICT) {
-  for (const [fr, tr] of Object.entries(DICT.texts || {})) exact.set(fr, tr);
+  const merged = new Map();
+  for (const d of DICT) {
+    for (const [fr, tr] of Object.entries(d.texts || {})) exact.set(fr, tr);
+    for (const [fr, tr] of Object.entries(d.patterns || {})) merged.set(fr, tr);
+  }
   // Modèles avec valeurs variables : "{0} crédits" -> "{0} credits".
-  for (const [fr, tr] of Object.entries(DICT.patterns || {})) {
+  for (const [fr, tr] of merged) {
     const src = fr.split(/\{\d+\}/).map((s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
     const ids = [...fr.matchAll(/\{(\d+)\}/g)].map((m) => Number(m[1]));
     const fixed = fr.replace(/\{\d+\}/g, "").length;
@@ -205,11 +218,16 @@ function hookNativeText() {
 // ------------------------------------------------------------
 // Sélecteur de langue (Paramètres > Général > Langue)
 // ------------------------------------------------------------
+// Un <select> natif ne peut pas afficher d'image : le <select> reste (caché)
+// pour la valeur, et une petite liste maison affiche les drapeaux.
+function flagRow(l) {
+  return `<img src="${flagUrl(l.flag)}" alt="" width="16" height="11" style="flex:none;image-rendering:pixelated"><span>${l.label}</span>`;
+}
+
 function wireLanguageSelect() {
   const sel = document.getElementById("optLang");
   if (!sel || sel.dataset.i18nWired) return;
   sel.dataset.i18nWired = "1";
-  sel.setAttribute("translate", "no");
   sel.innerHTML = "";
   for (const l of LANGUAGES) {
     const o = document.createElement("option");
@@ -218,12 +236,43 @@ function wireLanguageSelect() {
     sel.appendChild(o);
   }
   sel.value = LANG;
-  sel.addEventListener("change", () => {
-    if (sel.value === LANG) return;
-    setLang(sel.value);
-    // Rechargement : tout le jeu repart dans la nouvelle langue.
-    location.reload();
-  });
+  sel.style.display = "none";
+
+  const box = document.createElement("div");
+  box.setAttribute("translate", "no");
+  box.style.cssText = "position:relative;width:100%";
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.style.cssText = "display:flex;align-items:center;gap:8px;width:100%;height:34px;box-sizing:border-box;padding:0 10px;"
+    + "border:1px solid rgba(124,240,255,.34);border-radius:8px;background:#071b28;color:#eaffff;"
+    + "font:800 11px/1 ui-sans-serif,system-ui;cursor:pointer;text-align:left";
+  const current = LANGUAGES.find((l) => l.id === LANG) || LANGUAGES[0];
+  btn.innerHTML = `${flagRow(current)}<span style="margin-left:auto;opacity:.7">▾</span>`;
+  const list = document.createElement("div");
+  list.hidden = true;
+  list.style.cssText = "position:absolute;left:0;right:0;top:calc(100% + 4px);z-index:50;padding:4px;"
+    + "border:1px solid rgba(124,240,255,.34);border-radius:8px;background:#071b28;box-shadow:0 8px 20px rgba(0,0,0,.45)";
+  for (const l of LANGUAGES) {
+    const item = document.createElement("div");
+    item.dataset.lang = l.id;
+    item.style.cssText = "display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:6px;cursor:pointer;"
+      + `color:#eaffff;font:800 11px/1 ui-sans-serif,system-ui;${l.id === LANG ? "background:rgba(124,240,255,.14)" : ""}`;
+    item.innerHTML = flagRow(l);
+    item.addEventListener("mouseenter", () => { if (l.id !== LANG) item.style.background = "rgba(124,240,255,.08)"; });
+    item.addEventListener("mouseleave", () => { if (l.id !== LANG) item.style.background = ""; });
+    item.addEventListener("click", () => {
+      list.hidden = true;
+      if (l.id === LANG) return;
+      setLang(l.id);
+      // Rechargement : tout le jeu repart dans la nouvelle langue.
+      location.reload();
+    });
+    list.appendChild(item);
+  }
+  btn.addEventListener("click", (e) => { e.stopPropagation(); list.hidden = !list.hidden; });
+  document.addEventListener("click", (e) => { if (!box.contains(e.target)) list.hidden = true; });
+  box.append(btn, list);
+  sel.after(box);
 }
 
 function boot() {
