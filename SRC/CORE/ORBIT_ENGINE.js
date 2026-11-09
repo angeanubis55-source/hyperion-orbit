@@ -37761,6 +37761,7 @@ function drawPlayerBody() {
   // Lissage du rendu graphique : aux positions fractionnaires (en mouvement),
   // le vaisseau suit en continu au lieu d'accrocher d'un pixel à l'autre.
   drawCenteredImage(ctx, img, w, h, renderSmoothingOn());
+  drawPoliceGyro(pack?.id, idx, w, h);
 
   ctx.save();
   ctx.imageSmoothingEnabled = false;
@@ -37802,6 +37803,32 @@ const stiflerHeartImgs = STIFLER_HEART_COLORS.map((color) => {
   img.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 38 38">${shape}</svg>`)}`;
   return img;
 });
+
+// Police : gyrophares light1/light2 de ship_police.swf, pré-composés à la
+// taille de la coque (même frame directionnelle). Phase A = gauche rouge /
+// droite bleu, phase B = l'inverse : jamais deux fois la même couleur.
+const POLICE_GYRO = { path: "SHIP/SHIP_EFFECTS/SHIP_POLICE_GYRO/", frames: 32, period: 0.3 };
+
+function policeGyroFrame(phase, idx) {
+  if (!POLICE_GYRO[phase]) {
+    POLICE_GYRO[phase] = new Array(POLICE_GYRO.frames).fill(null);
+    for (let i = 0; i < POLICE_GYRO.frames; i++) {
+      loadImage(`${POLICE_GYRO.path}${phase}/${i + 1}.png`, { priority: false })
+        .then((img) => (POLICE_GYRO[phase][i] = img))
+        .catch(() => {});
+    }
+  }
+  return POLICE_GYRO[phase][idx] || null;
+}
+
+function drawPoliceGyro(shipId, idx, w, h) {
+  if (String(shipId || "").toLowerCase() !== "police") return;
+  const phase = Math.floor(performance.now() / 1000 / POLICE_GYRO.period) % 2 ? "B" : "A";
+  const img = policeGyroFrame(phase, idx);
+  // Précharge aussi l'autre phase pour ne pas clignoter à vide au 1er cycle.
+  policeGyroFrame(phase === "A" ? "B" : "A", idx);
+  if (isImgReady(img)) drawCenteredImage(ctx, img, w, h, renderSmoothingOn());
+}
 
 function designParticleSeed(value) {
   const text = String(value || "zbli");
@@ -39622,6 +39649,7 @@ function drawNetplayRemotes(ox, oy) {
           }
           // Lissage du rendu graphique (suivi continu en mouvement).
           drawCenteredImage(ctx, img, pack.w ?? 170, pack.h ?? 170, renderSmoothingOn());
+          drawPoliceGyro(r.shipId, idx, pack.w ?? 170, pack.h ?? 170);
           drawCustomDesignParticles(r.shipId, r.id);
           drawn = true;
         }
