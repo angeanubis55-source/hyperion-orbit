@@ -28415,6 +28415,29 @@ function addPlayerCombatFloat(amount, color, prefix = "") {
   });
 }
 
+// Sprite de bouffée de fumée (dégradé radial doux) mis en cache par couleur :
+// ~45 teintes arc-en-ciel + gris/rouge, 32x32 chacune.
+const smokePuffCache = new Map();
+function smokePuffSprite(color) {
+  let c = smokePuffCache.get(color);
+  if (c) return c;
+  c = document.createElement("canvas");
+  c.width = c.height = 32;
+  const g = c.getContext("2d");
+  const grad = g.createRadialGradient(16, 16, 0, 16, 16, 16);
+  grad.addColorStop(0, "rgba(255,255,255,1)");
+  grad.addColorStop(0.4, "rgba(255,255,255,0.55)");
+  grad.addColorStop(1, "rgba(255,255,255,0)");
+  g.fillStyle = grad;
+  g.fillRect(0, 0, 32, 32);
+  g.globalCompositeOperation = "source-in";
+  g.fillStyle = color;
+  g.fillRect(0, 0, 32, 32);
+  if (smokePuffCache.size > 128) smokePuffCache.clear();
+  smokePuffCache.set(color, c);
+  return c;
+}
+
 function spawnSpark(x, y, big = false) {
   // ✅ legacy : les cercles jaunes sont désactivés (aucun rond dessiné).
   // Impacts laser = rien ; impacts roquette = mini explosion HIT_NPC ;
@@ -47748,6 +47771,8 @@ function draw() {
 
   // ✅ impacts roquette/laser = sprites TOUCH_NPC / TOUCH_NPC2 :
   // on ne dessine plus les cercles jaunes, seule la fumée de traînée reste.
+  // Fumée : bouffées douces qui gonflent et s'estompent (sprite pré-rendu
+  // par couleur, un seul drawImage par bouffée).
   for (const s of sparks) {
     if (!s.smoke) continue;
     if (isBeyondSensorRadius(s.x, s.y)) continue;
@@ -47755,13 +47780,11 @@ function draw() {
     if (x < -40 || y < -40 || x > innerWidth + 40 || y > innerHeight + 40) continue;
     const lifeSpan = 1;
     const a = 1 - clamp(s.t / lifeSpan, 0, 1);
-    ctx.globalAlpha = a * 0.55;
-    ctx.fillStyle = s.color || "rgba(255,210,122,0.9)";
-    ctx.beginPath();
-    ctx.arc(x, y, 2.5 * (1 - a * 0.2), 0, TAU);
-    ctx.fill();
-    ctx.globalAlpha = 1;
+    const r = 4 + 11 * Math.sqrt(1 - a);
+    ctx.globalAlpha = a * 0.32;
+    ctx.drawImage(smokePuffSprite(s.color || "rgba(255,210,122,0.9)"), x - r, y - r, r * 2, r * 2);
   }
+  ctx.globalAlpha = 1;
 
   drawCombatFloatTexts(ctx, floatTexts, {
     ox, oy, width: innerWidth, height: innerHeight,
