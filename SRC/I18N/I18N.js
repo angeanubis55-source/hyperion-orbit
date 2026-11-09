@@ -20,6 +20,8 @@ export const LANGUAGES = Object.freeze([
   { id: "de", label: "Deutsch", flag: "de", file: "DE" },
   { id: "es", label: "Español", flag: "es", file: "ES" },
   { id: "sv", label: "Svenska", flag: "sv", file: "SV" },
+  { id: "ru", label: "Русский", flag: "ru", file: "RU" },
+  { id: "ja", label: "日本語", flag: "ja", file: "JA" },
 ]);
 // Drapeaux officiels DarkOrbit (do_img/global/flaggen/plain), 16x11.
 const flagUrl = (code) => new URL(`../../ASSETS/FLAGS/${code}.png`, import.meta.url).href;
