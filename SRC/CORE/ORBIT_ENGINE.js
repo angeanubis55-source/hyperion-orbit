@@ -37807,7 +37807,7 @@ const stiflerHeartImgs = STIFLER_HEART_COLORS.map((color) => {
 // Police : gyrophares light1/light2 de ship_police.swf, pré-composés à la
 // taille de la coque (même frame directionnelle). Phase A = gauche rouge /
 // droite bleu, phase B = l'inverse : jamais deux fois la même couleur.
-const POLICE_GYRO = { path: "SHIP/SHIP_EFFECTS/SHIP_POLICE_GYRO/", frames: 32, period: 0.3 };
+const POLICE_GYRO = { path: "SHIP/SHIP_EFFECTS/SHIP_POLICE_GYRO/", frames: 32, period: 0.15 };
 
 function policeGyroFrame(phase, idx) {
   if (!POLICE_GYRO[phase]) {
