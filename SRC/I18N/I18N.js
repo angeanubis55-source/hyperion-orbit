@@ -238,25 +238,40 @@ function wireLanguageSelect() {
   sel.value = LANG;
   sel.style.display = "none";
 
+  // Même gabarit que le <select> « FPS maximum » (ligne .settingsPlainRow :
+  // 220 x 26, fond #051521, bordure cyan .38, police 800 11px).
   const box = document.createElement("div");
   box.setAttribute("translate", "no");
-  box.style.cssText = "position:relative;width:100%";
+  box.style.cssText = "width:220px;max-width:220px;min-width:0";
   const btn = document.createElement("button");
   btn.type = "button";
-  btn.style.cssText = "display:flex;align-items:center;gap:8px;width:100%;height:34px;box-sizing:border-box;padding:0 10px;"
-    + "border:1px solid rgba(124,240,255,.34);border-radius:8px;background:#071b28;color:#eaffff;"
+  btn.style.cssText = "display:flex;align-items:center;gap:6px;width:220px;height:26px;box-sizing:border-box;padding:0 6px;"
+    + "border:1px solid rgba(124,240,255,.38);border-radius:8px;background:#051521;color:#effcff;"
     + "font:800 11px/1 ui-sans-serif,system-ui;cursor:pointer;text-align:left";
   const current = LANGUAGES.find((l) => l.id === LANG) || LANGUAGES[0];
   btn.innerHTML = `${flagRow(current)}<span style="margin-left:auto;opacity:.7">▾</span>`;
+  // Liste attachée à <body> en position fixe : jamais coupée par la fenêtre
+  // des paramètres, ouverte vers le haut s'il manque de place en dessous.
   const list = document.createElement("div");
   list.hidden = true;
-  list.style.cssText = "position:absolute;left:0;right:0;top:calc(100% + 4px);z-index:50;padding:4px;"
-    + "border:1px solid rgba(124,240,255,.34);border-radius:8px;background:#071b28;box-shadow:0 8px 20px rgba(0,0,0,.45)";
+  list.setAttribute("translate", "no");
+  list.style.cssText = "position:fixed;z-index:100000;padding:3px;box-sizing:border-box;overflow-y:auto;"
+    + "border:1px solid rgba(124,240,255,.38);border-radius:8px;background:#051521;box-shadow:0 8px 20px rgba(0,0,0,.55)";
+  const placeList = () => {
+    const r = btn.getBoundingClientRect();
+    list.style.left = `${Math.round(r.left)}px`;
+    list.style.width = `${Math.round(r.width)}px`;
+    const wanted = Math.min(list.scrollHeight, 300);
+    const below = innerHeight - r.bottom - 8;
+    const up = below < wanted && r.top > below;
+    list.style.maxHeight = `${Math.max(80, Math.min(300, up ? r.top - 8 : below))}px`;
+    list.style.top = up ? `${Math.round(r.top - 3 - Math.min(wanted, r.top - 8))}px` : `${Math.round(r.bottom + 3)}px`;
+  };
   for (const l of LANGUAGES) {
     const item = document.createElement("div");
     item.dataset.lang = l.id;
-    item.style.cssText = "display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:6px;cursor:pointer;"
-      + `color:#eaffff;font:800 11px/1 ui-sans-serif,system-ui;${l.id === LANG ? "background:rgba(124,240,255,.14)" : ""}`;
+    item.style.cssText = "display:flex;align-items:center;gap:6px;height:24px;padding:0 6px;border-radius:6px;cursor:pointer;"
+      + `color:#effcff;font:800 11px/1 ui-sans-serif,system-ui;${l.id === LANG ? "background:rgba(124,240,255,.14)" : ""}`;
     item.innerHTML = flagRow(l);
     item.addEventListener("mouseenter", () => { if (l.id !== LANG) item.style.background = "rgba(124,240,255,.08)"; });
     item.addEventListener("mouseleave", () => { if (l.id !== LANG) item.style.background = ""; });
@@ -269,9 +284,18 @@ function wireLanguageSelect() {
     });
     list.appendChild(item);
   }
-  btn.addEventListener("click", (e) => { e.stopPropagation(); list.hidden = !list.hidden; });
-  document.addEventListener("click", (e) => { if (!box.contains(e.target)) list.hidden = true; });
-  box.append(btn, list);
+  btn.addEventListener("click", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    list.hidden = !list.hidden;
+    if (!list.hidden) placeList();
+  });
+  document.addEventListener("click", (e) => { if (!box.contains(e.target) && !list.contains(e.target)) list.hidden = true; });
+  // La liste est fixe : si la fenêtre bouge ou défile, on la referme.
+  addEventListener("resize", () => { list.hidden = true; });
+  document.addEventListener("scroll", (e) => { if (!list.contains(e.target)) list.hidden = true; }, true);
+  box.append(btn);
+  document.body.appendChild(list);
   sel.after(box);
 }
 
