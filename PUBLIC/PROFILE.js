@@ -40,6 +40,7 @@ import { getShipBonusInfo } from "../SHIP/SHIP_BONUSES.js";
 import { getAbilitiesForShip, getAbilityInfo, policeAbilityIds, abilityShipKeyFor, formatAbilityTiming } from "../SHIP/SHIP_ABILITIES.js";
 import { SHIP_ITEM_DIR, SHIP_ITEM_FULL_IDS, SHIP_ITEM_TRAIT_IDS, SHIP_TRAIT_DIR } from "../SHIP/SHIP_ITEMS.js";
 import { escapeHtml, stripNonDigits, wireDigitsOnly } from "../UI/UI_DOM.js";
+import { getLang, t as i18nText } from "../SRC/I18N/I18N.js";
 import { PILOT_RANKS, calculateRankPoints, getNpcExperienceReward, getNpcHonorReward, getQuestExperienceReward, getQuestHonorReward, getRankInfo } from "../SRC/CORE/PROGRESSION.js";
 import { formatInteger } from "../SRC/CORE/NUMBER_FORMAT.js";
 import { FACTIONS, getFaction } from "../SRC/CORE/FACTIONS.js";
@@ -896,8 +897,18 @@ function formatNumber(num) {
 // Quantités d'une description boutique en bleu (comme les générateurs :
 // .shopItemStat strong est cyan). S'applique sur du texte déjà échappé :
 // les entités HTML (&...;) sont préservées.
+// Hors français : la description est traduite ligne par ligne AVANT la mise
+// en gras des nombres (sinon le texte est découpé en morceaux intraduisibles).
+function translateShopDesc(escapedHtml) {
+  const html = String(escapedHtml || "");
+  if (getLang() === "fr" || !html || /<[a-z]/i.test(html)) return html;
+  const box = document.createElement("textarea");
+  box.innerHTML = html;
+  return box.value.split("\n").map((line) => escapeHtml(i18nText(line.trim()))).join("\n");
+}
+
 function highlightShopDescNumbers(escapedHtml) {
-  return String(escapedHtml || "").replace(/(&[A-Za-z0-9#]+;)|(^|[^A-Za-z0-9])([x×]\s?\d+(?:[.,]\d+)?|\d+(?:\s\d{3})*(?:[.,]\d+)?\s?%|\d+(?:\s\d{3})*(?:[.,]\d+)?)/gi, (m, ent, pre, num) =>
+  return translateShopDesc(escapedHtml).replace(/(&[A-Za-z0-9#]+;)|(^|[^A-Za-z0-9])([x×]\s?\d+(?:[.,]\d+)?|\d+(?:\s\d{3})*(?:[.,]\d+)?\s?%|\d+(?:\s\d{3})*(?:[.,]\d+)?)/gi, (m, ent, pre, num) =>
     (ent ? m : `${pre}<strong>${num}</strong>`));
 }
 

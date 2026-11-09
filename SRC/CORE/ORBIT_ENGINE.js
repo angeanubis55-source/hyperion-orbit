@@ -150,6 +150,7 @@ import { createKeyboardState, createPointerState } from "./INPUT.js";
 import { bulletLifeForRange, damageEnemyLayers, damagePlayerLayers, drainShield } from "../../COMBAT/COMBAT_RULES.js";
 import { createSpatialPairIndex, rebuildIdIndex } from "./SPATIAL_INDEX.js";
 import { drawCenteredImage, hpHueColor, isWorldPointVisible, screenToWorldPoint, worldToScreenPoint } from "./RENDERING.js";
+import { t as i18nText } from "../I18N/I18N.js";
 import { spawnNpcEntity } from "../../NPC/NPC_SPAWNER.js";
 import { addProjectile, advanceProjectile, blendVelocityDirection, guidedChaseSpeed, guideLauncherRocketVelocity, launcherRocketLaunchAngle, removeProjectile } from "../../COMBAT/PROJECTILES.js";
 import { createWaveSpawnState, remainingWaveSpawns } from "./WAVES.js";
@@ -20346,7 +20347,7 @@ function showNotificationGroup(messages, type = "info", { goldTerms = [], whiteT
 }
 
 function showNotification(text, dur = 2, type = "info", { log = true, goldTerms = [], minVisibleMs = 3800, stagger = true } = {}) {
-  const value = String(text ?? "").trim();
+  const value = i18nText(String(text ?? "").trim());
   if (!value) return;
   if (log) addGameLog(value, type);
   if (!ui.orbitNotifications) return;
@@ -42532,7 +42533,8 @@ function drawZoneStation(ox, oy) {
 }
 
 function drawToast() {
-  drawToastMessage(ctx, toast, innerWidth, innerHeight);
+  // Texte d'origine conservé dans toast.text (comparaisons), traduit au dessin.
+  drawToastMessage(ctx, toast?.text ? { ...toast, text: i18nText(toast.text) } : toast, innerWidth, innerHeight);
   // Bannière admin : même typo/hauteur que le toast de zone, juste au-dessus.
   if (adminBanner && adminBanner.text) {
     const dur = 10;
