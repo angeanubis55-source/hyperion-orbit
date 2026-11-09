@@ -18,6 +18,8 @@ export const LANGUAGES = Object.freeze([
   { id: "fr", label: "Français", flag: "fr" },
   { id: "en", label: "English", flag: "en", file: "EN" },
   { id: "de", label: "Deutsch", flag: "de", file: "DE" },
+  { id: "es", label: "Español", flag: "es", file: "ES" },
+  { id: "sv", label: "Svenska", flag: "sv", file: "SV" },
 ]);
 // Drapeaux officiels DarkOrbit (do_img/global/flaggen/plain), 16x11.
 const flagUrl = (code) => new URL(`../../ASSETS/FLAGS/${code}.png`, import.meta.url).href;
@@ -129,13 +131,24 @@ function skipped(el) {
   return false;
 }
 
+// Textes déjà écrits par le traducteur : jamais retraduits. Sans ça, une
+// traduction identique à une autre clé française (ex. « Normal ») serait
+// retraduite par l'observateur en boucle et figerait la page.
+const written = new Set();
+function markWritten(text) {
+  if (written.size > 20000) written.clear();
+  written.add(text);
+}
+
 function translateTextNode(node) {
   const raw = node.nodeValue;
   if (!raw || raw.length > 400 || !LETTER.test(raw)) return;
   if (skipped(node.parentElement)) return;
   const trimmed = raw.replace(/\s+/g, " ").trim();
+  if (written.has(trimmed)) return;
   const tr = translateText(trimmed);
   if (tr == null || tr === trimmed) return;
+  markWritten(tr.replace(/\s+/g, " ").trim());
   const lead = /^\s*/.exec(raw)[0];
   const trail = /\s*$/.exec(raw)[0];
   node.nodeValue = lead + tr + trail;
@@ -145,8 +158,13 @@ function translateAttrs(el) {
   for (const a of ATTRS) {
     const v = el.getAttribute(a);
     if (!v) continue;
-    const tr = translateText(v.replace(/\s+/g, " ").trim());
-    if (tr != null && tr !== v) el.setAttribute(a, tr);
+    const key = v.replace(/\s+/g, " ").trim();
+    if (written.has(key)) continue;
+    const tr = translateText(key);
+    if (tr != null && tr !== v) {
+      markWritten(tr.replace(/\s+/g, " ").trim());
+      el.setAttribute(a, tr);
+    }
   }
 }
 

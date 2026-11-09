@@ -3635,6 +3635,7 @@ export default {
     "Stat": "Stat",
     "Robot +5 % ajouté (12 h).": "Robot +5 % added (12 h).",
     "Langue du jeu": "Game language",
+    "Lien HP": "HP link",
   },
   patterns: {
     "Pas assez de crédits ({0} : {1})": "Not enough credits ({0}: {1})",
