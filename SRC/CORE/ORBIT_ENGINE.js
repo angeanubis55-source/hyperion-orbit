@@ -20098,7 +20098,7 @@ async function renderGameLog() {
   }
   if (token !== gameLogRenderToken || !shouldRefreshWindow("gameLogWindow")) return;
   ui.gameLogEntries.innerHTML = result.entries.length
-    ? result.entries.map(entry => `<div class="gameLogEntry ${escapeHtml(entry.type)}"><time>${formatGameLogDate(entry.timestamp)}</time><span>${escapeHtml(entry.text)}</span></div>`).join("")
+    ? result.entries.map(entry => `<div class="gameLogEntry ${escapeHtml(entry.type)}"><time>${formatGameLogDate(entry.timestamp)}</time><span>${escapeHtml(String(entry.text).split(" · ").map(part => i18nText(part)).join(" · "))}</span></div>`).join("")
     : `<div class="gameLogEmpty">Aucun événement${gameLogQuery ? " correspondant" : ""}.</div>`;
   if (ui.gameLogPage) ui.gameLogPage.textContent = `Page ${gameLogPage + 1}`;
   if (ui.gameLogPrevious) ui.gameLogPrevious.disabled = gameLogPage === 0;
@@ -20130,6 +20130,12 @@ function addGameLog(text, type = "info") {
 }
 
 function setNotificationText(node, value, { goldTerms = [], whiteTerms = [], violetTerms = [] } = {}) {
+  // Traduction avant le découpage en segments colorés (sinon la phrase est
+  // coupée autour des nombres et des termes, et devient intraduisible).
+  value = i18nText(String(value ?? ""));
+  goldTerms = goldTerms.map(term => i18nText(term));
+  whiteTerms = whiteTerms.map(term => i18nText(term));
+  violetTerms = violetTerms.map(term => i18nText(term));
   const quantityPattern = /(?<![\p{L}\d])[+-]?\d+(?:[ \u00a0\u202f]\d{3})*(?:[.,]\d+)?(?![\p{L}\d])/gu;
   const collectRanges = (terms) => {
     const ranges = [];
