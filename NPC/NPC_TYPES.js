@@ -3751,3 +3751,8 @@ NPC_TYPES.npc_Convoy_Kristalidzione = {
   exp: convoyUltra.exp * 2,
   honor: convoyUltra.honor * 2,
 };
+// Ultra et Kristalidzione : munition Kristallon de taille standard (pas la
+// version agrandie de l'Emperor dont ils héritent).
+for (const type of ["npc_Convoy_Ultra_Kristallon", "npc_Convoy_Kristalidzione"]) {
+  NPC_TYPES[type].bulletSprite = { ...NPC_TYPES.npc_Kristallon.bulletSprite };
+}

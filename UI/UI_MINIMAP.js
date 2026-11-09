@@ -346,6 +346,13 @@ export function renderMinimap(context, options) {
     if (!marker || !Number.isFinite(Number(marker.x)) || !Number.isFinite(Number(marker.y))) continue;
     const mx = marker.x * scaleX;
     const my = marker.y * scaleY;
+    if (marker.square) {
+      // Point carré plein, comme les NPC mais à la taille demandée.
+      const size = Number(marker.square) || 4;
+      context.fillStyle = marker.color || "#3dff7a";
+      context.fillRect(mx - size / 2, my - size / 2, size, size);
+      continue;
+    }
     if (marker.cross) {
       const blink = Math.floor(performance.now() / 250) % 2 === 0;
       if (!blink) continue;

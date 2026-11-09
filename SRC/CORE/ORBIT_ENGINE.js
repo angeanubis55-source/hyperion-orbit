@@ -37570,9 +37570,9 @@ function drawMinimap() {
       petLocatorMarkers.push({ x: Number(rally.x) || 0, y: Number(rally.y) || 0, color: "#ff3b4f", pulse: true, cross: true });
     }
   } catch {}
-  // GG d'hiver : convoi (vert, pulsant).
+  // GG d'hiver : convoi (point vert 4x4, comme les NPC mais plus gros).
   if (winterConvoy && winterConvoy.esc.hp > 0) {
-    petLocatorMarkers.push({ x: winterConvoy.esc.x, y: winterConvoy.esc.y, color: "#3dff7a", pulse: true });
+    petLocatorMarkers.push({ x: winterConvoy.esc.x, y: winterConvoy.esc.y, color: "#3dff7a", square: 4 });
   }
   renderMinimap(mctx, {
     width: useCss ? cssW : mini.width,
