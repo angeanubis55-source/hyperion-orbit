@@ -25441,6 +25441,20 @@ function petDrawSize(designId, sprite) {
 function activePetDesignId() {
   return petFit()?.design || "";
 }
+// Design réellement dessiné pour cette frame : précharge les 32 frames du
+// design au premier passage et garde le sprite de base (déjà préchargé) tant
+// que la frame n'est pas prête — sinon le P.E.T disparaît à chaque nouvelle
+// orientation (chez les autres joueurs surtout).
+const petDesignPreloaded = new Set();
+function petVisualDesign(designId, frame) {
+  const design = getPetDesign(designId);
+  if (!design) return "";
+  if (!petDesignPreloaded.has(design.id)) {
+    petDesignPreloaded.add(design.id);
+    for (let f = 1; f <= design.frames; f++) loadImage(`${design.path}${f}.png`, { priority: true });
+  }
+  return isImgReady(getCachedImage(`${design.path}${frame}.png`)) ? design.id : "";
+}
 // Retirage de la cible riposte toutes les 1 s si plusieurs attaquants.
 const PET_REPICK_DELAY = 1;
 // Un attaquant compte seulement s'il nous a infligé des dégâts il y a moins de 6 s
@@ -27447,7 +27461,7 @@ function drawPet(ox, oy) {
   // Sprite directionnel d'après sa propre orientation. Comme les drones,
   // les sprites P.E.T sont encodés dans le sens opposé : demi-tour (+16).
   const frame = getPetSpriteFrame();
-  const designId = activePetDesignId();
+  const designId = petVisualDesign(activePetDesignId(), frame);
   const image = getCachedImage(petSpriteSrc(level, designId, frame));
   // Le dernier palier contient uniquement les pièces à superposer au Niveau5.
   const baseSrc = petBaseSpriteSrc(level, designId, frame);
@@ -27527,7 +27541,7 @@ function drawTbrClones(ox, oy, remote = null) {
   const pet = account.user?.pet;
   if (!remote && (!pet?.owned || pet?.active !== true)) return;
   const level = remote ? remote.petl : getPetLevel(pet.exp);
-  const designId = remote ? remote.petdz : activePetDesignId();
+  const wantedDesign = remote ? remote.petdz : activePetDesignId();
   const petPseudo = String((remote ? remote.petn : pet?.pseudo) || "P.E.T");
   const petFaction = getFaction(remote ? remote.petf || remote.firm : pet?.faction || account.user?.faction);
   for (const c of clones) {
@@ -27536,6 +27550,7 @@ function drawTbrClones(ox, oy, remote = null) {
     const y = Number(c.ry ?? c.y) + oy;
     if (x < -160 || y < -160 || x > innerWidth + 160 || y > innerHeight + 160) continue;
     const frame = ((angleToFrameIndex(Number(c.rangle ?? c.angle) || 0, 32) + 16) % 32) + 1;
+    const designId = petVisualDesign(wantedDesign, frame);
     const imagePath = petSpriteSrc(level, designId, frame);
     const image = getCachedImage(imagePath);
     const basePath = petBaseSpriteSrc(level, designId, frame);
@@ -27693,7 +27708,7 @@ function tickEngineTrails(dt) {
   petEngine.update(petState, dt, GAME_SETTINGS.shipSmoke && pet?.owned && pet?.active === true && petState.ready && !player.dead);
   if (GAME_SETTINGS.shipSmoke && pet?.owned && pet?.active === true && petState.ready && !player.dead) {
     const petFrame = getPetSpriteFrame();
-    const petSprite = getCachedImage(petSpriteSrc(getPetLevel(pet.exp), activePetDesignId(), petFrame));
+    const petSprite = getCachedImage(petSpriteSrc(getPetLevel(pet.exp), petVisualDesign(activePetDesignId(), petFrame), petFrame));
     emitEngineTrail(petState, { sprite: { w: PET_DRAW_W, h: PET_DRAW_H }, speed: 320 }, dt, null, "pet", petFrame, petSprite);
   }
   // Clones TBR : mêmes réacteurs (anim + traînées) que le PET.
@@ -27706,7 +27721,7 @@ function tickEngineTrails(dt) {
       try { petEngine.update(c, dt, tbrOn); } catch {}
       if (!tbrOn) continue;
       const cFrame = ((angleToFrameIndex(Number(c.angle || 0), 32) + 16) % 32) + 1;
-      const cSprite = getCachedImage(petSpriteSrc(tbrLevel, activePetDesignId(), cFrame));
+      const cSprite = getCachedImage(petSpriteSrc(tbrLevel, petVisualDesign(activePetDesignId(), cFrame), cFrame));
       emitEngineTrail(c, { sprite: { w: PET_DRAW_W, h: PET_DRAW_H }, speed: 320 }, dt, null, "pet", cFrame, cSprite);
     }
   }
@@ -37861,8 +37876,9 @@ function warmNetplayRemoteAssets(remote) {
     try {
       const frame = ((angleToFrameIndex(Number(remote.petd ?? remote.angle) || 0, 32) + 16) % 32) + 1;
       const remotePetLevel = Math.max(1, Number(remote.petl) || 1);
-      loadImage(petSpriteSrc(remotePetLevel, remote.petdz, frame), { priority: true });
-      const remotePetBase = petBaseSpriteSrc(remotePetLevel, remote.petdz, frame);
+      petVisualDesign(remote.petdz, frame);
+      loadImage(petSpriteSrc(remotePetLevel, "", frame), { priority: true });
+      const remotePetBase = petBaseSpriteSrc(remotePetLevel, "", frame);
       if (remotePetBase) loadImage(remotePetBase, { priority: true });
     } catch {}
   }
@@ -39730,12 +39746,13 @@ function drawNetplayRemotes(ox, oy) {
           }
           const pframe = ((angleToFrameIndex(Number(r.petd ?? r.angle) || 0, 32) + 16) % 32) + 1;
           const plevel = Math.max(1, Number(r.petl) || 1);
-          const psrc = petSpriteSrc(plevel, r.petdz, pframe);
+          const pdesign = petVisualDesign(r.petdz, pframe);
+          const psrc = petSpriteSrc(plevel, pdesign, pframe);
           const pimg = getCachedImage(psrc);
           // Dernier palier : comme notre REX, la couche NIVEAU6_5 ne contient
           // que les pieces a superposer a la base NIVEAU5 (sinon l'allie ne
           // voit que la 6_5).
-          const pbaseSrc = petBaseSpriteSrc(plevel, r.petdz, pframe);
+          const pbaseSrc = petBaseSpriteSrc(plevel, pdesign, pframe);
           const pbase = pbaseSrc ? getCachedImage(pbaseSrc) : null;
           let psprite = pimg;
           if (pbase) {
@@ -39785,7 +39802,7 @@ function drawNetplayRemotes(ox, oy) {
             ctx.translate(0, Math.sin(performance.now() / 1000 * 4) * 2);
             ctx.imageSmoothingEnabled = false;
             // Lissage du rendu graphique (suivi continu en mouvement).
-            const [remotePetW, remotePetH] = petDrawSize(r.petdz, psprite);
+            const [remotePetW, remotePetH] = petDrawSize(pdesign, psprite);
             drawCenteredImage(ctx, psprite, remotePetW, remotePetH, renderSmoothingOn());
             try { if (GAME_SETTINGS.shipSmoke) petEngine.draw(ctx, peng.holder, psprite, pframe, isImgReady); } catch {}
             // Etiquette du REX distant : pseudo + firme, comme sur son ecran.
