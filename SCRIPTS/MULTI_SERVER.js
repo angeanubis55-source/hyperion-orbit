@@ -29,7 +29,7 @@ const {
 import { tickLowRaid, getLowRaidState } from "./LOW_RAID.js";
 import { tickWinterGate, getWinterGateState, persistWinterGate, winterGateRejoin, winterGateRejoinSpot } from "./WINTER_GATE.js";
 import { damagePlayerLayers } from "../COMBAT/COMBAT_RULES.js";
-import { handleAccountApi, getAccountGameplayData, verifyWsToken, recordPvpKill, recordPvpPetKill, awardNpcKill, flushNpcRewards, grantSundayModule, grantSundayTickets, grantSundayAmmo, listFriends, friendFollowers, findUserByPseudo, hasFriendRequest, isBlockedBy, clanIdOfUser, clanTagOfUser, clanMemberUserIds, setClanPresenceProvider, setClanBasesProvider, recordClanWarKill, adminGiveCredits, adminGiveExperience, adminGiveHonor, adminGiveModule, adminGiveTitle, adminListAccounts, adminDebugAccount, adminDeleteAccount, adminResetGalaxyGate, adminGiveGalaxyGate, adminDroneDesigns, adminGiveDroneDesign, adminShipFamilies, adminCatalog, adminInventory, adminGiveItem, adminAdjustStock, adminRemoveOwned, adminSetPosition, adminRename, adminSetFaction, adminResetPassword, appendPlayerLogs, adminPlayerLogs, adminLogAction, adminActionLog, adminStats } from "./ACCOUNT_SERVER.js";
+import { handleAccountApi, getAccountGameplayData, verifyWsToken, recordPvpKill, recordPvpPetKill, awardNpcKill, flushNpcRewards, grantSundayModule, grantSundayTickets, grantSundayAmmo, listFriends, friendFollowers, findUserByPseudo, hasFriendRequest, isBlockedBy, clanIdOfUser, clanTagOfUser, clanMemberUserIds, setClanPresenceProvider, setClanBasesProvider, recordClanWarKill, adminGiveCredits, adminGiveExperience, adminGiveHonor, adminGiveModule, adminGiveTitle, adminListAccounts, adminDebugAccount, adminDeleteAccount, adminResetGalaxyGate, adminGiveGalaxyGate, adminDroneDesigns, adminGiveDroneDesign, adminShipFamilies, adminCatalog, adminInventory, adminGiveItem, adminAdjustStock, adminRemoveOwned, adminSetPosition, adminRename, adminSetFaction, adminResetPassword, adminGenerateAccount, appendPlayerLogs, adminPlayerLogs, adminLogAction, adminActionLog, adminStats } from "./ACCOUNT_SERVER.js";
 import { combatProfile, validateCombatHit, syncDeclaredFormation, accountWithFormation } from "./COMBAT_PROFILE.js";
 import { profileAbilityCooldown } from "../DRONE/DRONE_DESIGNS.js";
 import { selectNpcSnapshot } from "./NPC_SNAPSHOT.js";
@@ -972,6 +972,7 @@ function adminLivePerMap() {
 
 // Outils du panneau : inventaire, objets, actions de compte, journaux, stats.
 const ADMIN_TOOL_POSTS = {
+  "/api/admin/generate-account": (b) => adminGenerateAccount(b),
   "/api/admin/give-item": (b) => adminGiveItem(b.id || b.pseudo, b.itemId, b.quantity),
   "/api/admin/adjust-stock": (b) => adminAdjustStock(b.id || b.pseudo, b.kind, b.key, b.delta),
   "/api/admin/remove-owned": (b) => adminRemoveOwned(b.id || b.pseudo, b.kind, b.key),

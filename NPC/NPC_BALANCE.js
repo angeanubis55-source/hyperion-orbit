@@ -446,11 +446,26 @@ export const NPC_REWARDS = Object.freeze({
 // Récompense d'un type, y compris les variantes Halloween calibrées par map
 // (barèmes du wiki par carte, crédits x1.5 uniquement).
 // Retourne null si le type est inconnu.
+// GG d'hiver : les attaquants du convoi rapportent 50 % de la récompense
+// (crédits, EXP, honneur) de leur NPC de base.
+export const WINTER_CONVOY_REWARD_FACTOR = 0.5;
+const winterConvoyRewardCache = new Map();
+
 export function resolveNpcReward(type) {
   const direct = NPC_REWARDS[type];
   if (direct) return direct;
-  // GG d'hiver (attaquants du convoi) : npc_Convoy_X = récompense de npc_X.
-  if (/^npc_Convoy_/.test(String(type))) return NPC_REWARDS[String(type).replace(/^npc_Convoy_/, "npc_")] || null;
+  // GG d'hiver (attaquants du convoi) : npc_Convoy_X = récompense de npc_X, réduite.
+  if (/^npc_Convoy_/.test(String(type))) {
+    if (winterConvoyRewardCache.has(type)) return winterConvoyRewardCache.get(type);
+    const base = NPC_REWARDS[String(type).replace(/^npc_Convoy_/, "npc_")];
+    const reward = base ? Object.freeze({
+      credits: Math.floor(base.credits * WINTER_CONVOY_REWARD_FACTOR),
+      exp: Math.floor(base.exp * WINTER_CONVOY_REWARD_FACTOR),
+      honor: Math.floor(base.honor * WINTER_CONVOY_REWARD_FACTOR),
+    }) : null;
+    winterConvoyRewardCache.set(type, reward);
+    return reward;
+  }
   const parsed = parseHalloweenVariant(type);
   if (!parsed) return null;
   const stats = halloweenMapStats(parsed.level, parsed.role);

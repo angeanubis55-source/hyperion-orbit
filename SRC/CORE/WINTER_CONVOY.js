@@ -81,7 +81,7 @@ export const WINTER_CONVOY_WAVE_TYPES = Object.freeze([
 // Récompense de fin, la même pour tous les joueurs présents : base
 // multipliée par la vague finale (vague en cours quand le chrono finit ou
 // quand le convoi tombe).
-export const WINTER_CONVOY_REWARD = Object.freeze({ credits: 100000, exp: 5000000, honor: 5000, ice: 4000 });
+export const WINTER_CONVOY_REWARD = Object.freeze({ credits: 100000, exp: 1000000, honor: 1000, ice: 5000 });
 
 function seededRandom(seed) {
   let a = (Number(seed) >>> 0) || 1;

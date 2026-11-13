@@ -1,4 +1,4 @@
-import { NPC_REWARDS } from "./NPC_BALANCE.js";
+import { NPC_REWARDS, resolveNpcReward } from "./NPC_BALANCE.js";
 import { HALLOWEEN_VARIANT_SPECS, buildHalloweenVariant, halloweenVariantKey } from "./NPC_HALLOWEEN.js";
 
 export const NPC_TYPES = {
@@ -3755,4 +3755,14 @@ NPC_TYPES.npc_Convoy_Kristalidzione = {
 // version agrandie de l'Emperor dont ils héritent).
 for (const type of ["npc_Convoy_Ultra_Kristallon", "npc_Convoy_Kristalidzione"]) {
   NPC_TYPES[type].bulletSprite = { ...NPC_TYPES.npc_Kristallon.bulletSprite };
+}
+// Récompenses des attaquants du convoi : barème réduit de la GG d'hiver
+// (resolveNpcReward, WINTER_CONVOY_REWARD_FACTOR), identique au serveur.
+for (const type of Object.keys(NPC_TYPES)) {
+  if (!type.startsWith("npc_Convoy_")) continue;
+  const reward = resolveNpcReward(type);
+  if (!reward) throw new Error(`Récompenses manquantes pour ${type}`);
+  NPC_TYPES[type].value = reward.credits;
+  NPC_TYPES[type].exp = reward.exp;
+  NPC_TYPES[type].honor = reward.honor;
 }

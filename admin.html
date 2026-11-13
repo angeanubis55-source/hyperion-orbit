@@ -242,6 +242,7 @@
     <div class="brand"><b>HYPERION</b><span><i class="dot on"></i><span id="onlineLabel">0 en ligne</span></span></div>
     <button class="navBtn" type="button" data-view="overview"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg><span class="label">Vue d'ensemble</span></button>
     <button class="navBtn" type="button" data-view="players"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="8" r="4"/><path d="M2 21c0-4 3-7 7-7s7 3 7 7"/><path d="M16 4a4 4 0 0 1 0 8M22 21c0-3-2-5.5-5-6.5"/></svg><span class="label">Joueurs</span><span class="count" id="navPlayers">0</span></button>
+    <button class="navBtn" type="button" data-view="generator"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v18M3 12h18"/><circle cx="12" cy="12" r="8"/></svg><span class="label">Générer un compte</span></button>
     <button class="navBtn" type="button" data-view="cheat"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><path d="M12 8v5M12 16.5v.5"/></svg><span class="label">Anticheat</span><span class="count" id="navCheat">0</span></button>
     <button class="navBtn" type="button" data-view="bans"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M5.6 5.6l12.8 12.8"/></svg><span class="label">Bannis</span><span class="count" id="navBans">0</span></button>
     <button class="navBtn" type="button" data-view="chat"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 5h16v11H9l-5 4z"/></svg><span class="label">Tchat & annonces</span></button>
@@ -297,6 +298,18 @@
           <div class="card fiche" id="fiche"><div class="empty">Sélectionne un joueur dans la liste.</div></div>
         </div>
       </div>
+    </section>
+
+    <!-- Anticheat -->
+    <section class="view" data-view="generator" hidden>
+      <header class="viewHead"><h1>Générer un compte</h1><span class="sub">Compte premium aléatoire, équipé automatiquement.</span></header>
+      <div class="viewBody"><div class="card" style="max-width:620px;padding:18px">
+        <p class="note">Le compte reçoit un vaisseau et son design aléatoires, des lasers Xénocide, tous ses drones niveau maximum, le P.E.T. et un design P.E.T. aléatoire.</p>
+        <div class="formRow"><label for="genPseudo">Pseudo</label><input class="input" id="genPseudo" maxlength="32" placeholder="Pseudo du nouveau compte" autocomplete="off"></div>
+        <div class="formRow"><label for="genFaction">Firme</label><select class="input" id="genFaction"><option value="mmo">Mars (MMO)</option><option value="eic">Terre (EIC)</option><option value="vru">Vénus (VRU)</option></select></div>
+        <div class="formRow"><label for="genPassword">Mot de passe</label><input class="input" id="genPassword" minlength="10" placeholder="Vide = mot de passe généré" autocomplete="new-password"></div>
+        <button class="btn" type="button" id="genAccountBtn">Générer le compte</button><div id="genAccountResult" class="note" style="margin-top:12px"></div>
+      </div></div>
     </section>
 
     <!-- Anticheat -->
@@ -1403,6 +1416,18 @@
   });
   $("bcBtn").onclick = () => sendAdminText($("bcInput"), "Annonce diffusée.");
   $("bcInput").addEventListener("keydown", (e) => { if (e.key === "Enter") $("bcBtn").click(); });
+
+  $("genAccountBtn").onclick = async () => {
+    const pseudo = $("genPseudo").value.trim();
+    const result = $("genAccountResult");
+    if (!pseudo) { result.textContent = "Saisis un pseudo."; return; }
+    result.textContent = "Génération en cours…";
+    try {
+      const out = ok(await post("/api/admin/generate-account", { pseudo, faction: $("genFaction").value, password: $("genPassword").value }));
+      result.innerHTML = `<b>Compte créé :</b> ${esc(out.pseudo)} · ${esc(out.ship)} · design P.E.T. ${esc(out.petDesign)}<br><b>Mot de passe :</b> <code>${esc(out.password)}</code>`;
+      $("genPseudo").value = ""; $("genPassword").value = ""; refresh();
+    } catch (e) { result.textContent = e?.message || "Erreur de génération."; }
+  };
 
   $("loginBtn").onclick = login;
   $("passInput").addEventListener("keydown", (e) => { if (e.key === "Enter") login(); });

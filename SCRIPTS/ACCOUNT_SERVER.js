@@ -14,10 +14,11 @@ import { computeHangarStats } from "../SHIP/SHIP_HANGARS.js";
 import { activeBoosterMults, BOOSTERS, getBooster } from "../SRC/DATA/BOOSTERS.js";
 import { pilotSkillMults } from "../SRC/DATA/PILOT_SKILLS.js";
 import { calculateRankPoints } from "../SRC/CORE/PROGRESSION.js";
-import { getShipDesignBaseId, getShipFamilyId, getShipFamilyIds, getShipFamilyName, getShipPackById } from "../SHIP/SHIP_PACKS.js";
+import { SHIP_PACKS, getShipDesignBaseId, getShipFamilyId, getShipFamilyIds, getShipFamilyName, getShipPackById, getShipDesignIds } from "../SHIP/SHIP_PACKS.js";
 import { DRONE_XP_SHARE, getDroneLevel } from "../DRONE/DRONE_TYPES.js";
 import { DRONE_DESIGNS, getDroneDesign } from "../DRONE/DRONE_DESIGNS.js";
 import { createPet, getPetHullPrice, getPetLevel, PET_FUEL_MAX, PET_HULL_MAX_BUYS, PET_XP_SHARE } from "../PET/PET_TYPES.js";
+import { PET_DESIGNS } from "../PET/PET_DESIGNS.js";
 import { npcMapCreditMultiplier, resolveNpcReward } from "../NPC/NPC_BALANCE.js";
 import { rollNpcAssemblyDirect } from "../NPC/NPC_ASSEMBLY.js";
 import { MODULE_ALL_STATS, MODULE_DAILY_ROLL_LIMIT, MODULE_DMG_STATS, MODULE_PCT_BAN, MODULE_ROLL_COST, MODULE_SELL_PRICES, MODULE_SPC_STATS, MODULE_STAT_FAMILY, MODULE_TIER_MALUS, getModuleRarity, getStatMaxPct } from "../SRC/DATA/MODULE_DROPS.js";
@@ -3531,6 +3532,41 @@ export function adminDroneDesigns() {
       .map((d) => ({ id: String(d.itemId), name: String(d.name) }))
       .sort((a, b) => a.name.localeCompare(b.name, "fr"));
   } catch { return []; }
+}
+
+// Création rapide d'un compte de test/événement avec équipement complet.
+export async function adminGenerateAccount({ pseudo, faction = "mmo", password } = {}) {
+  try {
+    initAccountDb();
+    const name = String(pseudo || "").trim();
+    const fac = norm(faction);
+    if (!name || name.length > 32) return { ok: false, error: "Pseudo invalide (3 à 32 caractères)." };
+    if (name.length < 3 || !FACTIONS.has(fac)) return { ok: false, error: "Pseudo ou firme invalide." };
+    if (db.prepare("SELECT 1 FROM users WHERE pseudo_norm = ?").get(norm(name))) return { ok: false, error: "Ce pseudo est déjà utilisé." };
+    const shipFamilies = getShipFamilyIds().filter(id => getShipPackById(id)?.slots);
+    const family = shipFamilies[Math.floor(Math.random() * shipFamilies.length)];
+    const designs = getShipDesignIds(family);
+    const ship = designs[Math.floor(Math.random() * designs.length)] || family;
+    const pack = getShipPackById(ship) || getShipPackById(family);
+    const slots = pack.slots || { lasers: 15, gens: 15, extras: 3, shipMods: 4 };
+    const petDesignIds = Object.keys(PET_DESIGNS);
+    const petDesign = petDesignIds[Math.floor(Math.random() * petDesignIds.length)];
+    const droneItems = Array.from({ length: 8 }, (_, i) => ({ id: `drone_admin_${Date.now()}_${i}_${randomBytes(2).toString("hex")}`, type: "iris", level: 6, exp: 1500000, fit: { equipment: ["laser_lf6", "laser_lf6"], ability: "drone_design_admin" } }));
+    const fit = { lasers: Array(slots.lasers).fill("laser_lf6"), gens: Array(slots.gens).fill("shield_b03"), extras: Array(slots.extras).fill("extra_engine"), shipMods: Array(slots.shipMods).fill(null) };
+    const hangar = { id: "generated", shipId: ship, active: true, activeConfig: 1, fit, lastPos: null, lastMap: `${fac === "mmo" ? "1" : fac === "eic" ? "2" : "3"}-1` };
+    const pet = createPet("niveau1", { faction: fac, pseudo: `${name}-PET` });
+    pet.level = 20; pet.fuel = PET_FUEL_MAX; pet.fuelMax = PET_FUEL_MAX; pet.active = true;
+    pet.design = petDesign;
+    const petFit = pet.fits[1];
+    petFit.lasers = petFit.lasers.map(() => "laser_lfp01");
+    pet.fit = petFit;
+    const id = uuid(), now = Date.now(), pass = String(password || `Admin-${randomBytes(6).toString("hex")}`);
+    const data = { id, pseudo: name, email: `${id}@generated.local`, faction: fac, password: await hashPassword(pass), createdAt: now, updatedAt: now, revision: 1, schemaVersion: 4, credits: 999999999999, _starterCreditsGiven: true,
+      ship, hangars: [hangar], drones: { items: droneItems, activeFormation: "standard" }, inventory: { ships: [ship], designs: [ship], counts: { laser_lf6: slots.lasers, shield_b03: slots.gens, extra_engine: slots.extras, drone_design_admin: 8 }, droneDesigns: ["admin"], petDesigns: [petDesign], formations: ["standard"] }, pet, ammo: { x1: 999999999 }, rockets: { r310: 999999 }, stats: { honor: 0, exp: 0, rankPoints: 0, lifetimeKills: 0 } };
+    db.prepare("INSERT INTO users (id,pseudo,pseudo_norm,email,faction,password_hash,data,revision,created_at,updated_at,email_verified_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)")
+      .run(id, name, norm(name), data.email, fac, data.password, accountDataJson(data, id), 1, now, now, now);
+    return { ok: true, id, pseudo: name, faction: fac, ship, shipDesign: ship, petDesign, password: pass };
+  } catch (error) { return { ok: false, error: error?.message || "Erreur serveur." }; }
 }
 
 // Admin : donne un design de drone à un compte (panneau
