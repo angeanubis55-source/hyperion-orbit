@@ -29181,28 +29181,37 @@ const CANDY_BOX_SPRITE = {
   glow: false,
 };
 
-// Saison d'hiver (02/11 00h01 -> 31/01 23h59, Paris) : les Cargo Box
-// prennent le visuel d'hiver officiel (box0, cargo bleue glacée) ; seul le
-// visuel change. 26 frames, boucle ~0.9 s comme la cargo classique.
-const WINTER_CARGO_BOX_SPRITE = {
-  path: "ASSETS/COLLECTABLES/CARGO_BOX_WINTER/",
-  frames: 26,
+// Cargo Box : visuel classique toute l'année hors Halloween (pas de visuel
+// d'hiver ; anciens jeux CARGO_BOX_WINTER/ et CARGO_BOX_GLACE/ inutilisés).
+
+// Saison d'hiver : les Bonus Box prennent le visuel givré (icyBox, cube
+// de glace) ; seul le visuel change (loot, spawn, respawn intacts).
+// 25 frames 107x77 (décodées de la vidéo VP6A du SWF), même cadence que
+// la Bonus Box classique. Agrandi x1.15 : encombrement total (cube + halo
+// ~98x69) aligné sur la classique (~93x67) ; x1 paraissait trop petit,
+// x1.3 trop gros.
+const WINTER_BONUS_BOX_SPRITE = {
+  path: "ASSETS/COLLECTABLES/BONUS_BOX_WINTER/",
+  frames: 25,
   firstNumber: 1,
   ext: ".png",
-  fps: 28,
-  w: 128,
-  h: 128,
-  scale: 1,
+  fps: 20,
+  w: 107,
+  h: 77,
+  scale: 1.15,
   randomStart: true,
   glow: false,
+  // Lissage haute qualité (frames issues d'une vidéo, pas du pixel-art).
+  smooth: "high",
 };
 
 function collectableSpriteFor(type) {
-  if (String(type || "") === "Cargo_Box") {
-    try {
-      if (isWinterEventActive()) return WINTER_CARGO_BOX_SPRITE;
-      if (isHalloweenEventActive()) return CANDY_BOX_SPRITE;
-    } catch {}
+  const t = String(type || "");
+  if (t === "Cargo_Box") {
+    try { if (isHalloweenEventActive()) return CANDY_BOX_SPRITE; } catch {}
+  }
+  if (t === "Bonus_Box") {
+    try { if (isWinterEventActive()) return WINTER_BONUS_BOX_SPRITE; } catch {}
   }
   return COLLECTABLE_DEFS[type]?.sprite || {};
 }
@@ -30340,7 +30349,8 @@ function fxDensityCap(base) {
 
 // Filtre saisonnier (seule la couleur change, frames teintées une fois,
 // en cache) : orange léger sur les Bonus Box pendant Halloween. L'hiver,
-// Bonus Box classiques sans filtre, Cargo Box en visuel box0.
+// pas de filtre : Bonus Box en visuel givré, Cargo Box classiques
+// (voir collectableSpriteFor).
 const HALLOWEEN_BOX_TINT = "rgba(255,130,0,0.38)";
 function seasonalBoxTint(type) {
   if (String(type || "") !== "Bonus_Box") return null;
@@ -30375,6 +30385,10 @@ function drawCollectables(ox, oy) {
     if (gfxQualityOff()) continue;
     const cfg = COLLECTABLE_DEFS[c.type] || {};
     const sp = collectableSpriteFor(c.type);
+    // Visuel saisonnier qui bascule en pleine session (début / fin de
+    // l'hiver) : le nouveau jeu de frames n'est pas encore chargé, on le
+    // charge ici (idempotent) au lieu d'afficher le rond de secours.
+    if (!sp._promise && sp.path) { try { ensureCollectableLoaded(c.type); } catch {} }
 
     // Box masquée par les options : on la saute, sauf si visée
     // (collecte en cours, joueur ou PET : retour visuel conservé).
@@ -30435,8 +30449,11 @@ function drawCollectables(ox, oy) {
       const w = Number(sp.w || img.naturalWidth || img.width || 64) * scale;
       const h = Number(sp.h || img.naturalHeight || img.height || 64) * scale;
 
-      ctx.imageSmoothingEnabled = false;
-  drawCenteredImage(ctx, drawImg || img, w, h);
+      // Sprite marqué smooth "high" : lissage haute qualité ; sinon pixel-net.
+      const smoothHigh = sp.smooth === "high";
+      ctx.imageSmoothingEnabled = smoothHigh;
+      if (smoothHigh) ctx.imageSmoothingQuality = "high";
+  drawCenteredImage(ctx, drawImg || img, w, h, smoothHigh);
 
       if (boxAnimsOn && sp.glow !== false) {
         ctx.globalAlpha = 0.22;
