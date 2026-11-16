@@ -195,7 +195,7 @@ import { loadNpcLocationIndex, loadPortalIndex } from "../../QUEST/QUEST_LOCATIO
 import {
   drawMoveTargetMarker,
   drawNpcStatus,
-  drawPlayerStatus,
+  drawPlayerStatus as drawPlayerStatusRaw,
   drawTargetLock,
   drawToastMessage,
 } from "../../UI/UI_CANVAS_HUD.js";
@@ -1039,9 +1039,13 @@ function lockSessionHangar() {
 const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d", { alpha: false });
 let phoneControls = null;
+// DPR appliqué au contexte (resize) : base du repère écran, réutilisée
+// par draw() pour poser / retirer le zoom monde via setTransform.
+let canvasDpr = 1;
 
 function resize() {
   const dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+  canvasDpr = dpr;
   canvas.width = Math.floor(innerWidth * dpr);
   canvas.height = Math.floor(innerHeight * dpr);
   canvas.style.width = innerWidth + "px";
@@ -10300,6 +10304,20 @@ const DEFAULT_SFX_VOLUMES = Object.freeze({
   escortX1: 5, escortX2: 5, escortX3: 5, escortX4: 5, escortX6: 5, escortSab: 5,
 });
 
+// Zoom du jeu (Paramètres > Disposition, boutons - / +) : dézoome uniquement le
+// monde (vaisseaux, NPC, box, tirs...), jamais le HUD / l'interface.
+// Paliers de 10 %, de 60 % à 100 % (au-delà de 60 %, les bords d'écran
+// dépasseraient la portée de détection des NPC sur grand écran).
+const GAME_ZOOM_MIN = 0.6;
+const GAME_ZOOM_MAX = 1;
+const GAME_ZOOM_STEP = 0.1;
+function normalizeGameZoom(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return 1;
+  const stepped = Math.round(n / GAME_ZOOM_STEP) * GAME_ZOOM_STEP;
+  return Math.round(clamp(stepped, GAME_ZOOM_MIN, GAME_ZOOM_MAX) * 100) / 100;
+}
+
 const DEFAULT_GAME_SETTINGS = {
   sound: true,
   soundVolume: 5,
@@ -10335,6 +10353,8 @@ const DEFAULT_GAME_SETTINGS = {
   moveMarker: true,
   // Attaque au double-clic sur un NPC/joueur. Désactivable dans Général.
   doubleClickAttack: true,
+  // Zoom du monde (0.6 .. 1), réglé par les boutons - / + de la carte Disposition.
+  gameZoom: 1,
   phoneMode: false,
   // FPS maximum : 0 = auto (vsync, calé sur les Hz de l'écran).
   fpsLimit: 0,
@@ -10505,6 +10525,7 @@ function loadGameSettings() {
     };
     settings.soundVolume = clamp(Math.round(Number(settings.soundVolume) || 0), 0, 100);
     settings.phoneMode = settings.phoneMode === true;
+    settings.gameZoom = normalizeGameZoom(settings.gameZoom);
     // Animations des portails : toujours actives (plus d'option en paramètres).
     settings.portalAnims = true;
     settings.fpsLimit = normalizeFpsLimit(settings.fpsLimit);
@@ -10572,6 +10593,19 @@ setBackgroundRefresh(GAME_SETTINGS.backgroundRefresh);
 function saveGameSettings() {
   try {
     localStorage.setItem(GAME_SETTINGS_KEY, JSON.stringify(GAME_SETTINGS));
+  } catch {}
+}
+
+// Valeur affichée au centre (non cliquable) + bornes des boutons - / +.
+function renderGameZoomControl() {
+  try {
+    const z = normalizeGameZoom(GAME_SETTINGS.gameZoom);
+    const value = document.getElementById("optZoomValue");
+    if (value) value.textContent = `${Math.round(z * 100)} %`;
+    const out = document.getElementById("optZoomOut");
+    if (out) out.disabled = z <= GAME_ZOOM_MIN;
+    const inn = document.getElementById("optZoomIn");
+    if (inn) inn.disabled = z >= GAME_ZOOM_MAX;
   } catch {}
 }
 
@@ -11102,6 +11136,7 @@ function renderSettingsWindow() {
   if (moveMarker) moveMarker.checked = !!GAME_SETTINGS.moveMarker;
   const doubleClickAttack = document.getElementById("optDoubleClickAttack");
   if (doubleClickAttack) doubleClickAttack.checked = GAME_SETTINGS.doubleClickAttack !== false;
+  renderGameZoomControl();
   const phoneMode = document.getElementById("optPhoneMode");
   if (phoneMode) phoneMode.checked = GAME_SETTINGS.phoneMode === true;
   try { document.body.classList.toggle("phoneModeOn", GAME_SETTINGS.phoneMode === true); } catch {}
@@ -11238,6 +11273,18 @@ function wireSettingsWindow() {
   doubleClickAttack?.addEventListener("change", () => {
     setGameSetting("doubleClickAttack", doubleClickAttack.checked);
   });
+  // Zoom du jeu : - / + par paliers de 10 % (60 %..100 %), monde seul.
+  const stepGameZoom = (dir) => {
+    const cur = normalizeGameZoom(GAME_SETTINGS.gameZoom);
+    const next = normalizeGameZoom(cur + dir * GAME_ZOOM_STEP);
+    if (next === cur) return;
+    GAME_SETTINGS.gameZoom = next;
+    saveGameSettings();
+    syncWorldView();
+    renderGameZoomControl();
+  };
+  document.getElementById("optZoomOut")?.addEventListener("click", () => stepGameZoom(-1));
+  document.getElementById("optZoomIn")?.addEventListener("click", () => stepGameZoom(1));
   const phoneMode = document.getElementById("optPhoneMode");
   phoneMode?.addEventListener("change", () => setGameSetting("phoneMode", phoneMode.checked));
 
@@ -15942,7 +15989,7 @@ function drawBotOverlays(ox, oy) {
   if (!started || player.dead) return;
   const px = player.x + ox;
   const py = player.y + oy;
-  const inView = (x, y, m) => x > -m && x < innerWidth + m && y > -m && y < innerHeight + m;
+  const inView = (x, y, m) => x > -m && x < viewW + m && y > -m && y < viewH + m;
   ctx.save();
   ctx.lineWidth = 1.5;
   // 1. Traits vaisseau -> NPC sélectionnés (cochés, vivants, 60 proches).
@@ -20477,16 +20524,59 @@ function tickCamShake(dt) {
   if (camShake.t >= camShake.dur) camShake = null;
 }
 
+// Vue monde zoomée : le monde est dessiné dans un repère de taille
+// viewW x viewH (écran / zoom), mis à l'échelle par ctx.scale(zoom).
+// Le culling monde compare donc à viewW / viewH, et les conversions
+// écran <-> monde divisent / multiplient par le zoom. Le HUD reste en
+// coordonnées écran (innerWidth / innerHeight).
+let viewZoom = 1;
+let viewW = innerWidth;
+let viewH = innerHeight;
+function syncWorldView() {
+  let z = 1;
+  try { z = normalizeGameZoom(GAME_SETTINGS.gameZoom); } catch {}
+  viewZoom = z;
+  viewW = innerWidth / z;
+  viewH = innerHeight / z;
+}
+
+// Plaque joueur (barres de vie, drones, formation, grade, anneaux GG,
+// nom, titre, firme) : toujours en taille écran malgré le zoom monde,
+// pour nous comme pour les autres. Mise à l'échelle 1/zoom autour du
+// vaisseau ; l'écart plaque <-> vaisseau suit le zoom (r ajusté) pour
+// rester collé à la coque réduite.
+const PLAYER_PLATE_TOP_GAP = 72; // barY = y - r - 72 (UI_CANVAS_HUD)
+function drawPlayerStatus(context, status, name, x, y, ...rest) {
+  const z = viewZoom;
+  if (!(z > 0) || z === 1 || context !== ctx || !status) {
+    return drawPlayerStatusRaw(context, status, name, x, y, ...rest);
+  }
+  const r = Number(status.r) || 0;
+  const scaled = { ...status, r: (r + PLAYER_PLATE_TOP_GAP) * z - PLAYER_PLATE_TOP_GAP };
+  context.save();
+  try {
+    context.translate(x, y);
+    context.scale(1 / z, 1 / z);
+    return drawPlayerStatusRaw(context, scaled, name, 0, 0, ...rest);
+  } finally {
+    context.restore();
+  }
+}
+
 function screenToWorld(sx, sy) {
-  return screenToWorldPoint(sx, sy, camera, innerWidth, innerHeight);
+  syncWorldView();
+  return screenToWorldPoint(sx / viewZoom, sy / viewZoom, camera, viewW, viewH);
 }
 
 function worldToScreen(x, y) {
-  return worldToScreenPoint(x, y, camera, innerWidth, innerHeight);
+  syncWorldView();
+  const p = worldToScreenPoint(x, y, camera, viewW, viewH);
+  return { x: p.x * viewZoom, y: p.y * viewZoom };
 }
 
 function isOnScreenWorld(x, y, margin = 120) {
-  return isWorldPointVisible(x, y, camera, innerWidth, innerHeight, margin);
+  syncWorldView();
+  return isWorldPointVisible(x, y, camera, viewW, viewH, margin);
 }
 
 function enemySpriteContainsPoint(e, dx, dy) {
@@ -22662,7 +22752,7 @@ function drawExplosions(ox, oy) {
     const w = (EXPLOSION_PACK.w || (img.naturalWidth || img.width || 128)) * ex.scale;
     const h = (EXPLOSION_PACK.h || (img.naturalHeight || img.height || 128)) * ex.scale;
 
-    if (x + w / 2 < 0 || y + h / 2 < 0 || x - w / 2 > innerWidth || y - h / 2 > innerHeight) continue;
+    if (x + w / 2 < 0 || y + h / 2 < 0 || x - w / 2 > viewW || y - h / 2 > viewH) continue;
 
     ctx.save();
     ctx.imageSmoothingEnabled = false;
@@ -22782,7 +22872,7 @@ function drawShipDamages(ox, oy) {
     const w = (SHIP_DAMAGE_PACK.w || (img.naturalWidth || img.width || 128)) * sd.scale;
     const h = (SHIP_DAMAGE_PACK.h || (img.naturalHeight || img.height || 128)) * sd.scale;
 
-    if (x + w / 2 < 0 || y + h / 2 < 0 || x - w / 2 > innerWidth || y - h / 2 > innerHeight) continue;
+    if (x + w / 2 < 0 || y + h / 2 < 0 || x - w / 2 > viewW || y - h / 2 > viewH) continue;
 
     ctx.save();
     ctx.imageSmoothingEnabled = false;
@@ -22903,7 +22993,7 @@ function drawLaserDamages(ox, oy) {
 
     const x = ld.x + ox;
     const y = ld.y + oy;
-    if (x + w / 2 < 0 || y + h / 2 < 0 || x - w / 2 > innerWidth || y - h / 2 > innerHeight) continue;
+    if (x + w / 2 < 0 || y + h / 2 < 0 || x - w / 2 > viewW || y - h / 2 > viewH) continue;
 
     ctx.drawImage(img, x - w / 2, y - h / 2, w, h);
   }
@@ -25475,7 +25565,7 @@ function drawHoloClones(ox, oy) {
   for (const c of escortShips) {
     if (!c?.holo || (c.hp || 0) <= 0) continue;
     const x = Number(c.x || 0) + ox, y = Number(c.y || 0) + oy;
-    if (x < -220 || y < -220 || x > innerWidth + 220 || y > innerHeight + 220) continue;
+    if (x < -220 || y < -220 || x > viewW + 220 || y > viewH + 220) continue;
     // Coque identique (frame selon son cap).
     const idx = angleToFrameIndex(Number(c.angle || 0) + (pack?.angleOffset || 0), frames);
     const img = playerImgs[idx] || playerImgs[0];
@@ -27355,7 +27445,7 @@ function drawJamxHalos(ox, oy) {
     const r = Number(h.r || 0);
     if (r <= 0) continue;
     const x = Number(h.x || 0) + ox, y = Number(h.y || 0) + oy;
-    if (x < -r || y < -r || x > innerWidth + r || y > innerHeight + r) continue;
+    if (x < -r || y < -r || x > viewW + r || y > viewH + r) continue;
     drawJamxHalo(x, y, r, Number(h.max || 0));
   }
 }
@@ -27558,7 +27648,7 @@ function drawPetBuoy(ox, oy) {
     }
     for (const s of spots) {
       if (s.x + ox < -PET_BUOY_RADIUS || s.y + oy < -PET_BUOY_RADIUS
-        || s.x + ox > innerWidth + PET_BUOY_RADIUS || s.y + oy > innerHeight + PET_BUOY_RADIUS) continue;
+        || s.x + ox > viewW + PET_BUOY_RADIUS || s.y + oy > viewH + PET_BUOY_RADIUS) continue;
       try {
         spawnHaloPulse(s.x, s.y, PET_BUOY_RADIUS, 1,
           petBuoy.key === "bc" ? "255,70,80" : "55,255,125",
@@ -27576,7 +27666,7 @@ function drawPet(ox, oy) {
   if (!petState.ready || player.dead || !started) return;
   const x = petState.x + ox;
   const y = petState.y + oy;
-  if (x < -160 || y < -160 || x > innerWidth + 160 || y > innerHeight + 160) return;
+  if (x < -160 || y < -160 || x > viewW + 160 || y > viewH + 160) return;
   const level = getPetLevel(pet.exp);
   // Sprite directionnel d'après sa propre orientation. Comme les drones,
   // les sprites P.E.T sont encodés dans le sens opposé : demi-tour (+16).
@@ -27668,7 +27758,7 @@ function drawTbrClones(ox, oy, remote = null) {
     if (!c || (!remote && !(Number(c.hp) > 0))) continue;
     const x = Number(c.rx ?? c.x) + ox;
     const y = Number(c.ry ?? c.y) + oy;
-    if (x < -160 || y < -160 || x > innerWidth + 160 || y > innerHeight + 160) continue;
+    if (x < -160 || y < -160 || x > viewW + 160 || y > viewH + 160) continue;
     const frame = ((angleToFrameIndex(Number(c.rangle ?? c.angle) || 0, 32) + 16) % 32) + 1;
     const designId = petVisualDesign(wantedDesign, frame);
     const imagePath = petSpriteSrc(level, designId, frame);
@@ -27899,7 +27989,7 @@ function tickEngineTrails(dt) {
 }
 
 function drawEngineTrails(ox, oy) {
-  drawEngineTrailParticles(ctx, engineTrails, ox, oy, innerWidth, innerHeight);
+  drawEngineTrailParticles(ctx, engineTrails, ox, oy, viewW, viewH);
 }
 
 function addCappedProjectile(collection, options, limit) {
@@ -30379,7 +30469,7 @@ function tintedBox(img, color) {
 }
 
 function drawCollectables(ox, oy) {
-  const visibleCollectables = spatialCollectablesInRect(-ox - 180, -oy - 180, -ox + innerWidth + 180, -oy + innerHeight + 180);
+  const visibleCollectables = spatialCollectablesInRect(-ox - 180, -oy - 180, -ox + viewW + 180, -oy + viewH + 180);
   for (const c of visibleCollectables) {
     // Qualité Désactivé : aucune box, même visée.
     if (gfxQualityOff()) continue;
@@ -30403,7 +30493,7 @@ function drawCollectables(ox, oy) {
     const y = c.y + oy;
 
     const maxSize = Math.max(sp.w || 64, sp.h || 64) * (sp.scale || 1);
-    if (x < -maxSize || y < -maxSize || x > innerWidth + maxSize || y > innerHeight + maxSize) {
+    if (x < -maxSize || y < -maxSize || x > viewW + maxSize || y > viewH + maxSize) {
       continue;
     }
 
@@ -30545,7 +30635,7 @@ function drawPetLocator(ox, oy) {
   const foe = enemiesById.get(petLocator.enemyId);
   if (!foe || !(foe.hp > 0)) return;
   const sx = foe.x + ox, sy = foe.y + oy;
-  if (sx < -260 || sy < -260 || sx > innerWidth + 260 || sy > innerHeight + 260) return;
+  if (sx < -260 || sy < -260 || sx > viewW + 260 || sy > viewH + 260) return;
   const t = performance.now() / 1000;
   const pulse = 0.75 + Math.sin(t * 5) * 0.2;
   const cfg = NPC_TYPES[foe.type];
@@ -33208,14 +33298,14 @@ function drawLowRaidZone(ox, oy) {
     ctx.restore();
     return;
   }
-  if (sx > -z.r && sy > -z.r && sx < innerWidth + z.r && sy < innerHeight + z.r) {
+  if (sx > -z.r && sy > -z.r && sx < viewW + z.r && sy < viewH + z.r) {
     ctx.strokeStyle = st && st.phase === "countdown" ? "rgba(255,210,110,.9)" : "rgba(124,240,255,.55)";
     ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.arc(sx, sy, z.r, 0, TAU);
     ctx.stroke();
   }
-  if (sx < -100 || sy < -60 || sx > innerWidth + 100 || sy > innerHeight + 60) {
+  if (sx < -100 || sy < -60 || sx > viewW + 100 || sy > viewH + 60) {
     ctx.restore();
     return;
   }
@@ -37625,8 +37715,8 @@ function drawMinimap() {
     moveTarget,
     ping: miniPing,
     camera,
-    viewportWidth: innerWidth,
-    viewportHeight: innerHeight,
+    viewportWidth: viewW,
+    viewportHeight: viewH,
     lockedNpc: Target.get(),
     // Boss Halloween : icône image (petit + blanc, frames 20 Hz), toujours
     // visible même hors portée radar — jamais le point rouge.
@@ -39496,7 +39586,7 @@ function drawNetplayAbilityZones(ox, oy) {
       const radius = nebula ? NEBULA_RADIUS : pod ? (code === 25 ? HAMMER_PLUS_POD_RADIUS : REPAIR_POD_RADIUS)
         : protection ? PROTECTION_RADIUS : RIPPER_RADIUS;
       active.add(code);
-      if (x + ox < -radius || y + oy < -radius || x + ox > innerWidth + radius || y + oy > innerHeight + radius) continue;
+      if (x + ox < -radius || y + oy < -radius || x + ox > viewW + radius || y + oy > viewH + radius) continue;
       if (pod) drawRepairPodAt(x + ox, y + oy);
       else if (nebula) drawNebulaAt(x + ox, y + oy, remaining);
       if (!nebula) {
@@ -39607,7 +39697,7 @@ function drawNetplayRemotes(ox, oy) {
       swayBob = Math.sin(performance.now() / 1000 * 4 + (String(r.id).charCodeAt(0) || 0)) * 2 * swayAmt;
     } catch {}
     const x = Number(r.rx ?? r.x) + ox, y = Number(r.ry ?? r.y) + oy + swayBob;
-    if (x < -260 || y < -260 || x > innerWidth + 260 || y > innerHeight + 260) continue;
+    if (x < -260 || y < -260 || x > viewW + 260 || y > viewH + 260) continue;
     // CPU CL04K-XL distant : vaisseau invisible (ni coque, ni réacteurs, ni
     // drones, ni plaque). Le point minimap reste (pas de filtre de ce côté)
     // et le proxy reste cliquable : un clic réussi affiche le LOCK.
@@ -39906,7 +39996,7 @@ function drawNetplayRemotes(ox, oy) {
       if (r.peta === 1) {
         const prx = Number(r.petrx ?? r.petx) + ox, pry = Number(r.petry ?? r.pety) + oy;
         // Meme marge que le vaisseau (260) : pas de clipping au bord.
-        if (prx > -260 && pry > -260 && prx < innerWidth + 260 && pry < innerHeight + 260) {
+        if (prx > -260 && pry > -260 && prx < viewW + 260 && pry < viewH + 260) {
           // Le proxy contient les pools autoritaires du serveur. Comme pour
           // notre REX, sa coque et son bouclier ne s'affichent que lorsqu'il
           // est verrouille.
@@ -42672,8 +42762,8 @@ function drawLaserBeam(L, ox, oy) {
   const endX = x + Math.cos(L.ang) * (start + visualLen);
   const endY = y + Math.sin(L.ang) * (start + visualLen);
   const margin = Math.max(40, L.width * 2);
-  if (Math.max(x, endX) < -margin || Math.min(x, endX) > innerWidth + margin ||
-      Math.max(y, endY) < -margin || Math.min(y, endY) > innerHeight + margin) return;
+  if (Math.max(x, endX) < -margin || Math.min(x, endX) > viewW + margin ||
+      Math.max(y, endY) < -margin || Math.min(y, endY) > viewH + margin) return;
 
   if (!ok) {
     ctx.save();
@@ -46851,8 +46941,8 @@ function drawZoneWalls(ox, oy) {
   drawWallLayer(ctx, zoneWalls, null, {
     offsetX: ox,
     offsetY: oy,
-    viewportWidth: innerWidth,
-    viewportHeight: innerHeight,
+    viewportWidth: viewW,
+    viewportHeight: viewH,
   });
 }
 
@@ -47121,7 +47211,7 @@ function drawMinimalMinimap() {
 // particule, animation de sprite ou gradient : uniquement quelques primitives
 // Canvas. La simulation et le reseau restent strictement inchanges.
 function drawBotMinimalScene(ox, oy) {
-  const visible = (x, y, margin = 40) => x >= -margin && y >= -margin && x <= innerWidth + margin && y <= innerHeight + margin;
+  const visible = (x, y, margin = 40) => x >= -margin && y >= -margin && x <= viewW + margin && y <= viewH + margin;
   const target = Target.get();
 
   ctx.save();
@@ -47159,7 +47249,7 @@ function drawBotMinimalScene(ox, oy) {
   } catch {}
 
   // Collectables : points fixes. La cible de collecte conserve un anneau.
-  for (const item of spatialCollectablesInRect(-ox - 20, -oy - 20, -ox + innerWidth + 20, -oy + innerHeight + 20)) {
+  for (const item of spatialCollectablesInRect(-ox - 20, -oy - 20, -ox + viewW + 20, -oy + viewH + 20)) {
     if (!item) continue;
     const x = item.x + ox, y = item.y + oy;
     if (!visible(x, y, 10)) continue;
@@ -47215,7 +47305,7 @@ function drawBotMinimalScene(ox, oy) {
   }
 
   // NPC : fleche orientee. La cible verrouillee est jaune et garde ses barres.
-  for (const enemy of spatialNpcsInRect(-ox - 50, -oy - 50, -ox + innerWidth + 50, -oy + innerHeight + 50)) {
+  for (const enemy of spatialNpcsInRect(-ox - 50, -oy - 50, -ox + viewW + 50, -oy + viewH + 50)) {
     if (!enemy || Number(enemy.hp) <= 0) continue;
     if (!shouldDetectNpc(player, enemy, NPC_SENSOR_RANGES.visibility, target)) continue;
     const x = enemy.x + ox, y = enemy.y + oy;
@@ -47310,14 +47400,30 @@ function drawBotMinimalScene(ox, oy) {
   drawRadiationWarning();
 }
 
+// Repère écran (HUD) / repère monde zoomé. setTransform plutôt que
+// save/restore : chaque frame repart d'un repère propre même si une
+// exception a interrompu le dessin précédent.
+function setScreenTransform() {
+  ctx.setTransform(canvasDpr, 0, 0, canvasDpr, 0, 0);
+}
+function setWorldTransform() {
+  const s = canvasDpr * viewZoom;
+  ctx.setTransform(s, 0, 0, s, 0, 0);
+}
+
 function draw() {
+  setScreenTransform();
   ctx.fillStyle = "#050814";
   ctx.fillRect(0, 0, innerWidth, innerHeight);
   // Option textures : OFF = vide spatial uni, murs + fond masqués.
+  // Fond en repère écran : il couvre toujours l'écran, zoom ou pas.
   if (GAME_SETTINGS.textures) drawMapBackground();
 
-  let ox = innerWidth / 2 - camera.x;
-  let oy = innerHeight / 2 - camera.y;
+  // Zoom monde : tout ce qui suit (jusqu'à setScreenTransform) est dessiné
+  // dans un repère viewW x viewH mis à l'échelle ; le HUD reste intact.
+  syncWorldView();
+  let ox = viewW / 2 - camera.x;
+  let oy = viewH / 2 - camera.y;
 
   if (camShake) {
     const p = camShake.t / camShake.dur;
@@ -47329,12 +47435,16 @@ function draw() {
   }
 
   if (botMinimalRenderActive()) {
+    setWorldTransform();
     drawBotMinimalScene(ox, oy);
     drawPhoneAim(ox, oy);
+    setScreenTransform();
     return;
   }
 
+  // Étoiles de vitesse : effet écran, hors zoom.
   drawSpeedStars();
+  setWorldTransform();
   drawZoneWalls(ox, oy);
   drawWinterConvoy(ox, oy);
 
@@ -47399,7 +47509,7 @@ function draw() {
     const x = pulse.x + ox;
     const y = pulse.y + oy;
     const k = clamp(pulse.t / pulse.life, 0, 1);
-    if (x < -pulse.radius || y < -pulse.radius || x > innerWidth + pulse.radius || y > innerHeight + pulse.radius) continue;
+    if (x < -pulse.radius || y < -pulse.radius || x > viewW + pulse.radius || y > viewH + pulse.radius) continue;
     drawHaloPulse(x, y, pulse.radius, k, "55,255,125", "80,255,145", 1, 6, false);
   }
   // Pulsations génériques (pod Aegis, bouées pet) : mêmes règles d'affichage.
@@ -47407,15 +47517,15 @@ function draw() {
     const x = pulse.x + ox;
     const y = pulse.y + oy;
     const k = clamp(pulse.t / pulse.life, 0, 1);
-    if (x < -pulse.radius || y < -pulse.radius || x > innerWidth + pulse.radius || y > innerHeight + pulse.radius) continue;
+    if (x < -pulse.radius || y < -pulse.radius || x > viewW + pulse.radius || y > viewH + pulse.radius) continue;
     drawHaloPulse(x, y, pulse.radius, k, pulse.fill, pulse.edge, pulse.alpha ?? 1, pulse.maxWidth ?? 6, pulse.glow);
   }
-  for (const e of spatialNpcsInRect(-ox - 240, -oy - 240, -ox + innerWidth + 240, -oy + innerHeight + 240)) {
+  for (const e of spatialNpcsInRect(-ox - 240, -oy - 240, -ox + viewW + 240, -oy + viewH + 240)) {
     if (e.hp <= 0) continue;
     if (!shouldDetectNpc(player, e, NPC_SENSOR_RANGES.visibility, selectedEnemyForBars)) continue;
 
     const x = e.x + ox, y = e.y + oy;
-    if (x < -220 || y < -220 || x > innerWidth + 220 || y > innerHeight + 220) continue;
+    if (x < -220 || y < -220 || x > viewW + 220 || y > viewH + 220) continue;
 
     ctx.save();
     ctx.translate(x, y);
@@ -47725,7 +47835,7 @@ function draw() {
     const rdx = x1 - x0, rdy = y1 - y0;
     const rlen = Math.hypot(rdx, rdy) || 1;
     const rAng = Math.atan2(rdy, rdx) + Math.PI;
-    if (x0 > -rlen && y0 > -rlen && x0 < innerWidth + rlen && y0 < innerHeight + rlen) {
+    if (x0 > -rlen && y0 > -rlen && x0 < viewW + rlen && y0 < viewH + rlen) {
       for (const folder of rayFolders) {
         const rSrc = `COMBAT/RAYGUN/${folder}/${rayFrame}.png`;
         const rImg = getCachedImage(rSrc);
@@ -47752,7 +47862,7 @@ function draw() {
     // restent à plein régime. Tirs de farm JPC : toujours dessinés à l'écran.
     if (b && b._netVisual === true && b._jpcVisual !== true && isBeyondSensorRadius(b.x, b.y)) continue;
     const x = b.x + ox, y = b.y + oy;
-    if (x < -90 || y < -90 || x > innerWidth + 90 || y > innerHeight + 90) continue;
+    if (x < -90 || y < -90 || x > viewW + 90 || y > viewH + 90) continue;
     // Filet fin derrière les roquettes : gris pour le lanceur, arc-en-ciel
     // pour les roquettes normales. Coupé par l'option roquettes.
     let rocketTrailOn = true;
@@ -47783,7 +47893,7 @@ function draw() {
     // Fights JPC : toujours dessinés à l'écran (le farm a lieu loin du joueur).
     if (b._jpcVisual !== true && isBeyondSensorRadius(b.x, b.y)) continue;
     const x = b.x + ox, y = b.y + oy;
-    if (x < -120 || y < -120 || x > innerWidth + 120 || y > innerHeight + 120) continue;
+    if (x < -120 || y < -120 || x > viewW + 120 || y > viewH + 120) continue;
     // Filet des roquettes JPC : gris pour le lanceur, arc-en-ciel sinon
     // (comme les roquettes joueur, même option roquettes).
     let jpcTrailOn = true;
@@ -47819,7 +47929,7 @@ function draw() {
     if (!s.smoke || !Number.isFinite(s.px)) continue;
     if (isBeyondSensorRadius(s.x, s.y)) continue;
     const x = s.x + ox, y = s.y + oy;
-    if (x < -40 || y < -40 || x > innerWidth + 40 || y > innerHeight + 40) continue;
+    if (x < -40 || y < -40 || x > viewW + 40 || y > viewH + 40) continue;
     const dx = s.x - s.px, dy = s.y - s.py;
     if (dx * dx + dy * dy > 60 * 60) continue;
     const age = clamp(s.t, 0, 1);
@@ -47835,7 +47945,7 @@ function draw() {
   ctx.restore();
 
   drawCombatFloatTexts(ctx, floatTexts, {
-    ox, oy, width: innerWidth, height: innerHeight,
+    ox, oy, width: viewW, height: viewH,
     simple: gfxQualityOff() || fxDensityMult() <= 0.35 || GAME_SETTINGS.npcExplosions === false,
     isBeyondSensorRadius,
   });
@@ -48367,8 +48477,11 @@ function draw() {
   ctx.restore();
   // GG d'hiver : nom, chrono et vie du convoi toujours au premier plan.
   drawWinterConvoyHud(ox, oy);
-  drawMinimap();
+  // Effet de saut (sur le vaisseau) : suit le zoom monde.
   drawStarJumpHud(px, py);
+  // Fin du monde zoomé : minimap, toasts, radiation en taille écran.
+  setScreenTransform();
+  drawMinimap();
   drawToast();
   drawRadiationWarning();
 }

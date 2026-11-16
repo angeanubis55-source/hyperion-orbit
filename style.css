@@ -27501,3 +27501,46 @@ display: flex;
 #fitCard .fitPetDesignList > button { border-color:transparent; background:transparent; margin-bottom:2px; }
 #fitCard .fitPetDesignList > button:hover { background:rgba(105,233,255,.10); }
 #fitCard .fitPetDesignList > button.active { border-color:rgba(255,213,106,.55); color:#ffd56a; }
+
+/* Zoom du jeu (Paramètres > Général > Disposition) : - [valeur] + */
+#settingsWindow .settingsZoomCtl {
+  display:grid;
+  grid-template-columns:30px 1fr 30px;
+  align-items:center;
+  gap:6px;
+  width:220px;
+  max-width:100%;
+  justify-self:end;
+}
+#settingsWindow .settingsZoomBtn {
+  height:26px;
+  margin:0;
+  padding:0;
+  border:1px solid rgba(124,240,255,.38);
+  border-radius:8px;
+  color:#effcff;
+  background:linear-gradient(135deg,rgba(0,135,177,.22),rgba(4,40,57,.4));
+  font:900 15px/1 ui-sans-serif,system-ui;
+  cursor:pointer;
+}
+#settingsWindow .settingsZoomBtn:hover:not(:disabled) {
+  border-color:rgba(124,240,255,.62);
+  background:rgba(0,140,185,.28);
+}
+#settingsWindow .settingsZoomBtn:disabled {
+  opacity:.35;
+  cursor:default;
+}
+#settingsWindow .settingsZoomValue {
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  height:26px;
+  border:1px solid rgba(124,240,255,.18);
+  border-radius:8px;
+  color:#effcff;
+  background:#051521;
+  font:800 11px/1 ui-sans-serif,system-ui;
+  user-select:none;
+  pointer-events:none;
+}
