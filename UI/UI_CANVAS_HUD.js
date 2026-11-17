@@ -26,11 +26,15 @@ export function drawToastMessage(context, toast, viewportWidth, viewportHeight) 
   context.restore();
 }
 
-export function drawMoveTargetMarker(context, target, offsetX, offsetY) {
+export function drawMoveTargetMarker(context, target, offsetX, offsetY, uiScale = 1) {
   if (!context || !target?.active) return;
-  const x = target.x + offsetX;
-  const y = target.y + offsetY;
+  const k = Number(uiScale) > 0 ? Number(uiScale) : 1;
+  const x = 0;
+  const y = 0;
   context.save();
+  // Taille écran (zoom) : dessiné autour du point visé.
+  context.translate(target.x + offsetX, target.y + offsetY);
+  if (k !== 1) context.scale(k, k);
   context.globalAlpha = 0.9;
   context.strokeStyle = "rgba(124,240,255,0.75)";
   context.lineWidth = 2;
@@ -47,14 +51,16 @@ export function drawMoveTargetMarker(context, target, offsetX, offsetY) {
   context.restore();
 }
 
-export function drawTargetLock(context, entity, image, sprite, offsetX, offsetY, time) {
+export function drawTargetLock(context, entity, image, sprite, offsetX, offsetY, time, uiScale = 1) {
   if (!context || !entity || entity.hp <= 0 || !image || !sprite) return;
+  const k = Number(uiScale) > 0 ? Number(uiScale) : 1;
   const x = entity.x + offsetX;
   const y = entity.y + offsetY + (sprite.yOff || 0);
+  const w = sprite.w * k, h = sprite.h * k;
   context.save();
   context.globalAlpha = 0.95;
   context.imageSmoothingEnabled = false;
-  context.drawImage(image, x - sprite.w / 2, y - sprite.h / 2, sprite.w, sprite.h);
+  context.drawImage(image, x - w / 2, y - h / 2, w, h);
   context.restore();
 }
 
@@ -242,14 +248,20 @@ export function drawPlayerStatus(context, player, playerName, x, y, rankImage = 
   context.restore();
 }
 
-export function drawNpcStatus(context, npc, label, showBars) {
+// uiScale (1 / zoom monde) : barres en taille écran, ancrées au-dessus du
+// NPC (le nom est déjà ramené en taille écran par le contexte principal).
+export function drawNpcStatus(context, npc, label, showBars, uiScale = 1) {
   if (!context || !npc || npc.hp <= 0) return;
+  const k = Number(uiScale) > 0 ? Number(uiScale) : 1;
   if (showBars) {
+    context.save();
+    context.translate(0, -npc.r);
+    if (k !== 1) context.scale(k, k);
     const hpPercent = clamp(npc.hp / npc.hpMax, 0, 1);
     const width = npc.r * 2.6;
     const height = 4;
     const x = -width / 2;
-    const y = -npc.r - 35 - height;
+    const y = -35 - height;
     if ((npc.shMax || 0) > 0) {
       const shieldPercent = clamp(npc.sh / npc.shMax, 0, 1);
       context.save();
@@ -273,6 +285,7 @@ export function drawNpcStatus(context, npc, label, showBars) {
     context.lineWidth = 1.5;
     context.strokeRect(x - 0.5, y - 0.5, width + 1, height + 1);
     context.restore();
+    context.restore();
   }
   context.save();
   context.globalAlpha = 0.98;
@@ -280,6 +293,6 @@ export function drawNpcStatus(context, npc, label, showBars) {
   context.textAlign = "center";
   context.textBaseline = "top";
   context.fillStyle = "rgba(255,59,78,0.95)";
-  context.fillText(label, 0, npc.r + 35);
+  context.fillText(label, 0, npc.r + 35 * k);
   context.restore();
 }

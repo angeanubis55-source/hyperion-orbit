@@ -1043,6 +1043,48 @@ let phoneControls = null;
 // par draw() pour poser / retirer le zoom monde via setTransform.
 let canvasDpr = 1;
 
+// Textes du monde en taille écran, quel que soit le zoom : pendant le
+// dessin monde, fillText / strokeText du contexte principal sont mis à
+// l'échelle 1/zoom autour de leur point d'ancrage (la position suit le
+// monde, la taille reste fixe). measureText renvoie les largeurs en unités
+// monde, pour que les textes en plusieurs morceaux (tag + nom) restent
+// alignés. 1 hors dessin monde (HUD, minimap, toasts).
+let worldTextScale = 1;
+{
+  const rawFill = ctx.fillText.bind(ctx);
+  const rawStroke = ctx.strokeText.bind(ctx);
+  const rawMeasure = ctx.measureText.bind(ctx);
+  const screenSized = (raw) => function (text, x, y, maxWidth) {
+    const k = worldTextScale;
+    const hasMax = maxWidth !== undefined;
+    if (k === 1) return hasMax ? raw(text, x, y, maxWidth) : raw(text, x, y);
+    ctx.save();
+    try {
+      ctx.translate(x, y);
+      ctx.scale(k, k);
+      return hasMax ? raw(text, 0, 0, maxWidth / k) : raw(text, 0, 0);
+    } finally {
+      ctx.restore();
+    }
+  };
+  ctx.fillText = screenSized(rawFill);
+  ctx.strokeText = screenSized(rawStroke);
+  ctx.measureText = function (text) {
+    const m = rawMeasure(text);
+    const k = worldTextScale;
+    if (k === 1) return m;
+    return {
+      width: m.width * k,
+      actualBoundingBoxLeft: m.actualBoundingBoxLeft * k,
+      actualBoundingBoxRight: m.actualBoundingBoxRight * k,
+      actualBoundingBoxAscent: m.actualBoundingBoxAscent * k,
+      actualBoundingBoxDescent: m.actualBoundingBoxDescent * k,
+      fontBoundingBoxAscent: m.fontBoundingBoxAscent * k,
+      fontBoundingBoxDescent: m.fontBoundingBoxDescent * k,
+    };
+  };
+}
+
 function resize() {
   const dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
   canvasDpr = dpr;
@@ -20282,9 +20324,25 @@ function setNotificationText(node, value, { goldTerms = [], whiteTerms = [], vio
 
 const MAX_VISIBLE_NOTIFICATIONS = 10;
 const NOTIFICATION_FLOW_STEP_MS = 600;
+// Défilement accéléré en rafale (kamikaze, kills en groupe) : tout est
+// affiché, mais plus la file est longue, plus les lignes glissent vite
+// pour laisser apparaître les dernières.
+const NOTIFICATION_FLOW_MIN_STEP_MS = 60;
+const NOTIFICATION_LEAVE_MS = 700;
+const NOTIFICATION_FAST_LEAVE_MS = 180;
 const pendingNotifications = [];
 let pendingNotificationGroup = null;
 let notificationGroupFrame = 0;
+
+function notificationBacklog() {
+  return pendingNotifications.length + (pendingNotificationGroup?.length || 0);
+}
+
+function notificationFlowStepMs() {
+  const backlog = notificationBacklog();
+  if (backlog <= 0) return NOTIFICATION_FLOW_STEP_MS;
+  return Math.max(NOTIFICATION_FLOW_MIN_STEP_MS, Math.round(NOTIFICATION_FLOW_STEP_MS / (1 + backlog / 3)));
+}
 
 function removeNotificationNode(node) {
   if (!node) return;
@@ -20292,6 +20350,18 @@ function removeNotificationNode(node) {
   clearTimeout(node._removeTimer);
   node.remove();
   pumpNotificationQueue();
+}
+
+// Sortie d'une ligne : animation courte si des lignes attendent derrière.
+function scheduleNotificationLeave(node, delayMs) {
+  clearTimeout(node._leaveTimer);
+  clearTimeout(node._removeTimer);
+  node._leaveTimer = setTimeout(() => {
+    const fast = notificationBacklog() > 0;
+    if (fast) node.classList.add("fastLeave");
+    node.classList.add("leaving");
+    node._removeTimer = setTimeout(() => removeNotificationNode(node), fast ? NOTIFICATION_FAST_LEAVE_MS : NOTIFICATION_LEAVE_MS);
+  }, Math.max(0, delayMs));
 }
 
 function mountNotification(spec, deferHeight = false) {
@@ -20302,53 +20372,53 @@ function mountNotification(spec, deferHeight = false) {
   ui.orbitNotifications.appendChild(node);
   if (!deferHeight) node.style.setProperty("--notice-height", `${node.scrollHeight}px`);
   const now = Date.now();
-  const baseVisibleMs = Math.max(spec.minVisibleMs, spec.durationMs);
-  node.dataset.baseVisibleMs = String(baseVisibleMs);
+  const step = notificationFlowStepMs();
   const previousNodes = [...ui.orbitNotifications.children].filter(item => item !== node && !item.classList.contains("leaving"));
   const previousLeaveAt = Number(previousNodes.at(-1)?.dataset.leaveAt) || 0;
   const leaveAt = spec.stagger
-    ? Math.max(now + NOTIFICATION_FLOW_STEP_MS, previousLeaveAt + NOTIFICATION_FLOW_STEP_MS)
-    : now + NOTIFICATION_FLOW_STEP_MS;
+    ? Math.max(now + step, previousLeaveAt + step)
+    : now + step;
   node.dataset.leaveAt = String(leaveAt);
-  node._leaveTimer = setTimeout(() => node.classList.add("leaving"), Math.max(0, leaveAt - now));
-  node._removeTimer = setTimeout(() => removeNotificationNode(node), Math.max(0, leaveAt - now) + 700);
+  scheduleNotificationLeave(node, leaveAt - now);
   return node;
 }
 
 function resetVisibleNotificationFlow() {
   if (!ui.orbitNotifications) return;
   const now = Date.now();
+  const step = notificationFlowStepMs();
   let previousLeaveAt = 0;
   for (const node of ui.orbitNotifications.children) {
     if (node.classList.contains("leaving")) continue;
-    const leaveAt = previousLeaveAt
-      ? previousLeaveAt + NOTIFICATION_FLOW_STEP_MS
-      : now + NOTIFICATION_FLOW_STEP_MS;
+    const leaveAt = previousLeaveAt ? previousLeaveAt + step : now + step;
     previousLeaveAt = leaveAt;
     node.dataset.leaveAt = String(leaveAt);
-    clearTimeout(node._leaveTimer);
-    clearTimeout(node._removeTimer);
-    node._leaveTimer = setTimeout(() => node.classList.add("leaving"), Math.max(0, leaveAt - now));
-    node._removeTimer = setTimeout(() => removeNotificationNode(node), Math.max(0, leaveAt - now) + 700);
+    scheduleNotificationLeave(node, leaveAt - now);
   }
 }
 
+function activeNotificationCount() {
+  let n = 0;
+  for (const node of ui.orbitNotifications?.children || []) if (!node.classList.contains("leaving")) n++;
+  return n;
+}
+
+// Monte les lignes en attente qui tiennent dans la zone (une seule passe
+// de layout), puis recale le rythme de sortie sur la file restante.
 function pumpNotificationQueue() {
-  if (!ui.orbitNotifications) return;
-  while (ui.orbitNotifications.children.length < MAX_VISIBLE_NOTIFICATIONS && pendingNotifications.length) {
-    mountNotification(pendingNotifications.shift());
-  }
+  if (!ui.orbitNotifications || !pendingNotifications.length) return;
+  const room = MAX_VISIBLE_NOTIFICATIONS - activeNotificationCount();
+  if (room <= 0) return;
+  const batch = pendingNotifications.splice(0, room);
+  const nodes = batch.map(spec => mountNotification(spec, true)).filter(Boolean);
+  const heights = nodes.map(node => node.scrollHeight);
+  nodes.forEach((node, index) => node.style.setProperty("--notice-height", `${heights[index]}px`));
+  resetVisibleNotificationFlow();
 }
 
 function makeRoomForLatestNotification() {
-  if (!ui.orbitNotifications || ui.orbitNotifications.children.length < MAX_VISIBLE_NOTIFICATIONS) return;
-  if (ui.orbitNotifications.querySelector(".leaving")) return;
-  const oldest = [...ui.orbitNotifications.children].find(node => !node.classList.contains("leaving"));
-  if (!oldest) return;
-  clearTimeout(oldest._leaveTimer);
-  clearTimeout(oldest._removeTimer);
-  oldest.classList.add("notificationEvicting", "leaving");
-  oldest._removeTimer = setTimeout(() => removeNotificationNode(oldest), 700);
+  // Plus d'éviction : la file accélère le défilement (resetVisibleNotificationFlow).
+  resetVisibleNotificationFlow();
 }
 
 function flushLatestNotificationGroup() {
@@ -20356,22 +20426,10 @@ function flushLatestNotificationGroup() {
   const group = pendingNotificationGroup;
   pendingNotificationGroup = null;
   if (!group?.length || !ui.orbitNotifications) return;
-  const activeNodes = [...ui.orbitNotifications.children].filter(node => !node.classList.contains("leaving"));
-  const overflow = Math.max(0, activeNodes.length + group.length - MAX_VISIBLE_NOTIFICATIONS);
-  if (overflow > 0) {
-    pendingNotifications.length = 0;
-    for (const node of activeNodes.slice(0, overflow)) {
-      clearTimeout(node._leaveTimer);
-      clearTimeout(node._removeTimer);
-      node.classList.add("leaving", "notificationSuperseded");
-      node._removeTimer = setTimeout(() => removeNotificationNode(node), 700);
-    }
-  }
-  const nodes = group.map(spec => mountNotification(spec, true));
-  // Insere tout le groupe, lit toutes les hauteurs, puis applique les styles.
-  // L'ancien aller-retour DOM/scrollHeight forcait un layout par ligne.
-  const heights = nodes.map(node => node.scrollHeight);
-  nodes.forEach((node, index) => node.style.setProperty("--notice-height", `${heights[index]}px`));
+  // Tout passe par la file : rien n'est jeté, les lignes visibles
+  // accélèrent pour faire place aux nouvelles.
+  pendingNotifications.push(...group);
+  pumpNotificationQueue();
   resetVisibleNotificationFlow();
 }
 
@@ -20405,7 +20463,8 @@ function showNotification(text, dur = 2, type = "info", { log = true, goldTerms 
   if (log) addGameLog(value, type);
   if (!ui.orbitNotifications) return;
   const spec = { value, type, goldTerms, minVisibleMs, stagger, durationMs: Number(dur) * 1000 };
-  if (ui.orbitNotifications.children.length >= MAX_VISIBLE_NOTIFICATIONS) {
+  // File non vide : on passe derrière (ordre conservé) ; zone pleine : idem.
+  if (pendingNotifications.length || activeNotificationCount() >= MAX_VISIBLE_NOTIFICATIONS) {
     pendingNotifications.push(spec);
     // Même garde qu'au-dessus : timers bridés en arrière-plan, la file ne se
     // vide presque plus et rejouait des minutes de messages périmés au retour.
@@ -20553,6 +20612,10 @@ function drawPlayerStatus(context, status, name, x, y, ...rest) {
   }
   const r = Number(status.r) || 0;
   const scaled = { ...status, r: (r + PLAYER_PLATE_TOP_GAP) * z - PLAYER_PLATE_TOP_GAP };
+  // Plaque déjà ramenée en taille écran : pas de seconde compensation
+  // des textes (worldTextScale) à l'intérieur.
+  const prevTextScale = worldTextScale;
+  worldTextScale = 1;
   context.save();
   try {
     context.translate(x, y);
@@ -20560,6 +20623,7 @@ function drawPlayerStatus(context, status, name, x, y, ...rest) {
     return drawPlayerStatusRaw(context, scaled, name, 0, 0, ...rest);
   } finally {
     context.restore();
+    worldTextScale = prevTextScale;
   }
 }
 
@@ -24431,11 +24495,14 @@ function pickPortalButtonAtScreen(clientX, clientY) {
 
     if (!btn || ptl.jumping) continue;
 
+    // Taille écran (zoom) : bas du bouton fixe, il grandit vers le haut.
+    const k = worldUiScale();
+    const baseH = Math.max(1, Number(btn.h || 45));
     const x = ptl.x + Number(btn.xOff || 0);
-    const y = ptl.y + Number(btn.yOff ?? -210);
+    const y = ptl.y + Number(btn.yOff ?? -210) + baseH / 2 * (1 - k);
 
-    const w = Math.max(1, Number(btn.w || 160));
-    const h = Math.max(1, Number(btn.h || 45));
+    const w = Math.max(1, Number(btn.w || 160)) * k;
+    const h = baseH * k;
 
     if (
       mouseWorld.x >= x - w / 2 &&
@@ -24519,12 +24586,20 @@ function tickDroneFormationEffects(dt) {
   tickShield(dt);
 }
 
+// Boutons du monde (portail, quêtes, commerce, Base de Combat) : taille
+// écran quel que soit le zoom. Facteur à appliquer aux tailles/écarts
+// exprimés en pixels écran pour les convertir en unités monde.
+function worldUiScale() {
+  return viewZoom > 0 && viewZoom !== 1 ? 1 / viewZoom : 1;
+}
+
 function getQuestButtonPosition(module) {
   // Base avec comptoir : les deux boutons côte à côte, centrés (quêtes à gauche).
-  const shift = isTradeModule(module) ? QUEST_BUTTON.w / 2 + QUEST_BUTTON.gap / 2 : 0;
+  const k = worldUiScale();
+  const shift = isTradeModule(module) ? (QUEST_BUTTON.w / 2 + QUEST_BUTTON.gap / 2) * k : 0;
   return {
     x: module.x - shift,
-    y: module.y - Number(module.h || 0) / 2 - QUEST_BUTTON.h / 2 - QUEST_BUTTON.gap,
+    y: module.y - Number(module.h || 0) / 2 - (QUEST_BUTTON.h / 2 + QUEST_BUTTON.gap) * k,
   };
 }
 
@@ -24538,10 +24613,10 @@ function pickQuestButtonAtScreen(clientX, clientY) {
     const pos = getQuestButtonPosition(module);
 
     if (
-      mouseWorld.x >= pos.x - QUEST_BUTTON.w / 2 &&
-      mouseWorld.x <= pos.x + QUEST_BUTTON.w / 2 &&
-      mouseWorld.y >= pos.y - QUEST_BUTTON.h / 2 &&
-      mouseWorld.y <= pos.y + QUEST_BUTTON.h / 2
+      mouseWorld.x >= pos.x - QUEST_BUTTON.w / 2 * worldUiScale() &&
+      mouseWorld.x <= pos.x + QUEST_BUTTON.w / 2 * worldUiScale() &&
+      mouseWorld.y >= pos.y - QUEST_BUTTON.h / 2 * worldUiScale() &&
+      mouseWorld.y <= pos.y + QUEST_BUTTON.h / 2 * worldUiScale()
     ) return module;
   }
 
@@ -24581,15 +24656,16 @@ function getTradeButtonPosition(module) {
     return { x: Number(module.tradeButtonX), y: Number(module.tradeButtonY) };
   }
   // Base avec terminal de quêtes : bouton commerce à côté (à droite), paire centrée.
+  const k = worldUiScale();
   if (isQuestModule(module)) {
     return {
-      x: module.x + TRADE_BUTTON.w / 2 + TRADE_BUTTON.gap / 2,
-      y: module.y - Number(module.h || 0) / 2 - TRADE_BUTTON.h / 2 - TRADE_BUTTON.gap,
+      x: module.x + (TRADE_BUTTON.w / 2 + TRADE_BUTTON.gap / 2) * k,
+      y: module.y - Number(module.h || 0) / 2 - (TRADE_BUTTON.h / 2 + TRADE_BUTTON.gap) * k,
     };
   }
   return {
     x: module.x,
-    y: module.y - Number(module.h || 0) / 2 - TRADE_BUTTON.h / 2 - TRADE_BUTTON.gap,
+    y: module.y - Number(module.h || 0) / 2 - (TRADE_BUTTON.h / 2 + TRADE_BUTTON.gap) * k,
   };
 }
 
@@ -24603,10 +24679,10 @@ function pickTradeButtonAtScreen(clientX, clientY) {
     const pos = getTradeButtonPosition(module);
 
     if (
-      mouseWorld.x >= pos.x - TRADE_BUTTON.w / 2 &&
-      mouseWorld.x <= pos.x + TRADE_BUTTON.w / 2 &&
-      mouseWorld.y >= pos.y - TRADE_BUTTON.h / 2 &&
-      mouseWorld.y <= pos.y + TRADE_BUTTON.h / 2
+      mouseWorld.x >= pos.x - TRADE_BUTTON.w / 2 * worldUiScale() &&
+      mouseWorld.x <= pos.x + TRADE_BUTTON.w / 2 * worldUiScale() &&
+      mouseWorld.y >= pos.y - TRADE_BUTTON.h / 2 * worldUiScale() &&
+      mouseWorld.y <= pos.y + TRADE_BUTTON.h / 2 * worldUiScale()
     ) return module;
   }
 
@@ -24647,7 +24723,7 @@ function getCbsButtonPosition() {
   const baseH = zoneStation.hub ? 350 : 334;
   return {
     x: Number(zoneStation.x),
-    y: Number(zoneStation.y) - baseH / 2 - CBS_BUTTON.h / 2 - CBS_BUTTON.gap,
+    y: Number(zoneStation.y) - baseH / 2 - (CBS_BUTTON.h / 2 + CBS_BUTTON.gap) * worldUiScale(),
   };
 }
 
@@ -24677,10 +24753,10 @@ function pickCbsButtonAtScreen(clientX, clientY) {
   if (!pos) return null;
   const mouseWorld = screenToWorld(clientX, clientY);
   if (
-    mouseWorld.x >= pos.x - CBS_BUTTON.w / 2 &&
-    mouseWorld.x <= pos.x + CBS_BUTTON.w / 2 &&
-    mouseWorld.y >= pos.y - CBS_BUTTON.h / 2 &&
-    mouseWorld.y <= pos.y + CBS_BUTTON.h / 2
+    mouseWorld.x >= pos.x - CBS_BUTTON.w / 2 * worldUiScale() &&
+    mouseWorld.x <= pos.x + CBS_BUTTON.w / 2 * worldUiScale() &&
+    mouseWorld.y >= pos.y - CBS_BUTTON.h / 2 * worldUiScale() &&
+    mouseWorld.y <= pos.y + CBS_BUTTON.h / 2 * worldUiScale()
   ) return zoneStation;
   return null;
 }
@@ -27712,7 +27788,7 @@ function drawPet(ox, oy) {
   ctx.restore();
   // Barres coque / bouclier quand on le lock, comme un NPC.
   // Barres uniquement au lock : le pseudo normal est deja affiche sous le REX.
-  if (Target.get() === petTargetProxy) drawNpcStatus(ctx, petTargetProxy, "", true);
+  if (Target.get() === petTargetProxy) drawNpcStatus(ctx, petTargetProxy, "", true, worldUiScale());
   // Étiquette du REX : pseudo + firme à droite, comme le vaisseau — fixe, sans balancement.
   try {
     const petPseudo = String(pet?.pseudo || "P.E.T");
@@ -30585,6 +30661,7 @@ function drawCollectables(ox, oy) {
       ctx.fillStyle = "#ffffff";
       ctx.shadowColor = "rgba(0,0,0,0.9)";
       ctx.shadowBlur = 3;
+      // Taille écran malgré le zoom : géré par worldTextScale (fillText).
       ctx.fillText(label, x, y + bob + visualH * 0.5 + 4);
       ctx.restore();
     }
@@ -33311,11 +33388,11 @@ function drawLowRaidZone(ox, oy) {
   }
   ctx.fillStyle = "#eaffff";
   ctx.font = "900 22px system-ui";
-  ctx.fillText("ZONE DE RASSEMBLEMENT", sx, sy - 8);
+  ctx.fillText("ZONE DE RASSEMBLEMENT", sx, sy - 8 * worldTextScale);
   if (st && Number.isFinite(Number(st.ready)) && Number(st.need) > 0) {
     ctx.font = "800 20px system-ui";
     ctx.fillStyle = "#9fe8ff";
-    ctx.fillText(`PRÊTS : ${st.ready}/${st.need}`, sx, sy + 24);
+    ctx.fillText(`PRÊTS : ${st.ready}/${st.need}`, sx, sy + 24 * worldTextScale);
   }
   ctx.restore();
 }
@@ -40007,7 +40084,7 @@ function drawNetplayRemotes(ox, oy) {
             ctx.translate(prx - x, pry - y - swayBob);
             // Barres uniquement : le pseudo normal du PET est deja dessine
             // avec sa firme sous le sprite, inutile de le doubler en rouge.
-            drawNpcStatus(ctx, remotePetProxy, "", true);
+            drawNpcStatus(ctx, remotePetProxy, "", true, worldUiScale());
             ctx.restore();
           }
           const pframe = ((angleToFrameIndex(Number(r.petd ?? r.angle) || 0, 32) + 16) % 32) + 1;
@@ -42025,12 +42102,15 @@ function drawZonePortals(ox, oy) {
         ctx.imageSmoothingEnabled = false;
         ctx.imageSmoothingQuality = "low";
 
+        // Taille écran (zoom) : même calcul que pickPortalButton.
+        const bk = worldUiScale();
+        const bY = buttonY + buttonH / 2 * (1 - bk);
         ctx.drawImage(
           buttonImg,
-          buttonX - buttonW / 2,
-          buttonY - buttonH / 2,
-          buttonW,
-          buttonH
+          buttonX - buttonW * bk / 2,
+          bY - buttonH * bk / 2,
+          buttonW * bk,
+          buttonH * bk
         );
 
         ctx.restore();
@@ -42099,10 +42179,10 @@ function drawSafeModules(ox, oy) {
         ctx.imageSmoothingQuality = "low";
         ctx.drawImage(
           buttonImg,
-          button.x + ox - QUEST_BUTTON.w / 2,
-          button.y + oy - QUEST_BUTTON.h / 2,
-          QUEST_BUTTON.w,
-          QUEST_BUTTON.h
+          button.x + ox - QUEST_BUTTON.w / 2 * worldUiScale(),
+          button.y + oy - QUEST_BUTTON.h / 2 * worldUiScale(),
+          QUEST_BUTTON.w * worldUiScale(),
+          QUEST_BUTTON.h * worldUiScale()
         );
         ctx.restore();
       }
@@ -42124,10 +42204,10 @@ function drawSafeModules(ox, oy) {
         ctx.imageSmoothingQuality = "low";
         ctx.drawImage(
           tradeImg,
-          tradeBtn.x + ox - TRADE_BUTTON.w / 2,
-          tradeBtn.y + oy - TRADE_BUTTON.h / 2,
-          TRADE_BUTTON.w,
-          TRADE_BUTTON.h
+          tradeBtn.x + ox - TRADE_BUTTON.w / 2 * worldUiScale(),
+          tradeBtn.y + oy - TRADE_BUTTON.h / 2 * worldUiScale(),
+          TRADE_BUTTON.w * worldUiScale(),
+          TRADE_BUTTON.h * worldUiScale()
         );
         ctx.restore();
       }
@@ -42362,10 +42442,10 @@ function drawZoneStation(ox, oy) {
         ctx.imageSmoothingQuality = "low";
         ctx.drawImage(
           buttonImg,
-          button.x + ox - CBS_BUTTON.w / 2,
-          button.y + oy - CBS_BUTTON.h / 2,
-          CBS_BUTTON.w,
-          CBS_BUTTON.h
+          button.x + ox - CBS_BUTTON.w / 2 * worldUiScale(),
+          button.y + oy - CBS_BUTTON.h / 2 * worldUiScale(),
+          CBS_BUTTON.w * worldUiScale(),
+          CBS_BUTTON.h * worldUiScale()
         );
         ctx.restore();
       }
@@ -42539,6 +42619,12 @@ function drawZoneStation(ox, oy) {
       const txt = `${formatInteger(cur)}/${formatInteger(max)}`;
       try {
         ctx.save();
+        // Barre + texte en taille écran (zoom), ancrés au-dessus du module.
+        const prevTextScale = worldTextScale;
+        const k = worldUiScale();
+        ctx.translate(wx, wyTop);
+        if (k !== 1) { ctx.scale(k, k); worldTextScale = 1; }
+        wx = 0; wyTop = 0;
         if (barW > 0) {
           const bx = wx - barW / 2;
           const by = wyTop - 12 - 5 - 8;
@@ -42558,8 +42644,9 @@ function drawZoneStation(ox, oy) {
           : cur > max * 0.2 ? "rgba(255,189,46,0.98)"
           : "rgba(255,64,87,0.98)";
         ctx.fillText(txt, wx, wyTop);
+        worldTextScale = prevTextScale;
         ctx.restore();
-      } catch {}
+      } catch { worldTextScale = 1 / Math.max(0.01, viewZoom); }
     };
     if (zoneStation.hub) {
       hpLabel(sx + ox, sy + oy - base.h / 2 - 6, zoneStation.hubHp ?? STATION_CORE_HP, zoneStation.hubHpMax || STATION_CORE_HP, STATION_CORE_HP, 220);
@@ -42679,7 +42766,7 @@ function drawToast() {
 
 function drawMoveTarget(ox, oy) {
   if (!GAME_SETTINGS.moveMarker) return;
-  drawMoveTargetMarker(ctx, moveTarget, ox, oy);
+  drawMoveTargetMarker(ctx, moveTarget, ox, oy, worldUiScale());
 }
 
 function drawTargetMarker(e, ox, oy, time) {
@@ -47167,9 +47254,15 @@ function drawWinterConvoyHud(ox, oy) {
   const esc = c?.esc;
   if (!c || !(esc.hp > 0) || !escortShips.includes(esc)) return;
   ctx.save();
-  const sx = esc.x + ox, sy = esc.y + oy;
   const dh = WINTER_CONVOY_SPRITE.h * WINTER_CONVOY_SCALE;
-  const bw = 220, bh = 7, bx = sx - bw / 2, by = sy - dh / 2 - 12;
+  // Barre + textes en taille écran quel que soit le zoom : bloc ancré au
+  // sommet du sprite, mis à l'échelle 1/zoom (textes non recompensés).
+  const k = worldUiScale();
+  const prevTextScale = worldTextScale;
+  ctx.translate(esc.x + ox, esc.y + oy - dh / 2);
+  if (k !== 1) { ctx.scale(k, k); worldTextScale = 1; }
+  const sx = 0;
+  const bw = 220, bh = 7, bx = sx - bw / 2, by = -12;
   const hpPct = clamp(esc.hp / esc.hpMax, 0, 1);
   ctx.globalAlpha = 0.95;
   ctx.lineWidth = 1.5;
@@ -47188,6 +47281,7 @@ function drawWinterConvoyHud(ox, oy) {
   ctx.font = "700 14px system-ui";
   ctx.textBaseline = "top";
   ctx.fillText(`Vie restante : ${formatInteger(Math.ceil(esc.hp))}`, sx, by + bh + 5);
+  worldTextScale = prevTextScale;
   ctx.restore();
 }
 
@@ -47405,10 +47499,12 @@ function drawBotMinimalScene(ox, oy) {
 // exception a interrompu le dessin précédent.
 function setScreenTransform() {
   ctx.setTransform(canvasDpr, 0, 0, canvasDpr, 0, 0);
+  worldTextScale = 1;
 }
 function setWorldTransform() {
   const s = canvasDpr * viewZoom;
   ctx.setTransform(s, 0, 0, s, 0, 0);
+  worldTextScale = viewZoom > 0 && viewZoom !== 1 ? 1 / viewZoom : 1;
 }
 
 function draw() {
@@ -47572,6 +47668,7 @@ function draw() {
           e,
           npcLabelFor(e),
           shouldShowNpcBars(e, selectedEnemyForBars),
+          worldUiScale(),
         );
       } catch {}
       ctx.restore();
@@ -47814,6 +47911,7 @@ function draw() {
       e,
       npcLabelFor(e),
       shouldShowNpcBars(e, selectedEnemyForBars),
+      worldUiScale(),
     );
 
     ctx.restore();

@@ -5655,6 +5655,9 @@ html body #profileOverlay .profileHeaderTop .profileTitle, html body #profileOve
   pointer-events:none;
 }
 .orbitNotification {
+  /* Jamais écrasée par le flex (zone de hauteur fixe) : en surplus, les
+     lignes du bas sont simplement masquées au lieu de se chevaucher. */
+  flex:0 0 auto;
   max-width:100%;
   max-height:var(--notice-height,24px);
   box-sizing:border-box;
@@ -5690,6 +5693,10 @@ html body #profileOverlay .profileHeaderTop .profileTitle, html body #profileOve
 }
 .orbitNotification.leaving {
   animation:orbitNoticeOut .65s cubic-bezier(.4,0,.2,1) both;
+}
+/* Rafale : sortie éclair pour laisser glisser les dernières lignes. */
+.orbitNotification.leaving.fastLeave {
+  animation-duration:.17s;
 }
 @keyframes orbitNoticeIn{from{opacity:0;transform:translateY(-18px)}to{opacity:1;transform:translateY(0)}}
 @keyframes orbitNoticeOut{from{opacity:1;max-height:var(--notice-height,24px);padding-top:1px;padding-bottom:1px;transform:translateY(0)}to{opacity:0;max-height:0;padding-top:0;padding-bottom:0;transform:translateY(-8px)}}
