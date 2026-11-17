@@ -376,11 +376,15 @@ const NET_SEND_INTERVAL_MS = 50;
 const NET_PREDICTION_FULL_MS = 1100;
 const NET_PREDICTION_BRAKE_MS = 900;
 const NET_MAX_ESTIMATED_SPEED = 1500;
-const NET_REMOTE_HISTORY_SIZE = 8;
-const NET_LOW_FPS_DELAY_MAX_MS = 240;
+const NET_REMOTE_HISTORY_SIZE = 32;
+const NET_LOW_FPS_DELAY_MAX_MS = 1150;
+// Retard mini du rendu distant (20 Hz : ~1,5 paquet de marge).
+const NET_MIN_RENDER_DELAY_MS = 90;
 // Taux de virage max pris en compte pour la prediction en arc (rad/s) :
 // une orbite de farm typique tourne a ~1-2,5 rad/s.
 const NET_MAX_TURN_RATE = 4;
+// Virage maximal prédit (rad) entre deux paquets : ~35°.
+const NET_MAX_ARC_SWEEP = 0.6;
 const netPerf = {
   messages: 0, snapshots: 0, bytes: 0, snapshotPlayers: 0, snapshotNpcs: 0,
   maxCorrection: 0, startedAt: Date.now(),
@@ -1837,7 +1841,14 @@ export function ensureNetplayConnection() {
         } else if (positionChanged && Math.hypot(prevVx, prevVy) > 50 && Math.hypot(svx, svy) > 50) {
           const dH = Math.atan2(prevVx * svy - prevVy * svx, prevVx * svx + prevVy * svy);
           const dtH = Math.max(0.05, (Number(sourceAt) - headingAt) / 1000);
-          if (Math.abs(dH) > 0.02) {
+          // |dH| proche de π : virage ambigu (paquets espacés sur une orbite
+          // serrée → l'atan2 replie l'angle et inverse le sens du virage).
+          // On ne s'y fie pas : l'estimée se dissipe au lieu de prédire une
+          // boucle dans le mauvais sens.
+          if (Math.abs(dH) > 2) {
+            turn = turn * 0.3;
+            headingAt = Number(sourceAt);
+          } else if (Math.abs(dH) > 0.02) {
             const rawTurn = Math.max(-NET_MAX_TURN_RATE, Math.min(NET_MAX_TURN_RATE, dH / dtH));
             turn = turn * 0.4 + rawTurn * 0.6;
             headingAt = Number(sourceAt);
@@ -2663,9 +2674,13 @@ export function tickNetplayRemotes(dt = 0.016) {
     // revient en arriere a chaque paquet (dent de scie = teleportations).
     const updateInterval = Math.max(50, Math.min(2000, Number(r.updateInterval || 60)));
     const updateJitter = Math.max(0, Math.min(1000, Number(r.updateJitter || 0)));
-    const needsLowFpsBuffer = !r.motionBlocked && (updateInterval > 75 || updateJitter > 20);
+    // Interpolation systématique : on rejoue le VRAI trajet reçu avec un
+    // léger retard (≈ 1 paquet + marge de jitter) au lieu de deviner la
+    // suite. Le vaisseau suit exactement la courbe vue par son pilote —
+    // plus de boucles / 360 inventés par l'extrapolation.
+    const needsLowFpsBuffer = !r.motionBlocked;
     const wantedRenderDelay = needsLowFpsBuffer
-      ? Math.min(NET_LOW_FPS_DELAY_MAX_MS, Math.max(60, updateInterval * 0.9 + updateJitter * 0.4))
+      ? Math.min(NET_LOW_FPS_DELAY_MAX_MS, Math.max(NET_MIN_RENDER_DELAY_MS, updateInterval * 1.15 + updateJitter * 1.5 + 25))
       : 0;
     const oldRenderDelay = Math.max(0, Number(r.renderDelay || 0));
     const delayK = 1 - Math.exp(-(wantedRenderDelay > oldRenderDelay ? 8 : 2) * frameDt);
@@ -2740,7 +2755,12 @@ export function tickNetplayRemotes(dt = 0.016) {
       targetY = anchorY;
     } else if (Math.abs(turn) > 0.08 && spd > 60) {
       const th0 = Math.atan2(vy, vx);
-      const th1 = th0 + turn * leadEff;
+      // Arc borné : sans plafond, un virage serré (4 rad/s) prédit sur
+      // ~1 s (émetteur lent / onglet réduit) balaie > 300° — le vaisseau
+      // dessine une boucle "360" fantôme devant nous puis revient. On ne
+      // prédit jamais plus de ~35° de virage ; au-delà on attend le paquet.
+      const sweep = Math.max(-NET_MAX_ARC_SWEEP, Math.min(NET_MAX_ARC_SWEEP, turn * leadEff));
+      const th1 = th0 + sweep;
       const radius = spd / turn;
       targetX = anchorX + radius * (Math.sin(th1) - Math.sin(th0));
       targetY = anchorY + radius * (Math.cos(th0) - Math.cos(th1));
@@ -2762,7 +2782,10 @@ export function tickNetplayRemotes(dt = 0.016) {
     // Le lissage exponentiel seul en absorbait ~26 % sur la premiere frame,
     // donnant l'impression d'une teleportation. Le plafond ne touche que le
     // rendu : positions serveur, portee et impacts restent autoritaires.
-    const maxCorrection = (Number(r.vmax) || 400) * frameDt;
+    // 1.5 × vmax : plafonné à vmax pile, un rendu en retard ne rattrape
+    // jamais un vaisseau à pleine vitesse (il coupe en dedans des virages
+    // et dessine des boucles plus petites que la vraie orbite).
+    const maxCorrection = (Number(r.vmax) || 400) * 1.5 * frameDt;
     const correctionK = correctionDistance > 0
       ? Math.min(kEff, maxCorrection / correctionDistance)
       : kEff;
@@ -2787,7 +2810,10 @@ export function tickNetplayRemotes(dt = 0.016) {
         const span = Math.max(1, Number(b.at) - Number(a.at));
         targetAngle = lerpAngle(a.angle, b.angle, (renderAt - Number(a.at)) / span);
       } else {
-        targetAngle = Number(samples[samples.length - 1].angle) || 0;
+        // Au-delà du dernier échantillon (joueur immobile : plus aucune
+        // position distincte n'arrive) → angle le plus récent reçu, sinon
+        // le vaisseau reste figé sur son ancien cap pendant qu'il tire.
+        targetAngle = Number(r.angle) || 0;
       }
     }
     const angleDelta = Math.atan2(Math.sin(targetAngle - renderedAngle), Math.cos(targetAngle - renderedAngle));
