@@ -20416,20 +20416,39 @@ function pumpNotificationQueue() {
   resetVisibleNotificationFlow();
 }
 
+// Éjecte les plus anciennes lignes visibles pour faire place à `count`
+// nouvelles : sortie éclair (glissement rapide, pas de file d'attente).
+function evictOldestNotifications(count) {
+  if (!ui.orbitNotifications || count <= 0) return;
+  const active = [...ui.orbitNotifications.children].filter(node => !node.classList.contains("leaving"));
+  for (const node of active.slice(0, count)) {
+    clearTimeout(node._leaveTimer);
+    clearTimeout(node._removeTimer);
+    node.classList.add("leaving", "fastLeave", "notificationSuperseded");
+    node._removeTimer = setTimeout(() => removeNotificationNode(node), NOTIFICATION_FAST_LEAVE_MS);
+  }
+}
+
 function makeRoomForLatestNotification() {
-  // Plus d'éviction : la file accélère le défilement (resetVisibleNotificationFlow).
-  resetVisibleNotificationFlow();
+  evictOldestNotifications(activeNotificationCount() - MAX_VISIBLE_NOTIFICATIONS + 1);
 }
 
 function flushLatestNotificationGroup() {
   notificationGroupFrame = 0;
-  const group = pendingNotificationGroup;
+  let group = pendingNotificationGroup;
   pendingNotificationGroup = null;
   if (!group?.length || !ui.orbitNotifications) return;
-  // Tout passe par la file : rien n'est jeté, les lignes visibles
-  // accélèrent pour faire place aux nouvelles.
-  pendingNotifications.push(...group);
-  pumpNotificationQueue();
+  // Toutes les lignes d'un kill (XP, honneur, crédits...) arrivent ENSEMBLE.
+  // En rafale (kamikaze, groupe) : on saute directement aux dernières, les
+  // anciennes glissent dehors en éclair. Jamais de file / cascade retardée
+  // (tout reste dans le journal).
+  if (group.length > MAX_VISIBLE_NOTIFICATIONS) group = group.slice(-MAX_VISIBLE_NOTIFICATIONS);
+  pendingNotifications.length = 0;
+  evictOldestNotifications(activeNotificationCount() + group.length - MAX_VISIBLE_NOTIFICATIONS);
+  const nodes = group.map(spec => mountNotification(spec, true)).filter(Boolean);
+  // Insere tout le groupe, lit toutes les hauteurs, puis applique les styles.
+  const heights = nodes.map(node => node.scrollHeight);
+  nodes.forEach((node, index) => node.style.setProperty("--notice-height", `${heights[index]}px`));
   resetVisibleNotificationFlow();
 }
 
@@ -20463,18 +20482,10 @@ function showNotification(text, dur = 2, type = "info", { log = true, goldTerms 
   if (log) addGameLog(value, type);
   if (!ui.orbitNotifications) return;
   const spec = { value, type, goldTerms, minVisibleMs, stagger, durationMs: Number(dur) * 1000 };
-  // File non vide : on passe derrière (ordre conservé) ; zone pleine : idem.
-  if (pendingNotifications.length || activeNotificationCount() >= MAX_VISIBLE_NOTIFICATIONS) {
-    pendingNotifications.push(spec);
-    // Même garde qu'au-dessus : timers bridés en arrière-plan, la file ne se
-    // vide presque plus et rejouait des minutes de messages périmés au retour.
-    if (document.visibilityState === "hidden" && pendingNotifications.length > MAX_VISIBLE_NOTIFICATIONS) {
-      pendingNotifications.splice(0, pendingNotifications.length - MAX_VISIBLE_NOTIFICATIONS);
-    }
-    makeRoomForLatestNotification();
-  } else {
-    mountNotification(spec);
-  }
+  // Zone pleine : la plus ancienne glisse dehors en éclair, la nouvelle
+  // ligne s'affiche tout de suite (pas de file d'attente).
+  if (activeNotificationCount() >= MAX_VISIBLE_NOTIFICATIONS) makeRoomForLatestNotification();
+  mountNotification(spec);
 }
 
 function showToast(text, dur = 2) {
