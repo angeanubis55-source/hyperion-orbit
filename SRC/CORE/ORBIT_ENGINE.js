@@ -20323,7 +20323,10 @@ function setNotificationText(node, value, { goldTerms = [], whiteTerms = [], vio
 }
 
 const MAX_VISIBLE_NOTIFICATIONS = 10;
-const NOTIFICATION_FLOW_STEP_MS = 600;
+// Durée d'affichage d'un paquet de lignes (un kill = XP, honneur, crédits...
+// arrivés ensemble) : le paquet suivant part 1,2 s après le précédent.
+const NOTIFICATION_FLOW_STEP_MS = 1200;
+let notificationGroupSeq = 0;
 // Défilement accéléré en rafale (kamikaze, kills en groupe) : tout est
 // affiché, mais plus la file est longue, plus les lignes glissent vite
 // pour laisser apparaître les dernières.
@@ -20364,20 +20367,26 @@ function scheduleNotificationLeave(node, delayMs) {
   }, Math.max(0, delayMs));
 }
 
-function mountNotification(spec, deferHeight = false) {
+function mountNotification(spec, deferHeight = false, groupId = null) {
   if (!ui.orbitNotifications) return;
   const node = document.createElement("div");
   node.className = `orbitNotification ${spec.type}`;
+  // Lignes d'un même paquet : même heure de sortie (elles partent ensemble).
+  node.dataset.group = String(groupId ?? ++notificationGroupSeq);
   setNotificationText(node, spec.value, { goldTerms: spec.goldTerms, whiteTerms: spec.whiteTerms, violetTerms: spec.violetTerms });
   ui.orbitNotifications.appendChild(node);
   if (!deferHeight) node.style.setProperty("--notice-height", `${node.scrollHeight}px`);
   const now = Date.now();
   const step = notificationFlowStepMs();
   const previousNodes = [...ui.orbitNotifications.children].filter(item => item !== node && !item.classList.contains("leaving"));
-  const previousLeaveAt = Number(previousNodes.at(-1)?.dataset.leaveAt) || 0;
-  const leaveAt = spec.stagger
-    ? Math.max(now + step, previousLeaveAt + step)
-    : now + step;
+  const previous = previousNodes.at(-1);
+  const previousLeaveAt = Number(previous?.dataset.leaveAt) || 0;
+  const sameGroup = previous && previous.dataset.group === node.dataset.group;
+  const leaveAt = sameGroup && previousLeaveAt
+    ? previousLeaveAt
+    : spec.stagger
+      ? Math.max(now + step, previousLeaveAt + step)
+      : now + step;
   node.dataset.leaveAt = String(leaveAt);
   scheduleNotificationLeave(node, leaveAt - now);
   return node;
@@ -20388,10 +20397,15 @@ function resetVisibleNotificationFlow() {
   const now = Date.now();
   const step = notificationFlowStepMs();
   let previousLeaveAt = 0;
+  let previousGroup = null;
   for (const node of ui.orbitNotifications.children) {
     if (node.classList.contains("leaving")) continue;
-    const leaveAt = previousLeaveAt ? previousLeaveAt + step : now + step;
+    // Même paquet que la ligne précédente : sortie simultanée.
+    const leaveAt = previousLeaveAt && node.dataset.group === previousGroup
+      ? previousLeaveAt
+      : previousLeaveAt ? previousLeaveAt + step : now + step;
     previousLeaveAt = leaveAt;
+    previousGroup = node.dataset.group;
     node.dataset.leaveAt = String(leaveAt);
     scheduleNotificationLeave(node, leaveAt - now);
   }
@@ -20445,7 +20459,9 @@ function flushLatestNotificationGroup() {
   if (group.length > MAX_VISIBLE_NOTIFICATIONS) group = group.slice(-MAX_VISIBLE_NOTIFICATIONS);
   pendingNotifications.length = 0;
   evictOldestNotifications(activeNotificationCount() + group.length - MAX_VISIBLE_NOTIFICATIONS);
-  const nodes = group.map(spec => mountNotification(spec, true)).filter(Boolean);
+  // Un appel showNotificationGroup = un paquet (même sortie). Les paquets
+  // fusionnés dans la même frame gardent chacun leur id.
+  const nodes = group.map(spec => mountNotification(spec, true, spec.groupId)).filter(Boolean);
   // Insere tout le groupe, lit toutes les hauteurs, puis applique les styles.
   const heights = nodes.map(node => node.scrollHeight);
   nodes.forEach((node, index) => node.style.setProperty("--notice-height", `${heights[index]}px`));
@@ -20457,7 +20473,9 @@ function showNotificationGroup(messages, type = "info", { goldTerms = [], whiteT
   if (!values.length) return;
   // File d'attente réelle : en rafale (farm à 50), les groupes s'ajoutent
   // au lieu de s'écraser — chaque "Vous avez reçu" finit par s'afficher.
+  const groupId = ++notificationGroupSeq;
   pendingNotificationGroup = [...(pendingNotificationGroup || []), ...values.map(value => ({
+    groupId,
     value,
     type,
     goldTerms,
