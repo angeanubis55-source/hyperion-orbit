@@ -350,6 +350,7 @@ export default {
     "Estimation": "Uppskattning",
     "Connexion…": "Ansluter…",
     "Aucun message. Dis bonjour !": "Inga meddelanden. Säg hej!",
+    "Insérer un emoji": "Infoga en emoji",
     "Écris ton message…": "Skriv ditt meddelande…",
     "Envoyer": "Skicka",
     "Grade": "Grad",

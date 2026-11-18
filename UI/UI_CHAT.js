@@ -5,6 +5,15 @@ import { drainNetChatInbox, sendChat, sendWhisper, sendClanChat, netMyId, netMyP
 import { escapeHtml } from "./UI_DOM.js";
 
 const MAX_SHOWN = 60;
+// Sélecteur d'emojis du chat (insérés à la position du curseur).
+const CHAT_EMOJIS = [
+  "😀","😁","😂","🤣","😊","😉","😍","😘","😎","🤩","😇","🥳",
+  "🙂","🙃","😏","😅","😬","🤔","🤨","😐","🙄","😴","🤤","😮",
+  "😢","😭","😡","🤬","😱","😳","🥺","🤯","🤮","🤡","💀","👻",
+  "👍","👎","👌","✌️","🤞","👏","🙏","💪","👋","🤝","🫡","🖕",
+  "❤️","💔","🔥","⭐","✨","💥","💯","💰","💎","🎁","🎉","🏆",
+  "🚀","🛸","🌌","🪐","☄️","⚔️","🛡️","🎯","💣","⚡","☠️","👑",
+];
 let started = false;
 
 function fmtTime(at) {
@@ -16,6 +25,60 @@ function fmtTime(at) {
   } catch { return ""; }
 }
 
+function initEmojiPicker(input) {
+  const btn = document.getElementById("chatEmojiBtn");
+  const picker = document.getElementById("chatEmojiPicker");
+  if (!btn || !picker) return;
+  const frag = document.createDocumentFragment();
+  for (const emoji of CHAT_EMOJIS) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.textContent = emoji;
+    b.dataset.emoji = emoji;
+    b.setAttribute("translate", "no");
+    frag.appendChild(b);
+  }
+  picker.appendChild(frag);
+  const setOpen = (open) => {
+    picker.hidden = !open;
+    btn.setAttribute("aria-expanded", open ? "true" : "false");
+  };
+  const insert = (emoji) => {
+    const max = Number(input.maxLength) > 0 ? Number(input.maxLength) : 200;
+    const start = input.selectionStart ?? input.value.length;
+    const end = input.selectionEnd ?? input.value.length;
+    const next = input.value.slice(0, start) + emoji + input.value.slice(end);
+    if (next.length > max) return;
+    input.value = next;
+    const caret = start + emoji.length;
+    input.focus();
+    try { input.setSelectionRange(caret, caret); } catch {}
+  };
+  btn.addEventListener("click", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setOpen(picker.hidden);
+  });
+  // mousedown bloqué : l'input garde le focus et la position du curseur.
+  picker.addEventListener("mousedown", (e) => e.preventDefault());
+  picker.addEventListener("click", (e) => {
+    const emoji = e.target?.closest?.("button[data-emoji]")?.dataset.emoji;
+    if (!emoji) return;
+    e.preventDefault();
+    e.stopPropagation();
+    insert(emoji);
+  });
+  document.addEventListener("pointerdown", (e) => {
+    if (picker.hidden) return;
+    if (picker.contains(e.target) || btn.contains(e.target)) return;
+    setOpen(false);
+  }, true);
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && !picker.hidden) setOpen(false);
+  });
+  input.form?.addEventListener("submit", () => setOpen(false));
+}
+
 export function initChatUI() {
   if (started) return;
   started = true;
@@ -25,6 +88,7 @@ export function initChatUI() {
   const sendBtn = document.getElementById("chatSend");
   const status = document.getElementById("chatStatus");
   if (!entries || !form || !input) return;
+  initEmojiPicker(input);
 
   let shown = 0;
   let online = true;

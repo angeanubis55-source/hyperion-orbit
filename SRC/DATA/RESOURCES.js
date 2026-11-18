@@ -188,7 +188,6 @@ export const REFINERY_RECIPES = Object.freeze([
   Object.freeze({ id: "promerium", name: "Promerium", inputs: Object.freeze({ prometid: 10, duranium: 10, xenomit: 1 }), output: Object.freeze({ id: "promerium", amount: 1 }) }),
   Object.freeze({ id: "seprom", name: "Seprom", inputs: Object.freeze({ promerium: 10 }), output: Object.freeze({ id: "seprom", amount: 1 }) }),
   Object.freeze({ id: "osmium", name: "Osmium", inputs: Object.freeze({ seprom: 100 }), output: Object.freeze({ id: "osmium", amount: 1 }) }),
-  Object.freeze({ id: "xenomit", name: "Xenomit", inputs: Object.freeze({ prometid: 100, duranium: 100 }), output: Object.freeze({ id: "xenomit", amount: 10 }) }),
 ]);
 
 export function getRefineryRecipe(recipeId) {

@@ -350,6 +350,7 @@ export default {
     "Estimation": "Estimate",
     "Connexion…": "Connecting…",
     "Aucun message. Dis bonjour !": "No messages. Say hello!",
+    "Insérer un emoji": "Insert an emoji",
     "Écris ton message…": "Write your message…",
     "Envoyer": "Send",
     "Grade": "Rank",

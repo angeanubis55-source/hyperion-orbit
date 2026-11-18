@@ -1003,7 +1003,9 @@
     <div id="chatWindow" class="panel chatPanel">
       <div id="chatStatus" class="chatStatus">Connexion…</div>
       <div id="chatEntries" class="chatEntries"><div class="chatEmpty">Aucun message. Dis bonjour !</div></div>
+      <div id="chatEmojiPicker" class="chatEmojiPicker" role="listbox" aria-label="Insérer un emoji" hidden data-no-drag></div>
       <form id="chatForm" class="chatForm" autocomplete="off">
+        <button id="chatEmojiBtn" class="chatEmojiBtn" type="button" title="Insérer un emoji" aria-label="Insérer un emoji" aria-haspopup="true" aria-expanded="false" data-no-drag>😊</button>
         <input id="chatInput" type="text" placeholder="Écris ton message…" maxlength="200" autocomplete="off" />
         <button id="chatSend" type="submit">Envoyer</button>
       </form>

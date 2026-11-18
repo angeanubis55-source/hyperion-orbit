@@ -350,6 +350,7 @@ export default {
     "Estimation": "Оценка",
     "Connexion…": "Подключение…",
     "Aucun message. Dis bonjour !": "Нет сообщений. Поздоровайтесь!",
+    "Insérer un emoji": "Вставить эмодзи",
     "Écris ton message…": "Напишите сообщение…",
     "Envoyer": "Отправить",
     "Grade": "Ранг",

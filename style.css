@@ -6104,7 +6104,7 @@ html body #profileOverlay .profileHeaderTop .profileTitle, html body #profileOve
 }
 .chatForm {
   display:grid;
-  grid-template-columns:minmax(0,1fr) auto;
+  grid-template-columns:auto minmax(0,1fr) auto;
   gap:8px;
   padding:8px 11px;
   box-sizing:border-box;
@@ -27550,4 +27550,49 @@ display: flex;
   font:800 11px/1 ui-sans-serif,system-ui;
   user-select:none;
   pointer-events:none;
+}
+
+/* Chat : bouton + sélecteur d'emojis (au-dessus de la zone de saisie). */
+.chatPanel { position:relative; }
+.chatForm button.chatEmojiBtn {
+  width:30px;
+  padding:0;
+  font:400 16px/1 "Segoe UI Emoji","Apple Color Emoji","Noto Color Emoji",sans-serif;
+}
+.chatForm button.chatEmojiBtn[aria-expanded="true"] {
+  border-color:#69e9ff;
+  background:rgba(0,140,185,.36);
+}
+.chatEmojiPicker {
+  position:absolute;
+  left:11px;
+  right:11px;
+  bottom:50px;
+  z-index:5;
+  display:grid;
+  grid-template-columns:repeat(auto-fill,minmax(32px,1fr));
+  gap:2px;
+  max-height:180px;
+  overflow-y:auto;
+  padding:6px;
+  box-sizing:border-box;
+  border:1px solid rgba(124,240,255,.38);
+  border-radius:8px;
+  background:rgba(3,16,26,.97);
+  box-shadow:0 6px 18px rgba(0,0,0,.5);
+}
+.chatEmojiPicker[hidden] { display:none; }
+.chatEmojiPicker button {
+  height:32px;
+  padding:0;
+  border:0;
+  border-radius:6px;
+  background:transparent;
+  cursor:pointer;
+  font:400 19px/1 "Segoe UI Emoji","Apple Color Emoji","Noto Color Emoji",sans-serif;
+}
+.chatEmojiPicker button:hover,
+.chatEmojiPicker button:focus-visible {
+  outline:0;
+  background:rgba(0,140,185,.32);
 }

@@ -350,6 +350,7 @@ export default {
     "Estimation": "見積もり",
     "Connexion…": "接続中…",
     "Aucun message. Dis bonjour !": "メッセージはありません。挨拶しましょう！",
+    "Insérer un emoji": "絵文字を挿入",
     "Écris ton message…": "メッセージを入力…",
     "Envoyer": "送信",
     "Grade": "順位",

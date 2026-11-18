@@ -17209,7 +17209,7 @@ async function refineryRefineAll({ refineOres = true } = {}) {
   if (!account.user) return 0;
   refineryServerBusy = true;
   try {
-  // Passes répétées : une recette peut débloquer la suivante (ex : Xenomit -> Promerium).
+  // Passes répétées : une recette peut débloquer la suivante (ex : Prometid -> Promerium).
   let total = 0;
   let charged = 0;
   if (!(refineOres && netActive())) {
