@@ -376,10 +376,8 @@ const NET_SEND_INTERVAL_MS = 50;
 const NET_PREDICTION_FULL_MS = 1100;
 const NET_PREDICTION_BRAKE_MS = 900;
 const NET_MAX_ESTIMATED_SPEED = 1500;
-const NET_REMOTE_HISTORY_SIZE = 32;
-const NET_LOW_FPS_DELAY_MAX_MS = 1150;
-// Retard mini du rendu distant (20 Hz : ~1,5 paquet de marge).
-const NET_MIN_RENDER_DELAY_MS = 90;
+const NET_REMOTE_HISTORY_SIZE = 8;
+const NET_LOW_FPS_DELAY_MAX_MS = 240;
 // Taux de virage max pris en compte pour la prediction en arc (rad/s) :
 // une orbite de farm typique tourne a ~1-2,5 rad/s.
 const NET_MAX_TURN_RATE = 4;
@@ -2674,13 +2672,9 @@ export function tickNetplayRemotes(dt = 0.016) {
     // revient en arriere a chaque paquet (dent de scie = teleportations).
     const updateInterval = Math.max(50, Math.min(2000, Number(r.updateInterval || 60)));
     const updateJitter = Math.max(0, Math.min(1000, Number(r.updateJitter || 0)));
-    // Interpolation systématique : on rejoue le VRAI trajet reçu avec un
-    // léger retard (≈ 1 paquet + marge de jitter) au lieu de deviner la
-    // suite. Le vaisseau suit exactement la courbe vue par son pilote —
-    // plus de boucles / 360 inventés par l'extrapolation.
-    const needsLowFpsBuffer = !r.motionBlocked;
+    const needsLowFpsBuffer = !r.motionBlocked && (updateInterval > 75 || updateJitter > 20);
     const wantedRenderDelay = needsLowFpsBuffer
-      ? Math.min(NET_LOW_FPS_DELAY_MAX_MS, Math.max(NET_MIN_RENDER_DELAY_MS, updateInterval * 1.15 + updateJitter * 1.5 + 25))
+      ? Math.min(NET_LOW_FPS_DELAY_MAX_MS, Math.max(60, updateInterval * 0.9 + updateJitter * 0.4))
       : 0;
     const oldRenderDelay = Math.max(0, Number(r.renderDelay || 0));
     const delayK = 1 - Math.exp(-(wantedRenderDelay > oldRenderDelay ? 8 : 2) * frameDt);
