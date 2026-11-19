@@ -27615,3 +27615,216 @@ display: flex;
   border-color:rgba(124,240,255,.75);
   background:linear-gradient(180deg, rgba(0,150,195,.55), rgba(0,80,110,.6));
 }
+
+/* Fenêtre Missions compacte (style B) : même look, mise en page resserrée. */
+.questPanel {
+  width:min(var(--quest-win-w, 380px), calc(100vw - 24px)) !important;
+}
+.questPanel .questTabs {
+  gap:5px;
+  padding:8px 10px 0;
+}
+.questPanel .questTab {
+  flex:0 0 28px;
+  width:28px;
+  height:28px;
+  font-size:13px;
+}
+.questPanel .questList {
+  gap:8px;
+  padding:6px 10px 10px;
+}
+.questCompact .qcHead {
+  display:flex;
+  align-items:center;
+  gap:8px;
+}
+.questCompact .qcHead .qoffTitle {
+  flex:1 1 auto;
+  min-width:0;
+  font-size:15px !important;
+  text-align:left !important;
+}
+.questCompact .qcAbandon {
+  flex:0 0 auto;
+  width:auto !important;
+  min-width:24px;
+  height:24px;
+  padding:0 6px !important;
+  display:inline-grid;
+  place-items:center;
+  border-color:rgba(255,105,120,.35) !important;
+  background:rgba(150,25,45,.2) !important;
+  color:#ffb3bd !important;
+  font-size:11px !important;
+  cursor:pointer;
+}
+.questCompact .qcAbandon.questCancelConfirm {
+  border-color:rgba(255,142,72,.8) !important;
+  color:#fff0df !important;
+  background:rgba(190,72,18,.5) !important;
+}
+.questCompact .qoffSection {
+  padding:8px 2px 5px !important;
+  font-size:12px !important;
+}
+.questCompact .qoffBox {
+  gap:2px !important;
+  padding:6px 8px !important;
+}
+.questCompact .qoffObjective {
+  grid-template-columns:16px minmax(0,1fr) auto 26px !important;
+  min-height:26px;
+}
+.questCompact .qoffObjective img {
+  max-width:26px !important;
+  max-height:26px !important;
+  justify-self:center;
+}
+.questCompact .qoffObjectiveLabel {
+  -webkit-line-clamp:1 !important;
+}
+.questCompact .qcToggle {
+  display:flex;
+  align-items:center;
+  gap:7px;
+  width:100%;
+  min-height:24px;
+  padding:0;
+  border:0;
+  background:transparent;
+  color:#8fd6a8;
+  font:700 12px ui-sans-serif,system-ui;
+  text-align:left;
+  cursor:pointer;
+}
+.questCompact .qcDoneToggle {
+  border-bottom:1px solid rgba(124,240,255,.10);
+  padding-bottom:2px;
+}
+.questCompact .qcDoneMark {
+  flex:0 0 auto;
+  width:9px;
+  height:5px;
+  margin:0 3px 3px 2px;
+  border-left:2px solid #8fd6a8;
+  border-bottom:2px solid #8fd6a8;
+  transform:rotate(-45deg);
+}
+.questCompact .qcToggleText { flex:1 1 auto; }
+.questCompact .qcRewardToggle {
+  margin-top:4px;
+  color:rgba(215,240,250,.7);
+}
+.questCompact .qcRewardToggle .qoffSection {
+  flex:0 0 auto;
+  padding:0 2px !important;
+}
+.questCompact .qcRewardSummary {
+  flex:1 1 auto;
+  min-width:0;
+  overflow:hidden;
+  white-space:nowrap;
+  text-overflow:ellipsis;
+  font-size:11px;
+}
+.questCompact .qcChevron {
+  flex:0 0 auto;
+  color:#83bbc8;
+  transition:transform .15s;
+}
+.questCompact .qcChevron.isOpen { transform:rotate(90deg); }
+.questCompact .qcRewardToggle + .qoffBox { margin-top:5px; }
+.questCompact .qcToggle:hover { color:#dffaff; }
+
+/* Ligne Récompense + bouton Annuler collé à droite. */
+.questCompact .qcRewardRow {
+  display:flex;
+  align-items:center;
+  gap:8px;
+  margin-top:4px;
+}
+.questCompact .qcRewardRow .qcRewardToggle {
+  flex:0 1 auto;
+  width:auto;
+  margin-top:0;
+}
+.questCompact .qcRewardRow .qcAbandon {
+  margin-left:auto;
+  padding:0 10px !important;
+  font-weight:800 !important;
+}
+.questCompact .qcHead .qoffTitle {
+  text-align:center !important;
+}
+
+/* Annuler : aligné sur la ligne Récompense (annule margin-top/padding de .questAction). */
+.questCompact .qcRewardRow { min-height:24px; }
+.questCompact .qcRewardRow .qcRewardToggle { min-height:22px; line-height:1; }
+.questCompact .qcRewardRow .qcAbandon {
+  margin-top:0 !important;
+  margin-bottom:0 !important;
+  align-self:center;
+  height:22px !important;
+  min-height:0 !important;
+  padding:0 10px !important;
+  line-height:20px !important;
+  box-sizing:border-box;
+}
+
+/* Missions : onglets 1/2/3 dans la barre de titre, à gauche de réduire. */
+#questWindow > .gameWinBar > .gameWinTitle .questBarSep {
+  color:rgba(131,187,200,.8);
+}
+#questWindow > .gameWinBar > .gameWinTitle .questBarName {
+  color:#ffd257;
+}
+.questPanel .questList {
+  padding-top:8px;
+}
+
+/* Récompense ouverte : même marge au-dessus et en dessous du bouton Annuler. */
+.questCompact .qcRewardRow { margin-top:6px !important; }
+.questCompact .qcRewardRow + .qoffBox { margin-top:6px; }
+
+/* Missions : nom de la mission toujours entier (jamais de "…"). */
+#questWindow > .gameWinBar > .gameWinTitle {
+  text-overflow:clip !important;
+  overflow:hidden !important;
+}
+/* Onglets 1/2/3 : mêmes classes que les boutons de la mini-carte
+   (gameWinMinBtn + miniZoomBtn dans .miniZoomActions), collés au bouton
+   réduire exactement comme sur la mini-carte. */
+#questWindow > .gameWinBar > .questTabs {
+  flex:0 0 auto !important;
+  display:flex !important;
+  gap:0 !important;
+  padding:0 !important;
+  margin:0 !important;
+}
+#questWindow > .gameWinBar > .questTabs .questTab {
+  flex:0 0 26px !important;
+  padding:0 !important;
+  font:800 12px/1 ui-sans-serif,system-ui !important;
+}
+#questWindow > .gameWinBar > .questTabs .questTab.active {
+  position:relative;
+  z-index:1;
+  border-color:#7cf0ff !important;
+  background:linear-gradient(135deg,rgba(0,175,225,.62),rgba(0,95,130,.58)) !important;
+  color:#fff !important;
+}
+#questWindow.gameWindow > .gameWinBar > .gameWinMinBtn {
+  margin-left:-9px !important;
+}
+
+/* Nom de la mission en tête de fenêtre (à la place de "Aperçu"). */
+.questCompact .qcQuestName {
+  margin:0 0 6px !important;
+  padding:0 2px !important;
+  font-size:14px !important;
+  text-align:left !important;
+}
+.questPanel .questList {
+  padding-bottom:8px !important;
+}

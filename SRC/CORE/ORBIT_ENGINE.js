@@ -19073,6 +19073,9 @@ function awardHonor(amount) {
 }
 
 let selectedQuestId = null;
+// Fenêtre Missions compacte : sections repliables (objectifs terminés, récompense).
+let questJournalShowDone = false;
+let questJournalShowReward = false;
 let lastQuestTerminalAccess = null;
 let lastDpsHudAt = 0;
 
@@ -19119,12 +19122,75 @@ function renderQuestWindow() {
       questState.abandoned = tombstones;
     }
   }
-  const view = buildQuestJournalView(questState, selectedQuestId, { collectables: COLLECTABLE_DEFS, npcTypes: NPC_TYPES });
+  const view = buildQuestJournalView(questState, selectedQuestId, { collectables: COLLECTABLE_DEFS, npcTypes: NPC_TYPES, showDone: questJournalShowDone, showReward: questJournalShowReward });
   selectedQuestId = view.selectedQuestId;
   if (ui.questIntro) ui.questIntro.textContent = view.intro;
   if (ui.questTabs) ui.questTabs.innerHTML = view.tabsHtml;
   ui.questList.innerHTML = view.contentHtml;
+  syncQuestWindowBar(view.selectedQuestId);
   fitQuestWindowToContent();
+}
+
+// Barre de la fenêtre Missions : "Missions - <nom de la mission>" et les
+// onglets 1/2/3… à gauche du bouton réduire (comme la mini-carte). La
+// fenêtre s'élargit avec le nombre de quêtes pour ne jamais rogner le nom.
+let questBarTitleKey = "";
+function syncQuestWindowBar(questId) {
+  const questWindow = document.getElementById("questWindow");
+  const bar = questWindow?.querySelector(":scope > .gameWinBar");
+  if (!bar) return;
+  const tabs = ui.questTabs;
+  if (tabs && tabs.parentElement !== bar) {
+    const minBtn = bar.querySelector(":scope > .gameWinMinBtn");
+    bar.insertBefore(tabs, minBtn || null);
+    // Même conteneur que les boutons grille / − / + de la mini-carte.
+    tabs.classList.add("miniZoomActions");
+    tabs.dataset.noDrag = "1";
+    tabs.addEventListener("pointerdown", (e) => { if (e.target.closest("[data-quest-tab]")) e.stopPropagation(); });
+  }
+  const titleEl = bar.querySelector(":scope > .gameWinTitle");
+  const name = "";
+  // Revérifie le DOM (pas seulement le cache) : rien ne doit effacer le nom.
+  const shownName = titleEl?.querySelector(".questBarName")?.textContent || "";
+  if (titleEl && (questBarTitleKey !== name || (name && !shownName))) {
+    questBarTitleKey = name;
+    titleEl.textContent = "";
+    const base = document.createElement("span");
+    base.textContent = "Missions";
+    titleEl.appendChild(base);
+    if (name) {
+      const sep = document.createElement("span");
+      sep.className = "questBarSep";
+      sep.textContent = " - ";
+      const qn = document.createElement("span");
+      qn.className = "questBarName";
+      qn.textContent = name;
+      titleEl.append(sep, qn);
+      titleEl.title = name;
+    } else {
+      titleEl.removeAttribute("title");
+    }
+  }
+  fitQuestWindowBarWidth();
+}
+
+// Largeur = ce qu'il faut pour afficher le nom de la mission EN ENTIER à
+// côté des onglets (380 px mini). Passe par une variable CSS : le
+// gestionnaire de fenêtres réécrit style.width au déplacement, la
+// variable, elle, reste.
+function fitQuestWindowBarWidth() {
+  const questWindow = document.getElementById("questWindow");
+  const bar = questWindow?.querySelector(":scope > .gameWinBar");
+  const titleEl = bar?.querySelector(":scope > .gameWinTitle");
+  if (!questWindow || !bar || !titleEl || questWindow.style.display === "none") return;
+  const maxW = Math.max(280, window.innerWidth - 24);
+  questWindow.style.setProperty("--quest-win-w", "380px");
+  questWindow.style.removeProperty("width");
+  const overflow = Math.max(0, titleEl.scrollWidth - titleEl.clientWidth);
+  const cardW = questWindow.getBoundingClientRect().width || 380;
+  if (!(cardW > 0)) return;
+  const width = Math.min(maxW, Math.max(380, Math.ceil(cardW + overflow + 2)));
+  questWindow.style.setProperty("--quest-win-w", `${width}px`);
 }
 
 let questWindowFitFrame = 0;
@@ -19134,6 +19200,7 @@ function fitQuestWindowToContent() {
   cancelAnimationFrame(questWindowFitFrame);
   questWindowFitFrame = requestAnimationFrame(() => {
     if (questWindow.style.display === "none") return;
+    fitQuestWindowBarWidth();
     const bar = questWindow.querySelector(":scope > .gameWinBar");
     const intro = questWindow.querySelector("#questIntro");
     const tabs = questWindow.querySelector("#questTabs");
@@ -19142,7 +19209,9 @@ function fitQuestWindowToContent() {
 
     list.style.overflowY = "visible";
     list.style.flex = "0 0 auto";
-    const chromeHeight = (bar?.offsetHeight || 30) + (intro?.offsetHeight || 0) + (tabs?.offsetHeight || 0);
+    // Onglets déplacés dans la barre : déjà comptés dans sa hauteur.
+    const tabsInBar = !!tabs && tabs.parentElement === bar;
+    const chromeHeight = (bar?.offsetHeight || 30) + (intro?.offsetHeight || 0) + (tabsInBar ? 0 : (tabs?.offsetHeight || 0));
     const desiredHeight = chromeHeight + list.scrollHeight + 2;
     const top = Math.max(8, questWindow.getBoundingClientRect().top || 8);
     const availableHeight = Math.max(180, window.innerHeight - top - 12);
@@ -19493,6 +19562,13 @@ function claimQuestReward(questId) {
 }
 
 ui.questList?.addEventListener("click", event => {
+  const toggle = event.target.closest("[data-quest-toggle]");
+  if (toggle) {
+    if (toggle.dataset.questToggle === "done") questJournalShowDone = !questJournalShowDone;
+    if (toggle.dataset.questToggle === "reward") questJournalShowReward = !questJournalShowReward;
+    renderQuestWindow();
+    return;
+  }
   const button = event.target.closest("[data-quest-action]");
   if (!button) return;
   const questId = button.dataset.questId;
@@ -19501,12 +19577,16 @@ ui.questList?.addEventListener("click", event => {
     if (button.dataset.abandonConfirmed !== "true") {
       button.dataset.abandonConfirmed = "true";
       button.classList.add("questCancelConfirm");
-      button.textContent = "Confirmer l’abandon";
+      // Petit bouton ✕ du journal compact : texte court, icône restaurée.
+      const compact = button.classList.contains("qcAbandon");
+      const original = button.innerHTML;
+      button.textContent = compact ? "Confirmer ?" : "Confirmer l’abandon";
       window.setTimeout(() => {
         if (!button.isConnected || button.dataset.abandonConfirmed !== "true") return;
         delete button.dataset.abandonConfirmed;
         button.classList.remove("questCancelConfirm");
-        button.textContent = "Abandonner la mission";
+        if (compact) button.innerHTML = original;
+        else button.textContent = "Abandonner la mission";
       }, 4000);
       return;
     }

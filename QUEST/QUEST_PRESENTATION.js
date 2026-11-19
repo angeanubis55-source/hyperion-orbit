@@ -42,7 +42,6 @@ const SVG_SEARCH = svgIcon(`<circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5l3
 // pour que toutes les images fassent à peu près la même taille cible.
 const LIST_THUMB_TARGET = 34;
 const DETAIL_PORTRAIT_TARGET = 84;
-const DETAIL_ICON_TARGET = 64;
 const OBJECTIVE_ICON_TARGET = 40;
 export function normalizedSpriteSize(source, target) {
   const dims = trimmedDims(source);
@@ -183,25 +182,42 @@ export function questObjectiveImage(objective, collectables, npcTypes) {
   return `${source.path}${Number(source.firstNumber ?? 1)}${source.ext || ".png"}`;
 }
 
+// Fenêtre Missions (journal) : version compacte. Objectifs terminés
+// repliés en une ligne, récompense résumée sur une ligne (clic = détail),
+// bouton Annuler collé à droite de la ligne Récompense.
+const JOURNAL_ICON_TARGET = 26;
+const qcChevron = (open) => `<svg class="qcChevron${open ? " isOpen" : ""}" width="9" height="9" viewBox="0 0 10 10" aria-hidden="true"><path d="M3 1.5L7 5 3 8.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"></path></svg>`;
+
 export function buildQuestCard(quest, questState, context = {}) {
-  const { collectables = {}, npcTypes = {} } = context;
+  const { collectables = {}, npcTypes = {}, showDone = false, showReward = false } = context;
   const objectives = getQuestObjectives(quest);
   const progress = questState.active[quest.id] || {};
-  const rowsHtml = objectives.map(objective => {
+  const rows = objectives.map(objective => {
     const current = Number(progress[objective.id] || 0);
     const done = current >= objective.amount;
-    const iconSize = normalizedSpriteSize(questObjectiveSprite(objective, collectables, npcTypes), DETAIL_ICON_TARGET);
-    return `<div class="qoffObjective"><span class="qoffCheck"><input type="checkbox" tabindex="-1" aria-hidden="true"${done ? " checked" : ""} disabled></span><span class="qoffObjectiveLabel">${apercuObjectiveLabel(objective)}</span><b>${current}/${objective.amount}</b><img src="${questObjectiveImage(objective, collectables, npcTypes)}" width="${iconSize.w}" height="${iconSize.h}" style="width:${iconSize.w}px;height:${iconSize.h}px" alt="" loading="lazy" draggable="false" onerror="this.style.visibility='hidden'"></div>`;
-  }).join("");
-  const actions = `<button class="questAction questCancel" data-quest-action="abandon" data-quest-id="${quest.id}">Abandonner la mission</button>`;
+    const iconSize = normalizedSpriteSize(questObjectiveSprite(objective, collectables, npcTypes), JOURNAL_ICON_TARGET);
+    const html = `<div class="qoffObjective${done ? " isDone" : ""}"><span class="qoffCheck"><input type="checkbox" tabindex="-1" aria-hidden="true"${done ? " checked" : ""} disabled></span><span class="qoffObjectiveLabel">${apercuObjectiveLabel(objective)}</span><b>${current}/${objective.amount}</b><img src="${questObjectiveImage(objective, collectables, npcTypes)}" width="${iconSize.w}" height="${iconSize.h}" style="width:${iconSize.w}px;height:${iconSize.h}px" alt="" loading="lazy" draggable="false" onerror="this.style.visibility='hidden'"></div>`;
+    return { done, html };
+  });
+  const doneCount = rows.filter(row => row.done).length;
+  // Tout est fini : on montre tout (rien à replier).
+  const canFold = doneCount > 0 && doneCount < rows.length;
+  const foldHtml = canFold
+    ? `<button type="button" class="qcToggle qcDoneToggle" data-quest-toggle="done" aria-expanded="${showDone ? "true" : "false"}"><span class="qcDoneMark" aria-hidden="true"></span><span class="qcToggleText">Objectifs terminés (${doneCount})</span>${qcChevron(showDone)}</button>`
+    : "";
+  const visibleRows = rows.filter(row => !canFold || showDone || !row.done).map(row => row.html).join("");
+  const rewards = rewardRows(quest);
+  const rewardToggle = rewards.length
+    ? `<button type="button" class="qcToggle qcRewardToggle" data-quest-toggle="reward" aria-expanded="${showReward ? "true" : "false"}"><span class="qoffSection">Récompense</span>${qcChevron(showReward)}</button>`
+    : "";
+  const abandonBtn = `<button type="button" class="questAction questCancel qcAbandon" data-quest-action="abandon" data-quest-id="${quest.id}" title="Abandonner la mission">Annuler la mission</button>`;
+  const rewardHtml = `<div class="qcRewardRow">${rewardToggle}${abandonBtn}</div>`
+    + (rewards.length && showReward ? `<div class="qoffBox">${rewards.map(([label, value]) => `<div class="qoffReward"><span>${label}</span><b>${value}</b></div>`).join("")}</div>` : "");
 
-  return `<article class="questCard">
-    <h2 class="qoffTitle">${quest.title}</h2>
-    <h4 class="qoffSection">Aperçu</h4>
-    <div class="qoffBox">${rowsHtml}</div>
-    <h4 class="qoffSection">Récompense</h4>
-    <div class="qoffBox">${rewardRows(quest).map(([label, value]) => `<div class="qoffReward"><span>${label}</span><b>${value}</b></div>`).join("")}</div>
-    <div class="qoffActions">${actions}</div>
+  return `<article class="questCard questCompact">
+    <h2 class="qoffTitle qcQuestName">${quest.title}</h2>
+    <div class="qoffBox">${foldHtml}${visibleRows}</div>
+    ${rewardHtml}
   </article>`;
 }
 
@@ -214,7 +230,7 @@ export function buildQuestJournalView(questState, selectedId, context = {}) {
     intro: "",
     tabsHtml: activeIds.map((id, index) => {
       const quest = QUEST_DEFINITIONS.find(item => item.id === id);
-      return quest ? `<button class="questTab${id === selectedQuestId ? " active" : ""}" data-quest-tab="${id}" title="${quest.title}">${index + 1}</button>` : "";
+      return quest ? `<button type="button" class="gameWinMinBtn miniZoomBtn questTab${id === selectedQuestId ? " active" : ""}" data-quest-tab="${id}" title="${quest.title}">${index + 1}</button>` : "";
     }).join(""),
     contentHtml: selected
       ? buildQuestCard(selected, questState, context)
