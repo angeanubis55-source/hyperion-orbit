@@ -37758,6 +37758,28 @@ function minimapAllies() {
 }
 
 let minimapLastDraw = -Infinity;
+// Quadrillage de la mini-carte (A1, B1… / A2, B2…), mémorisé par joueur.
+const MINIMAP_GRID_KEY = "orbit_minimap_grid_v1";
+let minimapGridOn = false;
+try { minimapGridOn = localStorage.getItem(MINIMAP_GRID_KEY) === "1"; } catch {}
+(() => {
+  const btn = document.getElementById("miniGridBtn");
+  if (!btn) return;
+  const sync = () => {
+    btn.classList.toggle("active", minimapGridOn);
+    btn.setAttribute("aria-pressed", minimapGridOn ? "true" : "false");
+  };
+  sync();
+  btn.addEventListener("pointerdown", (e) => e.stopPropagation());
+  btn.addEventListener("click", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    minimapGridOn = !minimapGridOn;
+    try { localStorage.setItem(MINIMAP_GRID_KEY, minimapGridOn ? "1" : "0"); } catch {}
+    sync();
+    minimapLastDraw = -Infinity;
+  });
+})();
 let minimapLastWorld = null;
 let minimapLastSize = "";
 function drawMinimap() {
@@ -37819,6 +37841,7 @@ function drawMinimap() {
     walls: zoneWalls,
     rallyZone: rules?.raidLow === true && isLowRaidCircleVisible() ? LOW_RAID_ZONE_CLIENT : null,
     moveTarget,
+    grid: minimapGridOn,
     ping: miniPing,
     camera,
     viewportWidth: viewW,

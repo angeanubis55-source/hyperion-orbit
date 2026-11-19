@@ -350,6 +350,8 @@ export default {
     "Estimation": "Оценка",
     "Connexion…": "Подключение…",
     "Aucun message. Dis bonjour !": "Нет сообщений. Поздоровайтесь!",
+    "Quadrillage": "Сетка",
+    "Afficher le quadrillage": "Показать сетку",
     "Insérer un emoji": "Вставить эмодзи",
     "Écris ton message…": "Напишите сообщение…",
     "Envoyer": "Отправить",

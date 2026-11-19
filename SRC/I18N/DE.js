@@ -350,6 +350,8 @@ export default {
     "Estimation": "Schätzung",
     "Connexion…": "Verbinde…",
     "Aucun message. Dis bonjour !": "Keine Nachrichten. Sag Hallo!",
+    "Quadrillage": "Raster",
+    "Afficher le quadrillage": "Raster anzeigen",
     "Insérer un emoji": "Emoji einfügen",
     "Écris ton message…": "Schreib deine Nachricht…",
     "Envoyer": "Senden",

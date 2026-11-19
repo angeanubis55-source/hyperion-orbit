@@ -27596,3 +27596,22 @@ display: flex;
   outline:0;
   background:rgba(0,140,185,.32);
 }
+
+/* Mini-carte : bouton quadrillage (icône grille 3x3 dessinée en CSS). */
+#minimap .miniGridBtn::before {
+  width:12px;
+  height:12px;
+  margin:-6px 0 0 -6px;
+  border-radius:1px;
+  background:
+    linear-gradient(#eaffff,#eaffff) 0 0/100% 2px no-repeat,
+    linear-gradient(#eaffff,#eaffff) 0 50%/100% 2px no-repeat,
+    linear-gradient(#eaffff,#eaffff) 0 100%/100% 2px no-repeat,
+    linear-gradient(#eaffff,#eaffff) 0 0/2px 100% no-repeat,
+    linear-gradient(#eaffff,#eaffff) 50% 0/2px 100% no-repeat,
+    linear-gradient(#eaffff,#eaffff) 100% 0/2px 100% no-repeat;
+}
+#minimap .miniGridBtn.active {
+  border-color:rgba(124,240,255,.75);
+  background:linear-gradient(180deg, rgba(0,150,195,.55), rgba(0,80,110,.6));
+}

@@ -350,6 +350,8 @@ export default {
     "Estimation": "Estimate",
     "Connexion…": "Connecting…",
     "Aucun message. Dis bonjour !": "No messages. Say hello!",
+    "Quadrillage": "Grid",
+    "Afficher le quadrillage": "Show the grid",
     "Insérer un emoji": "Insert an emoji",
     "Écris ton message…": "Write your message…",
     "Envoyer": "Send",

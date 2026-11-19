@@ -350,6 +350,8 @@ export default {
     "Estimation": "Uppskattning",
     "Connexion…": "Ansluter…",
     "Aucun message. Dis bonjour !": "Inga meddelanden. Säg hej!",
+    "Quadrillage": "Rutnät",
+    "Afficher le quadrillage": "Visa rutnätet",
     "Insérer un emoji": "Infoga en emoji",
     "Écris ton message…": "Skriv ditt meddelande…",
     "Envoyer": "Skicka",

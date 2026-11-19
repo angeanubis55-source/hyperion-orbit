@@ -248,13 +248,14 @@ export function renderMinimap(context, options) {
     width, height, world, player, enemies = [], allies = [], pet = null, portals = [], returnPortal = null,
     isZoneMap = false, safeZone = null, rallyZone = null, moveTarget = null, ping = null, markers = [],
     camera, viewportWidth, viewportHeight, lockedNpc = null, shouldShowNpc = () => true, npcOpacity = () => 1,
-    walls = [], bossIconFor = null, station = null,
+    walls = [], bossIconFor = null, station = null, grid = false,
   } = options;
   const staticLayer = getMinimapStaticLayer(world, portals, isZoneMap, safeZone, returnPortal, width, height, rallyZone, walls);
   // La couche statique contient un fond blanc translucide. Sans effacer le
   // canvas visible, ce voile s'accumule à chaque frame jusqu'à devenir blanc.
   context.clearRect(0, 0, width, height);
   context.drawImage(staticLayer, 0, 0);
+  if (grid) drawMinimapGrid(context, width, height);
   const scaleX = width / world.w;
   const scaleY = height / world.h;
 
@@ -504,5 +505,39 @@ export function renderMinimap(context, options) {
   context.translate(width, height);
   context.rotate(Math.PI);
   context.fillRect(0, 0, radiationBand, height);
+  context.restore();
+}
+
+// Quadrillage : colonnes A, B, C… (gauche → droite), lignes 1, 2, 3…
+// (haut → bas). Cases à peu près carrées selon le format de la carte.
+const MINIMAP_GRID_COLS = 8;
+function drawMinimapGrid(context, width, height) {
+  if (!(width > 0 && height > 0)) return;
+  const cols = MINIMAP_GRID_COLS;
+  const rows = Math.max(3, Math.min(10, Math.round(cols * height / width)));
+  const cw = width / cols, ch = height / rows;
+  context.save();
+  context.strokeStyle = "rgba(124,240,255,0.16)";
+  context.lineWidth = 1;
+  context.beginPath();
+  for (let i = 1; i < cols; i++) {
+    const x = Math.round(i * cw) + 0.5;
+    context.moveTo(x, 0); context.lineTo(x, height);
+  }
+  for (let j = 1; j < rows; j++) {
+    const y = Math.round(j * ch) + 0.5;
+    context.moveTo(0, y); context.lineTo(width, y);
+  }
+  context.stroke();
+  const fontPx = Math.max(7, Math.min(10, Math.round(Math.min(cw, ch) * 0.28)));
+  context.font = `800 ${fontPx}px ui-sans-serif, system-ui`;
+  context.textAlign = "left";
+  context.textBaseline = "top";
+  context.fillStyle = "rgba(170,235,250,0.42)";
+  for (let j = 0; j < rows; j++) {
+    for (let i = 0; i < cols; i++) {
+      context.fillText(`${String.fromCharCode(65 + i)}${j + 1}`, Math.round(i * cw) + 2, Math.round(j * ch) + 2);
+    }
+  }
   context.restore();
 }
