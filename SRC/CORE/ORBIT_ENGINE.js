@@ -228,8 +228,13 @@ import {
   abandonQuest,
   canAcceptQuest,
   claimQuest,
+  createForgeQuest,
+  findQuestDefinition,
+  forgePreview,
+  getForgeBlock,
   getQuestObjectives,
   isQuestComplete,
+  mergeForgeState,
   normalizeQuestState,
   recordQuestProgress,
 } from "../../QUEST/QUEST_TYPES.js";
@@ -13154,7 +13159,7 @@ function botTickQuests(dt) {
     if (!started || player.dead) return;
     if (Bot.questsClaim) {
       for (const id of Object.keys(questState.active || {})) {
-        const q = QUEST_DEFINITIONS.find(item => item.id === id);
+        const q = findQuestDefinition(id, questState);
         if (q && isQuestComplete(questState, q)) {
           if (claimQuestReward(id)) {
             try { renderQuestWindow(); renderQuestTerminal(); } catch {}
@@ -14059,7 +14064,7 @@ function botQuestTargets() {
   const boxes = new Set();
   try {
     for (const [id, prog] of Object.entries(questState.active || {})) {
-      const q = QUEST_DEFINITIONS.find(item => item.id === id);
+      const q = findQuestDefinition(id, questState);
       if (!q) continue;
       let objs = [];
       try { objs = getQuestObjectives(q); } catch { continue; }
@@ -18964,7 +18969,8 @@ function mergeQuestProgress(localState, persistedState) {
   }
   for (const questId of completed) delete active[questId];
   for (const questId of Object.keys(abandoned)) delete active[questId];
-  return normalizeQuestState({ active, completed: [...completed], abandoned });
+  const forge = mergeForgeState(local.forge, persisted.forge);
+  return normalizeQuestState({ active, completed: [...completed], abandoned, forge });
 }
 
 function preserveLivePetVitals(previous, next) {
@@ -19099,8 +19105,13 @@ function renderQuestWindow() {
   {
     const persisted = normalizeQuestState(getCurrentUserFull()?.quests);
     if (persisted) {
+      // Contrat fabriqué : le plus récent gagne, une fin bat "actif".
+      questState.forge = mergeForgeState(questState.forge, persisted.forge);
+      const forgeId = questState.forge.status === "active" ? `forge_${questState.forge.seq}` : null;
+      for (const id of Object.keys(questState.active)) if (id.startsWith("forge_") && id !== forgeId) delete questState.active[id];
       for (const [id, prog] of Object.entries(persisted.active)) {
         if (questState.completed.includes(id)) continue;
+        if (id.startsWith("forge_") && id !== forgeId) continue;
         const mem = questState.active[id];
         if (!mem) {
           if (Object.keys(questState.active).length < MAX_ACTIVE_QUESTS) questState.active[id] = { ...prog };
@@ -19236,6 +19247,8 @@ if (questWindowElement) {
 let selectedQuestOfferId = null;
 let questTerminalSearch = "";
 let questTerminalFilter = "open";
+// Fabricateur : brouillon du contrat en cours de composition.
+let questForgeDraft = { type: "npc_Streuner", amount: 50, map: "", conds: [], stake: 0, title: "", titleIdx: Math.floor(Math.random() * 8) };
 // Ligne sélectionnée dépliée (re-clic = repliée).
 let questTerminalExpanded = true;
 let questNpcLocations = {};
@@ -19267,6 +19280,9 @@ function renderQuestTerminal() {
     filter: questTerminalFilter,
     playerSector: pilotSector,
     expanded: questTerminalExpanded,
+    forgeDraft: questForgeDraft,
+    playerCredits: Math.max(0, Math.floor(Number(player.credits) || 0)),
+    now: Date.now(),
   });
   selectedQuestOfferId = view.selectedQuestId;
   ui.questOfferList.innerHTML = view.listHtml;
@@ -19340,7 +19356,40 @@ ui.questOfferList?.addEventListener("click", event => {
   requestAnimationFrame(revealSelectedQuestOffer);
 });
 
+// Listes du fabricateur : même habillage que les autres fenêtres
+// (UI_SELECT_COMBO, qui émet "change").
+watchSelects(ui.questOfferList, { maxHeight: 308 });
+function handleQuestForgeField(event) {
+  const field = event.target.closest("[data-forge-field]");
+  if (!field) return false;
+  {
+    const key = field.dataset.forgeField;
+    const value = field.value;
+    if (key === "type") {
+      questForgeDraft.type = String(value);
+      questForgeDraft.map = "";
+    } else if (key === "amount" || key === "stake") {
+      questForgeDraft[key] = Math.max(0, Math.floor(Number(String(value).replace(/\s/g, "")) || 0));
+    } else if (key === "map" || key === "title") {
+      questForgeDraft[key] = String(value);
+    } else return false;
+    const caret = typeof field.selectionStart === "number" ? field.selectionStart : null;
+    renderQuestTerminal();
+    try {
+      const next = ui.questOfferList.querySelector(`[data-forge-field="${key}"]`);
+      if (next && field.tagName !== "SELECT") {
+        next.focus();
+        if (caret != null && typeof next.setSelectionRange === "function") next.setSelectionRange(caret, caret);
+      }
+    } catch {}
+    return true;
+  }
+}
+ui.questOfferList?.addEventListener("change", event => {
+  if (event.target.tagName === "SELECT") handleQuestForgeField(event);
+});
 ui.questOfferList?.addEventListener("input", event => {
+  if (event.target.tagName !== "SELECT" && handleQuestForgeField(event)) return;
   const search = event.target.closest("[data-quest-search]");
   if (!search) return;
   questTerminalSearch = String(search.value || "");
@@ -19358,6 +19407,30 @@ ui.questOfferList?.addEventListener("input", event => {
 // Boutons de la ligne dépliée (mission requise, Fermer, Accepter).
 // Renvoie true si le clic a été traité.
 function handleQuestTerminalAction(event) {
+  const cond = event.target.closest("[data-forge-cond]");
+  if (cond) {
+    const id = cond.dataset.forgeCond;
+    const conds = new Set(questForgeDraft.conds);
+    if (conds.has(id)) conds.delete(id);
+    else {
+      conds.add(id);
+      if (id === "config1") conds.delete("config2");
+      if (id === "config2") conds.delete("config1");
+    }
+    questForgeDraft.conds = [...conds];
+    renderQuestTerminal();
+    return true;
+  }
+  if (event.target.closest("[data-forge-reroll]")) {
+    questForgeDraft.title = "";
+    questForgeDraft.titleIdx = (Number(questForgeDraft.titleIdx) || 0) + 1 + Math.floor(Math.random() * 6);
+    renderQuestTerminal();
+    return true;
+  }
+  if (event.target.closest("[data-forge-create]")) {
+    createQuestFromForge();
+    return true;
+  }
   // Mission requise : on l'ouvre dans son onglet, recherche effacée.
   const prerequisite = event.target.closest("[data-quest-prereq]");
   if (prerequisite) {
@@ -19387,6 +19460,38 @@ function handleQuestTerminalAction(event) {
   renderQuestWindow();
   renderQuestTerminal();
   return true;
+}
+
+// Fabricateur : un contrat à la fois, 24 h entre deux créations.
+// Coût = frais + mise (débités tout de suite, mise perdue si abandon).
+function createQuestFromForge() {
+  if (!hasQuestTerminalAccess()) {
+    showToast("Rapproche-toi du bâtiment de quêtes", 1.5);
+    return;
+  }
+  const now = Date.now();
+  const block = getForgeBlock(questState, now);
+  if (block) {
+    showToast(block === "full" ? "Carnet de missions plein" : block === "active" ? "Termine d'abord ton contrat en cours" : "Fabricateur en recharge", 1.6);
+    return;
+  }
+  const preview = forgePreview(questForgeDraft);
+  if (!preview) return;
+  if (player.credits < preview.cost) {
+    showToast("Pas assez de crédits", 1.4);
+    return;
+  }
+  const quest = createForgeQuest(questState, preview.spec, now);
+  if (!quest) return;
+  player.credits -= preview.cost;
+  try { noteNetPurchase(preview.cost); } catch {}
+  selectedQuestId = quest.id;
+  questForgeDraft = { ...questForgeDraft, title: "", titleIdx: Math.floor(Math.random() * 8) };
+  markProgressDirty();
+  saveProgressNow();
+  showToast("Contrat créé", 1.4);
+  renderQuestWindow();
+  renderQuestTerminal();
 }
 
 // Les kills mettent l'état à jour immédiatement ; les panneaux fermés
@@ -19457,7 +19562,7 @@ function advanceQuestProgress(kind, type, amount = 1, context = null) {
   markProgressDirty();
 
   for (const id of advanced) {
-    const quest = QUEST_DEFINITIONS.find(item => item.id === id);
+    const quest = findQuestDefinition(id, questState);
     if (quest && isQuestComplete(questState, quest)) {
       showToast(`Mission accomplie : ${quest.title}`, 2);
       // Validation automatique : la récompense part sans bouton Récupérer.
@@ -19467,7 +19572,7 @@ function advanceQuestProgress(kind, type, amount = 1, context = null) {
   // Filet : quêtes déjà complètes au chargement (vieilles sauvegardes).
   for (const id of Object.keys(questState.active)) {
     if (advanced.includes(id)) continue;
-    const quest = QUEST_DEFINITIONS.find(item => item.id === id);
+    const quest = findQuestDefinition(id, questState);
     if (quest && isQuestComplete(questState, quest)) claimQuestReward(id);
   }
   questJournalRenderPending = true;
@@ -19515,12 +19620,14 @@ ui.questTabs?.addEventListener("click", event => {
 // clic manuel : crédits, munitions, XP, honneur, énergie GG). Réutilisé par
 // le BOT (quêtes auto). Retourne true si rendue.
 function claimQuestReward(questId) {
+  const quest = findQuestDefinition(questId, questState);
   const reward = claimQuest(questState, questId);
-  if (!reward) return false;
-  const quest = QUEST_DEFINITIONS.find(item => item.id === questId);
-  // Booster QR-01 : récompenses de quêtes doublées.
+  if (!reward || !quest) return false;
+  // Booster QR-01 : récompenses de quêtes doublées (la mise d'un contrat
+  // fabriqué est rendue telle quelle, jamais doublée).
   const questMult = playerBoosterMults().quest;
-  const creditsGained = Math.max(0, Math.floor(Number(reward.credits || 0) * questMult));
+  const stakeBack = Math.max(0, Math.floor(Number(reward.forgeStake) || 0));
+  const creditsGained = Math.max(0, Math.floor(Number(reward.credits || 0) * questMult)) + stakeBack;
   player.credits += creditsGained;
   // Mode multi : sinon les gains sont perdus sur 409 (canon serveur).
   try { noteNetCreditGain(creditsGained); } catch {}

@@ -966,6 +966,174 @@ function withTitleRewards(quest) {
 
 export const QUEST_DEFINITIONS = Object.freeze([...QUEST_CATALOG.map(withTitleRewards), withTitleRewards(FINAL_QUEST)]);
 
+// ---------------------------------------------------------------------------
+// Fabricateur de quêtes (onglet du terminal).
+// Le pilote compose UN contrat à la fois : cible, quantité, carte, contraintes
+// de défi et mise. Un nouveau contrat n'est possible que 24 h après la
+// création du précédent (abandon compris). Récompense = calcul standard des
+// quêtes kill × multiplicateur des contraintes (plafonné). La mise est
+// rendue × ce multiplicateur en cas de réussite, perdue en cas d'abandon ;
+// elle n'est jamais doublée par les boosters de quête.
+// ---------------------------------------------------------------------------
+export const FORGE_COOLDOWN_MS = 24 * 60 * 60 * 1000;
+export const FORGE_MAX_AMOUNT = 5000;
+export const FORGE_MAX_STAKE = 100000000;
+// Frais = 20 % de la récompense (minimum 5 000) : un petit contrat coûte
+// peu, un gros coûte cher. Pas de forfait d'aventure (250 000) pour les
+// contrats fabriqués : 1 Streuner ne doit pas rapporter une fortune.
+export const FORGE_FEE_RATE = 0.2;
+export const FORGE_FEE_MIN = 5000;
+export const FORGE_MAX_MULT = 4;
+export const FORGE_CONDITIONS = Object.freeze([
+  Object.freeze({ id: "solo", label: "En solo", mult: 1.25, cond: { solo: true } }),
+  Object.freeze({ id: "config1", label: "Config 1", mult: 1.1, cond: { config: 1 }, excludes: "config2" }),
+  Object.freeze({ id: "config2", label: "Config 2", mult: 1.1, cond: { config: 2 }, excludes: "config1" }),
+  Object.freeze({ id: "lf1", label: "Lasers LF-1 uniquement", mult: 1.5, cond: { laser: "laser_lf1" } }),
+  Object.freeze({ id: "onelaser", label: "1 laser maximum", mult: 1.4, cond: { maxLasers: 1 } }),
+  Object.freeze({ id: "x1", label: "Munitions LCB-10 uniquement", mult: 1.5, cond: { ammo: "x1" } }),
+  Object.freeze({ id: "stayed", label: "Sans bouger", mult: 1.4, cond: { stayed: true } }),
+  Object.freeze({ id: "hull", label: "Sans perte de coque", mult: 1.6, cond: { hullIntact: true } }),
+]);
+const FORGE_CONDITION_BY_ID = new Map(FORGE_CONDITIONS.map(c => [c.id, c]));
+// Titres générés ({0} = cible au pluriel). Le pilote peut renommer.
+export const FORGE_TITLE_TEMPLATES = Object.freeze([
+  "Mauvaise journée pour les {0}",
+  "Pas de quartier pour les {0}",
+  "La revanche contre les {0}",
+  "Les {0} n'ont qu'à bien se tenir",
+  "Le grand ménage : {0}",
+  "Rendez-vous galant avec des {0}",
+  "Opération « Adieu {0} »",
+  "Les {0} vont regretter",
+]);
+export const forgeTargetName = type => xName(type);
+export function forgeGeneratedTitle(type, index = 0) {
+  const templates = FORGE_TITLE_TEMPLATES;
+  const i = ((Math.floor(Number(index) || 0) % templates.length) + templates.length) % templates.length;
+  return templates[i].replace("{0}", xPlural(xName(type)));
+}
+const forgeInt = (value, min, max) => Math.max(min, Math.min(max, Math.floor(Number(value) || 0)));
+
+export function sanitizeForgeSpec(raw) {
+  if (!raw || typeof raw !== "object") return null;
+  const type = String(raw.type || "");
+  if (!type.startsWith("npc_") || !NPC_REWARDS[type]) return null;
+  const amount = forgeInt(raw.amount, 1, FORGE_MAX_AMOUNT);
+  const map = raw.map ? String(raw.map).toLowerCase().replace(/[^a-z0-9-]/g, "").slice(0, 16) || null : null;
+  const conds = [];
+  for (const id of Array.isArray(raw.conds) ? raw.conds : []) {
+    const def = FORGE_CONDITION_BY_ID.get(String(id));
+    if (!def || conds.includes(def.id) || (def.excludes && conds.includes(def.excludes))) continue;
+    conds.push(def.id);
+  }
+  const stake = forgeInt(raw.stake, 0, FORGE_MAX_STAKE);
+  const title = String(raw.title || "").replace(/[<>&"'`\\]/g, "").replace(/\s+/g, " ").trim().slice(0, 48);
+  const titleIdx = forgeInt(raw.titleIdx, 0, 999);
+  return { type, amount, map, conds, stake, title, titleIdx };
+}
+
+// Aperçu / définition d'un contrat fabriqué (mêmes règles des deux côtés).
+export function forgePreview(rawSpec) {
+  const spec = sanitizeForgeSpec(rawSpec);
+  if (!spec) return null;
+  let cond = null;
+  let mult = 1;
+  for (const id of spec.conds) {
+    const def = FORGE_CONDITION_BY_ID.get(id);
+    cond = { ...(cond || {}), ...def.cond };
+    mult *= def.mult;
+  }
+  mult = Math.min(FORGE_MAX_MULT, Math.round(mult * 100) / 100);
+  const objective = { ...xKill("forge_kill", spec.type, spec.amount, spec.map || undefined), ...(cond ? { cond } : {}) };
+  const raw = balancedKillReward([objective]);
+  const base = {
+    credits: Math.max(0, raw.credits - QUEST_FLAT_BONUS.credits),
+    exp: Math.max(0, raw.exp - QUEST_FLAT_BONUS.exp),
+    honor: Math.max(0, raw.honor - QUEST_FLAT_BONUS.honor),
+  };
+  // Mise plafonnée à 5x la récompense de base : parier gros exige un gros
+  // contrat (sinon 1 Streuner + toutes les contraintes = rente quotidienne).
+  const stakeCap = Math.min(FORGE_MAX_STAKE, Math.floor(base.credits * 5 / 100000) * 100000);
+  spec.stake = Math.min(spec.stake, stakeCap);
+  const reward = {
+    credits: Math.floor(base.credits * mult / 1000) * 1000,
+    exp: Math.floor(base.exp * mult / 1000) * 1000,
+    honor: Math.floor(base.honor * mult / 100) * 100,
+    ...(spec.stake > 0 ? { forgeStake: Math.floor(spec.stake * mult) } : {}),
+  };
+  const fee = Math.max(FORGE_FEE_MIN, Math.floor(reward.credits * FORGE_FEE_RATE / 1000) * 1000);
+  return { spec, objective, reward, mult, stakeCap, fee, cost: fee + spec.stake, title: spec.title || forgeGeneratedTitle(spec.type, spec.titleIdx) };
+}
+
+function normalizeForgeState(raw) {
+  const seq = forgeInt(raw?.seq, 0, 1e9);
+  const cooldownUntil = Math.max(0, Math.floor(Number(raw?.cooldownUntil) || 0));
+  let status = ["active", "done", "abandoned"].includes(raw?.status) ? raw.status : "none";
+  const spec = sanitizeForgeSpec(raw?.spec);
+  if (status === "active" && !spec) status = "none";
+  return { seq, status, spec: status === "none" ? null : spec, cooldownUntil };
+}
+const FORGE_STATUS_RANK = { none: 0, active: 1, done: 2, abandoned: 2 };
+// Fusion de deux sauvegardes : le contrat le plus récent gagne ; à contrat
+// égal, une fin (rendu/abandon) bat "actif" (jamais de résurrection).
+export function mergeForgeState(a, b) {
+  const x = normalizeForgeState(a), y = normalizeForgeState(b);
+  const pick = x.seq !== y.seq ? (x.seq > y.seq ? x : y) : (FORGE_STATUS_RANK[y.status] > FORGE_STATUS_RANK[x.status] ? y : x);
+  return { ...pick, cooldownUntil: Math.max(x.cooldownUntil, y.cooldownUntil) };
+}
+
+function buildForgeDefinition(forge) {
+  if (!forge || forge.status !== "active" || !forge.spec) return null;
+  const preview = forgePreview(forge.spec);
+  if (!preview) return null;
+  const stake = preview.spec.stake;
+  return {
+    id: `forge_${forge.seq}`,
+    forged: true,
+    title: preview.title,
+    description: stake > 0 ? `Contrat fabriqué au terminal. Mise engagée : ${formatXInt(stake)} crédits.` : "Contrat fabriqué au terminal.",
+    objectives: [preview.objective],
+    reward: preview.reward,
+  };
+}
+let forgeDefinitionCache = { key: "", def: null };
+export function getForgeQuest(state) {
+  const forge = state?.forge;
+  if (!forge || forge.status !== "active") return null;
+  const key = JSON.stringify(forge);
+  if (forgeDefinitionCache.key !== key) forgeDefinitionCache = { key, def: buildForgeDefinition(forge) };
+  return forgeDefinitionCache.def;
+}
+const QUEST_BY_ID = new Map(QUEST_DEFINITIONS.map(q => [q.id, q]));
+export function findQuestDefinition(id, state) {
+  const known = QUEST_BY_ID.get(id);
+  if (known) return known;
+  const forged = getForgeQuest(state);
+  return forged && forged.id === id ? forged : null;
+}
+const questDefinitionsFor = state => {
+  const forged = getForgeQuest(state);
+  return forged ? [...QUEST_DEFINITIONS, forged] : QUEST_DEFINITIONS;
+};
+// Raison du refus, ou null si un contrat peut être créé maintenant.
+export function getForgeBlock(state, now = Date.now()) {
+  const forge = state?.forge;
+  if (forge?.status === "active") return "active";
+  if (Number(forge?.cooldownUntil || 0) > now) return "cooldown";
+  if (Object.keys(state?.active || {}).length >= MAX_ACTIVE_QUESTS) return "full";
+  return null;
+}
+export function createForgeQuest(state, rawSpec, now = Date.now()) {
+  if (getForgeBlock(state, now)) return null;
+  const preview = forgePreview(rawSpec);
+  if (!preview) return null;
+  const seq = forgeInt(state.forge?.seq, 0, 1e9) + 1;
+  state.forge = { seq, status: "active", spec: preview.spec, cooldownUntil: now + FORGE_COOLDOWN_MS };
+  const quest = getForgeQuest(state);
+  state.active[quest.id] = { forge_kill: 0 };
+  return quest;
+}
+
 export function getQuestRewardValue(quest) {
   const ammoValues = { x2: 50, x3: 150, x4: 500, x6: 1500, sab: 250 };
   const ammoValue = Object.entries(quest?.reward?.ammo || {}).reduce((total, [type, amount]) => total + Math.max(0, Number(amount) || 0) * (ammoValues[type] || 0), 0);
@@ -1099,9 +1267,10 @@ export function questLevelSectionId(level) {
 export function isQuestComplete(state, quest) { const progress = state?.active?.[quest?.id]; return !!quest && progress != null && getQuestObjectives(quest).every(o => Number(progress[o.id] || 0) >= o.amount); }
 export function normalizeQuestState(raw) {
   const active = {};
-  for (const quest of QUEST_DEFINITIONS) {
+  const forge = normalizeForgeState(raw?.forge);
+  for (const quest of questDefinitionsFor({ forge })) {
     if (Object.keys(active).length >= MAX_ACTIVE_QUESTS) break;
-    const saved = raw?.active?.[quest.id]; if (saved == null) continue;
+    const saved = raw?.active?.[quest.id] ?? (quest.forged ? {} : null); if (saved == null) continue;
     active[quest.id] = Object.fromEntries(getQuestObjectives(quest).map((o, i) => [o.id, Math.max(0, Math.min(o.amount, Math.floor(Number(typeof saved === "number" ? (i ? 0 : saved) : saved?.[o.id]) || 0)))]));
   }
   const valid = new Set(QUEST_DEFINITIONS.map(q => q.id));
@@ -1115,13 +1284,13 @@ export function normalizeQuestState(raw) {
       if (valid.has(id) && !completed.includes(id) && active[id] == null) abandoned[id] = 1;
     }
   }
-  return { active, completed, abandoned };
+  return { active, completed, abandoned, forge };
 }
 export function getQuestPrerequisiteIds(quest) {
   return [...new Set([...(quest?.requires ? [quest.requires] : []), ...(Array.isArray(quest?.requiresAll) ? quest.requiresAll : [])])];
 }
 export function canAcceptQuest(state, quest) { return !!quest && !state.completed.includes(quest.id) && state.active[quest.id] == null && Object.keys(state.active).length < MAX_ACTIVE_QUESTS && getQuestPrerequisiteIds(quest).every(id => state.completed.includes(id)); }
-export function acceptQuest(state, questId) { const quest = QUEST_DEFINITIONS.find(q => q.id === questId); if (!canAcceptQuest(state, quest)) return false; if (state.abandoned) delete state.abandoned[quest.id]; state.active[quest.id] = Object.fromEntries(getQuestObjectives(quest).map(o => [o.id, 0])); return true; }
+export function acceptQuest(state, questId) { const quest = QUEST_BY_ID.get(questId); if (!canAcceptQuest(state, quest)) return false; if (state.abandoned) delete state.abandoned[quest.id]; state.active[quest.id] = Object.fromEntries(getQuestObjectives(quest).map(o => [o.id, 0])); return true; }
 // Contraintes d'un objectif "défi" (voir CHALLENGE_CONTRACTS). Sans
 // contexte de combat (kill par drone seul, etc.) : refusé.
 export function questChallengeMet(cond, ch) {
@@ -1145,7 +1314,7 @@ export function questChallengeMet(cond, ch) {
 export function recordQuestProgress(state, kind, type, amount = 1, context = {}) {
   const advanced = [];
   const sameId = (a, b) => String(a ?? "").trim().toLowerCase() === String(b ?? "").trim().toLowerCase();
-  for (const quest of QUEST_DEFINITIONS) {
+  for (const quest of questDefinitionsFor(state)) {
     if (state.active[quest.id] == null) continue;
     let changed = false;
     for (const o of getQuestObjectives(quest)) {
@@ -1180,5 +1349,5 @@ export const recordQuestGate = (state, gateId) => recordQuestProgress(state, "ga
 export const recordQuestCraft = (state, recipeId, quantity = 1) => recordQuestProgress(state, "craft", recipeId, quantity, {});
 export const recordQuestPvp = (state, context) => recordQuestProgress(state, "pvp", "pvp", 1, context);
 export const recordQuestStay = (state, seconds, context) => recordQuestProgress(state, "stay", "bl", seconds, context);
-export function abandonQuest(state, questId) { if (state.active[questId] == null) return false; delete state.active[questId]; if (!state.abandoned || typeof state.abandoned !== "object") state.abandoned = {}; state.abandoned[questId] = 1; return true; }
-export function claimQuest(state, questId) { const quest = QUEST_DEFINITIONS.find(q => q.id === questId); if (!quest || state.completed.includes(questId) || !isQuestComplete(state, quest)) return null; delete state.active[questId]; if (state.abandoned) delete state.abandoned[questId]; state.completed.push(questId); return { ...quest.reward }; }
+export function abandonQuest(state, questId) { if (state.active[questId] == null) return false; delete state.active[questId]; if (String(questId).startsWith("forge_")) { if (state.forge && `forge_${state.forge.seq}` === questId) state.forge.status = "abandoned"; return true; } if (!state.abandoned || typeof state.abandoned !== "object") state.abandoned = {}; state.abandoned[questId] = 1; return true; }
+export function claimQuest(state, questId) { const quest = findQuestDefinition(questId, state); if (!quest || state.completed.includes(questId) || !isQuestComplete(state, quest)) return null; delete state.active[questId]; if (quest.forged) { state.forge.status = "done"; return { ...quest.reward }; } if (state.abandoned) delete state.abandoned[questId]; state.completed.push(questId); return { ...quest.reward }; }

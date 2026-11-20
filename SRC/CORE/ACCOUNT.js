@@ -1531,6 +1531,7 @@ export function changeCurrentUserFaction(nextFaction) {
     if (!qs.abandoned || typeof qs.abandoned !== "object") qs.abandoned = {};
     for (const id of Object.keys(qs.active || {})) qs.abandoned[id] = 1;
     qs.active = {};
+    if (qs.forge?.status === "active") qs.forge.status = "abandoned";
     u.quests = qs;
   }
   // Le REX suit la firme du pilote (comme le vaisseau).

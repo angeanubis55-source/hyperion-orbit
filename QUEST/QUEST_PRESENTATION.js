@@ -4,6 +4,14 @@ import {
   MAX_ACTIVE_QUESTS,
   QUEST_DEFINITIONS,
   canAcceptQuest,
+  FORGE_CONDITIONS,
+  FORGE_MAX_AMOUNT,
+  findQuestDefinition,
+  forgeGeneratedTitle,
+  forgePreview,
+  forgeTargetName,
+  getForgeBlock,
+  getForgeQuest,
   getQuestPrerequisiteIds,
   getQuestObjectives,
   getQuestRequiredLevel,
@@ -86,6 +94,8 @@ function rewardRows(quest) {
   }
   const galaxyEnergy = Math.max(0, Math.floor(Number(r.galaxyEnergy) || 0));
   if (galaxyEnergy > 0) rows.push(["Énergies Galaxy Gate", formatInteger(galaxyEnergy)]);
+  const stakeBack = Math.max(0, Math.floor(Number(r.forgeStake) || 0));
+  if (stakeBack > 0) rows.push(["Mise rendue", formatInteger(stakeBack)]);
   return rows;
 }
 
@@ -249,12 +259,12 @@ export function buildQuestCard(quest, questState, context = {}) {
 export function buildQuestJournalView(questState, selectedId, context = {}) {
   const activeIds = Object.keys(questState.active);
   const selectedQuestId = activeIds.includes(selectedId) ? selectedId : (activeIds[0] || null);
-  const selected = QUEST_DEFINITIONS.find(quest => quest.id === selectedQuestId);
+  const selected = findQuestDefinition(selectedQuestId, questState);
   return {
     selectedQuestId,
     intro: "",
     tabsHtml: activeIds.map((id, index) => {
-      const quest = QUEST_DEFINITIONS.find(item => item.id === id);
+      const quest = findQuestDefinition(id, questState);
       return quest ? `<button type="button" class="gameWinMinBtn miniZoomBtn questTab${id === selectedQuestId ? " active" : ""}" data-quest-tab="${id}" title="${quest.title}">${index + 1}</button>` : "";
     }).join(""),
     contentHtml: selected
@@ -270,6 +280,7 @@ const QUEST_TERMINAL_TABS = [
   ["active", "En cours", "En cours"],
   ["locked", "Verrouillées", "Verrou."],
   ["done", "Terminées", "Finies"],
+  ["forge", "Fabricateur", "Fabric."],
 ];
 const QUEST_STATUS_LABELS = { open: "Disponible", active: "En cours", locked: "Verrouillée", done: "Terminée" };
 
@@ -277,7 +288,7 @@ const QUEST_STATUS_LABELS = { open: "Disponible", active: "En cours", locked: "V
 export function getQuestTerminalStatus(questState, questId) {
   if (questState.completed.includes(questId)) return "done";
   if (questState.active[questId] != null) return "active";
-  const quest = QUEST_DEFINITIONS.find((item) => item.id === questId);
+  const quest = findQuestDefinition(questId, questState);
   return quest && getQuestPrerequisiteIds(quest).some((id) => !questState.completed.includes(id)) ? "locked" : "open";
 }
 
@@ -290,7 +301,84 @@ function questProgressRatio(quest, progress = {}) {
   return sum / objectives.length;
 }
 
-export function buildQuestTerminalView({ questState, selectedId, hasAccess, collectables, npcTypes, npcLocations = {}, searchQuery = "", filter = "open", playerSector = null, expanded = true }) {
+// Onglet Fabricateur : formulaire à gauche, aperçu du contrat à droite.
+// Contrat en cours : sa ligne du tableau + le délai avant le suivant.
+const SVG_DICE = svgIcon(`<rect x="2.5" y="2.5" width="11" height="11" rx="2.2"/><circle cx="5.6" cy="5.6" r=".9" fill="currentColor"/><circle cx="10.4" cy="10.4" r=".9" fill="currentColor"/><circle cx="8" cy="8" r=".9" fill="currentColor"/>`, 14);
+function forgeDelay(ms) {
+  const minutes = Math.max(1, Math.ceil(ms / 60000));
+  return { h: Math.floor(minutes / 60), m: minutes % 60 };
+}
+function forgeMult(value) {
+  return `×${String(Math.round(value * 100) / 100).replace(".", ",")}`;
+}
+function buildForgePanel({ questState, draft, npcLocations, npcTypes, collectables, hasAccess, playerCredits, now, forged, row, expanded, selectedQuestId }) {
+  const forge = questState.forge || {};
+  const cooldown = Math.max(0, Number(forge.cooldownUntil || 0) - now);
+  const delay = forgeDelay(cooldown);
+  const delayText = `Prochain contrat possible dans ${delay.h} h ${String(delay.m).padStart(2, "0")} min`;
+
+  if (forged) {
+    return `<div class="qtTable qfActive">`
+      + `<div class="qtHeadRow" aria-hidden="true"><span></span><span>Contrat en cours</span><span>Objectifs</span><span>Crédits</span><span>Expérience</span><span></span></div>`
+      + `<div class="qtRows" id="questTerminalRows" role="list">${row(forged)}</div>`
+      + `</div>`
+      + `<p class="qfInfo"><span>Un seul contrat fabriqué à la fois.</span> ${cooldown > 0 ? `<span>${delayText}</span>` : ""}</p>`;
+  }
+
+  const types = Object.keys(npcLocations || {})
+    .filter((type) => type.startsWith("npc_") && forgePreview({ type, amount: 1 }))
+    .map((type) => [type, forgePreview({ type, amount: 1 }).reward.credits])
+    .sort((a, b) => a[1] - b[1] || a[0].localeCompare(b[0]))
+    .map(([type]) => type);
+  const spec = { ...(draft || {}) };
+  if (!types.includes(spec.type)) spec.type = types.includes("npc_Streuner") ? "npc_Streuner" : (types[0] || spec.type || "npc_Streuner");
+  const maps = (npcLocations?.[spec.type] || []).map(String).filter((map) => map && !/^gate\s/i.test(map));
+  if (spec.map && !maps.some((map) => map.toLowerCase() === String(spec.map).toLowerCase())) spec.map = "";
+  const preview = forgePreview(spec);
+  if (!preview) return `<div class="qtEmpty">Fabricateur indisponible.</div>`;
+  const amountClamped = preview.spec.amount;
+
+  const block = getForgeBlock(questState, now);
+  const broke = playerCredits < preview.cost;
+  const reason = !hasAccess ? "Rapproche-toi du bâtiment de quêtes pour créer un contrat."
+    : block === "cooldown" ? delayText
+    : block === "full" ? `Carnet plein : termine ou abandonne une mission (${MAX_ACTIVE_QUESTS} maximum).`
+    : broke ? "Pas assez de crédits."
+    : "";
+  const canCreate = !reason;
+
+  const typeOptions = types.length ? types : [spec.type];
+  const fieldsHtml = `<div class="qfForm">`
+    + `<div class="qfField"><span>Cible</span><select data-forge-field="type" aria-label="Cible">${typeOptions.map((type) => `<option value="${escapeAttr(type)}"${type === spec.type ? " selected" : ""}>${forgeTargetName(type)}</option>`).join("")}</select></div>`
+    + `<label class="qfField"><span>Quantité</span><input type="number" min="1" max="${FORGE_MAX_AMOUNT}" step="1" value="${amountClamped}" data-forge-field="amount"></label>`
+    + `<div class="qfField"><span>Carte</span><select data-forge-field="map" aria-label="Carte"><option value="">Toutes les cartes</option>${maps.map((map) => `<option value="${escapeAttr(map)}"${String(spec.map).toLowerCase() === map.toLowerCase() ? " selected" : ""}>${map}</option>`).join("")}</select></div>`
+    + `<label class="qfField"><span>Mise (crédits)</span><input type="number" min="0" max="${preview.stakeCap}" step="100000" value="${preview.spec.stake}" data-forge-field="stake"><small>Maximum ${formatInteger(preview.stakeCap)} · rendue ${forgeMult(preview.mult)} si réussite, perdue si abandon</small></label>`
+    + `<div class="qfField qfWide"><span>Contraintes</span><div class="qfConds">${FORGE_CONDITIONS.map((cond) => {
+      const on = preview.spec.conds.includes(cond.id);
+      return `<button type="button" class="qfCond${on ? " isOn" : ""}" data-forge-cond="${cond.id}" aria-pressed="${on}"><span>${cond.label}</span><b>${forgeMult(cond.mult)}</b></button>`;
+    }).join("")}</div></div>`
+    + `<label class="qfField qfWide"><span>Nom du contrat</span><span class="qfName"><input type="text" maxlength="48" value="${escapeAttr(spec.title || "")}" placeholder="${escapeAttr(forgeGeneratedTitle(preview.spec.type, preview.spec.titleIdx))}" data-forge-field="title"><button type="button" class="qfDice" data-forge-reroll="1" title="Autre nom">${SVG_DICE}</button></span></label>`
+    + `</div>`;
+
+  const quest = { id: "forge_preview", title: preview.title, objectives: [preview.objective], reward: preview.reward };
+  const objective = preview.objective;
+  const rewards = rewardRows(quest).map(([label, value]) => `<div class="qtReward"><span>${label}</span><b>${value}</b></div>`).join("");
+  const costs = [["Frais de dossier", formatInteger(preview.fee)], ...(preview.spec.stake > 0 ? [["Mise", formatInteger(preview.spec.stake)]] : []), ["Total à payer", formatInteger(preview.cost)]]
+    .map(([label, value]) => `<div class="qtReward"><span>${label}</span><b>${value}</b></div>`).join("");
+  const previewHtml = `<aside class="qfPreview">`
+    + `<h3 class="qfTitle">${preview.title}</h3>`
+    + `<div class="qtObjective"><span class="qtObjIcon">${spriteImg(questObjectiveSprite(objective, collectables, npcTypes), questObjectiveImage(objective, collectables, npcTypes), OBJECTIVE_ICON_TARGET)}</span>`
+    + `<span class="qtObjBody"><span class="qtObjTop"><span>${apercuObjectiveLabel(objective)}</span></span>`
+    + `<small>${objectiveWhere(objective, npcLocations, collectables)}</small>${challengeChips(objective, "qtConds")}</span></div>`
+    + `<div class="qtSide"><h3>Récompenses</h3><div class="qtRewards">${rewards}<div class="qtReward"><span>Multiplicateur</span><b>${forgeMult(preview.mult)}</b></div></div></div>`
+    + `<div class="qtSide"><h3>Coût</h3><div class="qtRewards">${costs}</div></div>`
+    + `<div class="qtSideFoot">${reason ? `<p class="qtNote">${reason}</p>` : `<p class="qtNote">Un contrat à la fois, puis 24 h d'attente.</p>`}`
+    + `<button type="button" class="qtAction" data-forge-create="1"${canCreate ? "" : " disabled"}>Créer le contrat</button></div>`
+    + `</aside>`;
+  return `<div class="qfPanel">${fieldsHtml}${previewHtml}</div>`;
+}
+
+export function buildQuestTerminalView({ questState, selectedId, hasAccess, collectables, npcTypes, npcLocations = {}, searchQuery = "", filter = "open", playerSector = null, expanded = true, forgeDraft = null, playerCredits = 0, now = Date.now() }) {
   const tab = QUEST_TERMINAL_TABS.some(([id]) => id === filter) ? filter : "open";
   const query = String(searchQuery || "").trim().toLowerCase();
   const matches = (quest) => !query || String(quest.title || "").toLowerCase().includes(query);
@@ -301,10 +389,11 @@ export function buildQuestTerminalView({ questState, selectedId, hasAccess, coll
   // Tri : par niveau puis titre (progression naturelle). Le niveau tient
   // compte des maps de spawn (un Uber 4-5 vaut niv. 12).
   const levelContext = { npcLocations, collectables };
-  const ordered = getOrderedQuestDefinitions();
+  const forged = getForgeQuest(questState);
+  const ordered = forged ? [...getOrderedQuestDefinitions(), forged] : getOrderedQuestDefinitions();
   const levels = new Map(ordered.map((quest) => [quest.id, getQuestRequiredLevel(quest, playerSector, levelContext)]));
   const sorted = [...ordered].sort((a, b) => levels.get(a.id) - levels.get(b.id) || String(a.title || "").localeCompare(String(b.title || ""), "fr"));
-  const counts = { open: 0, active: 0, locked: 0, done: 0 };
+  const counts = { open: 0, active: 0, locked: 0, done: 0, forge: 0 };
   for (const quest of sorted) counts[statusOf(quest)] += 1;
   const visible = sorted.filter((quest) => statusOf(quest) === tab && matches(quest));
 
@@ -402,16 +491,20 @@ export function buildQuestTerminalView({ questState, selectedId, hasAccess, coll
   const emptyText = query ? "Aucune mission ne correspond à ta recherche."
     : { open: "Aucune mission disponible.", active: "Aucune mission en cours.", locked: "Aucune mission verrouillée.", done: "Aucune mission terminée." }[tab];
   const rowsHtml = flat.length ? flat.map(row).join("") : `<div class="qtEmpty">${emptyText}</div>`;
+  const isForge = tab === "forge";
+  const tableHtml = isForge
+    ? buildForgePanel({ questState, draft: forgeDraft, npcLocations, npcTypes, collectables, hasAccess, playerCredits, now, forged, row, expanded, selectedQuestId })
+    : `<div class="qtTable">`
+      + `<div class="qtHeadRow" aria-hidden="true"><span></span><span>Mission</span><span>Objectifs</span><span>Crédits</span><span>Expérience</span><span></span></div>`
+      + `<div class="qtRows" id="questTerminalRows" role="list">${rowsHtml}</div>`
+      + `</div>`;
 
   const listHtml = `<div class="qtToolbar">`
     + `<div class="qtTabs" role="tablist" aria-label="Statut des missions">${QUEST_TERMINAL_TABS.map(([id, label]) =>
-      `<button type="button" class="qtTab is-${id}${id === tab ? " isActive" : ""}" data-quest-filter="${id}" role="tab" aria-selected="${id === tab}"><span>${label}</span> · <b>${counts[id]}</b></button>`).join("")}</div>`
-    + `<label class="qtSearch">${SVG_SEARCH}<input type="search" placeholder="Rechercher une mission…" value="${escapeAttr(searchQuery)}" data-quest-search aria-label="Rechercher une mission"></label>`
+      `<button type="button" class="qtTab is-${id}${id === tab ? " isActive" : ""}" data-quest-filter="${id}" role="tab" aria-selected="${id === tab}"><span>${label}</span>${id === "forge" ? "" : ` · <b>${counts[id]}</b>`}</button>`).join("")}</div>`
+    + (isForge ? `<span class="qtSearch qfSpacer"></span>` : `<label class="qtSearch">${SVG_SEARCH}<input type="search" placeholder="Rechercher une mission…" value="${escapeAttr(searchQuery)}" data-quest-search aria-label="Rechercher une mission"></label>`)
     + `<span class="qtSlots"><span>Actives</span> <b>${activeCount} / ${MAX_ACTIVE_QUESTS}</b></span>`
     + `</div>`
-    + `<div class="qtTable">`
-    + `<div class="qtHeadRow" aria-hidden="true"><span></span><span>Mission</span><span>Objectifs</span><span>Crédits</span><span>Expérience</span><span></span></div>`
-    + `<div class="qtRows" id="questTerminalRows" role="list">${rowsHtml}</div>`
-    + `</div>`;
+    + tableHtml;
   return { selectedQuestId, listHtml, detailHtml: "" };
 }
