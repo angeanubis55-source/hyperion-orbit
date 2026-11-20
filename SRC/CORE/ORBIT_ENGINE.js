@@ -19236,6 +19236,8 @@ if (questWindowElement) {
 let selectedQuestOfferId = null;
 let questTerminalSearch = "";
 let questTerminalFilter = "open";
+// Ligne sélectionnée dépliée (re-clic = repliée).
+let questTerminalExpanded = true;
 let questNpcLocations = {};
 
 function renderQuestTerminal() {
@@ -19264,6 +19266,7 @@ function renderQuestTerminal() {
     searchQuery: questTerminalSearch,
     filter: questTerminalFilter,
     playerSector: pilotSector,
+    expanded: questTerminalExpanded,
   });
   selectedQuestOfferId = view.selectedQuestId;
   ui.questOfferList.innerHTML = view.listHtml;
@@ -19277,7 +19280,7 @@ function renderQuestTerminal() {
 // Amène la mission sélectionnée dans la partie visible de la liste.
 function revealSelectedQuestOffer() {
   if (!selectedQuestOfferId) return;
-  const row = ui.questOfferList?.querySelector(`[data-quest-offer="${CSS.escape(String(selectedQuestOfferId))}"]`);
+  const row = ui.questOfferList?.querySelector(`[data-quest-offer="${CSS.escape(String(selectedQuestOfferId))}"]`)?.closest(".qtRow");
   try { row?.scrollIntoView({ block: "nearest" }); } catch {}
 }
 
@@ -19325,10 +19328,16 @@ ui.questOfferList?.addEventListener("click", event => {
     if (rows) rows.scrollTop = 0;
     return;
   }
+  if (handleQuestTerminalAction(event)) return;
   const offer = event.target.closest("[data-quest-offer]");
-  if (!offer || offer.dataset.questOffer === selectedQuestOfferId) return;
-  selectedQuestOfferId = offer.dataset.questOffer;
+  if (!offer) return;
+  if (offer.dataset.questOffer === selectedQuestOfferId) questTerminalExpanded = !questTerminalExpanded;
+  else {
+    selectedQuestOfferId = offer.dataset.questOffer;
+    questTerminalExpanded = true;
+  }
   renderQuestTerminal();
+  requestAnimationFrame(revealSelectedQuestOffer);
 });
 
 ui.questOfferList?.addEventListener("input", event => {
@@ -19346,23 +19355,26 @@ ui.questOfferList?.addEventListener("input", event => {
   } catch {}
 });
 
-ui.questOfferDetail?.addEventListener("click", event => {
+// Boutons de la ligne dépliée (mission requise, Fermer, Accepter).
+// Renvoie true si le clic a été traité.
+function handleQuestTerminalAction(event) {
   // Mission requise : on l'ouvre dans son onglet, recherche effacée.
-  const prerequisite = event.target.closest("[data-quest-offer]");
+  const prerequisite = event.target.closest("[data-quest-prereq]");
   if (prerequisite) {
-    selectedQuestOfferId = prerequisite.dataset.questOffer;
+    selectedQuestOfferId = prerequisite.dataset.questPrereq;
+    questTerminalExpanded = true;
     questTerminalFilter = getQuestTerminalStatus(questState, selectedQuestOfferId);
     questTerminalSearch = "";
     renderQuestTerminal();
     requestAnimationFrame(revealSelectedQuestOffer);
-    return;
+    return true;
   }
   if (event.target.closest("[data-quest-terminal-close]")) {
     closeQuestTerminal();
-    return;
+    return true;
   }
   const button = event.target.closest("[data-quest-terminal-accept]");
-  if (!button) return;
+  if (!button) return false;
   if (!hasQuestTerminalAccess()) {
     showToast("Rapproche-toi du bâtiment de quêtes", 1.5);
   } else if (acceptQuest(questState, button.dataset.questTerminalAccept)) {
@@ -19374,7 +19386,8 @@ ui.questOfferDetail?.addEventListener("click", event => {
   }
   renderQuestWindow();
   renderQuestTerminal();
-});
+  return true;
+}
 
 // Les kills mettent l'état à jour immédiatement ; les panneaux fermés
 // sont reconstruits une seule fois à leur prochaine ouverture.
@@ -19390,9 +19403,52 @@ for (const node of [ui.questWindow, ui.questOfferWindow]) {
   });
 }
 
+// Défis de quête : suivi du combat sur une cible, du premier tir au kill
+// (position, coque, munitions utilisées).
+function noteQuestChallengeShot(target, ammoKey) {
+  if (!target) return;
+  let fight = target._questFight;
+  if (!fight) {
+    fight = target._questFight = { x: player.x, y: player.y, hp: Number(player.hp) || 0, ammo: new Set(), moved: false, hullLost: false };
+  }
+  fight.ammo.add(String(ammoKey || "x1"));
+  if (!fight.moved && Math.hypot(player.x - fight.x, player.y - fight.y) > QUEST_STAY_RADIUS) fight.moved = true;
+  if (!fight.hullLost && (Number(player.hp) || 0) < fight.hp - 1) fight.hullLost = true;
+}
+const QUEST_STAY_RADIUS = 40;
+
+function questChallengeContext(e, ownsKill = true) {
+  const fight = e?._questFight || null;
+  let config = 1;
+  let ship = "";
+  let lasers = [];
+  try {
+    const u = account.user || getCurrentUserFull();
+    const hangar = getActiveHangarFromUser(u);
+    config = Number(hangar?.activeConfig) === 2 ? 2 : 1;
+    const fit = hangar?.fits?.[String(config)] || hangar?.fit || {};
+    lasers = (fit.lasers || []).filter(Boolean).map(String);
+    // Id legacy "PhoenixBleu" -> pack "phoenix_bleu".
+    const rawShip = String(u?.ship || ACTIVE_SHIP?.id || "PhoenixBleu");
+    ship = String(getShipPackById(rawShip)?.id || rawShip).toLowerCase();
+  } catch {}
+  let grouped = false;
+  try { grouped = !!getNetGroup(); } catch {}
+  return {
+    solo: !grouped && ownsKill !== false,
+    config,
+    ship,
+    lasers,
+    ammo: fight ? [...fight.ammo] : null,
+    stayed: !!fight && !fight.moved && Math.hypot(player.x - fight.x, player.y - fight.y) <= QUEST_STAY_RADIUS,
+    hullIntact: !!fight && !fight.hullLost && (Number(player.hp) || 0) >= fight.hp - 1,
+  };
+}
+
 function advanceQuestProgress(kind, type, amount = 1, context = null) {
   const advanced = recordQuestProgress(questState, kind, type, amount, {
     map: String(context?.map ?? window.__CURRENT_MAP_ID__ ?? "").toLowerCase(),
+    challenge: context?.challenge || null,
   });
   // Passe de combat Halloween : mêmes événements, paliers séparés.
   // AVANT le return anticipé : le passe compte même sans quête active.
@@ -32821,7 +32877,7 @@ function applyNetNpcReward(reward) {
   // Adopter le compte courant avant de modifier les quêtes et le passe.
   // Une sauvegarde peut avoir remplacé l'objet depuis le kill précédent.
   measureGameTask("npcDeath.rewards", () => killRewards(e));
-  measureGameTask("npcDeath.quests", () => advanceQuestProgress("kill", e.type, 1, { map: reward.map }));
+  measureGameTask("npcDeath.quests", () => advanceQuestProgress("kill", e.type, 1, { map: reward.map, challenge: questChallengeContext(e, reward.ownsKill === true) }));
   if (e.isJpcBot === true) advanceQuestProgress("pvp", "pvp", 1, { map: reward.map });
   reward._progressApplied = true;
   try { onStockpileNpcKill(); } catch {}
@@ -33066,7 +33122,7 @@ if ((e.type === "npc_Cubikon" || e.cubikonMinions) && e.cubikonMinions?.fleeOnDe
 
     if (!e.noRewards && e._netReward?._progressApplied !== true) {
       measureGameTask("npcDeath.rewards", () => killRewards(e));
-      measureGameTask("npcDeath.quests", () => advanceQuestProgress("kill", e.type));
+      measureGameTask("npcDeath.quests", () => advanceQuestProgress("kill", e.type, 1, { challenge: questChallengeContext(e, e._netReward ? e._netLootOwner === true : true) }));
       // Bots JPC : ce sont des pilotes (plaque joueur, pseudo, grade BOT) —
       // leur destruction compte aussi pour les quêtes "tuer des joueurs".
       // Solo comme multi (les kills réseau du joueur passent par ce bloc).
@@ -35151,6 +35207,7 @@ function tryFireOnce(ammoOverride = null, silent = false) {
 
   const activeKey = player.ammo.active || "x1";
   if (ammoKey === activeKey) consumeAmmo(countPlayerLasers());
+  try { noteQuestChallengeShot(t, ammoKey); } catch {}
 
 const isSab = ammoKey === "sab";
 // ✅ CBO-100 : même tir inversé que SAB (absorption), mais avec dégâts ×3

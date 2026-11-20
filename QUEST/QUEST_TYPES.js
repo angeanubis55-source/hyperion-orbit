@@ -563,6 +563,258 @@ const EXTERMINATION_1000 = EXTERMINATION_1000_DATA.map(([id, name, type]) =>
   KQ(id, extermTitleFor(name), `Contrat d'extermination : détruis 1000 ${name}.`, [K("kill", type, 1000, `Éliminer 1000 ${name}`)])
 );
 
+// ---------------------------------------------------------------------------
+// Extension 300 missions. Uniquement des NPC présents dans MAPS/*/SPAWNS.js
+// (ou invoqués : Gygerthrall), des boxes existantes et les Gates jouables.
+// Titres et descriptions en modèles ("{0} — Patrouille") : traduits par les
+// patterns i18n, sans une entrée par mission.
+// ---------------------------------------------------------------------------
+const X_ROMAN = ["I", "II", "III", "IV", "V"];
+const X_NAME_OVERRIDES = { npc_Explosif: "Kamikaze", npc_Boss_Streuner_Recruit: "Protecteur Streuner" };
+const xName = (type) => X_NAME_OVERRIDES[type] || String(type).replace(/^npc_/, "").replace(/_/g, " ");
+const xPlural = (name) => (name === "Protecteur Streuner" ? "Protecteurs Streuner" : /[0-9s]$/.test(name) ? name : `${name}s`);
+const xKill = (id, type, amount, map) => {
+  const verb = /Cubikon/.test(type) ? "Détruire" : "Éliminer";
+  return K(id, type, Math.max(1, Math.round(amount)), `${verb} des ${xPlural(xName(type))}`, map);
+};
+
+// Occupants de chaque carte (SPAWNS.js) : [types communs], [boss], empereur.
+const X_SECTOR_SPAWNS = {
+  1: [["npc_Streuner", "npc_Streuner_Recruit", "npc_Streuner_Aider"], ["npc_Boss_Streuner_Recruit"], null],
+  2: [["npc_Streuner", "npc_Lordakia", "npc_Streuner_Recruit"], ["npc_Boss_Streuner", "npc_Boss_Lordakia"], null],
+  3: [["npc_Saimon", "npc_Mordon", "npc_Devolarium"], ["npc_Boss_Saimon", "npc_Boss_Mordon", "npc_Boss_Devolarium"], null],
+  4: [["npc_Saimon", "npc_Mordon", "npc_Sibelon"], ["npc_Boss_Saimon", "npc_Boss_Sibelon"], "npc_Emperor_Sibelon"],
+  5: [["npc_Sibelonit", "npc_Lordakia", "npc_Lordakium"], ["npc_Boss_Sibelonit", "npc_Boss_Lordakium"], "npc_Emperor_Lordakium"],
+  6: [["npc_Kristallin", "npc_Kristallon", "npc_Blighted_Kristallin"], ["npc_Boss_Kristallin"], null],
+  7: [["npc_Kristallin", "npc_Kristallon", "npc_Blighted_Kristallon"], ["npc_Boss_Kristallin", "npc_Boss_Kristallon"], "npc_Emperor_Kristallon"],
+  8: [["npc_StreuneR8"], ["npc_Boss_StreuneR8"], null],
+};
+const X_SECTOR_TIERS = [
+  ["patrol", "Patrouille", "Patrouille la carte {map} et élimine ses occupants.", 1],
+  ["sweep", "Ratissage", "Ratisse la carte {map} et abats ses commandants.", 4],
+  ["iron", "Main de fer", "Prends le contrôle total de la carte {map}.", 12],
+];
+const xSectorQuests = (map, commons, bosses, emperor, firstRequires) => X_SECTOR_TIERS.map(([tier, label, desc, scale], index) => {
+  const objectives = commons.map((type, i) => xKill(`c${i}`, type, (i ? 10 : 20) * scale, map));
+  if (index >= 1) bosses.forEach((type, i) => objectives.push(xKill(`b${i}`, type, 2 * scale / 4 + (index === 2 ? 4 : 1), map)));
+  if (index === 2 && emperor) objectives.push(xKill("emperor", emperor, 1, map));
+  if (index === 0) objectives.push(V(map));
+  const id = `sector_${map.replace("-", "_")}_${tier}`;
+  const requires = index === 0 ? firstRequires : `sector_${map.replace("-", "_")}_${X_SECTOR_TIERS[index - 1][0]}`;
+  return KQ(id, `${map} — ${label}`, desc.replace("{map}", map), objectives, requires);
+});
+const X_SECTOR_OPERATIONS = [
+  ...[1, 2, 3].flatMap((faction) => Object.entries(X_SECTOR_SPAWNS).flatMap(([n, [commons, bosses, emperor]]) => {
+    const map = `${faction}-${n}`;
+    const first = Number(n) > 1 ? `sector_${faction}_${Number(n) - 1}_patrol` : null;
+    return xSectorQuests(map, commons, bosses, emperor, first);
+  })),
+  ...xSectorQuests("4-5", ["npc_Boss_Mordon", "npc_Boss_Sibelon", "npc_Uber_Kristallin"], ["npc_Uber_Lordakium", "npc_Uber_Kristallon"], null, "dangerous_crossroads"),
+  ...xSectorQuests("5-2", ["npc_Interceptor", "npc_Barracuda", "npc_Saboteur"], ["npc_Annihilator"], null, "pirate_entry"),
+  ...["4-1", "4-2", "4-3", "4-4"].map((map, index, maps) =>
+    KQ(`sector_${map.replace("-", "_")}_patrol`, `${map} — Patrouille`, `Patrouille la carte ${map} et élimine ses occupants.`,
+      [V(map), xKill("c0", "npc_Explosif", 25, map)], index ? `sector_${maps[index - 1].replace("-", "_")}_patrol` : "dangerous_crossroads")),
+];
+
+// Chasses : trois paliers au-delà de "Carnage" (Massacre, Hécatombe, Apocalypse).
+const X_HUNT_FAMILIES = [
+  ["streuner", "npc_Streuner", 12, "hard_streuner"], ["lordakia", "npc_Lordakia", 15, "hard_lordakia"],
+  ["saimon", "npc_Saimon", 18, "hard_saimon"], ["mordon", "npc_Mordon", 15, "hard_mordon"],
+  ["devolarium", "npc_Devolarium", 8, "hard_devolarium"], ["sibelonit", "npc_Sibelonit", 20, "hard_sibelonit"],
+  ["sibelon", "npc_Sibelon", 10, "hard_sibelon"], ["lordakium", "npc_Lordakium", 8, "hard_lordakium"],
+  ["kristallin", "npc_Kristallin", 25, "hard_kristallin"], ["kristallon", "npc_Kristallon", 6, "hard_kristallon"],
+  ["protegit", "npc_Protegit", 30, "hard_protegit"], ["interceptor", "npc_Interceptor", 15, "hard_interceptor"],
+  ["barracuda", "npc_Barracuda", 10, "hard_barracuda"], ["saboteur", "npc_Saboteur", 8, "hard_saboteur"],
+  ["annihilator", "npc_Annihilator", 5, "hard_annihilator"], ["streuner8", "npc_StreuneR8", 15, null],
+  ["blighted_kristallin", "npc_Blighted_Kristallin", 15, null], ["blighted_kristallon", "npc_Blighted_Kristallon", 10, null],
+];
+const X_HUNT_TIERS = [["massacre", "Massacre", 25], ["hecatomb", "Hécatombe", 60], ["apocalypse", "Apocalypse", 150]];
+const X_HUNTS = X_HUNT_FAMILIES.flatMap(([id, type, base, firstRequires]) => X_HUNT_TIERS.map(([tier, prefix, scale], index) => {
+  const name = xPlural(xName(type));
+  return KQ(`${tier}_${id}`, `${prefix} ${xName(type)}`, `Contrat de chasse intensif contre les ${name}.`,
+    [xKill(id, type, base * scale)], index ? `${X_HUNT_TIERS[index - 1][0]}_${id}` : firstRequires);
+}));
+
+// Séries élite : paliers 4 et 5 (+ série complète StreuneR8).
+const X_ELITE_FAMILIES = ["streuner", "lordakia", "saimon", "mordon", "devolarium", "sibelonit", "sibelon", "lordakium", "kristallin", "kristallon"];
+const xEliteTier = (id, name, bossType, uberType, step, requires) => {
+  const amounts = { 1: [3, 0], 2: [15, 5], 3: [50, 25], 4: [120, 60], 5: [300, 150] }[step];
+  const titles = { 1: "Meute", 2: "Boucherie", 3: "Génocide", 4: "Purge élite", 5: "Apothéose" };
+  const descs = { 1: "Première étape de la série élite {0}.", 2: "Deuxième étape de la série élite {0}.", 3: "Troisième étape de la série élite {0}.", 4: "Quatrième étape de la série élite {0}.", 5: "Ultime étape de la série élite {0}." };
+  const objectives = [xKill("boss", bossType, amounts[0])];
+  if (amounts[1]) objectives.push(xKill("uber", uberType, amounts[1]));
+  return KQ(`elite_${id}_${step}`, `${titles[step]} ${name}`, descs[step].replace("{0}", name), objectives, requires);
+};
+const X_ELITE = [
+  ...X_ELITE_FAMILIES.flatMap((id) => {
+    const name = id[0].toUpperCase() + id.slice(1);
+    return [4, 5].map((step) => xEliteTier(id, name, `npc_Boss_${name}`, `npc_Uber_${name}`, step, `elite_${id}_${step - 1}`));
+  }),
+  ...[1, 2, 3, 4, 5].map((step) => xEliteTier("streuner8", "StreuneR8", "npc_Boss_StreuneR8", "npc_Uber_StreuneR8", step, step > 1 ? `elite_streuner8_${step - 1}` : null)),
+];
+
+// Collectes : quatre paliers par type de box.
+const X_COLLECT_TYPES = [
+  ["bonus", "Bonus_Box", "Bonus Boxes", [50, 300, 1500, 5000], 12000, null],
+  ["cargo", "Cargo_Box", "Cargo Boxes", [50, 300, 1500, 5000], 20000, null],
+  ["palladium", "Palladium_Ore", "Palladium", [100, 600, 3000, 10000], 24000, "5-2"],
+  ["booty", "Green_Booty_Box", "Green Booty Boxes", [10, 50, 200, 600], 150000, null],
+  ["alloy", "Hybrid_Alloy_Box", "Hybrid Alloy Boxes", [20, 100, 400, 1500], 120000, null],
+  ["astral", "Astral_Prime_Box", "Astral Prime Boxes", [5, 25, 100, 400], 500000, "MAUDITE"],
+];
+const X_COLLECT_TIERS = ["Glaneur", "Récupérateur", "Pilleur", "Magnat"];
+const X_COLLECTIONS = X_COLLECT_TYPES.flatMap(([id, type, label, amounts, unit, map]) => amounts.map((amount, index) => {
+  const credits = Math.floor(amount * unit * (1 + index * 0.25) / 1000) * 1000;
+  const objective = C("collect", type, amount, label === "Palladium" ? "Collecter du Palladium" : `Collecter des ${label}`, map);
+  return Q(`collect_${id}_${index + 1}`, `${X_COLLECT_TIERS[index]} : ${label}`, `Contrat de collecte : rapporte ${formatXInt(amount)} ${label}.`,
+    [objective], credits, Math.floor(credits * 0.5), Math.floor(credits * 0.002), index ? `collect_${id}_${index}` : null);
+}));
+function formatXInt(n) { return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, " "); }
+
+// Galaxy Gates : répétitions des roues isolées.
+const X_GATE_BASE = { delta: 5000000, epsilon: 3000000, zeta: 4000000, kappa: 4500000, lambda: 2000000, kronos: 6000000 };
+const X_GATE_STEPS = [["Marathon", 5, 1.6], ["Domination", 10, 2], ["Maîtrise", 25, 2.4]];
+const X_GATES = Object.entries(X_GATE_BASE).flatMap(([gate, base]) => X_GATE_STEPS.map(([prefix, amount, mult], index) => {
+  const name = gate[0].toUpperCase() + gate.slice(1);
+  const credits = Math.floor(base * amount * mult);
+  return Q(`gate_${gate}_repeat_${amount}`, `${prefix} ${name}`, `Termine ${amount} fois la Galaxy Gate ${name}.`, [G(gate, amount)],
+    credits, Math.round(credits * 0.35), Math.round(credits * 0.0015), index ? `gate_${gate}_repeat_${X_GATE_STEPS[index - 1][1]}` : `gate_${gate}_veteran`);
+}));
+
+// Campagnes de firme : 20 chapitres par firme, de la base jusqu'aux secteurs 8,
+// puis 4-5, 5-2, les Cubikons et les Gates.
+const X_FACTIONS = [[1, "MMO"], [2, "EIC"], [3, "VRU"]];
+const X_CAMPAIGNS = X_FACTIONS.flatMap(([faction, firm]) => Array.from({ length: 20 }, (_, index) => {
+  const chapter = index + 1;
+  let objectives;
+  if (chapter <= 16) {
+    const n = Math.ceil(chapter / 2);
+    const map = `${faction}-${n}`;
+    const [commons, bosses] = X_SECTOR_SPAWNS[n];
+    const scale = 1 + Math.floor(index / 4);
+    objectives = chapter % 2
+      ? [xKill("c0", commons[0], 30 * scale, map), xKill("c1", commons[1] || commons[0], 15 * scale, map), C("bonus", "Bonus_Box", 10 * scale, "Collecter des Bonus Boxes", map)]
+      : [xKill("b0", bosses[0], 3 * scale, map), xKill("c2", commons[commons.length - 1], 20 * scale, map), C("cargo", "Cargo_Box", 10 * scale, "Collecter des Cargo Boxes", map)];
+  } else if (chapter === 17) {
+    objectives = [V("4-5"), xKill("boss", "npc_Boss_Kristallon", 20, "4-5"), xKill("uber", "npc_Uber_Kristallon", 10, "4-5")];
+  } else if (chapter === 18) {
+    objectives = [V("5-2"), xKill("interceptor", "npc_Interceptor", 150, "5-2"), C("palladium", "Palladium_Ore", 200, "Collecter du Palladium", "5-2")];
+  } else if (chapter === 19) {
+    objectives = [xKill("cubikon", "npc_Cubikon", 15, `${faction}-6`), xKill("protegit", "npc_Protegit", 300, `${faction}-6`)];
+  } else {
+    objectives = [G("alpha"), G("beta"), G("gamma"), xKill("emperor", `npc_Emperor_Kristallon`, 1)];
+  }
+  const id = `campaign_${firm.toLowerCase()}_${String(chapter).padStart(2, "0")}`;
+  const requires = chapter > 1 ? `campaign_${firm.toLowerCase()}_${String(chapter - 1).padStart(2, "0")}` : `firme_${firm.toLowerCase()}_08`;
+  return KQ(id, `${firm} — Chapitre ${chapter}`, `Campagne ${firm}, chapitre ${chapter}.`, objectives, requires, { credits: chapter * 400000, exp: chapter * 200000, honor: chapter * 800 });
+}));
+
+// Contrats spéciaux à paliers.
+const xTiers = (prefix, ids, build) => ids.map((value, index) => build(value, index, `${prefix} ${X_ROMAN[index]}`));
+const X_SPECIALS = [
+  ...["Sibelon", "Lordakium", "Kristallon"].flatMap((name) => xTiers(`Chute de l'Empereur ${name}`, [5, 15, 40], (amount, index, title) =>
+    KQ(`emperor_${name.toLowerCase()}_${index + 1}`, title, `Abats ${amount} fois l'Empereur ${name}.`, [xKill("emperor", `npc_Emperor_${name}`, amount)],
+      index ? `emperor_${name.toLowerCase()}_${index}` : "emperor_protocol", { credits: amount * 4000000, exp: amount * 2000000, honor: amount * 8000 }))),
+  ...xTiers("Brise-cœur", [25, 75, 200, 500], (amount, index, title) =>
+    KQ(`heartbreaker_${index + 1}`, title, "Détruis des Cubikons et leur garde de Protegits.", [xKill("cubikon", "npc_Cubikon", amount), xKill("protegit", "npc_Protegit", amount * 20)],
+      index ? `heartbreaker_${index}` : "cubikon_campaign")),
+  ...xTiers("Champ de mines", [50, 200, 600, 1500], (amount, index, title) =>
+    KQ(`minefield_${index + 1}`, title, "Élimine les Kamikazes des secteurs 4-1 à 4-4.", [xKill("explosif", "npc_Explosif", amount, ["4-1", "4-2", "4-3", "4-4"])],
+      index ? `minefield_${index}` : "sector_4_1_patrol")),
+  ...xTiers("Carnage universel", [2500, 10000, 50000, 200000, 500000], (amount, index, title) =>
+    KQ(`universal_carnage_${index + 1}`, title, "Élimine n'importe quels NPC, partout dans la galaxie.", [K("all_npcs", "*", amount, "Éliminer des NPC")],
+      index ? `universal_carnage_${index}` : null)),
+  ...xTiers("Quarantaine", [100, 400, 1500, 4000], (amount, index, title) =>
+    KQ(`quarantine_${index + 1}`, title, "Endigue la contagion des Blighted.", [xKill("gyger", "npc_Blighted_Gygerthrall", amount), xKill("blighted_kristallin", "npc_Blighted_Kristallin", amount / 2), xKill("blighted_kristallon", "npc_Blighted_Kristallon", amount / 2)],
+      index ? `quarantine_${index}` : "blighted_sample")),
+  ...xTiers("Terreur des pirates", [10, 30, 80], (amount, index, title) =>
+    KQ(`pirate_terror_${index + 1}`, title, "Abats les Ubers pirates de 5-2.", ["npc_Uber_Interceptor", "npc_Uber_Barracuda", "npc_Uber_Saboteur", "npc_Uber_Annihilator"].map((type, i) => xKill(`u${i}`, type, amount, "5-2")),
+      index ? `pirate_terror_${index}` : "pirate52_08")),
+  ...xTiers("Garde rapprochée", [10, 50], (amount, index, title) =>
+    KQ(`bodyguard_${index + 1}`, title, "Élimine les Protecteurs Streuner des cartes de départ.", [K("protector", "npc_Boss_Streuner_Recruit", amount, "Éliminer des Protecteurs Streuner")],
+      index ? `bodyguard_${index}` : null)),
+];
+
+// Grands tours de la galaxie (visites).
+const X_TOURS = [
+  ["tour_mmo", "Tour complet MMO", ["1-1", "1-2", "1-3", "1-4", "1-5", "1-6", "1-7", "1-8"], 2000000, null],
+  ["tour_eic", "Tour complet EIC", ["2-1", "2-2", "2-3", "2-4", "2-5", "2-6", "2-7", "2-8"], 2000000, null],
+  ["tour_vru", "Tour complet VRU", ["3-1", "3-2", "3-3", "3-4", "3-5", "3-6", "3-7", "3-8"], 2000000, null],
+  ["tour_war", "Tour des zones de guerre", ["4-1", "4-2", "4-3", "4-4", "4-5", "5-2"], 4000000, "dangerous_crossroads"],
+  ["tour_capitals", "Tour des trois capitales", ["1-1", "2-1", "3-1", "1-8", "2-8", "3-8"], 3000000, "upper_tour"],
+  ["tour_grand", "Le grand tour", ["1-1", "1-2", "1-3", "1-4", "1-5", "1-6", "1-7", "1-8", "2-1", "2-2", "2-3", "2-4", "2-5", "2-6", "2-7", "2-8", "3-1", "3-2", "3-3", "3-4", "3-5", "3-6", "3-7", "3-8", "4-1", "4-2", "4-3", "4-4", "4-5", "5-2"], 15000000, "tour_war"],
+].map(([id, title, maps, credits, requires]) => Q(id, title, "Visite chaque carte indiquée.", maps.map(V), credits, Math.floor(credits * 0.5), Math.floor(credits * 0.002), requires));
+
+const EXTENSION_300 = [
+  ...X_SECTOR_OPERATIONS,
+  ...X_HUNTS,
+  ...X_ELITE,
+  ...X_COLLECTIONS,
+  ...X_GATES,
+  ...X_CAMPAIGNS,
+  ...X_SPECIALS,
+  ...X_TOURS,
+];
+
+// ---------------------------------------------------------------------------
+// Défis loufoques : aucune mission requise, contraintes vérifiées au kill
+// (questChallengeMet). Faisabilité (stats NPC_TYPES, portée joueur 700 vs
+// 500 des NPC) : les contraintes "sans bouger" ne visent que des NPC
+// tankables, les vaisseaux faibles visent des NPC lents qu'on peut kiter,
+// les Empereurs solo restent possibles en kitant (vitesse 100).
+//   cond.solo       : pas de groupe et kill personnel
+//   cond.config     : config 1 ou 2 active
+//   cond.ship       : famille de vaisseau ("phoenix_bleu", "liberator"...)
+//   cond.laser      : tous les lasers montés sont de ce modèle
+//   cond.maxLasers  : au plus N lasers montés
+//   cond.ammo       : la cible n'a reçu que cette munition
+//   cond.stayed     : aucun déplacement depuis le premier tir sur la cible
+//   cond.hullIntact : aucune perte de coque depuis le premier tir
+// ---------------------------------------------------------------------------
+const CK = (id, type, amount, label, cond, map) => ({ ...K(id, type, amount, label, map), cond });
+const CHALLENGE_CONTRACTS = [
+  KQ("challenge_duel_sibelon", "Duel impérial", "L'Empereur Sibelon, toi, et personne d'autre.",
+    [CK("emperor", "npc_Emperor_Sibelon", 1, "Éliminer le Emperor Sibelon", { solo: true })], null, { credits: 150000000, exp: 75000000, honor: 300000 }),
+  KQ("challenge_throne_lordakium", "Seul contre le trône", "Abats l'Empereur Lordakium en solo, sur ta configuration de secours.",
+    [CK("emperor", "npc_Emperor_Lordakium", 1, "Éliminer le Emperor Lordakium", { solo: true, config: 2 })], null, { credits: 250000000, exp: 125000000, honor: 500000 }),
+  KQ("challenge_crystal_kristallon", "Le cristal ne pardonne pas", "L'Empereur Kristallon en tête-à-tête. Prévois du café.",
+    [CK("emperor", "npc_Emperor_Kristallon", 1, "Éliminer le Emperor Kristallon", { solo: true })], null, { credits: 500000000, exp: 250000000, honor: 1000000 }),
+  KQ("challenge_war_economy", "Économie de guerre", "Un Empereur, en solo, avec les munitions de base. Rien d'autre.",
+    [CK("emperor", "npc_Emperor_Sibelon", 1, "Éliminer le Emperor Sibelon", { solo: true, ammo: "x1" })], null, { credits: 600000000, exp: 300000000, honor: 1200000 }),
+  KQ("challenge_stake", "Planté comme un piquet", "Abats des Kristallons sans bouger d'un pouce dès le premier tir.",
+    [CK("kristallon", "npc_Kristallon", 10, "Éliminer des Kristallons", { stayed: true })], null, { credits: 40000000, exp: 20000000, honor: 80000 }),
+  KQ("challenge_salt_statue", "Statue de sel", "Des Boss Mordons, en solo, sans jamais bouger pendant le combat.",
+    [CK("boss_mordon", "npc_Boss_Mordon", 25, "Éliminer des Boss Mordons", { solo: true, stayed: true })], null, { credits: 20000000, exp: 10000000, honor: 40000 }),
+  KQ("challenge_human_turret", "Tourelle humaine", "Encaisse les Boss Kristallins sans bouger. Ton bouclier va souffrir.",
+    [CK("boss_kristallin", "npc_Boss_Kristallin", 5, "Éliminer des Boss Kristallins", { stayed: true })], null, { credits: 45000000, exp: 22500000, honor: 90000 }),
+  KQ("challenge_still_shooter", "Tireur immobile", "Abats des Kamikazes sans bouger : vise vite ou saute avec eux.",
+    [CK("kamikaze", "npc_Explosif", 30, "Éliminer des Kamikazes", { stayed: true }, ["4-1", "4-2", "4-3", "4-4"])], null, { credits: 25000000, exp: 12500000, honor: 50000 }),
+  KQ("challenge_retro", "Rétro-gaming", "Des Boss Mordons avec uniquement des lasers LF-1 montés.",
+    [CK("boss_mordon", "npc_Boss_Mordon", 15, "Éliminer des Boss Mordons", { laser: "laser_lf1" })], null, { credits: 30000000, exp: 15000000, honor: 60000 }),
+  KQ("challenge_old_school_cube", "Cubikon à l'ancienne", "Un Cubikon, en solo, avec uniquement des lasers LF-1.",
+    [CK("cubikon", "npc_Cubikon", 1, "Détruire le Cubikon", { solo: true, laser: "laser_lf1" })], null, { credits: 80000000, exp: 40000000, honor: 160000 }),
+  KQ("challenge_phoenix_giant", "Le Phoenix et le géant", "Un Sibelon abattu avec le Phoenix Bleu. Courage.",
+    [CK("sibelon", "npc_Sibelon", 1, "Éliminer le Sibelon", { ship: "phoenix_bleu" })], null, { credits: 35000000, exp: 17500000, honor: 70000 }),
+  KQ("challenge_back_to_basics", "Retour aux sources", "Des Boss Streuners en Phoenix Bleu, munitions de base uniquement.",
+    [CK("boss_streuner", "npc_Boss_Streuner", 20, "Éliminer des Boss Streuners", { ship: "phoenix_bleu", ammo: "x1" })], null, { credits: 15000000, exp: 7500000, honor: 30000 }),
+  KQ("challenge_single_cannon", "Un seul canon", "Des Kristallins avec un seul laser monté sur ton vaisseau.",
+    [CK("kristallin", "npc_Kristallin", 10, "Éliminer des Kristallins", { maxLasers: 1 })], null, { credits: 25000000, exp: 12500000, honor: 50000 }),
+  KQ("challenge_damp_squib", "Pétard mouillé", "Des Boss Devolariums avec les munitions de base uniquement.",
+    [CK("boss_devolarium", "npc_Boss_Devolarium", 3, "Éliminer des Boss Devolariums", { ammo: "x1" })], null, { credits: 30000000, exp: 15000000, honor: 60000 }),
+  KQ("challenge_no_scratch", "Sans une égratignure", "Des Boss Sibelonits sans perdre un seul point de coque.",
+    [CK("boss_sibelonit", "npc_Boss_Sibelonit", 10, "Éliminer des Boss Sibelonits", { hullIntact: true })], null, { credits: 35000000, exp: 17500000, honor: 70000 }),
+  KQ("challenge_backup_config", "Config de secours", "Des Uber Mordons en solo, sur ta configuration 2.",
+    [CK("uber_mordon", "npc_Uber_Mordon", 20, "Éliminer des Uber Mordons", { solo: true, config: 2 }, "4-5")], null, { credits: 30000000, exp: 15000000, honor: 60000 }),
+  KQ("challenge_stubborn_liberator", "Libérateur têtu", "Des Lordakiums abattus en Liberator.",
+    [CK("lordakium", "npc_Lordakium", 5, "Éliminer des Lordakiums", { ship: "liberator" })], null, { credits: 30000000, exp: 15000000, honor: 60000 }),
+  KQ("challenge_sober_still", "Immobile et sobre", "Des StreuneR8 sans bouger, munitions de base uniquement.",
+    [CK("r8", "npc_StreuneR8", 30, "Éliminer des StreuneR8", { stayed: true, ammo: "x1" })], null, { credits: 25000000, exp: 12500000, honor: 50000 }),
+  KQ("challenge_untouchable", "Intouchable", "Un Boss Kristallon en solo sans perdre un point de coque.",
+    [CK("boss_kristallon", "npc_Boss_Kristallon", 1, "Éliminer le Boss Kristallon", { solo: true, hullIntact: true })], null, { credits: 60000000, exp: 30000000, honor: 120000 }),
+  KQ("challenge_minimalist", "Minimaliste", "Des Boss Saimons avec un seul laser et les munitions de base.",
+    [CK("boss_saimon", "npc_Boss_Saimon", 3, "Éliminer des Boss Saimons", { maxLasers: 1, ammo: "x1" })], null, { credits: 20000000, exp: 10000000, honor: 40000 }),
+];
+
 // Inspiré des familles de missions DarkOrbit, mais limité aux contenus jouables
 // du projet et rédigé avec des titres/descriptions originaux.
 const QUEST_CATALOG = [
@@ -652,6 +904,8 @@ const QUEST_CATALOG = [
   ...SALVAGE_GATE_OPERATIONS,
   ...ANCIENT_CURSED_EXTENSION,
   ...EXTERMINATION_1000,
+  ...EXTENSION_300,
+  ...CHALLENGE_CONTRACTS,
 ];
 
 const FINAL_QUEST = {
@@ -868,6 +1122,26 @@ export function getQuestPrerequisiteIds(quest) {
 }
 export function canAcceptQuest(state, quest) { return !!quest && !state.completed.includes(quest.id) && state.active[quest.id] == null && Object.keys(state.active).length < MAX_ACTIVE_QUESTS && getQuestPrerequisiteIds(quest).every(id => state.completed.includes(id)); }
 export function acceptQuest(state, questId) { const quest = QUEST_DEFINITIONS.find(q => q.id === questId); if (!canAcceptQuest(state, quest)) return false; if (state.abandoned) delete state.abandoned[quest.id]; state.active[quest.id] = Object.fromEntries(getQuestObjectives(quest).map(o => [o.id, 0])); return true; }
+// Contraintes d'un objectif "défi" (voir CHALLENGE_CONTRACTS). Sans
+// contexte de combat (kill par drone seul, etc.) : refusé.
+export function questChallengeMet(cond, ch) {
+  if (!cond) return true;
+  if (!ch) return false;
+  if (cond.solo && !ch.solo) return false;
+  if (cond.config && Number(ch.config) !== Number(cond.config)) return false;
+  if (cond.ship) {
+    const ship = String(ch.ship || "").toLowerCase();
+    if (ship !== cond.ship && !ship.startsWith(`${cond.ship}_`)) return false;
+  }
+  const lasers = Array.isArray(ch.lasers) ? ch.lasers : [];
+  if (cond.laser && (!lasers.length || lasers.some(id => id !== cond.laser))) return false;
+  if (cond.maxLasers && (!lasers.length || lasers.length > cond.maxLasers)) return false;
+  if (cond.ammo && (!Array.isArray(ch.ammo) || !ch.ammo.length || ch.ammo.some(a => a !== cond.ammo))) return false;
+  if (cond.stayed && ch.stayed !== true) return false;
+  if (cond.hullIntact && ch.hullIntact !== true) return false;
+  return true;
+}
+
 export function recordQuestProgress(state, kind, type, amount = 1, context = {}) {
   const advanced = [];
   const sameId = (a, b) => String(a ?? "").trim().toLowerCase() === String(b ?? "").trim().toLowerCase();
@@ -889,6 +1163,8 @@ export function recordQuestProgress(state, kind, type, amount = 1, context = {})
         const maps = Array.isArray(o.map) ? o.map : [o.map];
         if (!maps.some(candidate => sameId(candidate, context.map))) continue;
       }
+      // Défis : contraintes vérifiées au moment du kill.
+      if (o.cond && !questChallengeMet(o.cond, context.challenge)) continue;
       const before = Number(state.active[quest.id][o.id] || 0);
       state.active[quest.id][o.id] = Math.min(o.amount, before + Math.max(0, Number(amount) || 0));
       changed ||= before !== state.active[quest.id][o.id];

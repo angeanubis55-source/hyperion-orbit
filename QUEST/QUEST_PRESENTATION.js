@@ -40,9 +40,9 @@ const SVG_SEARCH = svgIcon(`<circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5l3
 
 // Normalisation : plus le sprite est gros, plus on divise (jamais d'agrandissement),
 // pour que toutes les images fassent à peu près la même taille cible.
-const LIST_THUMB_TARGET = 34;
-const DETAIL_PORTRAIT_TARGET = 84;
-const OBJECTIVE_ICON_TARGET = 40;
+const LIST_THUMB_TARGET = 40;
+const DETAIL_PORTRAIT_TARGET = 112;
+const OBJECTIVE_ICON_TARGET = 44;
 export function normalizedSpriteSize(source, target) {
   const dims = trimmedDims(source);
   if (!dims) return { w: target, h: target };
@@ -111,12 +111,37 @@ function objectiveLabel(objective) {
 // -> "Collecter 50 Palladium", "Détruire le Mindfire" -> "Détruire 1 Mindfire").
 function apercuObjectiveLabel(objective) {
   const base = objectiveLabel(objective);
-  if (/\d/.test(base)) return base;
+  // Grands nombres lisibles : "Éliminer 65000 X" -> "Éliminer 65 000 X".
+  if (/\d/.test(base)) return base.replace(/\b\d{4,}\b/g, (n) => formatInteger(Number(n)));
   const amount = Math.max(1, Math.floor(Number(objective?.amount) || 1));
   const pattern = /\b(des|du|de la|de l'|de|le|la|les|l'|un|une)\b/i;
-  if (!pattern.test(base)) return base;
-  return base.replace(pattern, `${amount}`);
+  // Pas d'article à remplacer : le nombre va à la fin (jamais perdu).
+  if (!pattern.test(base)) return amount > 1 ? `${base} ×${formatInteger(amount)}` : base;
+  return base.replace(pattern, formatInteger(amount));
 }
+
+// Contraintes d'un objectif défi, en étiquettes courtes (une par condition,
+// chacune traduite séparément).
+const CHALLENGE_SHIP_NAMES = { phoenix_bleu: "Phoenix Bleu", liberator: "Liberator" };
+const CHALLENGE_LASER_NAMES = { laser_lf1: "LF-1" };
+function questChallengeTokens(objective) {
+  const cond = objective?.cond;
+  if (!cond) return [];
+  const tokens = [];
+  if (cond.solo) tokens.push("En solo");
+  if (cond.config) tokens.push(`Config ${cond.config}`);
+  if (cond.ship) tokens.push(`Vaisseau : ${CHALLENGE_SHIP_NAMES[cond.ship] || cond.ship}`);
+  if (cond.laser) tokens.push(`Lasers ${CHALLENGE_LASER_NAMES[cond.laser] || cond.laser} uniquement`);
+  if (cond.maxLasers) tokens.push(`${cond.maxLasers} laser maximum`);
+  if (cond.ammo) tokens.push(`Munitions ${QUEST_AMMO_LABELS[cond.ammo] || String(cond.ammo).toUpperCase()} uniquement`);
+  if (cond.stayed) tokens.push("Sans bouger");
+  if (cond.hullIntact) tokens.push("Sans perte de coque");
+  return tokens;
+}
+const challengeChips = (objective, cls) => {
+  const tokens = questChallengeTokens(objective);
+  return tokens.length ? `<span class="${cls}">${tokens.map(token => `<span>${token}</span>`).join("")}</span>` : "";
+};
 
 // Où trouver la cible d'un objectif, en une ligne.
 function objectiveWhere(objective, npcLocations, collectables) {
@@ -196,7 +221,7 @@ export function buildQuestCard(quest, questState, context = {}) {
     const current = Number(progress[objective.id] || 0);
     const done = current >= objective.amount;
     const iconSize = normalizedSpriteSize(questObjectiveSprite(objective, collectables, npcTypes), JOURNAL_ICON_TARGET);
-    const html = `<div class="qoffObjective${done ? " isDone" : ""}"><span class="qoffCheck"><input type="checkbox" tabindex="-1" aria-hidden="true"${done ? " checked" : ""} disabled></span><span class="qoffObjectiveLabel">${apercuObjectiveLabel(objective)}</span><b>${current}/${objective.amount}</b><img src="${questObjectiveImage(objective, collectables, npcTypes)}" width="${iconSize.w}" height="${iconSize.h}" style="width:${iconSize.w}px;height:${iconSize.h}px" alt="" loading="lazy" draggable="false" onerror="this.style.visibility='hidden'"></div>`;
+    const html = `<div class="qoffObjective${done ? " isDone" : ""}"><span class="qoffCheck"><input type="checkbox" tabindex="-1" aria-hidden="true"${done ? " checked" : ""} disabled></span><span class="qoffObjectiveLabel">${apercuObjectiveLabel(objective)}${challengeChips(objective, "qcConds")}</span><b>${current}/${objective.amount}</b><img src="${questObjectiveImage(objective, collectables, npcTypes)}" width="${iconSize.w}" height="${iconSize.h}" style="width:${iconSize.w}px;height:${iconSize.h}px" alt="" loading="lazy" draggable="false" onerror="this.style.visibility='hidden'"></div>`;
     return { done, html };
   });
   const doneCount = rows.filter(row => row.done).length;
@@ -238,8 +263,8 @@ export function buildQuestJournalView(questState, selectedId, context = {}) {
   };
 }
 
-// Terminal de quêtes : liste à gauche (onglets par statut, groupée par
-// niveau), fiche de la mission sélectionnée à droite.
+// Terminal de quêtes : tableau des missions (onglets par statut), la
+// mission sélectionnée se déplie dans sa ligne.
 const QUEST_TERMINAL_TABS = [
   ["open", "Disponibles", "Dispo."],
   ["active", "En cours", "En cours"],
@@ -265,7 +290,7 @@ function questProgressRatio(quest, progress = {}) {
   return sum / objectives.length;
 }
 
-export function buildQuestTerminalView({ questState, selectedId, hasAccess, collectables, npcTypes, npcLocations = {}, searchQuery = "", filter = "open", playerSector = null }) {
+export function buildQuestTerminalView({ questState, selectedId, hasAccess, collectables, npcTypes, npcLocations = {}, searchQuery = "", filter = "open", playerSector = null, expanded = true }) {
   const tab = QUEST_TERMINAL_TABS.some(([id]) => id === filter) ? filter : "open";
   const query = String(searchQuery || "").trim().toLowerCase();
   const matches = (quest) => !query || String(quest.title || "").toLowerCase().includes(query);
@@ -287,108 +312,106 @@ export function buildQuestTerminalView({ questState, selectedId, hasAccess, coll
     ? selectedId
     : (visible[0]?.id || null);
 
-  // Liste : groupes "Niveau N", contrats d'extermination à la fin.
+  // Style tableau : une ligne par mission (mission, objectifs, crédits,
+  // XP) ; la mission sélectionnée se déplie sur place (fiche complète).
+  const flat = [...visible.filter((item) => !isExterm(item)), ...visible.filter(isExterm)];
+  const activeCount = Object.keys(questState.active).length;
+  const full = activeCount >= MAX_ACTIVE_QUESTS;
+  const rewardValue = (quest, label) => rewardRows(quest).find(([name]) => name === label)?.[1] || "—";
+
+  const detailOf = (quest) => {
+    const status = statusOf(quest);
+    const accepted = status === "active";
+    const completed = status === "done";
+    const progress = questState.active[quest.id] || {};
+    const prerequisiteIds = getQuestPrerequisiteIds(quest).filter((id) => id !== quest.id);
+    const missing = prerequisiteIds.filter((id) => !questState.completed.includes(id));
+    const available = hasAccess && canAcceptQuest(questState, quest);
+    const showProgress = accepted || completed;
+
+    const objectivesHtml = getQuestObjectives(quest).map((objective) => {
+      const amount = Math.max(1, Number(objective.amount) || 1);
+      const current = completed ? amount : Math.min(amount, Number(progress[objective.id] || 0));
+      return `<div class="qtObjective${current >= amount && showProgress ? " isDone" : ""}">`
+        + `<span class="qtObjIcon">${spriteImg(questObjectiveSprite(objective, collectables, npcTypes), questObjectiveImage(objective, collectables, npcTypes), OBJECTIVE_ICON_TARGET)}</span>`
+        + `<span class="qtObjBody"><span class="qtObjTop"><span>${apercuObjectiveLabel(objective)}</span>${showProgress ? `<b>${formatInteger(current)} / ${formatInteger(amount)}</b>` : ""}</span>`
+        + (showProgress ? `<span class="qtBar"><i style="width:${Math.round(current / amount * 100)}%"></i></span>` : "")
+        + `<small>${objectiveWhere(objective, npcLocations, collectables)}</small>${challengeChips(objective, "qtConds")}</span></div>`;
+    }).join("");
+
+    const extraRewards = rewardRows(quest).filter(([label]) => label !== "Crédits" && label !== "Expérience");
+    const rewardsHtml = extraRewards.map(([label, value]) => `<div class="qtReward"><span>${label}</span><b>${value}</b></div>`).join("");
+
+    let prerequisitesHtml = "";
+    if (isFinal(quest)) {
+      const done = prerequisiteIds.length - missing.length;
+      prerequisitesHtml = `<div class="qtSide"><h3>Progression requise</h3><div class="qtObjTop"><span>Missions terminées</span><b>${formatInteger(done)} / ${formatInteger(prerequisiteIds.length)}</b></div><span class="qtBar"><i style="width:${Math.round(done / Math.max(1, prerequisiteIds.length) * 100)}%"></i></span></div>`;
+    } else if (prerequisiteIds.length) {
+      const links = prerequisiteIds.map((id) => {
+        const parent = QUEST_DEFINITIONS.find((item) => item.id === id);
+        const done = questState.completed.includes(id);
+        return `<button type="button" class="qtPrereq${done ? " isDone" : ""}" data-quest-prereq="${escapeAttr(id)}">${done ? SVG_CHECK : SVG_LOCK}<span>${parent?.title || id}</span></button>`;
+      }).join("");
+      prerequisitesHtml = `<div class="qtSide"><h3>${prerequisiteIds.length > 1 ? "Missions requises" : "Mission requise"}</h3><div class="qtPrereqs">${links}</div></div>`;
+    }
+
+    const note = completed ? "Récompense déjà récupérée."
+      : accepted ? "Suis ta progression dans le journal de missions."
+      : !hasAccess ? "Rapproche-toi du bâtiment de quêtes pour l'accepter."
+      : missing.length ? (isFinal(quest) ? `Termine les ${prerequisiteIds.length} missions précédentes pour la débloquer.` : "Termine d'abord la mission requise.")
+      : full ? `Carnet plein : termine ou abandonne une mission (${MAX_ACTIVE_QUESTS} maximum).`
+      : "";
+    const button = completed
+      ? `<button type="button" class="qtAction isDone" disabled>Mission terminée</button>`
+      : accepted
+        ? `<button type="button" class="qtAction isClose" data-quest-terminal-close="1">Fermer</button>`
+        : `<button type="button" class="qtAction" data-quest-terminal-accept="${escapeAttr(quest.id)}"${available ? "" : " disabled"}>Accepter la mission</button>`;
+
+    return `<div class="qtExpand">`
+      + `<div class="qtExpandMain">${quest.description ? `<p class="qtDesc">${quest.description}</p>` : ""}<div class="qtObjectives">${objectivesHtml}</div></div>`
+      + `<div class="qtExpandSide">`
+      + (rewardsHtml ? `<div class="qtSide"><h3>Autres récompenses</h3><div class="qtRewards">${rewardsHtml}</div></div>` : "")
+      + prerequisitesHtml
+      + `<div class="qtSideFoot">${note ? `<p class="qtNote">${note}</p>` : ""}${button}</div>`
+      + `</div></div>`;
+  };
+
   const row = (quest) => {
     const status = statusOf(quest);
     const objectives = getQuestObjectives(quest);
-    const sub = status === "active"
+    const objText = status === "active"
       ? `En cours · ${Math.floor(questProgressRatio(quest, questState.active[quest.id]) * 100)} %`
-      : status === "done"
-        ? "Terminée"
-        : `${apercuObjectiveLabel(objectives[0] || {})}${objectives.length > 1 ? ` +${objectives.length - 1}` : ""}`;
+      : objectives.length === 1
+        ? `<span>${apercuObjectiveLabel(objectives[0])}</span>`
+        : `${objectives.length} objectifs`;
     const mark = status === "done" ? SVG_CHECK : status === "locked" ? SVG_LOCK : "";
-    const cls = `qtRow is-${status}${quest.id === selectedQuestId ? " isSelected" : ""}${isFinal(quest) ? " isFinal" : ""}`;
-    return `<button type="button" class="${cls}" data-quest-offer="${escapeAttr(quest.id)}" role="listitem" title="${escapeAttr(quest.title)}">`
+    const open = expanded && quest.id === selectedQuestId;
+    const cls = `qtRow is-${status}${open ? " isOpen" : ""}${isFinal(quest) ? " isFinal" : ""}`;
+    return `<div class="${cls}" role="listitem">`
+      + `<button type="button" class="qtRowHead" data-quest-offer="${escapeAttr(quest.id)}" aria-expanded="${open}" title="${escapeAttr(quest.title)}">`
       + `<span class="qtThumb">${spriteImg(getQuestTargetSprite(quest, collectables, npcTypes), getQuestTargetImage(quest, collectables, npcTypes), LIST_THUMB_TARGET)}</span>`
-      + `<span class="qtRowText"><b>${quest.title}</b><small>${sub}</small></span>`
-      + `<i class="qtRowMark" aria-hidden="true">${mark}</i></button>`;
+      + `<span class="qtRowTitle">${quest.title}</span>`
+      + `<span class="qtRowObj">${objText}</span>`
+      + `<b class="qtRowCredits">${rewardValue(quest, "Crédits")}</b>`
+      + `<span class="qtRowXp">${rewardValue(quest, "Expérience")}</span>`
+      + `<i class="qtRowMark" aria-hidden="true">${mark}</i></button>`
+      + (open ? detailOf(quest) : "")
+      + `</div>`;
   };
-  const groups = [];
-  for (const quest of visible.filter((item) => !isExterm(item))) {
-    const label = `Niveau ${levels.get(quest.id)}`;
-    if (groups.at(-1)?.label !== label) groups.push({ label, quests: [] });
-    groups.at(-1).quests.push(quest);
-  }
-  const contracts = visible.filter(isExterm);
-  if (contracts.length) groups.push({ label: "Contrats d'extermination", quests: contracts });
+
   const emptyText = query ? "Aucune mission ne correspond à ta recherche."
     : { open: "Aucune mission disponible.", active: "Aucune mission en cours.", locked: "Aucune mission verrouillée.", done: "Aucune mission terminée." }[tab];
-  const rowsHtml = groups.length
-    ? groups.map(({ label, quests }) => `<div class="qtGroup"><h4 class="qtGroupTitle"><span>${label}</span><small>${quests.length}</small></h4>${quests.map(row).join("")}</div>`).join("")
-    : `<div class="qtEmpty">${emptyText}</div>`;
+  const rowsHtml = flat.length ? flat.map(row).join("") : `<div class="qtEmpty">${emptyText}</div>`;
 
-  const activeCount = Object.keys(questState.active).length;
-  const listHtml = `<label class="qtSearch">${SVG_SEARCH}<input type="search" placeholder="Rechercher une mission…" value="${escapeAttr(searchQuery)}" data-quest-search aria-label="Rechercher une mission"></label>`
-    + `<div class="qtTabs" role="tablist" aria-label="Statut des missions">${QUEST_TERMINAL_TABS.map(([id, label, short]) =>
-      `<button type="button" class="qtTab is-${id}${id === tab ? " isActive" : ""}" data-quest-filter="${id}" role="tab" aria-selected="${id === tab}" title="${label}"><span class="qtTabLong">${label}</span><span class="qtTabShort">${short}</span><b>${counts[id]}</b></button>`).join("")}</div>`
-    + `<div class="qtRows" id="questTerminalRows" role="list">${rowsHtml}</div>`
-    + `<div class="qtSlots"><span>Missions actives</span><span class="qtSlotsBar"><i style="width:${Math.round(Math.min(1, activeCount / MAX_ACTIVE_QUESTS) * 100)}%"></i></span><b>${activeCount} / ${MAX_ACTIVE_QUESTS}</b></div>`;
-
-  const quest = QUEST_DEFINITIONS.find((item) => item.id === selectedQuestId);
-  if (!quest) return { selectedQuestId, listHtml, detailHtml: `<div class="qtEmpty qtDetailEmpty">Sélectionne une mission dans la liste.</div>` };
-
-  const status = statusOf(quest);
-  const accepted = status === "active";
-  const completed = status === "done";
-  const progress = questState.active[quest.id] || {};
-  const prerequisiteIds = getQuestPrerequisiteIds(quest).filter((id) => id !== quest.id);
-  const missing = prerequisiteIds.filter((id) => !questState.completed.includes(id));
-  const full = activeCount >= MAX_ACTIVE_QUESTS;
-  const available = hasAccess && canAcceptQuest(questState, quest);
-
-  const objectivesHtml = getQuestObjectives(quest).map((objective) => {
-    const amount = Math.max(1, Number(objective.amount) || 1);
-    const current = completed ? amount : Math.min(amount, Number(progress[objective.id] || 0));
-    const showProgress = accepted || completed;
-    return `<div class="qtObjective${current >= amount && showProgress ? " isDone" : ""}">`
-      + `<span class="qtObjIcon">${spriteImg(questObjectiveSprite(objective, collectables, npcTypes), questObjectiveImage(objective, collectables, npcTypes), OBJECTIVE_ICON_TARGET)}</span>`
-      + `<span class="qtObjBody"><span class="qtObjTop"><span>${apercuObjectiveLabel(objective)}</span>${showProgress ? `<b>${formatInteger(current)} / ${formatInteger(amount)}</b>` : ""}</span>`
-      + (showProgress ? `<span class="qtBar"><i style="width:${Math.round(current / amount * 100)}%"></i></span>` : "")
-      + `<small>${objectiveWhere(objective, npcLocations, collectables)}</small></span></div>`;
-  }).join("");
-
-  const rewardsHtml = rewardRows(quest).map(([label, value]) => `<div class="qtReward"><span>${label}</span><b>${value}</b></div>`).join("");
-
-  let prerequisitesHtml = "";
-  if (isFinal(quest)) {
-    const done = prerequisiteIds.length - missing.length;
-    prerequisitesHtml = `<section class="qtSection"><h3>Progression requise</h3><div class="qtObjTop"><span>Missions terminées</span><b>${formatInteger(done)} / ${formatInteger(prerequisiteIds.length)}</b></div><span class="qtBar"><i style="width:${Math.round(done / Math.max(1, prerequisiteIds.length) * 100)}%"></i></span></section>`;
-  } else if (prerequisiteIds.length) {
-    const links = prerequisiteIds.map((id) => {
-      const parent = QUEST_DEFINITIONS.find((item) => item.id === id);
-      const done = questState.completed.includes(id);
-      return `<button type="button" class="qtPrereq${done ? " isDone" : ""}" data-quest-offer="${escapeAttr(id)}">${done ? SVG_CHECK : SVG_LOCK}<span>${parent?.title || id}</span></button>`;
-    }).join("");
-    prerequisitesHtml = `<section class="qtSection"><h3>${prerequisiteIds.length > 1 ? "Missions requises" : "Mission requise"}</h3><div class="qtPrereqs">${links}</div></section>`;
-  }
-
-  const note = completed ? "Récompense déjà récupérée."
-    : accepted ? "Suis ta progression dans le journal de missions."
-    : !hasAccess ? "Rapproche-toi du bâtiment de quêtes pour l'accepter."
-    : missing.length ? (isFinal(quest) ? `Termine les ${prerequisiteIds.length} missions précédentes pour la débloquer.` : "Termine d'abord la mission requise.")
-    : full ? `Carnet plein : termine ou abandonne une mission (${MAX_ACTIVE_QUESTS} maximum).`
-    : "";
-  const button = completed
-    ? `<button type="button" class="qtAction isDone" disabled>Mission terminée</button>`
-    : accepted
-      ? `<button type="button" class="qtAction isClose" data-quest-terminal-close="1">Fermer</button>`
-      : `<button type="button" class="qtAction" data-quest-terminal-accept="${escapeAttr(quest.id)}"${available ? "" : " disabled"}>Accepter la mission</button>`;
-
-  const tags = [
-    `<span class="qtPill is-${status}">${QUEST_STATUS_LABELS[status]}</span>`,
-    `<span class="qtLevel">Niveau ${levels.get(quest.id)}</span>`,
-    isExterm(quest) ? `<span class="qtLevel">Contrat</span>` : "",
-    isFinal(quest) ? `<span class="qtLevel">Mission finale</span>` : "",
-  ].join("");
-  const detailHtml = `<div class="qtDetail is-${status}">`
-    + `<div class="qtDetailScroll">`
-    + `<header class="qtHead"><span class="qtPortrait">${spriteImg(getQuestTargetSprite(quest, collectables, npcTypes), getQuestTargetImage(quest, collectables, npcTypes), DETAIL_PORTRAIT_TARGET)}</span>`
-    + `<div class="qtHeadText"><div class="qtTags">${tags}</div><h2 class="qtTitle">${quest.title}</h2>${quest.description ? `<p class="qtDesc">${quest.description}</p>` : ""}</div></header>`
-    + `<section class="qtSection"><h3>Objectifs</h3><div class="qtObjectives">${objectivesHtml}</div></section>`
-    + (rewardsHtml ? `<section class="qtSection"><h3>Récompenses</h3><div class="qtRewards">${rewardsHtml}</div></section>` : "")
-    + prerequisitesHtml
+  const listHtml = `<div class="qtToolbar">`
+    + `<div class="qtTabs" role="tablist" aria-label="Statut des missions">${QUEST_TERMINAL_TABS.map(([id, label]) =>
+      `<button type="button" class="qtTab is-${id}${id === tab ? " isActive" : ""}" data-quest-filter="${id}" role="tab" aria-selected="${id === tab}"><span>${label}</span> · <b>${counts[id]}</b></button>`).join("")}</div>`
+    + `<label class="qtSearch">${SVG_SEARCH}<input type="search" placeholder="Rechercher une mission…" value="${escapeAttr(searchQuery)}" data-quest-search aria-label="Rechercher une mission"></label>`
+    + `<span class="qtSlots"><span>Actives</span> <b>${activeCount} / ${MAX_ACTIVE_QUESTS}</b></span>`
     + `</div>`
-    + `<footer class="qtFoot">${note ? `<p class="qtNote">${note}</p>` : ""}${button}</footer>`
+    + `<div class="qtTable">`
+    + `<div class="qtHeadRow" aria-hidden="true"><span></span><span>Mission</span><span>Objectifs</span><span>Crédits</span><span>Expérience</span><span></span></div>`
+    + `<div class="qtRows" id="questTerminalRows" role="list">${rowsHtml}</div>`
     + `</div>`;
-  return { selectedQuestId, listHtml, detailHtml };
+  return { selectedQuestId, listHtml, detailHtml: "" };
 }
