@@ -4056,6 +4056,8 @@ export default {
     "Rapproche-toi du bâtiment de quêtes pour créer un contrat.": "Gå närmare uppdragsbyggnaden för att skapa ett kontrakt.",
     "Contrat fabriqué au terminal.": "Kontrakt smitt vid terminalen.",
     "Fabricateur indisponible.": "Smedjan är inte tillgänglig.",
+    "pièces Kronos": "Kronos-delar",
+    "Samedi : pièces Kronos x2": "Lördag: Kronos-delar x2",
   },
   patterns: {
     "Prochain contrat possible dans {0} h {1} min": "Nästa kontrakt möjligt om {0} h {1} min",

@@ -28321,3 +28321,5 @@ display: flex;
   padding:0 10px !important;
   font:800 12px/1 ui-sans-serif,system-ui !important;
 }
+/* Samedi Kronos : ligne de récompense en doré. */
+#ggRewards .ggKronosEvent { color:#ffd36b; }

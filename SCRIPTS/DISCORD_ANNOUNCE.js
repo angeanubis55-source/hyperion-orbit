@@ -7,7 +7,7 @@
 //   (vérifie le webhook sans @everyone ; --test-ufonit poste la vraie annonce)
 import { HALLOWEEN_END, HALLOWEEN_START } from "../NPC/NPC_HALLOWEEN.js";
 import { SUNDAY_END_MINUTES, SUNDAY_START_MINUTES, SUNDAY_WEEKDAY } from "../NPC/NPC_SUNDAY.js";
-import { GALAXY_EVENT_END_MINUTES, GALAXY_EVENT_START_MINUTES, GALAXY_EVENT_WEEKDAY } from "../SRC/CORE/GALAXY_GATES.js";
+import { GALAXY_EVENT_END_MINUTES, GALAXY_EVENT_START_MINUTES, GALAXY_EVENT_WEEKDAY, GALAXY_SATURDAY_WEEKDAY } from "../SRC/CORE/GALAXY_GATES.js";
 
 const PARIS_TZ = "Europe/Paris";
 // Annonce de début : 1 h avant l'événement ; annonce de fin : à l'heure de fin.
@@ -103,6 +103,29 @@ Les Galaxy Gates classiques sont en promo toute la journée !
 
 Bonne chasse à tous ! :rocket:`;
 
+export const GG_SATURDAY_MESSAGE = `@everyone
+# :cyclone: ÉVÉNEMENT SAMEDI KRONOS :cyclone:
+:clock3: **Ce samedi de ${hm(GALAXY_EVENT_START_MINUTES)} à ${hm(GALAXY_EVENT_END_MINUTES)} (heure de Paris)**
+
+:moneybag: **Spins à -25 %**
+> Le spin passe de ~~125 000~~ à **93 750 crédits**
+
+:jigsaw: **Pièces Kronos x2**
+> Chaque Galaxy Gate terminée donne **2 pièces Kronos** au lieu d'1
+> Alpha, Beta, Gamma, Delta, Epsilon, Zeta, Kappa et Lambda
+> Le nombre de pièces nécessaires par gate ne change pas
+> C'est **l'heure de fin de la GG** qui compte
+
+:information_source: Les récompenses finales restent normales (le x2 c'est dimanche !)
+
+Bonne construction à tous ! :rocket:`;
+
+export const GG_SATURDAY_END_MESSAGE = `@everyone
+# :cyclone: FIN DE L'ÉVÉNEMENT SAMEDI KRONOS :cyclone:
+Les spins et les pièces Kronos reviennent à la normale.
+
+:calendar: **Demain dès ${hm(GALAXY_EVENT_START_MINUTES)} : Dimanche Galaxy Gates (récompenses x2) !**`;
+
 export const GG_SUNDAY_END_MESSAGE = `@everyone
 # :cyclone: FIN DE L'ÉVÉNEMENT DIMANCHE GALAXY GATES :cyclone:
 Les spins et les récompenses reviennent à la normale. Merci à tous d'avoir participé !
@@ -127,6 +150,8 @@ function yearly(at, offset = 0) {
 // - UFONIT : dimanche 19h30 (1 h avant 20h30) + 22h30.
 // - Halloween : 1 h avant HALLOWEEN_START + à HALLOWEEN_END.
 const SCHEDULES = [
+  { key: "gg_saturday_start", ...weekly(GALAXY_SATURDAY_WEEKDAY, GALAXY_EVENT_START_MINUTES, -ANNOUNCE_LEAD_MINUTES), message: () => GG_SATURDAY_MESSAGE, label: "début Samedi Kronos" },
+  { key: "gg_saturday_end", ...weekly(GALAXY_SATURDAY_WEEKDAY, GALAXY_EVENT_END_MINUTES), message: () => GG_SATURDAY_END_MESSAGE, label: "fin Samedi Kronos" },
   { key: "gg_sunday_start", ...weekly(GALAXY_EVENT_WEEKDAY, GALAXY_EVENT_START_MINUTES, -ANNOUNCE_LEAD_MINUTES), message: () => GG_SUNDAY_MESSAGE, label: "début Dimanche GG" },
   { key: "gg_sunday_end", ...weekly(GALAXY_EVENT_WEEKDAY, GALAXY_EVENT_END_MINUTES), message: () => GG_SUNDAY_END_MESSAGE, label: "fin Dimanche GG" },
   { key: "ufonit_start", ...weekly(SUNDAY_WEEKDAY, SUNDAY_START_MINUTES, -ANNOUNCE_LEAD_MINUTES), message: () => UFONIT_MESSAGE, label: "UFONIT" },

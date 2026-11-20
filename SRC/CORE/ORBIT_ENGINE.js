@@ -114,6 +114,9 @@ import {
   getGalaxySpinCreditCost,
   applyGalaxyGateRewardEvent,
   isGalaxySpinDiscountTime,
+  isGalaxyGateRewardEventActive,
+  isKronosPartsEventActive,
+  getKronosPartsPerCompletion,
   KRONOS_PARTS_BY_GATE,
   normalizeGalaxyGateState,
   rollGalaxyGateResourceRewards,
@@ -17713,24 +17716,31 @@ function renderGalaxyGateWindow(message = "") {
   ui.ggParts.textContent = `${formatInteger(displayedParts)} / ${formatInteger(gate.requiredParts)}`;
   ui.ggPortalImage.src = gate.image;
   ui.ggPortalImage.alt = `Portail ${gate.name}`;
-  // Promo du dimanche (sauf Kronos) : badge et ancien prix barré.
+  // Promo du samedi et du dimanche (sauf Kronos) : badge et ancien prix barré.
   const discount = gate.id !== "kronos" && isGalaxySpinDiscountTime();
+  // x2 des récompenses : dimanche seulement. Samedi : pièces Kronos x2.
+  const rewardEvent = isGalaxyGateRewardEventActive(gate.id);
+  const kronosEvent = isKronosPartsEventActive();
   if (ui.ggDiscountBadge) ui.ggDiscountBadge.hidden = !discount;
   requestAnimationFrame(placeGalaxyDiscountBadge);
   // Event du dimanche : montant de base barré puis montant x2 (comme le
   // prix du spin) ; les crédits ne changent pas.
   const base = gate.completion;
-  const completion = discount ? applyGalaxyGateRewardEvent(base, gate.id) : base;
+  const completion = rewardEvent ? applyGalaxyGateRewardEvent(base, gate.id) : base;
   const amount = value => Array.isArray(value) ? `${formatInteger(value[0])}–${formatInteger(value[1])}` : formatInteger(value);
   const was = (before, after) => amount(before) === amount(after) ? amount(after) : `<s class="ggRewardOld">${amount(before)}</s>${amount(after)}`;
   const materials = Object.entries(completion.resources || {}).map(([id, value]) =>
     `<span>${was(base.resources?.[id], value)} ${getResourceName(id)}</span>`).join("");
   const designDrop = GALAXY_GATE_DRONE_DESIGN_DROPS[gate.id];
-  const dropCount = discount ? `${was(1, 2)}x ` : "";
+  const dropCount = rewardEvent ? `${was(1, 2)}x ` : "";
+  const kronosPerRun = getKronosPartsPerCompletion();
+  const kronosReward = !kronosEvent ? ""
+    : KRONOS_PARTS_BY_GATE[gate.id] ? `<span class="ggKronosEvent">${was(1, kronosPerRun)} pièces Kronos</span>`
+    : gate.id === "kronos" ? `<span class="ggKronosEvent">Samedi : pièces Kronos x2</span>` : "";
   const designReward = designDrop ? `<span>${Math.round(designDrop.chance * 100)}% ${dropCount}Design de drones ( ${getDroneDesign(designDrop.itemId).name.toLowerCase()} )</span>` : '';
   const equipmentDrop = GALAXY_GATE_EQUIPMENT_DROPS[gate.id];
   const equipmentReward = equipmentDrop ? `<span>${Math.round(equipmentDrop.chance * 100)}% ${dropCount}${findCatalogItem(equipmentDrop.itemId).name.replace(/^laser /i, "")}</span>` : '';
-  ui.ggRewards.innerHTML = `<strong>Récompenses finales</strong><span>${was(base.exp, completion.exp)} XP</span><span>${was(base.honor, completion.honor)} honneur</span><span>${amount(completion.credits)} crédits</span><span>${was(base.x4, completion.x4)} UCB-100</span><span>${was(base.xenomit, completion.xenomit)} Xénomit</span>${Number(completion.energy) > 0 ? `<span>${was(base.energy, completion.energy)} énergies Galaxy</span>` : ""}${materials}${designReward}${equipmentReward}`;
+  ui.ggRewards.innerHTML = `<strong>Récompenses finales</strong><span>${was(base.exp, completion.exp)} XP</span><span>${was(base.honor, completion.honor)} honneur</span><span>${amount(completion.credits)} crédits</span><span>${was(base.x4, completion.x4)} UCB-100</span><span>${was(base.xenomit, completion.xenomit)} Xénomit</span>${Number(completion.energy) > 0 ? `<span>${was(base.energy, completion.energy)} énergies Galaxy</span>` : ""}${materials}${designReward}${equipmentReward}${kronosReward}`;
   // ✅ multiplicateur affiché/armé par groupe de spin (ABG vs Delta isolés).
   const ggSpinGroup = gate.group || gate.id;
   const ggGroupMultiplier = Math.min(5, Math.max(1, Number(state.multipliers?.[ggSpinGroup]) || 1));

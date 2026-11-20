@@ -4056,6 +4056,8 @@ export default {
     "Rapproche-toi du bâtiment de quêtes pour créer un contrat.": "契約を作成するにはクエスト施設に近づいてください。",
     "Contrat fabriqué au terminal.": "ターミナルで作成した契約。",
     "Fabricateur indisponible.": "工房は利用できません。",
+    "pièces Kronos": "クロノスのパーツ",
+    "Samedi : pièces Kronos x2": "土曜日：クロノスのパーツ x2",
   },
   patterns: {
     "Prochain contrat possible dans {0} h {1} min": "次の契約まで {0}時間{1}分",

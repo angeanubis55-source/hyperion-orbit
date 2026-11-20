@@ -4056,6 +4056,8 @@ export default {
     "Rapproche-toi du bâtiment de quêtes pour créer un contrat.": "Подлети к зданию заданий, чтобы создать контракт.",
     "Contrat fabriqué au terminal.": "Контракт, созданный в терминале.",
     "Fabricateur indisponible.": "Кузница недоступна.",
+    "pièces Kronos": "деталей Кроноса",
+    "Samedi : pièces Kronos x2": "Суббота: детали Кроноса x2",
   },
   patterns: {
     "Prochain contrat possible dans {0} h {1} min": "Следующий контракт через {0} ч {1} мин",

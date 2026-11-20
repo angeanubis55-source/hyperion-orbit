@@ -4057,6 +4057,8 @@ export default {
     "Rapproche-toi du bâtiment de quêtes pour créer un contrat.": "Get closer to the quest building to create a contract.",
     "Contrat fabriqué au terminal.": "Contract forged at the terminal.",
     "Fabricateur indisponible.": "Forge unavailable.",
+    "pièces Kronos": "Kronos parts",
+    "Samedi : pièces Kronos x2": "Saturday: Kronos parts x2",
   },
   patterns: {
     "Prochain contrat possible dans {0} h {1} min": "Next contract available in {0} h {1} min",

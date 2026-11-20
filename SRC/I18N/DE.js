@@ -4056,6 +4056,8 @@ export default {
     "Rapproche-toi du bâtiment de quêtes pour créer un contrat.": "Nähere dich dem Questgebäude, um einen Vertrag zu erstellen.",
     "Contrat fabriqué au terminal.": "Am Terminal geschmiedeter Vertrag.",
     "Fabricateur indisponible.": "Schmiede nicht verfügbar.",
+    "pièces Kronos": "Kronos-Teile",
+    "Samedi : pièces Kronos x2": "Samstag: Kronos-Teile x2",
   },
   patterns: {
     "Prochain contrat possible dans {0} h {1} min": "Nächster Vertrag möglich in {0} Std. {1} Min.",

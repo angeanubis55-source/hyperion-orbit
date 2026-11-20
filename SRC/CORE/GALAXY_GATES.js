@@ -120,16 +120,31 @@ export const GALAXY_SPIN_DISCOUNT_FORCED = false;
 export const GALAXY_EVENT_WEEKDAY = 0;
 export const GALAXY_EVENT_START_MINUTES = 1;
 export const GALAXY_EVENT_END_MINUTES = 23 * 60 + 59;
+// Samedi : même promo sur les spins, mais à la place du x2 des récompenses
+// chaque GG source donne 2 pièces Kronos au lieu d'1 (quota inchangé).
+export const GALAXY_SATURDAY_WEEKDAY = 6;
+export const KRONOS_PARTS_EVENT_MULTIPLIER = 2;
 let galaxyEventForced = GALAXY_SPIN_DISCOUNT_FORCED;
 export function setGalaxyEventForced(value) { galaxyEventForced = value === true; }
-export function isGalaxySpinDiscountTime(now = Date.now()) {
-  if (galaxyEventForced) return true;
+// "sun" (dimanche GG), "sat" (samedi Kronos) ou null, heure de Paris.
+export function getGalaxyEventDay(now = Date.now()) {
+  if (galaxyEventForced) return "sun";
   try {
     const parts = Object.fromEntries(new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/Paris", weekday: "short", hour: "2-digit", minute: "2-digit", hourCycle: "h23" })
       .formatToParts(new Date(now)).map(part => [part.type, part.value]));
     const minutes = Number(parts.hour) * 60 + Number(parts.minute);
-    return parts.weekday === "Sun" && minutes >= GALAXY_EVENT_START_MINUTES && minutes <= GALAXY_EVENT_END_MINUTES;
-  } catch { return false; }
+    if (minutes < GALAXY_EVENT_START_MINUTES || minutes > GALAXY_EVENT_END_MINUTES) return null;
+    return parts.weekday === "Sun" ? "sun" : parts.weekday === "Sat" ? "sat" : null;
+  } catch { return null; }
+}
+export function isGalaxySpinDiscountTime(now = Date.now()) {
+  return getGalaxyEventDay(now) !== null;
+}
+export function isKronosPartsEventActive(now = Date.now()) {
+  return getGalaxyEventDay(now) === "sat";
+}
+export function getKronosPartsPerCompletion(now = Date.now()) {
+  return isKronosPartsEventActive(now) ? KRONOS_PARTS_EVENT_MULTIPLIER : 1;
 }
 // Même promo : récompense finale x2 (tout sauf les crédits) pour une GG
 // classique terminée pendant l'event, Kronos exclue. Les quantités déjà
@@ -137,7 +152,7 @@ export function isGalaxySpinDiscountTime(now = Date.now()) {
 export const GALAXY_GATE_EVENT_REWARD_MULTIPLIER = 2;
 export function isGalaxyGateRewardEventActive(gateId, now = Date.now()) {
   const id = String(gateId || "").toLowerCase();
-  return id !== "kronos" && Boolean(GALAXY_GATE_DEFINITIONS[id]) && isGalaxySpinDiscountTime(now);
+  return id !== "kronos" && Boolean(GALAXY_GATE_DEFINITIONS[id]) && getGalaxyEventDay(now) === "sun";
 }
 export function applyGalaxyGateRewardEvent(reward, gateId, now = Date.now()) {
   if (!reward || !isGalaxyGateRewardEventActive(gateId, now)) return reward;
@@ -549,7 +564,7 @@ export function clearGalaxyGateWaveKills(stateInput, gateId) {
   return { ok: true, state };
 }
 
-export function completeActiveGalaxyGate(stateInput, gateId) {
+export function completeActiveGalaxyGate(stateInput, gateId, now = Date.now()) {
   const state = normalizeGalaxyGateState(stateInput);
   const id = String(gateId || "").toLowerCase();
   if (state.active !== id) return { ok: false, state };
@@ -569,9 +584,9 @@ export function completeActiveGalaxyGate(stateInput, gateId) {
     state.lives[id] = GALAXY_GATE_DEFINITIONS[id].maxLives;
     autoDeployed = id;
   }
-  // One completion contributes one piece, capped at this source gate's quota.
+  // Une complétion = 1 pièce (2 le samedi), plafonnée au quota de la gate.
   if (KRONOS_PARTS_BY_GATE[id] && state.built.kronos < GALAXY_GATE_BUILD_LIMIT) {
-    state.kronosParts[id] = Math.min(KRONOS_PARTS_BY_GATE[id], state.kronosParts[id] + 1);
+    state.kronosParts[id] = Math.min(KRONOS_PARTS_BY_GATE[id], state.kronosParts[id] + getKronosPartsPerCompletion(now));
   }
   return { ok: true, state: normalizeGalaxyGateState(state), autoDeployed };
 }
