@@ -177,7 +177,7 @@ import { createRadiationSystem } from "./RADIATION_SYSTEM.js";
 import { renderSpeedGuard } from "./SPEED_GUARD_UI.js";
 import { netServerMessageAge, netSimulationStep, netGameTimeMs, netSpeedGuardActive, queueGameLogForServer } from "./NETPLAY.js";
   import { pushNetplayLocal, sendNetplayBackgroundState, netplayLocalUpdateDue, getNetplayRemotes, tickNetplayRemotes, getNetNpcs, getNetDeaths, drainNetGone, getNetBoxes, drainNetBoxInbox, drainNetDmgInbox, drainNetHealInbox, drainNetShotEvents, drainNetSkillInbox, drainNetSkillDenied, clearNetShots, clearNetplayGameplay, sendShotEvent, sendSkillUse, sendHealAlly, sendPvpHit, sendPvpPetHit, getNetSelf, setNetInstanceMode, clearNetBoxes, claimNetBox, requestBoxSync, netBoxSyncAgeMs, netBoxSnapshotReady, netInInstance, sendNetHit, netMyId, netplayStatus, sendPing, netLatencyMs, netPongAge, netHelloAckAge, netServerVersion, netConnected, forceNetReconnect, ensureNetplayConnection, drainNetPvpKillInbox, drainNetPvpPetKillInbox, takeNetNpcReward, sendPvpLoot, sendPvpLootTake, drainNetPvpLootInbox,
-  drainNetPvpLootTakeInbox, drainNetAdminKickInbox, drainNetAdminBoomInbox, drainNetBannedInbox, drainNetCheatInbox, netDisconnect, drainNetSunInbox, drainNetSundayInbox, drainNetDecloakInbox, drainNetIemHitInbox, drainNetStationDmgInbox, getNetClanBases, getNetStationOwners,
+  drainNetPvpLootTakeInbox, drainNetAdminKickInbox, drainNetAdminBoomInbox, drainNetBannedInbox, drainNetCheatInbox, netDisconnect, drainNetSunInbox, drainNetSundayInbox, drainNetStrikeInbox, sendStrikeClaim, drainNetDecloakInbox, drainNetIemHitInbox, drainNetStationDmgInbox, getNetClanBases, getNetStationOwners,
   getNetGroup, getNetLowRaid, takeNetLowRaidReward, getNetWinterGate, takeNetWinterGateReward, setNetNpcRewardHandler, getNetServerRestartAt, consumeNetServerRestart, getMyClanTag, getClanRelation, setMyClanTag, setNetDiplo, netIsAuthed, sendStationInstall, sendStationUninstall, sendStationBuild, sendStationReplace, sendStationCancelReplace, sendStationRepair, sendStationDeflectToggle, requestStationSync, sendStationHit, requestStarJumpArrival, requestHangarArrival, finishHangarArrival } from "./NETPLAY.js";
 import {
   createGatePortalState,
@@ -29851,6 +29851,9 @@ function spawnCollectableAt(type, x, y, opts = {}) {
     // ✅ recompense de base remplacee (epave du joueur : rien d'autre)
     rewardOverride: opts.rewardOverride || null,
 
+    // ✅ Box Strike personnelle : jeton serveur réclamé au ramassage
+    strikeToken: opts.strikeToken ? String(opts.strikeToken).slice(0, 48) : null,
+
     // ✅ montant fixe (drops d'assemblage : quantité tirée au kill)
     fixedAmount: Math.max(0, Math.floor(Number(opts.amount) || 0)) || null,
 
@@ -29868,7 +29871,8 @@ function spawnCollectableAt(type, x, y, opts = {}) {
   // Monde continu : les drops à durée de vie survivent au refresh
   // (expiration en temps réel via l'horloge monde). expiresAtMs = 0 :
   // jamais d'expiration (box d'assemblage, comme les bonus box).
-  try {
+  // Box Strike : jamais persistée (son jeton serveur ne survit pas au refresh).
+  if (!instance.strikeToken) try {
     const record = addCollectableDrop(collectableStore, instance.map, {
       type,
       x: cx,
@@ -29953,6 +29957,12 @@ function applyCollectableReward(c) {
       return { kept: true };
     }
   } catch {}
+  // Box Strike : le module est tiré et donné par le serveur (message
+  // sundayModule src "strike" -> notification « Vous avez reçu un module »).
+  if (c.strikeToken) {
+    try { sendStrikeClaim(c.strikeToken); } catch {}
+    return {};
+  }
 
   const reward = c.rewardOverride || pickExclusiveCollectableReward(cfg.exclusiveRewards) || cfg.reward || cfg.rewards || {};
   const parts = [];
@@ -32907,6 +32917,29 @@ function updateBossEncounters() {
 
 function processDeaths() {
   try { drainPendingPersonalSuns(); } catch {}
+  // Box Strike (Hitac enneigée) : tirage personnel à la mort d'un Hitac /
+  // Minion Givré. Gagné : box perso au point de mort ; perdu : message.
+  try {
+    let strikeEvs = null;
+    try { strikeEvs = drainNetStrikeInbox(); } catch { strikeEvs = null; }
+    for (const ev of strikeEvs || []) {
+      if (!ev || typeof ev !== "object") continue;
+      if (ev.win !== true) {
+        try { showNotification("Vous n'avez rien reçu, à la prochaine fois. [ Box Strike ]", 3, "info"); } catch {}
+        continue;
+      }
+      if (String(ev.map || "") !== String(currentMapId() || "").toLowerCase()) continue;
+      try {
+        spawnCollectableAt(ev.type, ev.x + rand(-70, 70), ev.y + rand(-70, 70), {
+          armed: false,
+          fromNpc: "npc_Hitac_Frost",
+          despawnAfter: 600,
+          onlyBy: String(netMyId()),
+          strikeToken: ev.token,
+        });
+      } catch {}
+    }
+  } catch {}
   // Mini-event dominical [ UFONIT ] : loterie module du top 10 (25 % chacun).
   // Aucune soute ni récompense, juste les messages + le module éventuel.
   try {
@@ -33169,6 +33202,9 @@ if (
   !e.noRewards &&
   e.type !== "npc_Protegit" &&
   e.type !== "npc_Barrage_Seeker_Rocket" &&
+  // Hitac / Minion Givré : aucun cargo, seulement la chance de Box Strike.
+  e.type !== HITAC_SNOW_TYPE &&
+  e.type !== HITAC_SNOW_MINION_DRAW_TYPE &&
   // ✅ Gate Eternal : aucun cargo (ni minerais ni box).
   !String(e.type || "").endsWith("_eternal") &&
   // Event uniquement (même les retardataires d'après-event ne droppent pas).

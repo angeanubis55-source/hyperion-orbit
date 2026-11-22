@@ -599,6 +599,18 @@ export function drainNetSunInbox() {
 // Mini-event dominical [ UFONIT ] : loterie module du top 10 dégâts
 // ({ map, uid, seq, win, rarity, module }). Aucune soute ni récompense.
 const netSundayInbox = [];
+// Box Strike (Hitac enneigée) : tirage personnel à la mort d'un Hitac / Minion.
+const netStrikeInbox = [];
+export function drainNetStrikeInbox() {
+  if (!netStrikeInbox.length) return [];
+  return netStrikeInbox.splice(0, netStrikeInbox.length);
+}
+export function sendStrikeClaim(token) {
+  if (!ws || ws.readyState !== 1) return false;
+  const t = String(token || "").slice(0, 48);
+  if (!t) return false;
+  try { ws.send(JSON.stringify({ t: "strikeClaim", token: t })); return true; } catch { return false; }
+}
 export function drainNetSundayInbox() {
   if (!netSundayInbox.length) return [];
   return netSundayInbox.splice(0, netSundayInbox.length);
@@ -1484,6 +1496,19 @@ export function ensureNetplayConnection() {
         uid: String(msg.uid || ""),
         seq: Number(msg.seq) || 0,
         sunType: typeof msg.sunType === "string" ? String(msg.sunType).slice(0, 40) : null,
+        x: Number.isFinite(Number(msg.x)) ? Math.round(Number(msg.x)) : 0,
+        y: Number.isFinite(Number(msg.y)) ? Math.round(Number(msg.y)) : 0,
+      });
+      return;
+    }
+    if (msg.t === "strikeDrop" && msg && typeof msg === "object") {
+      if (netStrikeInbox.length > 32) netStrikeInbox.shift();
+      const type = ["Strike_Box", "Strike_Box_Medium", "Strike_Box_Big"].includes(String(msg.type)) ? String(msg.type) : "";
+      netStrikeInbox.push({
+        win: msg.win === true && !!type,
+        token: String(msg.token || "").slice(0, 48),
+        type,
+        map: String(msg.map || "").toLowerCase(),
         x: Number.isFinite(Number(msg.x)) ? Math.round(Number(msg.x)) : 0,
         y: Number.isFinite(Number(msg.y)) ? Math.round(Number(msg.y)) : 0,
       });

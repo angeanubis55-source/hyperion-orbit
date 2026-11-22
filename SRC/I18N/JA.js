@@ -4063,6 +4063,7 @@ export default {
     "Box Strike": "ストライクボックス",
     "Box Strike Medium": "ストライクボックス（中）",
     "Box Strike Big": "ストライクボックス（大）",
+    "Vous n'avez rien reçu, à la prochaine fois. [ Box Strike ]": "何も獲得できませんでした。また次回！［ストライクボックス］",
   },
   patterns: {
     "Vous avez reçu un module {0} ! [ Box Strike ]": "{0}モジュールを獲得しました！［ストライクボックス］",

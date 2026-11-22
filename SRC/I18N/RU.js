@@ -4063,6 +4063,7 @@ export default {
     "Box Strike": "Ящик Strike",
     "Box Strike Medium": "Средний ящик Strike",
     "Box Strike Big": "Большой ящик Strike",
+    "Vous n'avez rien reçu, à la prochaine fois. [ Box Strike ]": "Вы ничего не получили, повезёт в следующий раз. [ Ящик Strike ]",
   },
   patterns: {
     "Vous avez reçu un module {0} ! [ Box Strike ]": "Вы получили модуль: {0}! [ Ящик Strike ]",

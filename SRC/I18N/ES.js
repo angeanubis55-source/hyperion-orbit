@@ -4063,6 +4063,7 @@ export default {
     "Box Strike": "Caja Strike",
     "Box Strike Medium": "Caja Strike mediana",
     "Box Strike Big": "Caja Strike grande",
+    "Vous n'avez rien reçu, à la prochaine fois. [ Box Strike ]": "No has recibido nada, suerte la próxima vez. [ Caja Strike ]",
   },
   patterns: {
     "Vous avez reçu un module {0} ! [ Box Strike ]": "¡Has recibido un módulo {0}! [ Caja Strike ]",

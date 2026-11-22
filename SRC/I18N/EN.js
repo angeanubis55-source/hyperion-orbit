@@ -4064,6 +4064,7 @@ export default {
     "Box Strike": "Strike Box",
     "Box Strike Medium": "Medium Strike Box",
     "Box Strike Big": "Big Strike Box",
+    "Vous n'avez rien reçu, à la prochaine fois. [ Box Strike ]": "You received nothing, better luck next time. [ Strike Box ]",
   },
   patterns: {
     "Vous avez reçu un module {0} ! [ Box Strike ]": "You received a {0} module! [ Strike Box ]",

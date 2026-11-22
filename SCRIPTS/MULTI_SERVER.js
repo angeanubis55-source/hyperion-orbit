@@ -2359,15 +2359,14 @@ function npcRewardShares(killerId, mapId, death) {
 // Récompenses NPC immédiates : chaque mort est traitée entièrement,
 // sans file, budget de temps, minuterie ni plafond de kills.
 const announcedNpcSuns = new Map();
-// Box Strike (micro-event Hitac enneigée) : très petite chance à chaque mort
-// d'un Hitac / Minion Givré. Une seule box partagée au point de mort, le
-// premier qui la ramasse gagne le module ; disparaît après 5 min.
+// Box Strike (micro-event Hitac enneigée) : à chaque mort d'un Hitac /
+// Minion Givré, CHAQUE tapeur présent tente sa chance. Gagné : une Box Strike
+// personnelle apparaît chez lui (jeton serveur, réclamé au ramassage) ;
+// perdu : message « rien reçu ». Jeton valable 10 min.
 const STRIKE_BOX_DROP_CHANCE = Object.freeze({ npc_Hitac_Frost: 0.03, npc_Hitac_Minion_Frost: 0.01 });
 const STRIKE_BOX_WEIGHTS = Object.freeze([["Strike_Box", 70], ["Strike_Box_Medium", 25], ["Strike_Box_Big", 5]]);
-const STRIKE_BOX_TTL_MS = 5 * 60_000;
-function isStrikeBoxType(type) {
-  return type === "Strike_Box" || type === "Strike_Box_Medium" || type === "Strike_Box_Big";
-}
+const STRIKE_BOX_TTL_MS = 10 * 60_000;
+const pendingStrikes = new Map(); // jeton -> { pid, type, map, x, y, exp }
 // Normale : Commun. Medium : Commun ou Rare (50/50). Big : Épique (75 %) ou Légendaire (25 %).
 function rollStrikeBoxRarity(type) {
   const r = Math.random();
@@ -2375,35 +2374,39 @@ function rollStrikeBoxRarity(type) {
   if (type === "Strike_Box_Medium") return r < 0.5 ? "rare" : "common";
   return "common";
 }
-function maybeDropStrikeBox(mapId, death, deathKey) {
-  const chance = Number(STRIKE_BOX_DROP_CHANCE[death?.type]) || 0;
-  if (!(chance > 0) || Math.random() >= chance) return;
+function rollStrikeBoxType() {
   const total = STRIKE_BOX_WEIGHTS.reduce((s, [, w]) => s + w, 0);
-  let roll = Math.random() * total, type = STRIKE_BOX_WEIGHTS[0][0];
-  for (const [t, w] of STRIKE_BOX_WEIGHTS) { if ((roll -= w) < 0) { type = t; break; } }
-  const key = String(mapId || "").toLowerCase();
-  const uid = `${type}@${deathKey}`.slice(0, 64);
-  ensureBoxRoom(key).then((set) => {
-    if (!(set instanceof Map) || set.has(uid)) return;
-    const box = { type, x: Math.round(Number(death.x) || 0), y: Math.round(Number(death.y) || 0) };
-    set.set(uid, { ...box, expireAt: Date.now() + STRIKE_BOX_TTL_MS });
-    const room = rooms.get(key);
-    if (room?.size) broadcastRoom(room, JSON.stringify({ t: "box", op: "spawn", box: { uid, ...box } }));
-  }).catch(() => {});
+  let roll = Math.random() * total;
+  for (const [t, w] of STRIKE_BOX_WEIGHTS) { if ((roll -= w) < 0) return t; }
+  return STRIKE_BOX_WEIGHTS[0][0];
 }
-// Expiration des Box Strike non ramassées.
+function rollStrikeDrops(mapId, death) {
+  const chance = Number(STRIKE_BOX_DROP_CHANCE[death?.type]) || 0;
+  if (!(chance > 0)) return;
+  const map = String(mapId || "").toLowerCase();
+  let room = null;
+  try { room = rooms.get(String(mapId)) || rooms.get(map); } catch {}
+  const hitters = new Set();
+  for (const sh of Array.isArray(death?.shares) ? death.shares : []) {
+    if (Array.isArray(sh) && String(sh[0]).startsWith("u_") && Number(sh[1]) > 0) hitters.add(String(sh[0]));
+  }
+  const x = Math.round(Number(death.x) || 0), y = Math.round(Number(death.y) || 0);
+  for (const pid of hitters) {
+    try { if (!room || !room.has(pid)) continue; } catch { continue; }
+    if (Math.random() < chance) {
+      const type = rollStrikeBoxType();
+      const token = `strk_${randomBytes(9).toString("hex")}`;
+      pendingStrikes.set(token, { pid, type, map, x, y, exp: Date.now() + STRIKE_BOX_TTL_MS });
+      sendToPeer(pid, { t: "strikeDrop", win: true, token, type, map, x, y });
+    } else {
+      sendToPeer(pid, { t: "strikeDrop", win: false, map });
+    }
+  }
+}
 setInterval(() => {
   const now = Date.now();
-  for (const [mapId, set] of boxRooms) {
-    if (!(set instanceof Map)) continue;
-    const gone = [];
-    for (const [uid, b] of set) {
-      if (b && isStrikeBoxType(b.type) && Number(b.expireAt) > 0 && now >= Number(b.expireAt)) { set.delete(uid); gone.push(uid); }
-    }
-    const room = rooms.get(mapId);
-    if (gone.length && room?.size) broadcastRoom(room, JSON.stringify({ t: "box", op: "unspawn", uids: gone }));
-  }
-}, 1000);
+  for (const [token, p] of pendingStrikes) if (!p || now > Number(p.exp)) pendingStrikes.delete(token);
+}, 30_000);
 function npcDeathKey(mapId, death) {
   return `${String(mapId).toLowerCase()}:${String(death?.uid || "")}:${Number(death?.seq) || 0}`;
 }
@@ -2473,7 +2476,7 @@ function awardNpcDeaths(mapId, deaths) {
     }
     if (STRIKE_BOX_DROP_CHANCE[death.type] && !rewardedNpcDeaths.has(`strike:${deathKey}`)) {
       rewardedNpcDeaths.set(`strike:${deathKey}`, now);
-      try { maybeDropStrikeBox(mapId, death, deathKey); } catch {}
+      try { rollStrikeDrops(mapId, death); } catch {}
     }
     const killerPseudo = String(findPeerState(killerId)?.pseudo || "");
     const isSunBoss = death.type === "npc_Invoke_XVI" || death.type === "npc_Mindfire_Behemoth" || isHalloweenBossVariant(death.type) || isSundayBossVariant(death.type);
@@ -2819,6 +2822,33 @@ wss.on("connection", (ws) => {
       if (msg.t === "pos" || msg.t === "map") correctState();
       return;
     }
+    // Box Strike personnelle ramassée : jeton vérifié (propriétaire, map,
+    // distance, validité), puis module tiré et donné par le serveur.
+    if (msg.t === "strikeClaim") {
+      try {
+        if (!authed || !accountId) return;
+        const token = String(msg.token || "").slice(0, 48);
+        const p = pendingStrikes.get(token);
+        if (!p || p.pid !== String(id)) return;
+        if (Date.now() > Number(p.exp)) { pendingStrikes.delete(token); return; }
+        if (String(mapId || "").toLowerCase() !== p.map) return;
+        const shipDist = state._posOk === true ? Math.hypot(Number(state.x) - p.x, Number(state.y) - p.y) : Infinity;
+        const petDist = state.peta === 1 ? Math.hypot(Number(state.petx ?? state.x) - p.x, Number(state.pety ?? state.y) - p.y) : Infinity;
+        if (Math.min(shipDist, petDist) > 700) return;
+        pendingStrikes.delete(token);
+        let mod = null;
+        try {
+          const res = grantSundayModule(String(accountId), rollStrikeBoxRarity(p.type));
+          if (res && res.ok && res.module) mod = res.module;
+        } catch {}
+        try {
+          ws.send(JSON.stringify({ t: "sundayModule", src: "strike", map: p.map, uid: token, seq: 0,
+            win: !!mod, prize: mod ? "module" : null, rarity: mod ? mod.rarity : null,
+            module: mod ? sanitizeSundayModule(mod) : null, ticketQty: 0, ammoQty: 0 }));
+        } catch {}
+      } catch {}
+      return;
+    }
     if (msg.t === "boxSyncReq") {
       // Resync explicite (le client a perdu la sync initiale : refresh,
       // purge, paquet perdu). Throttle anti-spam par connexion.
@@ -2847,26 +2877,10 @@ wss.on("connection", (ws) => {
           if (accepted) {
             try { acRecordCollection(audOf(state), state._combat); } catch {}
             broadcastRoom(room, JSON.stringify({ t: "box", op: "collect", uid }), id);
-            if (isStrikeBoxType(box.type)) {
-              // Box Strike : pas de respawn, module tiré et donné par le serveur.
-              let mod = null;
-              try {
-                if (authed && accountId) {
-                  const res = grantSundayModule(String(accountId), rollStrikeBoxRarity(box.type));
-                  if (res && res.ok && res.module) mod = res.module;
-                }
-              } catch {}
-              try {
-                ws.send(JSON.stringify({ t: "sundayModule", src: "strike", box: box.type, map: String(mapId), uid, seq: 0,
-                  win: !!mod, prize: mod ? "module" : null, rarity: mod ? mod.rarity : null,
-                  module: mod ? sanitizeSundayModule(mod) : null, ticketQty: 0, ammoQty: 0 }));
-              } catch {}
-            } else {
-              const cfg = COLLECTABLE_TYPES[box.type] || {};
-              const delayMs = Math.max(250, Math.floor((Number(cfg.respawnDelaySec ?? 60) || 0) * 1000));
-              if (!boxRespawns.has(mapId)) boxRespawns.set(mapId, []);
-              boxRespawns.get(mapId).push({ uid, type: box.type, at: Date.now() + delayMs });
-            }
+            const cfg = COLLECTABLE_TYPES[box.type] || {};
+            const delayMs = Math.max(250, Math.floor((Number(cfg.respawnDelaySec ?? 60) || 0) * 1000));
+            if (!boxRespawns.has(mapId)) boxRespawns.set(mapId, []);
+            boxRespawns.get(mapId).push({ uid, type: box.type, at: Date.now() + delayMs });
           }
           // Le demandeur ne touche la recompense qu'apres cette confirmation.
           try { ws.send(JSON.stringify({ t: "box", op: "claim", uid, ok: accepted, box: !accepted && box ? { uid, type: box.type, x: box.x, y: box.y } : undefined })); } catch {}
