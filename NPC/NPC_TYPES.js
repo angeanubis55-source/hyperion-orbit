@@ -1565,15 +1565,15 @@ export const NPC_TYPES = {
     passiveNative: false,
     spriteSpeed: 0,
     bulletSprite: { src: "COMBAT/MUNITIONS/SPECIAL8.png", w: 55, h: 17, glow: true, invert: true },
-    // Pas de tir : JAMX Creed toutes les 10 s (750 px, brouillage 6 s, 7 500 dégâts).
-    creedPulse: { interval: 10, radius: 750, duration: 6, damage: 7500 },
+    // Pas de tir : JAMX Creed toutes les 10 s (1000 px, brouillage 6 s, 7 500 dégâts).
+    creedPulse: { interval: 10, radius: 1000, duration: 6, damage: 7500 },
     // Roquette DCR-250 invisible toutes les 3 s sur un joueur au hasard à
     // portée : ralenti de 30 % pendant 5 s (comme la DCR-250 joueur).
     // Creed « visuel » toutes les 3 s : même halo, sans brouillage ni
     // décamouflage, 30 000 dégâts à chaque joueur à portée.
-    creedBlast: { interval: 3, radius: 750, damage: 30000 },
-    dcrRocket: { interval: 3, range: 750, slowPct: 30, duration: 5 },
-    r: 90, hp: 14500000, shield: 8000000, speed: 250, bulletDmg: 60000, bulletSpeed: 4500, shootRange: 550,
+    creedBlast: { interval: 3, radius: 1000, damage: 30000 },
+    dcrRocket: { interval: 3, range: 1000, slowPct: 30, duration: 5 },
+    r: 90, hp: 14500000, shield: 8000000, speed: 250, bulletDmg: 60000, bulletSpeed: 4500, shootRange: 1000,
   },
   npc_Hitac_Minion_Frost: {
     name: "-=[ Minion Givré ]=-",
@@ -1584,7 +1584,7 @@ export const NPC_TYPES = {
     passiveNative: false,
     spriteSpeed: 0,
     bulletSprite: { src: "COMBAT/MUNITIONS/SPECIAL8.png", w: 55, h: 17, glow: true, invert: true },
-    r: 20, hp: 5500000, shield: 3500000, speed: 250, bulletDmg: 20000, bulletSpeed: 4500, shootRange: 550,
+    r: 20, hp: 5500000, shield: 3500000, speed: 250, bulletDmg: 20000, bulletSpeed: 4500, shootRange: 700,
   },
   npc_Boss_Curcubitor: {
     name: "..::{ Boss Curcubitor }::..",

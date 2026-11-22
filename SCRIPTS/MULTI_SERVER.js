@@ -30,7 +30,7 @@ const {
 import { tickLowRaid, getLowRaidState } from "./LOW_RAID.js";
 import { tickWinterGate, getWinterGateState, persistWinterGate, winterGateRejoin, winterGateRejoinSpot } from "./WINTER_GATE.js";
 import { damagePlayerLayers } from "../COMBAT/COMBAT_RULES.js";
-import { handleAccountApi, getAccountGameplayData, verifyWsToken, recordPvpKill, recordPvpPetKill, awardNpcKill, flushNpcRewards, grantSundayModule, grantSundayTickets, grantSundayAmmo, listFriends, friendFollowers, findUserByPseudo, hasFriendRequest, isBlockedBy, clanIdOfUser, clanTagOfUser, clanMemberUserIds, setClanPresenceProvider, setClanBasesProvider, recordClanWarKill, adminGiveCredits, adminGiveExperience, adminGiveHonor, adminGiveModule, adminGiveTitle, adminListAccounts, adminDebugAccount, adminDeleteAccount, adminResetGalaxyGate, adminGiveGalaxyGate, adminDroneDesigns, adminGiveDroneDesign, adminShipFamilies, adminCatalog, adminInventory, adminGiveItem, adminAdjustStock, adminRemoveOwned, adminSetPosition, adminRename, adminSetFaction, adminResetPassword, adminGenerateAccount, appendPlayerLogs, adminPlayerLogs, adminLogAction, adminActionLog, adminStats } from "./ACCOUNT_SERVER.js";
+import { handleAccountApi, getAccountGameplayData, verifyWsToken, recordPvpKill, recordPvpPetKill, awardNpcKill, flushNpcRewards, grantSundayModule, grantSundayTickets, grantSundayAmmo, grantStrikeConsolation, listFriends, friendFollowers, findUserByPseudo, hasFriendRequest, isBlockedBy, clanIdOfUser, clanTagOfUser, clanMemberUserIds, setClanPresenceProvider, setClanBasesProvider, recordClanWarKill, adminGiveCredits, adminGiveExperience, adminGiveHonor, adminGiveModule, adminGiveTitle, adminListAccounts, adminDebugAccount, adminDeleteAccount, adminResetGalaxyGate, adminGiveGalaxyGate, adminDroneDesigns, adminGiveDroneDesign, adminShipFamilies, adminCatalog, adminInventory, adminGiveItem, adminAdjustStock, adminRemoveOwned, adminSetPosition, adminRename, adminSetFaction, adminResetPassword, adminGenerateAccount, appendPlayerLogs, adminPlayerLogs, adminLogAction, adminActionLog, adminStats } from "./ACCOUNT_SERVER.js";
 import { combatProfile, validateCombatHit, syncDeclaredFormation, accountWithFormation } from "./COMBAT_PROFILE.js";
 import { profileAbilityCooldown } from "../DRONE/DRONE_DESIGNS.js";
 import { selectNpcSnapshot } from "./NPC_SNAPSHOT.js";
@@ -2363,8 +2363,8 @@ const announcedNpcSuns = new Map();
 // Minion Givré, CHAQUE tapeur présent reçoit une Box Strike personnelle
 // (normale / medium / big, jeton serveur valable 10 min). C'est au
 // ramassage que la (très petite) chance est tirée : module ou rien.
-const STRIKE_BOX_DROP_CHANCE = Object.freeze({ npc_Hitac_Frost: 0.03, npc_Hitac_Minion_Frost: 0.01 });
-const STRIKE_BOX_WEIGHTS = Object.freeze([["Strike_Box", 70], ["Strike_Box_Medium", 25], ["Strike_Box_Big", 5]]);
+const STRIKE_BOX_DROP_CHANCE = Object.freeze({ npc_Hitac_Frost: 0.20, npc_Hitac_Minion_Frost: 0.20 });
+const STRIKE_BOX_WEIGHTS = Object.freeze([["Strike_Box", 60], ["Strike_Box_Medium", 30], ["Strike_Box_Big", 10]]);
 const STRIKE_BOX_TTL_MS = 10 * 60_000;
 const pendingStrikes = new Map(); // jeton -> { pid, type, map, x, y, exp }
 // Normale : Commun. Medium : Commun ou Rare (50/50). Big : Épique (75 %) ou Légendaire (25 %).
@@ -2373,6 +2373,23 @@ function rollStrikeBoxRarity(type) {
   if (type === "Strike_Box_Big") return r < 0.25 ? "legendary" : "epic";
   if (type === "Strike_Box_Medium") return r < 0.5 ? "rare" : "common";
   return "common";
+}
+// Box sans module : jamais vide, un petit lot de consolation.
+// [lot, poids, min, max]
+const STRIKE_CONSOLATION = Object.freeze([
+  ["energy", 35, 5, 15],    // énergie Galaxy Gates
+  ["ice", 25, 1000, 10000], // munitions ICE-100
+  ["ric3", 20, 10, 30],     // roquettes R-IC3
+  ["reroll", 17, 1, 1],     // ticket de relance module
+  ["roll", 3, 1, 1],        // ticket de tirage module (rare)
+]);
+function rollStrikeConsolation() {
+  const total = STRIKE_CONSOLATION.reduce((s, [, w]) => s + w, 0);
+  let roll = Math.random() * total;
+  let pick = STRIKE_CONSOLATION[0];
+  for (const row of STRIKE_CONSOLATION) { if ((roll -= row[1]) < 0) { pick = row; break; } }
+  const [kind, , min, max] = pick;
+  return { kind, qty: min + Math.floor(Math.random() * (max - min + 1)) };
 }
 function rollStrikeBoxType() {
   const total = STRIKE_BOX_WEIGHTS.reduce((s, [, w]) => s + w, 0);
@@ -2843,10 +2860,19 @@ wss.on("connection", (ws) => {
             if (res && res.ok && res.module) mod = res.module;
           }
         } catch {}
+        let bonus = null;
+        if (!mod) {
+          try {
+            const c = rollStrikeConsolation();
+            const res = grantStrikeConsolation(String(accountId), c.kind, c.qty);
+            if (res && res.ok) bonus = c;
+          } catch {}
+        }
         try {
           ws.send(JSON.stringify({ t: "sundayModule", src: "strike", map: p.map, uid: token, seq: 0,
-            win: !!mod, prize: mod ? "module" : null, rarity: mod ? mod.rarity : null,
-            module: mod ? sanitizeSundayModule(mod) : null, ticketQty: 0, ammoQty: 0 }));
+            win: !!(mod || bonus), prize: mod ? "module" : bonus ? "bonus" : null, rarity: mod ? mod.rarity : null,
+            module: mod ? sanitizeSundayModule(mod) : null, ticketQty: 0, ammoQty: 0,
+            bonusKind: bonus ? bonus.kind : null, bonusQty: bonus ? bonus.qty : 0 }));
         } catch {}
       } catch {}
       return;

@@ -33615,6 +33615,39 @@ function processDeaths() {
             try { updateAmmoUI(); } catch {}
           } catch {}
           try { showNotification(`Vous avez reçu ${qty} munitions X4 ! [ UFONIT ]`, 4, "info", { goldTerms: ["X4"] }); } catch {}
+        } else if (ev.win === true && ev.prize === "bonus" && ev.bonusKind && Number(ev.bonusQty) > 0) {
+          // Box Strike sans module : lot de consolation (déjà écrit côté serveur).
+          const qty = Math.floor(Number(ev.bonusQty));
+          const kind = ev.bonusKind;
+          const addTo = (obj, key) => { obj[key] = Math.max(0, Math.floor(Number(obj[key]) || 0)) + qty; };
+          let msgTxt = "";
+          try {
+            const u = account?.user;
+            if (kind === "energy") {
+              if (u) { u.galaxyGates = normalizeGalaxyGateState(u.galaxyGates); u.galaxyGates.energy += qty; }
+              msgTxt = `Vous avez reçu ${qty} énergie${qty > 1 ? "s" : ""} Galaxy Gates !`;
+              try { if (ui.galaxyGateWindow.style.display !== "none") renderGalaxyGateWindow(); } catch {}
+            } else if (kind === "reroll" || kind === "roll") {
+              if (u) { u.inventory ||= {}; u.inventory.counts ||= {}; addTo(u.inventory.counts, kind === "roll" ? "ticket_module_roll" : "ticket_module_reroll"); }
+              msgTxt = kind === "roll" ? "Vous avez reçu un ticket de tirage module !" : "Vous avez reçu un ticket de relance module !";
+            } else if (kind === "ice") {
+              if (player) { player.ammo ||= {}; addTo(player.ammo, "ice"); }
+              if (u) { u.ammo ||= {}; addTo(u.ammo, "ice"); }
+              msgTxt = `Vous avez reçu ${qty} munitions ICE-100 !`;
+              try { updateAmmoUI(); } catch {}
+            } else if (kind === "ric3") {
+              if (player) { player.rockets ||= {}; addTo(player.rockets, "ric3"); }
+              if (u) { u.rockets ||= {}; addTo(u.rockets, "ric3"); }
+              msgTxt = `Vous avez reçu ${qty} roquettes R-IC3 !`;
+              try { updateAmmoUI(); } catch {}
+            }
+            if (u) {
+              try { saveUser(account.user, { source: "progress" }); } catch {}
+              try { markProgressDirty(); } catch {}
+              if (netActive()) flushNetUser().catch(() => {});
+            }
+          } catch {}
+          if (msgTxt) { try { showNotification(msgTxt, 4, "info"); } catch {} }
         } else if (ev.src === "strike") {
           try { showNotification("Vous n'avez rien reçu, à la prochaine fois.", 3, "info"); } catch {}
         } else {

@@ -110,7 +110,7 @@ export function buildHitacSnowCamp(world, random = Math.random) {
     radius: 350,
     respawn: 0,
     maxAlive: 1,
-    aggroRange: 750,
+    aggroRange: 1000,
     leashRange: 1700,
     aggroHold: 8,
     // Chaque minion : 3 vies au total (2 réapparitions), 2 s après sa mort.

@@ -825,7 +825,7 @@ export class ZoneNpcSim {
         explodeOnTouch: false, explodeRadius: 0, explodeDmg: 0,
         canShoot: stats.canShoot, shootRange: stats.shootRange, shootRate: stats.shootRate,
         bulletDmg: stats.bulletDmg, burst: stats.burst, shootCd: 0.2 + Math.random() * 0.5,
-        aggroRange: 750, aggroHoldMs: 8000,
+        aggroRange: 700, aggroHoldMs: 8000,
         aggroBy: null, aggroUntil: 0,
         tx: null, ty: null, killer: null, firstBy: null, lastHitBy: null,
         lockBy: null, lockHitAt: 0, lockReleaseAt: 0, hitHist: [],
