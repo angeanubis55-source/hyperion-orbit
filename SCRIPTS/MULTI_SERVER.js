@@ -1954,6 +1954,12 @@ function sendBoxSync(ws, mapId) {
   ensureBoxRoom(key).then((set) => {
     try {
       if (ws.readyState === 1) ws.send(JSON.stringify({ t: "boxesSync", map: key, boxes: [...set].map(([uid, b]) => ({ uid, ...b })) }));
+      // Box Strike personnelles encore valides sur cette map.
+      try {
+        let pid = "";
+        for (const [epid, e] of rooms.get(key) || []) { if (e?.ws === ws) { pid = String(epid); break; } }
+        sendStrikeSync(ws, pid, key);
+      } catch {}
     } catch {}
   });
 }
@@ -2365,8 +2371,44 @@ const announcedNpcSuns = new Map();
 // ramassage que la (très petite) chance est tirée : module ou rien.
 const STRIKE_BOX_DROP_CHANCE = Object.freeze({ npc_Hitac_Frost: 0.20, npc_Hitac_Minion_Frost: 0.20 });
 const STRIKE_BOX_WEIGHTS = Object.freeze([["Strike_Box", 60], ["Strike_Box_Medium", 30], ["Strike_Box_Big", 10]]);
-const STRIKE_BOX_TTL_MS = 10 * 60_000;
-const pendingStrikes = new Map(); // jeton -> { pid, type, map, x, y, exp }
+// 24 h, persistées sur disque (survivent au redémarrage serveur) et
+// renvoyées au joueur à chaque arrivée sur la map (refresh, reconnexion).
+const STRIKE_BOX_TTL_MS = 24 * 3600_000;
+const pendingStrikes = new Map(); // jeton -> { pid, type, chance, map, x, y, exp }
+const STRIKE_BOX_FILE = join(dataRoot, "strike_boxes.json");
+try {
+  const saved = JSON.parse(readFileSync(STRIKE_BOX_FILE, "utf8"));
+  const nowLoad = Date.now();
+  for (const [token, p] of Object.entries(saved || {})) {
+    if (p && typeof p === "object" && Number(p.exp) > nowLoad) pendingStrikes.set(String(token), p);
+  }
+} catch {}
+let strikeSaveTimer = null;
+function saveStrikeBoxes() {
+  if (strikeSaveTimer) return;
+  strikeSaveTimer = setTimeout(() => {
+    strikeSaveTimer = null;
+    try {
+      mkdirSync(dataRoot, { recursive: true });
+      const tmp = `${STRIKE_BOX_FILE}.tmp`;
+      writeFileSync(tmp, JSON.stringify(Object.fromEntries(pendingStrikes)));
+      renameSync(tmp, STRIKE_BOX_FILE);
+    } catch {}
+  }, 1000);
+}
+function strikeDropMsg(token, p) {
+  return { t: "strikeDrop", win: true, token, type: p.type, map: p.map, x: p.x, y: p.y,
+    ttl: Math.max(1, Math.round((Number(p.exp) - Date.now()) / 1000)) };
+}
+// Box Strike encore valides du joueur sur cette map (envoyées avec boxesSync).
+function sendStrikeSync(ws, pid, map) {
+  if (!pid || !ws || ws.readyState !== 1) return;
+  const now = Date.now();
+  for (const [token, p] of pendingStrikes) {
+    if (!p || p.pid !== pid || p.map !== map || now > Number(p.exp)) continue;
+    try { ws.send(JSON.stringify(strikeDropMsg(token, p))); } catch {}
+  }
+}
 // Normale : Commun. Medium : Commun ou Rare (50/50). Big : Épique (75 %) ou Légendaire (25 %).
 function rollStrikeBoxRarity(type) {
   const r = Math.random();
@@ -2407,18 +2449,24 @@ function rollStrikeDrops(mapId, death) {
   for (const sh of Array.isArray(death?.shares) ? death.shares : []) {
     if (Array.isArray(sh) && String(sh[0]).startsWith("u_") && Number(sh[1]) > 0) hitters.add(String(sh[0]));
   }
-  const x = Math.round(Number(death.x) || 0), y = Math.round(Number(death.y) || 0);
+  const x0 = Math.round(Number(death.x) || 0), y0 = Math.round(Number(death.y) || 0);
   for (const pid of hitters) {
     try { if (!room || !room.has(pid)) continue; } catch { continue; }
     const type = rollStrikeBoxType();
     const token = `strk_${randomBytes(9).toString("hex")}`;
-    pendingStrikes.set(token, { pid, type, chance, map, x, y, exp: Date.now() + STRIKE_BOX_TTL_MS });
-    sendToPeer(pid, { t: "strikeDrop", win: true, token, type, map, x, y });
+    // Décalage fixé ici : la box reste au même endroit à chaque renvoi.
+    const x = x0 + Math.round((Math.random() * 2 - 1) * 70), y = y0 + Math.round((Math.random() * 2 - 1) * 70);
+    const p = { pid, type, chance, map, x, y, exp: Date.now() + STRIKE_BOX_TTL_MS };
+    pendingStrikes.set(token, p);
+    sendToPeer(pid, strikeDropMsg(token, p));
   }
+  saveStrikeBoxes();
 }
 setInterval(() => {
   const now = Date.now();
-  for (const [token, p] of pendingStrikes) if (!p || now > Number(p.exp)) pendingStrikes.delete(token);
+  let removed = false;
+  for (const [token, p] of pendingStrikes) if (!p || now > Number(p.exp)) { pendingStrikes.delete(token); removed = true; }
+  if (removed) saveStrikeBoxes();
 }, 30_000);
 function npcDeathKey(mapId, death) {
   return `${String(mapId).toLowerCase()}:${String(death?.uid || "")}:${Number(death?.seq) || 0}`;
@@ -2847,12 +2895,13 @@ wss.on("connection", (ws) => {
         const token = String(msg.token || "").slice(0, 48);
         const p = pendingStrikes.get(token);
         if (!p || p.pid !== String(id)) return;
-        if (Date.now() > Number(p.exp)) { pendingStrikes.delete(token); return; }
+        if (Date.now() > Number(p.exp)) { pendingStrikes.delete(token); saveStrikeBoxes(); return; }
         if (String(mapId || "").toLowerCase() !== p.map) return;
         const shipDist = state._posOk === true ? Math.hypot(Number(state.x) - p.x, Number(state.y) - p.y) : Infinity;
         const petDist = state.peta === 1 ? Math.hypot(Number(state.petx ?? state.x) - p.x, Number(state.pety ?? state.y) - p.y) : Infinity;
         if (Math.min(shipDist, petDist) > 700) return;
         pendingStrikes.delete(token);
+        saveStrikeBoxes();
         let mod = null;
         try {
           if (Math.random() < Number(p.chance || 0)) {

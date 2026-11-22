@@ -1511,6 +1511,7 @@ export function ensureNetplayConnection() {
         map: String(msg.map || "").toLowerCase(),
         x: Number.isFinite(Number(msg.x)) ? Math.round(Number(msg.x)) : 0,
         y: Number.isFinite(Number(msg.y)) ? Math.round(Number(msg.y)) : 0,
+        ttl: Math.max(0, Math.min(86400 * 2, Math.floor(Number(msg.ttl) || 0))),
       });
       return;
     }

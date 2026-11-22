@@ -30559,7 +30559,10 @@ function applyCollectableReward(c) {
   // Box Strike : le module est tiré et donné par le serveur (message
   // sundayModule src "strike" -> notification « Vous avez reçu un module »).
   if (c.strikeToken) {
-    try { sendStrikeClaim(c.strikeToken); } catch {}
+    let sent = false;
+    try { sent = sendStrikeClaim(c.strikeToken); } catch {}
+    // Pas de connexion : la box reste (le jeton serveur est toujours valide).
+    if (!sent) return { kept: true };
     return {};
   }
 
@@ -31585,7 +31588,7 @@ function drawCollectables(ox, oy) {
 
     // Toutes les box dynamiques temporaires affichent leur temps restant.
     // Les slots natifs (Bonus Box, Palladium...) gardent leur respawn normal.
-    if (c.dropUid && Number(c.despawnAfter) > 0) {
+    if ((c.dropUid || c.strikeToken) && Number(c.despawnAfter) > 0) {
       const remaining = Math.max(0, Math.ceil(Number(c.despawnAfter) - Number(c.t || 0)));
       const hours = Math.floor(remaining / 3600);
       const minutes = Math.floor((remaining % 3600) / 60);
@@ -33539,11 +33542,13 @@ function processDeaths() {
       if (!ev || typeof ev !== "object") continue;
       if (ev.win !== true) continue;
       if (String(ev.map || "") !== String(currentMapId() || "").toLowerCase()) continue;
+      // Renvoi (refresh, retour sur la map) : pas de doublon.
+      if (collectables.some((c) => c && c.strikeToken === ev.token)) continue;
       try {
-        spawnCollectableAt(ev.type, ev.x + rand(-70, 70), ev.y + rand(-70, 70), {
+        spawnCollectableAt(ev.type, ev.x, ev.y, {
           armed: false,
           fromNpc: "npc_Hitac_Frost",
-          despawnAfter: 600,
+          despawnAfter: Number(ev.ttl) > 0 ? Number(ev.ttl) : 86400,
           onlyBy: String(netMyId()),
           strikeToken: ev.token,
         });
