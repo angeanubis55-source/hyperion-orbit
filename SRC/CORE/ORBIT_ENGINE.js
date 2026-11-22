@@ -106,6 +106,7 @@ import {
   unlockCurrentUserTitle,
   refreshCurrentUserTitles,
 } from "./ACCOUNT.js";
+import { extrasCapacity, shipExtraKeys, EXTRA_RADAR_BONUS, EXTRA_PET_FUEL_THRESHOLD, EXTRA_PET_FUEL_BUY, EXTRA_REPAIR_SEC, EXTRA_AIM_MISS_CUT, EXTRA_SHIELD_REGEN_PCT } from "../DATA/SHIP_EXTRAS.js";
 import { pumpSharedAuction } from "./AUCTION_NET.js";
 import { apiWinterRankingClaim, flushNetUser, netActive, netList, noteNetConsumption, noteNetCreditGain, noteNetPetFuelConsumed, noteNetPurchase, noteNetResourceGain, noteNetServerReward, noteNetUpgradeConsumed } from "./ACCOUNT_NET.js";
 import {
@@ -9876,7 +9877,7 @@ function initializeCustomActionBar() {
             cooling = cloakCd > 0 || cloaked;
             progress = cloakCd > 0 ? clamp(cloakCd / CPU_CLOAK_COOLDOWN, 0, 1) : (cloaked ? 1 : 0);
           } else if (sk === "repair") {
-            const pct = REPAIR.cooldown <= 0 ? 1 : clamp(player.repairT / REPAIR.cooldown, 0, 1);
+            const pct = repairCooldownSec() <= 0 ? 1 : clamp(player.repairT / repairCooldownSec(), 0, 1);
             cooling = !player.dead && pct < 1;
             progress = cooling ? 1 - pct : 0;
             edge = "rgba(57,255,20,.9)";
@@ -18646,7 +18647,7 @@ const MAX_ALIVE = 100;
 let currentWavePlan = null;
 let mapSwitchInProgress = false;
 let portalJumpActive = false;
-let NPC_SENSOR_RANGES = getNpcSensorRanges(rules);
+let NPC_SENSOR_RANGES = npcSensorRangesWithExtras(rules);
 
 const TAU = Math.PI * 2;
 const rand = (a, b) => a + Math.random() * (b - a);
@@ -23449,7 +23450,7 @@ function ensureRepairOrbitLoaded() {
 
 function isRepairingNow() {
   if (!started || player.dead || player.repairJumpLock) return false;
-  if (player.repairT < REPAIR.cooldown) return false;
+  if (player.repairT < repairCooldownSec()) return false;
 
   const needHp = player.hp < player.hpMax - 0.5;
 
@@ -24065,9 +24066,10 @@ function normalizeFit(fit, pack) {
   const slots = pack?.slots || { lasers: 15, gens: 15, extras: 15 };
   const L = Math.max(0, Number(slots.lasers || 0));
   const G = Math.max(0, Number(slots.gens || 0));
-  const E = Math.max(0, Number(slots.extras || 0));
-
   const base = fit || {};
+  // CPU Emplacement : emplacements d'extras en plus.
+  const E = extrasCapacity(slots.extras, base.extras);
+
   const lasers = (Array.isArray(base.lasers) ? base.lasers : []).slice(0, L);
   const gens = (Array.isArray(base.gens) ? base.gens : []).slice(0, G);
   const extras = (Array.isArray(base.extras) ? base.extras : []).slice(0, E);
@@ -24154,7 +24156,7 @@ player.accel = BASE_RUN.accel;
 player.friction = BASE_RUN.friction;
 
   if (!player.repairColdStart) {
-    player.repairT = REPAIR.cooldown;
+    player.repairT = repairCooldownSec();
   }
   player.repairTickT = 0;
   player.altShot = false;
@@ -24890,7 +24892,7 @@ function syncActionDockState() {
       applyDockField(button, "text", ui.repairTxt ? ui.repairTxt.textContent : "",
         (v) => { if (small[0]) small[0].textContent = v; });
       // Robot réparateur : même voile que le reste pendant sa recharge (6 s).
-      const repairPct = REPAIR.cooldown <= 0 ? 1 : clamp(player.repairT / REPAIR.cooldown, 0, 1);
+      const repairPct = repairCooldownSec() <= 0 ? 1 : clamp(player.repairT / repairCooldownSec(), 0, 1);
       const repairCooling = !player.dead && repairPct < 1;
       const repairProgress = repairCooling ? 1 - repairPct : 0;
       const repairReady = !player.dead && !repairCooling;
@@ -25060,8 +25062,8 @@ function tickRepair(dt) {
   }
 
   const previousRepairT = player.repairT;
-  player.repairT = Math.min(REPAIR.cooldown, player.repairT + dt);
-  if (player.repairT < REPAIR.cooldown) return;
+  player.repairT = Math.min(repairCooldownSec(), player.repairT + dt);
+  if (player.repairT < repairCooldownSec()) return;
 
   // ✅ Démarre le son de réparation dès que le robot est actif et "a besoin".
   // Cas du saut : le cooldown arrive déjà plein (resetPlayerToBase) sans
@@ -25076,9 +25078,9 @@ function tickRepair(dt) {
     }
   }
 
-  const repairingDt = previousRepairT >= REPAIR.cooldown
+  const repairingDt = previousRepairT >= repairCooldownSec()
     ? dt
-    : Math.max(0, dt - (REPAIR.cooldown - previousRepairT));
+    : Math.max(0, dt - (repairCooldownSec() - previousRepairT));
   player.repairTickT += repairingDt;
   const tickCount = Math.floor((player.repairTickT + 1e-9) / REPAIR.tickInterval);
   if (tickCount <= 0) return;
@@ -25101,7 +25103,7 @@ function tickRepair(dt) {
 }
 
 function updateRepairUI(syncDock = true) {
-  const pct = REPAIR.cooldown <= 0 ? 1 : clamp(player.repairT / REPAIR.cooldown, 0, 1);
+  const pct = repairCooldownSec() <= 0 ? 1 : clamp(player.repairT / repairCooldownSec(), 0, 1);
   const needs = !player.dead && player.hp < player.hpMax - 0.01;
 
   const text = player.dead ? "OFF"
@@ -25472,7 +25474,15 @@ function tickShield(dt) {
   player.sh = Math.min(player.shMax, player.sh + baseRegen + perSecond);
   const drainPct = Number(effects.shieldDrainPct || 0);
   if (drainPct > 0) player.sh = Math.max(0, player.sh - player.shMax * drainPct / 100);
-  const shGain = Math.round(player.sh - oldSh);
+  // CPU Bouclier : +0,2 %/s du bouclier max, quoi qu'il arrive (feu, drain).
+  let cpuGain = 0;
+  if (hasShipExtra("shieldregen")) {
+    const before = player.sh;
+    player.sh = Math.min(player.shMax, player.sh + player.shMax * EXTRA_SHIELD_REGEN_PCT / 100);
+    cpuGain = Math.round(player.sh - before);
+  }
+  // Le +x bleu reste visible même si une formation à drain mange le gain net.
+  const shGain = Math.max(Math.round(player.sh - oldSh), cpuGain);
   if (shGain > 0) addPlayerCombatFloat(shGain, "rgba(70,180,255,0.98)", "+");
 }
 
@@ -27930,6 +27940,24 @@ function tickPetFuel(dt) {
       markProgressDirty();
     }
   } catch { try { markProgressDirty(); } catch {} }
+  // CPU Carburant : rachète 1 000 dès que le réservoir passe sous 1 000.
+  if (pet.fuel < EXTRA_PET_FUEL_THRESHOLD && hasShipExtra("petfuel")) {
+    const nowMs = Date.now();
+    if (nowMs - Number(petState.cpuFuelAt || 0) > 5000) {
+      petState.cpuFuelAt = nowMs;
+      try {
+        const out = buyItem("pet_fuel", EXTRA_PET_FUEL_BUY);
+        if (out?.ok) {
+          account.user = out.user;
+          player.credits = out.user.credits;
+          loadAccountUser();
+          markProgressDirty();
+          addGameLog(`CPU Carburant : +${formatInteger(out.quantity)} carburant P.E.T (${formatInteger(out.totalPrice)} crédits)`, "info");
+          pet = account.user?.pet || pet;
+        }
+      } catch {}
+    }
+  }
   if (pet.fuel <= 0) {
     pet.fuel = 0;
     petState.fuelTickT = 0;
@@ -29801,7 +29829,9 @@ function currentCargo() {
   const cargoPct = getPetProtocolPct(account.user?.pet, account.user, "cargo");
   const pilotCargoPct = Math.max(0, Number(playerPilotMults().cargo - 1) * 100 || 0);
   const totalCargoPct = cargoPct + pilotCargoPct;
-  const capacity = totalCargoPct > 0 ? Math.floor(CARGO_CAPACITY * (1 + totalCargoPct / 100)) : CARGO_CAPACITY;
+  const baseCapacity = totalCargoPct > 0 ? Math.floor(CARGO_CAPACITY * (1 + totalCargoPct / 100)) : CARGO_CAPACITY;
+  // CPU Soute : x2.
+  const capacity = hasShipExtra("cargo2x") ? baseCapacity * 2 : baseCapacity;
   return { used, capacity, free: Math.max(0, capacity - used) };
 }
 
@@ -33534,7 +33564,53 @@ function updateBossEncounters() {
 // Box Strike : redemande au serveur après un chargement de map (respawn,
 // switch interne), une fois connecté et vivant.
 var strikeSyncPending = true;
+// ---------- Extras CPU du vaisseau (SRC/DATA/SHIP_EXTRAS.js) ----------
+// Cache 1 s des extras équipés (lu à chaque frame par la soute, le robot...).
+var shipExtrasCache = null;
+var shipExtrasCacheAt = 0;
+function hasShipExtra(key) {
+  const now = Date.now();
+  if (!shipExtrasCache || now - shipExtrasCacheAt > 1000) {
+    shipExtrasCacheAt = now;
+    try { shipExtrasCache = shipExtraKeys(account.user || getCurrentUserFull()); } catch { shipExtrasCache = new Set(); }
+  }
+  return shipExtrasCache.has(key);
+}
+// CPU Radar : +500 de portée de vision et de radar (hors gates / raid Low,
+// où tout est déjà visible).
+function npcSensorRangesWithExtras(r) {
+  const ranges = getNpcSensorRanges(r);
+  let radar = false;
+  try { radar = hasShipExtra("radar"); } catch {}
+  if (!radar || ranges.allVisible) return ranges;
+  return { ...ranges, visibility: ranges.visibility + EXTRA_RADAR_BONUS, radar: ranges.radar + EXTRA_RADAR_BONUS };
+}
+// CPU Réparation 02 / 01 : le robot se lance 2 s / 1 s plus tôt.
+function repairCooldownSec() {
+  let cut = 0;
+  try { cut = hasShipExtra("repair2") ? EXTRA_REPAIR_SEC.repair2 : hasShipExtra("repair1") ? EXTRA_REPAIR_SEC.repair1 : 0; } catch {}
+  return Math.max(0.5, REPAIR.cooldown - cut);
+}
+// CPU Visée 01 / 02 : chance de MISS du vaisseau x0,75 / x0,5.
+function playerMissMult() {
+  try { return hasShipExtra("aim2") ? 1 - EXTRA_AIM_MISS_CUT.aim2 : hasShipExtra("aim1") ? 1 - EXTRA_AIM_MISS_CUT.aim1 : 1; } catch { return 1; }
+}
+var shipExtrasTickAt = 0;
+var shipExtrasRadarOn = false;
+function tickShipExtras() {
+  const now = Date.now();
+  if (now - shipExtrasTickAt < 1000) return;
+  shipExtrasTickAt = now;
+  // Radar : portées recalculées dès qu'on (dé)équipe le CPU.
+  const radarOn = hasShipExtra("radar");
+  if (radarOn !== shipExtrasRadarOn) {
+    shipExtrasRadarOn = radarOn;
+    try { NPC_SENSOR_RANGES = npcSensorRangesWithExtras(rules); } catch {}
+  }
+}
+
 function processDeaths() {
+  try { tickShipExtras(); } catch {}
   try { drainPendingPersonalSuns(); } catch {}
   try {
     if (strikeSyncPending && started && !player.dead && netConnected() && !netInInstance()) {
@@ -35165,6 +35241,17 @@ function tryFireRocket(opts = {}) {
   // Tir réel : toute attaque casse le camouflage ultime.
   breakPoliceCloak();
   if (isForgeTarget(t)) { try { breakForgeRule("norocket"); } catch {} }
+  // CPU Double roquette : une 2e roquette part en même temps (s'il en reste).
+  if (hasShipExtra("rocket2") && rocketCount(rocket.id) > 0) {
+    player.rockets[rocket.id] = rocketCount(rocket.id) - 1;
+    noteNetConsumption("rockets", rocket.id, 1);
+    mirrorConsumedStock("rockets", rocket.id, player.rockets[rocket.id]);
+    updateAmmoUI();
+    const vid = volleySeq++;
+    spawnRocketProjectile(rocket, t, { volleyId: vid, volleySize: 2, arcDir: 1 });
+    spawnRocketProjectile(rocket, t, { volleyId: vid, volleySize: 2, arcDir: -1 });
+    return true;
+  }
   spawnRocketProjectile(rocket, t, { volleyId: volleySeq++, volleySize: 1 });
   return true;
 }
@@ -35193,7 +35280,7 @@ function spawnRocketProjectile(rocket, t, { spread = 0, volleyId = 0, volleySize
   const shotMiss = techPrecisionActive() ? false
     : typeof miss === "boolean"
       ? miss
-      : Math.random() < Math.max(0, PLAYER_SHOTS.missChance - ((Number(player.rocketHitBonusPct || 0) + Number(rocketBoosterMults.hit || 0) + playerPilotMults().rocketHit) / 100));
+      : Math.random() < Math.max(0, PLAYER_SHOTS.missChance - ((Number(player.rocketHitBonusPct || 0) + Number(rocketBoosterMults.hit || 0) + playerPilotMults().rocketHit) / 100)) * playerMissMult();
   const ang = rocket.manual === false
     ? launcherRocketLaunchAngle(player.angle, arcDir, spread)
     : player.angle + spread;
@@ -35306,7 +35393,7 @@ function tryFireSalvo(opts = {}) {
   breakPoliceCloak();
   if (isForgeTarget(t)) { try { breakForgeRule("nolauncher"); } catch {} }
   const volleyId = volleySeq++;
-  const volleyMiss = Math.random() < Math.max(0, PLAYER_SHOTS.missChance - ((Number(player.rocketHitBonusPct || 0) + playerPilotMults().rocketHit) / 100));
+  const volleyMiss = Math.random() < Math.max(0, PLAYER_SHOTS.missChance - ((Number(player.rocketHitBonusPct || 0) + playerPilotMults().rocketHit) / 100)) * playerMissMult();
   for (let i = 0; i < n; i++) {
     // 1 son par roquette, en même temps.
     SFX.play("sfx_shot_lance_roquettes");
@@ -36117,7 +36204,7 @@ const shotHitBonusPct = Number(player.laserHitBonusPct || 0) + Number(shotBooste
     ? laserBaseForTarget * SAB50.drainMult * shotBoosterMults.dmg
     : (laserBase + overdrive) * mult * formationNpcDamageMult(t) * formationPlayerLaserDamageMult(t) * (typeof moduleNpcDamageMult === "function" ? moduleNpcDamageMult(t) : 1) * (typeof modulePvpDamageMult === "function" ? modulePvpDamageMult(t) : 1) * shotBoosterMults.dmg * playerPilotMults().alienDmg * (t?._netPlayer ? (Number(playerPilotMults()?.pvpDmg) || 1) : 1) * playerUpgradeMults().laser * buoyDamageMult() * valourDamageMult() * berserkDamageMult() * holoDamageMult() * scrambleDamageMult() * specDamageMult() * tempestDischargeMult() * shipPassiveDamageMult();
 
-  const shotMiss = Math.random() < Math.max(0, PLAYER_SHOTS.missChance - ((shotHitBonusPct + playerPilotMults().laserHit) / 100));
+  const shotMiss = Math.random() < Math.max(0, PLAYER_SHOTS.missChance - ((shotHitBonusPct + playerPilotMults().laserHit) / 100)) * playerMissMult();
   // Multi : evenement de tir exact pour les allies (vrais tirs, MISS inclus).
   try {
     sendShotEvent({
@@ -50726,7 +50813,7 @@ async function switchMapConfig(nextConfig, { mapId, spawnId = null } = {}) {
   getWavePlan = nextConfig.getWavePlan || (() => ({ spawns: [] }));
   DEFAULT_WAVE_TYPE = nextConfig.DEFAULT_WAVE_TYPE || "dummy";
   rules = nextRules;
-  NPC_SENSOR_RANGES = getNpcSensorRanges(rules);
+  NPC_SENSOR_RANGES = npcSensorRangesWithExtras(rules);
   isZoneMap = rules.mode === "zone";
 
   window.__CURRENT_MAP_ID__ = String(mapId);

@@ -39,6 +39,7 @@ import {
   instantSkylabTransportOnline,
   isLogoutPending,
   loadSkylabFromShipOnline,
+  pilotCargoCapacity,
   setSkylabModuleEnabledOnline,
   startSkylabUpgradeOnline,
   syncCurrentUserSkylabOnline,
@@ -509,8 +510,10 @@ function refreshTransportDynamic(sky, now) {
   } catch {
     shipRes = {};
   }
-  const free = cargoFree(shipRes, CARGO_CAPACITY);
-  const used = Math.max(0, CARGO_CAPACITY - free);
+  let shipCap = CARGO_CAPACITY;
+  try { shipCap = pilotCargoCapacity(ctx?.getUser?.()) || CARGO_CAPACITY; } catch {}
+  const free = cargoFree(shipRes, shipCap);
+  const used = Math.max(0, shipCap - free);
   const toSky = transportDir === "toSky";
   const toggleBtn = transport.querySelector("[data-sky-action='dir']");
   if (toggleBtn) {
@@ -526,7 +529,7 @@ function refreshTransportDynamic(sky, now) {
   }
   const cargoEl = transport.querySelector("[data-cargo-line]");
   if (cargoEl) {
-    const next = `Soute : ${formatInteger(used)} / ${formatInteger(CARGO_CAPACITY)} (${formatInteger(free)} libres)`;
+    const next = `Soute : ${formatInteger(used)} / ${formatInteger(shipCap)} (${formatInteger(free)} libres)`;
     if (cargoEl.textContent !== next) cargoEl.textContent = next;
   }
   const statusEl = transport.querySelector("[data-transport-status]");

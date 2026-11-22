@@ -34,6 +34,7 @@ import { measureGameTask } from "../SRC/CORE/PERFORMANCE_TIMINGS.js";
 import { apiAccountIdentity, apiAccountStatus, apiPseudoFree, flushNetUser, netActive, netList, noteServerModuleQuota } from "../SRC/CORE/ACCOUNT_NET.js";
 
 import { CATALOG, findCatalogItem } from "../SRC/CORE/CATALOG.js";
+import { extrasCapacity } from "../SRC/DATA/SHIP_EXTRAS.js";
 import { getPetDesign } from "../PET/PET_DESIGNS.js";
 import { SHIP_PACKS, getShipFamilyId, getShipFamilyIds, getShipFamilyMembers, getShipFamilyName, getShipDesignBaseId, getShipDesignIds, getShipPackById } from "../SHIP/SHIP_PACKS.js";
 import { getShipBonusInfo } from "../SHIP/SHIP_BONUSES.js";
@@ -794,6 +795,8 @@ function getShopListFor(cat) {
     const protos = groupPetShopItems(CATALOG?.petProtocols || [], "protocol");
     return [...gears, ...protos];
   }
+  // Onglet EXTRAS (jeu) : extras CPU du vaisseau (ceux qui ont une icône).
+  if (cat === "cpuExtras") return (CATALOG?.extras || []).filter((it) => it?.icon);
   const direct = CATALOG?.[cat];
   if (Array.isArray(direct) && direct.length) {
     // Onglet Munitions : prix croissant (moins cher en haut).
@@ -4249,7 +4252,7 @@ if (isDrone) {
   } else {
     const previewFallback = it?.preview ? ` onerror="this.onerror=null;this.src='${iconForItem(it, cat)}'"` : "";
     previewHtml = `
-      <img src="${imgSrc}" alt="${it?.name || it?.id}"${previewFallback} class="${(isDrone || isPet) ? "stillPreviewImg" : `bigImg ${isFormation ? "formationShopImage" : ""}${["ammo", "rockets", "launchers", "speedGen", "shieldGen", "generators", "lasers", "extras", "station", "pets", "petGears", "petProtocols", "petEquipment", "boosters"].includes(cat) ? " equipShopImage" : ""}`}" />
+      <img src="${imgSrc}" alt="${it?.name || it?.id}"${previewFallback} class="${(isDrone || isPet) ? "stillPreviewImg" : `bigImg ${isFormation ? "formationShopImage" : ""}${["ammo", "rockets", "launchers", "speedGen", "shieldGen", "generators", "lasers", "extras", "cpuExtras", "station", "pets", "petGears", "petProtocols", "petEquipment", "boosters"].includes(cat) ? " equipShopImage" : ""}`}" />
     `;
   }
   // Preview uniforme : card 105x105, item 100x100 centré (hors vaisseaux,
@@ -5061,6 +5064,7 @@ function initFitDrafts(hangarId, configNo) {
   if (!h) return false;
   fitState.slots = getShipSlots(h.shipId);
   const baseFit = getFitForConfig(h, configNo);
+  applyExtraSlotBonus(baseFit?.extras);
   fitState.draft = {
     lasers: normalizeFitArray(baseFit.lasers, fitState.slots.lasers),
     gens: normalizeFitArray(baseFit.gens, fitState.slots.gens),
@@ -5715,7 +5719,15 @@ function returnSelectedEquippedItems() {
   renderShipModulesList();
 }
 
+// CPU Emplacement : la capacité d'extras suit le brouillon (base du vaisseau
+// + bonus du CPU équipé). Retirer le CPU fait retomber les extras en trop.
+function applyExtraSlotBonus(extras) {
+  if (!fitState.slots) return;
+  if (fitState.slots.extrasBase == null) fitState.slots.extrasBase = Number(fitState.slots.extras) || 0;
+  fitState.slots.extras = extrasCapacity(fitState.slots.extrasBase, extras);
+}
 function compactCurrentFit() {
+  if (fitState.draft) applyExtraSlotBonus(fitState.draft.extras);
   if (fitState.draft) fitState.draft = compactFitDraft(fitState.draft, fitState.slots);
 }
 
@@ -6970,6 +6982,7 @@ function setFitModalConfig(configNo) {
   }
 
   fitState.slots = getShipSlots(h.shipId);
+  applyExtraSlotBonus(fitState.draft?.extras);
   compactCurrentFit();
   compactAllDroneDrafts();
   compactCurrentPetDraft();
@@ -7284,6 +7297,7 @@ cfgBar.querySelectorAll(".fitCfgBtn").forEach((b) => {
       if (!raw) return showFitError("Preset introuvable");
 
       const p = sanitizePresetDraft(raw, user);
+      applyExtraSlotBonus(p.extras);
       fitState.draft = {
         lasers: normalizeFitArray(p.lasers, fitState.slots.lasers),
         gens: normalizeFitArray(p.gens, fitState.slots.gens),

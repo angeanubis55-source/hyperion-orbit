@@ -20,6 +20,7 @@ import { isHalloweenEventActive } from "../../NPC/NPC_HALLOWEEN.js";
 import { getRefineryRecipe, refineOreOutput, isOreResource, ORE_SELL_PRICES, UPGRADE_SLOT_ORES, upgradeOreCapacity, planAutoUpgradeCharges, cargoAdd, cargoFree, CARGO_CAPACITY } from "../DATA/RESOURCES.js";
 import { getModuleRarity, MODULE_DAILY_ROLL_LIMIT, MODULE_ROLL_COST, MODULE_SELL_PRICES } from "../DATA/MODULE_DROPS.js";
 import { generateShipModule } from "../DATA/MODULE_GEN.js";
+import { extrasCapacity, shipExtraCargoMult, shipExtraDuplicateError } from "../DATA/SHIP_EXTRAS.js";
 import { getPassShopOffer, PASS_MODULE_FORCED } from "../DATA/PASS_SHOP.js";
 export { PASS_MODULE_KEY_COSTS, PASS_SHOP_OFFERS } from "../DATA/PASS_SHOP.js";
 import {
@@ -349,7 +350,9 @@ function makeEmptyFit(shipId) {
 }
 
 function normalizeFitForShip(shipId, fit) {
-  const slots = getShipSlots(shipId);
+  const slots = { ...getShipSlots(shipId) };
+  // CPU Emplacement : emplacements d'extras en plus.
+  slots.extras = extrasCapacity(slots.extras, fit?.extras);
 
   return compactFitDraft({
     lasers: normalizeArraySize(fit?.lasers, slots.lasers, null),
@@ -1157,7 +1160,7 @@ function ensureUserShape(u) {
     // normalize arrays size selon le ship
     h.fit.lasers = normalizeArraySize(h.fit.lasers, slots.lasers, null);
     h.fit.gens = normalizeArraySize(h.fit.gens, slots.gens, null);
-    h.fit.extras = normalizeArraySize(h.fit.extras, slots.extras, null);
+    h.fit.extras = normalizeArraySize(h.fit.extras, extrasCapacity(slots.extras, h.fit.extras), null);
     h.fit.shipMods = normalizeArraySize(h.fit.shipMods, slots.shipMods, null);
 
     // migration: lastPos/lastMap
@@ -1216,7 +1219,7 @@ function clampFitToSlots(shipId, fit) {
   return {
     lasers: normArr(fit?.lasers, slots.lasers),
     gens: normArr(fit?.gens, slots.gens),
-    extras: normArr(fit?.extras, slots.extras),
+    extras: normArr(fit?.extras, extrasCapacity(slots.extras, fit?.extras)),
     shipMods: normArr(fit?.shipMods, slots.shipMods || FIT_SLOTS.shipMods),
   };
 }
@@ -2958,6 +2961,11 @@ export function saveHangarLoadout(hangarId, { ship, drones = {}, pet = null }, c
       }
       count(id);
     }
+  }
+  // Extras CPU : un seul de chaque (un seul CPU de réparation).
+  {
+    const dupError = shipExtraDuplicateError(shipFit.extras, (id) => findCatalogItem(id)?.name || id);
+    if (dupError) return { ok: false, error: dupError };
   }
   for (const id of Object.keys(drones)) {
     if (!u.drones.items.some(drone => drone.id === id)) return { ok: false, error: "Drone introuvable." };
@@ -4747,7 +4755,10 @@ export function pilotCargoCapacity(u) {
   } catch {
     pct = 0;
   }
-  return Math.max(1, Math.floor(CARGO_CAPACITY * (1 + Math.max(0, pct) / 100)));
+  // CPU Soute : x2.
+  let mult = 1;
+  try { mult = shipExtraCargoMult(u); } catch {}
+  return Math.max(1, Math.floor(CARGO_CAPACITY * (1 + Math.max(0, pct) / 100) * mult));
 }
 
 // Achat d'un pack de disques de log (boutique pilote).

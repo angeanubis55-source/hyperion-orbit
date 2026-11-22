@@ -208,6 +208,22 @@ export const CATALOG = {
   extras: [
     { id: "extra_radar", name: "Extra: Radar +", price: 250000, module: { type: "extra", key: "radar_plus" } },
     { id: "extra_loot",  name: "Extra: Loot +",  price: 500000, module: { type: "extra", key: "loot_plus" } },
+    // Extras CPU (SRC/DATA/SHIP_EXTRAS.js) : 1 seul de chaque par vaisseau
+    // (un seul CPU de réparation, 01 ou 02).
+    { id: "extra_cargo_cpu", name: "CPU Soute", price: 3000000000, icon: "/ASSETS/ITEMS/EXTRAS/CPU_SOUTE.png", module: { type: "extra", key: "cargo2x" }, desc: "Double la soute du vaisseau.\nUn seul peut être équipé." },
+    { id: "extra_fuel_cpu", name: "CPU Carburant", price: 1000000000, icon: "/ASSETS/ITEMS/EXTRAS/CPU_CARBURANT.png", module: { type: "extra", key: "petfuel" }, desc: "Achète automatiquement 1 000 carburant P.E.T dès que le réservoir passe sous 1 000.\nUn seul peut être équipé." },
+    { id: "extra_radar_cpu", name: "CPU Radar", price: 2000000000, icon: "/ASSETS/ITEMS/EXTRAS/CPU_RADAR.png", module: { type: "extra", key: "radar" }, desc: "+500 de portée sur la mini-carte et dans la map.\nUn seul peut être équipé." },
+    { id: "extra_double_rocket_cpu", name: "CPU Double roquette", price: 5000000000, icon: "/ASSETS/ITEMS/EXTRAS/CPU_DOUBLE_ROQUETTE.png", module: { type: "extra", key: "rocket2" }, desc: "Envoie 2 roquettes en même temps.\nUn seul peut être équipé." },
+    { id: "extra_repair_cpu_02", name: "CPU Réparation 02", price: 4000000000, icon: "/ASSETS/ITEMS/EXTRAS/CPU_REPARATION_02.png", module: { type: "extra", key: "repair2" }, desc: "Le robot réparateur se lance 2 s plus tôt.\nUn seul CPU de réparation peut être équipé." },
+    { id: "extra_repair_cpu_01", name: "CPU Réparation 01", price: 2000000000, icon: "/ASSETS/ITEMS/EXTRAS/CPU_REPARATION_01.png", module: { type: "extra", key: "repair1" }, desc: "Le robot réparateur se lance 1 s plus tôt.\nUn seul CPU de réparation peut être équipé." },
+    { id: "extra_aim_cpu_01", name: "CPU Visée 01", price: 3000000000, icon: "/ASSETS/ITEMS/EXTRAS/CPU_VISEE_01.png", module: { type: "extra", key: "aim1" }, desc: "Évite 25 % des MISS (lasers et roquettes).\nUn seul CPU de visée peut être équipé." },
+    { id: "extra_aim_cpu_02", name: "CPU Visée 02", price: 6000000000, icon: "/ASSETS/ITEMS/EXTRAS/CPU_VISEE_02.png", module: { type: "extra", key: "aim2" }, desc: "Évite 50 % des MISS (lasers et roquettes).\nUn seul CPU de visée peut être équipé." },
+    { id: "extra_slot_cpu_01", name: "CPU Emplacement 01", price: 2000000000, icon: "/ASSETS/ITEMS/EXTRAS/CPU_EMPLACEMENT_01.png", module: { type: "extra", key: "slot1" }, desc: "+1 emplacement d'extras en plus (son propre emplacement est rendu).\nUn seul CPU d'emplacement peut être équipé." },
+    { id: "extra_slot_cpu_02", name: "CPU Emplacement 02", price: 4000000000, icon: "/ASSETS/ITEMS/EXTRAS/CPU_EMPLACEMENT_02.png", module: { type: "extra", key: "slot2" }, desc: "+2 emplacements d'extras en plus (son propre emplacement est rendu).\nUn seul CPU d'emplacement peut être équipé." },
+    { id: "extra_slot_cpu_03", name: "CPU Emplacement 03", price: 7000000000, icon: "/ASSETS/ITEMS/EXTRAS/CPU_EMPLACEMENT_03.png", module: { type: "extra", key: "slot3" }, desc: "+3 emplacements d'extras en plus (son propre emplacement est rendu).\nUn seul CPU d'emplacement peut être équipé." },
+    { id: "extra_slot_cpu_04", name: "CPU Emplacement 04", price: 10000000000, icon: "/ASSETS/ITEMS/EXTRAS/CPU_EMPLACEMENT_04.png", module: { type: "extra", key: "slot4" }, desc: "+4 emplacements d'extras en plus (son propre emplacement est rendu).\nUn seul CPU d'emplacement peut être équipé." },
+    { id: "extra_shield_cpu", name: "CPU Bouclier", price: 4000000000, icon: "/ASSETS/ITEMS/EXTRAS/CPU_BOUCLIER.png", module: { type: "extra", key: "shieldregen" }, desc: "Régénère 0,2 % du bouclier par seconde, en toutes circonstances (même sous le feu).\nUn seul peut être équipé." },
+    { id: "extra_particle_cannon", name: "Canon à particules", price: 5000000000, icon: "/ASSETS/ITEMS/EXTRAS/CANON_PARTICULES.png", module: { type: "extra", key: "particle" }, desc: "Tire aléatoirement avec un canon à particules.\nUn seul peut être équipé." },
   ],
 
   // Base de Combat : pièces achetées en ressources (mêmes prix qu'aux enchères).

@@ -27,6 +27,7 @@ import { CATALOG, findCatalogItem } from "../SRC/CORE/CATALOG.js";
 import { createDrone, DRONE_FORMATIONS, DRONE_TYPES, getIrisPrice, SPECIAL_DRONE_PRICE } from "../DRONE/DRONE_TYPES.js";
 import { getFaction, getFactionBaseSpawn } from "../SRC/CORE/FACTIONS.js";
 import { CARGO_CAPACITY, RESOURCE_TYPES, cargoAdd, getRefineryRecipe, ORE_SELL_PRICES, planAutoUpgradeCharges, REFINERY_RECIPES, refineOreOutput, upgradeOreCapacity } from "../SRC/DATA/RESOURCES.js";
+import { shipExtraCargoMult } from "../SRC/DATA/SHIP_EXTRAS.js";
 import { getPetTradeBonusPct } from "../PET/PET_GEARS.js";
 import { CRAFTING_ENABLED, getCraftingRecipe } from "../SRC/DATA/CRAFTING.js";
 import { isHalloweenEventActive } from "../NPC/NPC_HALLOWEEN.js";
@@ -1298,7 +1299,10 @@ function applyServerModuleOperation(data, body, uid, changes) {
 function serverCargoCapacity(data) {
   let pct = 0;
   try { pct = Number(pilotSkillMults(data?.pilotSkills)?.cargoPct) || 0; } catch {}
-  return Math.max(1, Math.floor(CARGO_CAPACITY * (1 + Math.max(0, pct) / 100)));
+  // CPU Soute : x2.
+  let mult = 1;
+  try { mult = shipExtraCargoMult(data); } catch {}
+  return Math.max(1, Math.floor(CARGO_CAPACITY * (1 + Math.max(0, pct) / 100) * mult));
 }
 
 function syncServerSkylab(data, now = Date.now()) {
