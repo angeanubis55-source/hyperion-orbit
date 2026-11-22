@@ -18197,6 +18197,7 @@ function renderGalaxyGateWindow(message = "") {
     const actionLabel = ui.ggMultiplierBtn.querySelector(".ggMultiplierAction");
     if (actionLabel) actionLabel.textContent = armed ? "Activée" : "Désactivée";
   }
+  try { renderGalaxyGateFrenzyButton(); } catch {}
   const isActive = state.active === gate.id;
   const isDeployed = state.deployed?.[gate.id] === true;
   const stock = Math.max(0, Math.floor(Number(state.built[gate.id]) || 0));
@@ -18487,6 +18488,70 @@ ui.ggMultiplierBtn?.addEventListener("click", async () => {
   if (!result.ok) return result.silent ? undefined : renderGalaxyGateWindow(result.error);
   account.user = result.user;
   renderGalaxyGateWindow(armed ? "Multiplicateur désactivé." : "Multiplicateur activé pour le prochain spin.");
+});
+
+// ✅ Mode Frénésie (préférence du pilote, toutes les GG sauf Kronos et
+// Eternal) : NPC deux fois plus rapides et vagues enchaînées sans passer
+// par les portails du milieu (voir makeEnemy / onWaveCleared).
+var ggFrenzyPref = (() => { try { return localStorage.getItem("orbit_gg_frenzy") === "1"; } catch { return false; } })();
+function isGalaxyGateFrenzyGate(gateId) {
+  const id = String(gateId || "").toLowerCase();
+  return !!GALAXY_GATE_DEFINITIONS[id] && !["kronos", "eternal", "awakened"].includes(id);
+}
+function isGalaxyGateFrenzyActive() {
+  return ggFrenzyPref === true && rules?.mode === "gate"
+    && isGalaxyGateFrenzyGate(window.__CURRENT_MAP_ID__);
+}
+function renderGalaxyGateFrenzyButton() {
+  const btn = document.getElementById("ggFrenzyBtn");
+  const holder = document.getElementById("ggFrenzyBar");
+  if (!btn || !holder) return;
+  // Barre de la fenêtre : à gauche du bouton réduire (comme la mini-carte
+  // et les onglets de la fenêtre Missions).
+  const bar = ui.galaxyGateWindow?.querySelector(":scope > .gameWinBar");
+  if (bar && holder.parentElement !== bar) {
+    bar.insertBefore(holder, bar.querySelector(":scope > .gameWinMinBtn:not(.miniZoomBtn)") || null);
+    holder.addEventListener("pointerdown", (e) => e.stopPropagation());
+  }
+  btn.classList.toggle("active", ggFrenzyPref === true);
+  btn.setAttribute("aria-pressed", ggFrenzyPref ? "true" : "false");
+  const label = btn.querySelector(".ggFrenzyLabel");
+  if (label) label.textContent = ggFrenzyPref ? "Mode Frénésie : Activé" : "Mode Frénésie : Désactivé";
+  holder.hidden = !isGalaxyGateFrenzyGate(selectedGalaxyGateId);
+}
+// « ? » du mode Frénésie : bulle d'explication sous le bouton (survol,
+// focus ou clic), posée sur le body pour passer au-dessus des fenêtres.
+{
+  const help = document.getElementById("ggFrenzyHelp");
+  const tip = document.getElementById("ggFrenzyTip");
+  const show = () => {
+    if (!help || !tip) return;
+    tip.hidden = false;
+    const r = help.getBoundingClientRect();
+    const w = tip.offsetWidth;
+    tip.style.left = `${Math.max(8, Math.min(window.innerWidth - w - 8, r.left + r.width / 2 - w / 2))}px`;
+    tip.style.top = `${r.bottom + 8}px`;
+    help.setAttribute("aria-expanded", "true");
+  };
+  const hide = () => {
+    if (!tip || tip.hidden) return;
+    tip.hidden = true;
+    help?.setAttribute("aria-expanded", "false");
+  };
+  help?.addEventListener("pointerenter", show);
+  help?.addEventListener("pointerleave", hide);
+  help?.addEventListener("focus", show);
+  help?.addEventListener("blur", hide);
+  help?.addEventListener("click", (e) => { e.stopPropagation(); tip?.hidden ? show() : hide(); });
+  window.addEventListener("orbit:window-minimized", (e) => { if (e.detail?.id === "galaxyGateWindow") hide(); });
+  document.addEventListener("pointerdown", (e) => { if (e.target !== help) hide(); });
+}
+document.getElementById("ggFrenzyBtn")?.addEventListener("click", () => {
+  ggFrenzyPref = !ggFrenzyPref;
+  try { localStorage.setItem("orbit_gg_frenzy", ggFrenzyPref ? "1" : "0"); } catch {}
+  renderGalaxyGateWindow(ggFrenzyPref
+    ? "Mode Frénésie activé : NPC 2× plus rapides, vagues enchaînées sans portail."
+    : "Mode Frénésie désactivé.");
 });
 
 ui.galaxyGateWindow?.addEventListener("click", event => {
@@ -31582,6 +31647,10 @@ function makeEnemy(type, x, y) {
     const baseName = String(NPC_TYPES[type]?.name || type).replace(/\s*★\s*\d+\s*$/, "");
     factoryEntity.name = `${baseName} ★ ${wave + (eternalMult - 1) * 12}`;
   }
+  // ✅ Mode Frénésie : NPC de la gate deux fois plus rapides.
+  try {
+    if (isGalaxyGateFrenzyActive()) factoryEntity.speed = Math.floor((Number(factoryEntity.speed) || 0) * 2);
+  } catch {}
   enemiesById.set(factoryEntity.id, factoryEntity);
   const encounter = rules?.bossEncounter;
   if (encounter?.bossType === type) {
@@ -36262,6 +36331,26 @@ function tryCompleteClearedGalaxyGate() {
 function onWaveCleared() {
   if (gateCompletionPending) return;
   if (tryCompleteClearedGalaxyGate()) return;
+  // ✅ Mode Frénésie : la vague suivante démarre sur place (compte à rebours
+  // standard), sans portails continuer/retour. Progression sauvegardée comme
+  // un passage du portail « continuer ».
+  if (!mapSwitchInProgress && !player.dead && isGalaxyGateFrenzyActive()) {
+    const gateId = String(window.__CURRENT_MAP_ID__ || "").toLowerCase();
+    const gate = GALAXY_GATE_DEFINITIONS[gateId];
+    if (gate && wave < gate.maxWaves) {
+      betweenWaves = false;
+      wave++;
+      try {
+        const saved = saveCurrentUserGalaxyGateWave(gateId, wave, account.user);
+        if (saved.ok) {
+          account.user = saved.user;
+          renderGalaxyGateWindow();
+        }
+      } catch {}
+      beginWave();
+      return;
+    }
+  }
   // ✅ Gate Eternal (rules.autoChainWaves) : les vagues s'enchaînent toutes
   // seules, sans portails de choix continuer/retour. La suivante démarre
   // après le compte à rebours standard (recentrage comme le portail continuer).
