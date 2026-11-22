@@ -818,6 +818,7 @@
           <button class="botTab active" data-bot-tab="dash" type="button">Tableau de bord</button>
           <button class="botTab" data-bot-tab="farm" type="button">Configuration</button>
           <button class="botTab" data-bot-tab="npc" type="button">NPC</button>
+          <button class="botTab" data-bot-tab="galaxy" type="button">Galaxy Gates</button>
           <button class="botTab" data-bot-tab="collect" type="button">Bonus Box</button>
           <button class="botTab" data-bot-tab="gear" type="button">P.E.T</button>
           <button class="botTab" data-bot-tab="cargo" type="button">Soute</button>
@@ -857,10 +858,12 @@
                 <option value="both:npc">Kill &amp; Collect — NPC d'abord</option>
                 <option value="both:box">Kill &amp; Collect — Box d'abord</option>
                 <option value="both:nearest">Kill &amp; Collect — Au plus proche</option>
+                <option value="galaxy">Galaxy Gates</option>
               </select>
             </label>
-            <label class="botField"><span>Map de travail</span><select id="botMapSelect" aria-label="Carte cible du bot"></select></label>
-            <label class="botSwitch" title="Une box n'est prise que si on peut continuer à tirer depuis elle."><input id="botGrabInFight" type="checkbox" checked /><i></i><span>Ramasser les box proches en plein combat</span></label>
+            <small class="botNote" id="botGgModeNote" style="display:none">Le bot rejoint la X-1 de sa firme puis entre dans les Galaxy Gates cochées (onglet Galaxy Gates).</small>
+            <label class="botField" id="botMapField"><span>Map de travail</span><select id="botMapSelect" aria-label="Carte cible du bot"></select></label>
+            <label class="botSwitch" id="botGrabField" title="Une box n'est prise que si on peut continuer à tirer depuis elle."><input id="botGrabInFight" type="checkbox" checked /><i></i><span>Ramasser les box proches en plein combat</span></label>
           </section>
           <section class="botSection" data-bot-section="farm">
             <div class="botSectionTitle">Compétences automatiques</div>
@@ -879,6 +882,38 @@
             </div>
             <div class="botNpcColumns" aria-hidden="true"><span></span><span>NPC</span><span>Priorité</span><span>Munition · SAB · salve · config · formation</span></div>
             <div id="botNpcList" class="botCheckList botNpcList"></div>
+          </section>
+
+          <!-- GALAXY GATES -->
+          <section class="botSection botSpan" data-bot-section="galaxy">
+            <div class="botSectionTitle botRowTitle"><span>Gates à faire</span><span class="botMiniActions"><button id="botGgAll" type="button">Tout</button><button id="botGgNone" type="button">Aucun</button></span></div>
+            <div class="botNpcColumns botGgRow" aria-hidden="true"><span></span><span>Gate</span><span>Priorité</span><span>Pièces</span><span>État</span></div>
+            <div id="botGgGateList" class="botCheckList botNpcList"></div>
+            <small class="botNote">Mode de farm « Galaxy Gates » : le bot rejoint la X-1 de sa firme, entre dans la première gate cochée posée sur la map, enchaîne les vagues puis recommence.</small>
+            <small class="botNote">Munition, SAB, salve, config et formation de chaque NPC : réglages de l'onglet NPC.</small>
+          </section>
+          <section class="botSection" data-bot-section="galaxy">
+            <div class="botSectionTitle">Spinner automatique</div>
+            <label class="botSwitch"><input id="botGgSpin" type="checkbox" /><i></i><span>Spinner automatiquement hors gate</span></label>
+            <div class="botNpcColumns botGgWheelRow" aria-hidden="true"><span></span><span>Roue à spinner</span><span>Multi.</span></div>
+            <div id="botGgWheelList" class="botCheckList botNpcList"></div>
+            <label class="botField botInline"><span>Spins par passage</span><input id="botGgSpins" type="number" min="1" max="100" step="1" value="10" /></label>
+            <label class="botSwitch"><input id="botGgAutoMult" type="checkbox" checked /><i></i><span>Activer le multiplicateur dès qu'il est disponible</span></label>
+            <label class="botSwitch" title="Une gate sur la map + une gate en stock (pièces au maximum). Alpha · Beta · Gamma : arrêt dès que l'une des trois en a 2."><input id="botGgBuild2" type="checkbox" /><i></i><span>Construire 2 galaxy gates</span></label>
+            <small class="botNote">Le bot spinne les roues cochées à tour de rôle (énergie d'abord, sinon crédits). Une roue s'arrête dès que toutes ses gates sont sur la map.</small>
+          </section>
+          <section class="botSection" data-bot-section="galaxy">
+            <div class="botSectionTitle">En gate</div>
+            <label class="botSwitch"><input id="botGgNearestSwitch" type="checkbox" checked /><i></i><span>Toujours viser le NPC le plus proche</span></label>
+            <label class="botField"><span>Formation de fin</span><select id="botGgFinishForm" aria-label="Formation de fin de gate"></select></label>
+            <label class="botField"><span>Configuration de fin</span>
+              <select id="botGgFinishCfg" aria-label="Configuration de fin de gate">
+                <option value="">— Ne pas changer —</option>
+                <option value="1">1</option>
+                <option value="2">2</option>
+              </select>
+            </label>
+            <small class="botNote">Appliquées dès que la dernière vague est terminée, jusqu'au retour sur la map mère.</small>
           </section>
 
           <!-- BOX -->

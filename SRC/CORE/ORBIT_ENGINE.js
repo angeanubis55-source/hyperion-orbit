@@ -11993,6 +11993,28 @@ const Bot = {
   target: "—",
   hudT: 0,
   tab: "dash",
+  // Mode de farm « Galaxy Gates » : module "galaxy" (Bot.mode reste "kill").
+  module: "",
+  ggGates: new Set(botGgGateIds()),
+  // Priorité par gate (plus haute = faite d'abord ; 0 par défaut).
+  ggPrio: Object.create(null),
+  // Roues spinnées par le spinner auto (groupes de spin).
+  ggSpinWheels: new Set(["ensemble"]),
+  // Construire 2 gates : 1 sur la map + 1 en stock avant d'arrêter le spin.
+  ggBuild2: false,
+  ggSpinIdx: 0,
+  ggSpinBusy: false,
+  ggSpin: false,
+  ggSpins: 10,
+  ggAutoMult: true,
+  ggAutoEnter: true,
+  ggNearestSwitch: true,
+  ggFinishForm: "",
+  ggFinishCfg: "",
+  ggSpinT: 0,
+  ggUiT: 0,
+  ggJumpCd: 0,
+  ggSwitchCd: 0,
 };
 
 function botNotifyManual() {
@@ -12054,6 +12076,17 @@ function botSaveConfig() {
       kills: Bot.kills,
       boxes: Bot.boxes,
       tab: Bot.tab,
+      module: Bot.module,
+      ggGates: [...Bot.ggGates],
+      ggPrio: Bot.ggPrio,
+      ggSpinWheels: [...Bot.ggSpinWheels],
+      ggBuild2: Bot.ggBuild2,
+      ggSpin: Bot.ggSpin,
+      ggSpins: Bot.ggSpins,
+      ggAutoMult: Bot.ggAutoMult,
+      ggNearestSwitch: Bot.ggNearestSwitch,
+      ggFinishForm: Bot.ggFinishForm,
+      ggFinishCfg: Bot.ggFinishCfg,
       savedAt: Date.now(),
     }));
   } catch {}
@@ -12190,6 +12223,26 @@ function botLoadConfig() {
       if (document.querySelector(`#botTabs [data-bot-tab="${migrated}"]`)) Bot.tab = migrated;
     }
     Bot.mode = ["both", "kill", "collect"].includes(data.mode) ? data.mode : "both";
+    Bot.module = data.module === "galaxy" ? "galaxy" : "";
+    if (Bot.module === "galaxy") Bot.mode = "kill";
+    if (data.ggPrio && typeof data.ggPrio === "object") {
+      for (const [id, v] of Object.entries(data.ggPrio)) {
+        const p = Math.floor(Number(v));
+        if (GALAXY_GATE_DEFINITIONS[id] && Number.isFinite(p) && p > 0) Bot.ggPrio[id] = Math.min(BOT_GG_PRIO_MAX, p);
+      }
+    }
+    if (Array.isArray(data.ggGates)) Bot.ggGates = new Set(data.ggGates.map(String).filter((id) => botGgGateIds().includes(id)));
+    if (Array.isArray(data.ggSpinWheels)) {
+      const groups = new Set(["ensemble", "zeta", "kappa"]);
+      Bot.ggSpinWheels = new Set(data.ggSpinWheels.map(String).filter((g) => groups.has(g)));
+    }
+    if (typeof data.ggSpin === "boolean") Bot.ggSpin = data.ggSpin;
+    if (typeof data.ggBuild2 === "boolean") Bot.ggBuild2 = data.ggBuild2;
+    Bot.ggSpins = intIn(data.ggSpins, 1, 100, Bot.ggSpins);
+    if (typeof data.ggAutoMult === "boolean") Bot.ggAutoMult = data.ggAutoMult;
+    if (typeof data.ggNearestSwitch === "boolean") Bot.ggNearestSwitch = data.ggNearestSwitch;
+    if (typeof data.ggFinishForm === "string") Bot.ggFinishForm = data.ggFinishForm;
+    Bot.ggFinishCfg = data.ggFinishCfg === "1" || data.ggFinishCfg === "2" ? data.ggFinishCfg : "";
     return data.active === true;
   } catch { return false; }
 }
@@ -12207,7 +12260,7 @@ function botLog(text) {
 }
 
 // Onglets de la fenêtre : n'affiche que les sections de l'onglet actif.
-const BOT_TABS = ["dash", "farm", "npc", "collect", "gear", "cargo"];
+const BOT_TABS = ["dash", "farm", "npc", "galaxy", "collect", "gear", "cargo"];
 const BOT_TAB_LEGACY = Object.freeze({ general: "farm", combat: "npc", boxes: "collect", rex: "gear", survival: "farm" });
 // Soute : listes du bot reliées aux minerais de la fenêtre Raffinerie.
 const BOT_REFINE_SELECTS = Object.freeze({ laser: "botRefineLaser", shield: "botRefineShield", rocket: "botRefineRocket", speed: "botRefineSpeed" });
@@ -12232,7 +12285,10 @@ function botTickCargoView(dt) {
   Bot.cargoViewT = (Number(Bot.cargoViewT) || 0) - dt;
   if (Bot.cargoViewT > 0) return;
   Bot.cargoViewT = 1;
-  if (Bot.tab !== "cargo" || !isWindowShown("botWindow")) return;
+  if (!isWindowShown("botWindow")) return;
+  // Onglet Galaxy Gates : pièces et « Sur la map » en direct (spins, pose).
+  if (Bot.tab === "galaxy") { botRenderGgGateList(); botRenderGgWheelList(); return; }
+  if (Bot.tab !== "cargo") return;
   botRenderSellList();
   botRenderRefineStock();
 }
@@ -12302,6 +12358,7 @@ function botSwitchTab(name) {
   // Onglet P.E.T : la liste des modules équipés est relue à chaque ouverture.
   if (name === "gear") { try { botRefreshPetOptions(); } catch {} }
   if (name === "cargo") { botSyncRefineryUi(); botRenderSellList(); }
+  if (name === "galaxy") { botRenderGgGateList(); botRenderGgWheelList(); }
   botSaveConfig();
 }
 
@@ -12497,7 +12554,7 @@ function botSetActive(on) {
     Bot.grabCd = 0;
 
     botApplyPetMode();
-    botLog(`Bot démarré (${BOT_MODULES[Bot.mode]?.label || Bot.mode})`);
+    botLog(`Bot démarré (${Bot.module === "galaxy" ? "Galaxy Gates" : BOT_MODULES[Bot.mode]?.label || Bot.mode})`);
   }
   botSaveConfig();
   botRefreshHud();
@@ -13441,20 +13498,23 @@ function wireBotWindow() {
   if (boxList && !boxList.children.length) {
     const types = Object.keys(COLLECTABLE_TYPES || {}).sort((a, b) =>
       String(COLLECTABLE_TYPES[a]?.name || a).localeCompare(String(COLLECTABLE_TYPES[b]?.name || b), "fr"));
-    const bonusTypes = ["Bonus_Box", "Green_Booty_Box", "Astral_Prime_Box"].filter((t) => types.includes(t));
+    const groups = [
+      { key: "bonus_box_group", name: "Bonus Box", types: ["Bonus_Box", "Green_Booty_Box", "Astral_Prime_Box"] },
+      { key: "strike_box_group", name: "Box Strike", types: ["Strike_Box", "Strike_Box_Medium", "Strike_Box_Big"] },
+    ].map((g) => ({ ...g, types: g.types.filter((t) => types.includes(t)) })).filter((g) => g.types.length);
+    const grouped = new Set(groups.flatMap((g) => g.types));
     if (!Bot.boxSelectionLoaded) {
       for (const t of types) Bot.boxAllow.add(t);
       Bot.boxSelectionLoaded = true;
     }
-    // Migration : une ancienne selection de l'un des trois bonus active le
-    // groupe entier. Les types restent distincts dans le moteur de collecte.
-    if (bonusTypes.some((t) => Bot.boxAllow.has(t))) {
-      for (const t of bonusTypes) Bot.boxAllow.add(t);
+    // Migration : une ancienne selection de l'un des types d'un groupe active
+    // le groupe entier. Les types restent distincts dans le moteur de collecte.
+    for (const g of groups) {
+      if (g.types.some((t) => Bot.boxAllow.has(t))) for (const t of g.types) Bot.boxAllow.add(t);
     }
-    const rows = [];
-    if (bonusTypes.length) rows.push({ key: "bonus_box_group", name: "Bonus Box", types: bonusTypes });
+    const rows = [...groups];
     for (const t of types) {
-      if (!bonusTypes.includes(t)) rows.push({ key: t, name: String(COLLECTABLE_TYPES[t]?.name || t), types: [t] });
+      if (!grouped.has(t)) rows.push({ key: t, name: String(COLLECTABLE_TYPES[t]?.name || t), types: [t] });
     }
     boxList.innerHTML = rows.map((row) =>
       `<label data-box="${escapeHtml(row.key)}"><input type="checkbox" value="${escapeHtml(row.key)}" data-types="${escapeHtml(row.types.join(","))}"${row.types.every((t) => Bot.boxAllow.has(t)) ? " checked" : ""} /><span>${escapeHtml(row.name)}</span></label>`
@@ -13474,13 +13534,20 @@ function wireBotWindow() {
   // priorité NPC d'abord, Box d'abord ou Au plus proche).
   const farmMode = document.getElementById("botFarmMode");
   if (farmMode) {
-    farmMode.value = Bot.mode === "both" ? `both:${Bot.priority}` : Bot.mode;
+    farmMode.value = Bot.module === "galaxy" ? "galaxy" : Bot.mode === "both" ? `both:${Bot.priority}` : Bot.mode;
     if (!farmMode.value) farmMode.value = "both:npc";
+    botSyncGgModeUi();
     if (!farmMode.dataset.wired) {
       farmMode.dataset.wired = "1";
       farmMode.addEventListener("change", () => {
-        const [mode, prio] = String(farmMode.value || "both:npc").split(":");
+        const value = String(farmMode.value || "both:npc");
+        // Galaxy Gates : module dédié (vagues imposées), combat seul.
+        Bot.module = value === "galaxy" ? "galaxy" : "";
+        Bot.ggJumpCd = 0;
+        Bot.ggSpinT = 0;
+        const [mode, prio] = Bot.module === "galaxy" ? ["kill", ""] : value.split(":");
         botSetMode(mode);
+        botSyncGgModeUi();
         if (["npc", "box", "nearest"].includes(prio)) Bot.priority = prio;
         // Nouvelle règle : on repart d'une décision propre.
         Bot.lastBoxId = null;
@@ -13852,6 +13919,53 @@ function wireBotWindow() {
       questsClaimBox.addEventListener("change", () => { Bot.questsClaim = questsClaimBox.checked; botSaveConfig(); });
     }
   }
+  // Onglet Galaxy Gates : gates à faire (Tout / Aucun).
+  const ggGateList = document.getElementById("botGgGateList");
+  if (ggGateList && !ggGateList.dataset.wired) {
+    ggGateList.dataset.wired = "1";
+    botRenderGgGateList();
+    ggGateList.addEventListener("change", (e) => {
+      const prioEl = e.target.closest?.("input.botGgPrio");
+      if (prioEl) {
+        const id = String(prioEl.closest(".botGgRow")?.dataset.gg || "");
+        if (!GALAXY_GATE_DEFINITIONS[id]) return;
+        const p = Math.floor(Number(prioEl.value));
+        const v = Number.isFinite(p) ? Math.max(0, Math.min(BOT_GG_PRIO_MAX, p)) : 0;
+        if (v > 0) Bot.ggPrio[id] = v;
+        else delete Bot.ggPrio[id];
+        prioEl.value = String(v);
+        botSaveConfig();
+        return;
+      }
+      const box = e.target.closest?.('input[type="checkbox"]');
+      if (!box || !GALAXY_GATE_DEFINITIONS[box.value]) return;
+      if (box.checked) Bot.ggGates.add(box.value);
+      else Bot.ggGates.delete(box.value);
+      Bot.ggJumpCd = 0;
+      botSaveConfig();
+    });
+    const setAllGates = (on) => {
+      Bot.ggGates = new Set(on ? botGgGateIds() : []);
+      botSaveConfig();
+      botRenderGgGateList();
+    };
+    document.getElementById("botGgAll")?.addEventListener("click", () => setAllGates(true));
+    document.getElementById("botGgNone")?.addEventListener("click", () => setAllGates(false));
+  }
+  // Spinner auto : roues à spinner.
+  const ggWheelList = document.getElementById("botGgWheelList");
+  if (ggWheelList && !ggWheelList.dataset.wired) {
+    ggWheelList.dataset.wired = "1";
+    botRenderGgWheelList();
+    ggWheelList.addEventListener("change", (e) => {
+      const box = e.target.closest?.('input[type="checkbox"]');
+      if (!box) return;
+      if (box.checked) Bot.ggSpinWheels.add(box.value);
+      else Bot.ggSpinWheels.delete(box.value);
+      Bot.ggSpinT = 0;
+      botSaveConfig();
+    });
+  }
   // Onglet Galaxy : spinner auto + gate + multiplicateur + formation de fin.
   const ggSpinBox = document.getElementById("botGgSpin");
   if (ggSpinBox) {
@@ -13893,6 +14007,14 @@ function wireBotWindow() {
         }
       });
     } else ggSpinsInput.value = Bot.ggSpins;
+  }
+  const ggBuild2Box = document.getElementById("botGgBuild2");
+  if (ggBuild2Box) {
+    ggBuild2Box.checked = Bot.ggBuild2;
+    if (!ggBuild2Box.dataset.wired) {
+      ggBuild2Box.dataset.wired = "1";
+      ggBuild2Box.addEventListener("change", () => { Bot.ggBuild2 = ggBuild2Box.checked; Bot.ggSpinT = 0; botSaveConfig(); });
+    } else ggBuild2Box.checked = Bot.ggBuild2;
   }
   const ggMultBox = document.getElementById("botGgAutoMult");
   if (ggMultBox) {
@@ -14885,12 +15007,71 @@ function botKiteCombatMove(npc, d, standD, dt) {
   }
 }
 
-// Spinner auto hors gate (toutes les 100 ms) : multiplicateur auto puis
-// spins sur l'ensemble Alpha + Beta + Gamma (une seule roue). Le placement
-// sur la map est automatique (voir GALAXY_GATES.js) : la 2e GG reste en
-// stock 1/1 tant qu'un portail est déjà posé.
+// Roues du spinner auto : Alpha · Beta · Gamma (une roue, "ensemble"),
+// Zeta et Kappa uniquement.
+const BOT_GG_SPIN_GROUPS = Object.freeze(["ensemble", "zeta", "kappa"]);
+function botGgWheels() {
+  const wheels = new Map();
+  for (const gate of Object.values(GALAXY_GATE_DEFINITIONS)) {
+    if (!gate.group || !BOT_GG_SPIN_GROUPS.includes(gate.group)) continue;
+    if (!wheels.has(gate.group)) wheels.set(gate.group, []);
+    wheels.get(gate.group).push(gate.id);
+  }
+  return [...wheels].map(([group, gates]) => ({
+    group, gates,
+    label: gates.map((id) => GALAXY_GATE_DEFINITIONS[id].name).join(" · "),
+  }));
+}
+
+// Roue encore utile : au moins une de ses gates n'est ni posée ni en stock.
+// « Construire 2 galaxy gates » : on spinne jusqu'à ce qu'une gate de la
+// roue ait 1 exemplaire sur la map (posée ou en cours) + 1 en stock
+// (pièces au max) ; pour Alpha · Beta · Gamma, la première des trois suffit.
+function botGgWheelNeedsSpin(st, wheel) {
+  if (Bot.ggBuild2) {
+    const hasTwo = (id) => (st?.active === id || st?.deployed?.[id] === true)
+      && Number(st?.built?.[id] || 0) >= GALAXY_GATE_BUILD_LIMIT;
+    return !wheel.gates.some(hasTwo);
+  }
+  return wheel.gates.some((id) => !botGgGateReady(st, id));
+}
+
+// Liste « Roue à spinner » (présentation liste NPC) + multiplicateur actuel.
+function botRenderGgWheelList() {
+  const list = document.getElementById("botGgWheelList");
+  if (!list) return;
+  let st = null;
+  try { st = (account.user || getCurrentUserFull())?.galaxyGates; } catch { st = null; }
+  const wheels = botGgWheels();
+  const sig = wheels.map((w) => w.group).join("|");
+  if (list.dataset.built !== sig) {
+    list.dataset.built = sig;
+    list.innerHTML = wheels.map((w) =>
+      `<label class="botNpcRow botGgWheelRow" data-wheel="${escapeHtml(w.group)}">` +
+      `<input class="botNpcSel" type="checkbox" value="${escapeHtml(w.group)}" title="Spinner cette roue" />` +
+      `<div class="botNpcId"><span class="botNpcName">${escapeHtml(w.label)}</span></div>` +
+      `<span class="botGgMult"></span></label>`).join("");
+  }
+  for (const w of wheels) {
+    const row = list.querySelector(`[data-wheel="${w.group}"]`);
+    if (!row) continue;
+    const mult = Math.max(1, Math.floor(Number(st?.multipliers?.[w.group]) || 1));
+    const armed = st?.multiplierArmed?.[w.group] === true;
+    const text = `x${mult}`;
+    const multEl = row.querySelector(".botGgMult");
+    if (multEl && multEl.textContent !== text) multEl.textContent = text;
+    multEl?.classList.toggle("armed", armed && mult > 1);
+    const box = row.querySelector("input.botNpcSel");
+    if (box) box.checked = Bot.ggSpinWheels.has(w.group);
+  }
+}
+
+// Spinner auto hors gate (toutes les 100 ms) : une roue cochée à la fois,
+// à tour de rôle, multiplicateur auto puis spins. Le placement sur la map
+// est automatique (voir GALAXY_GATES.js).
 async function botTickGalaxySpin(dt) {
   if (!Bot.ggSpin || Bot.module !== "galaxy" || rules?.mode === "gate") return false;
+  if (Bot.ggSpinBusy) return false;
   Bot.ggSpinT -= dt;
   Bot.ggUiT -= dt;
   if (Bot.ggSpinT > 0) return false;
@@ -14899,75 +15080,78 @@ async function botTickGalaxySpin(dt) {
   try { user = account.user || getCurrentUserFull(); } catch { user = null; }
   const st = user?.galaxyGates;
   if (!st) return false;
-  // Alpha / Beta / Gamma ne font qu'un (groupe "ensemble") : spinner Alpha.
-  // (Delta a sa propre roue, hors bot pour le moment.)
-  const gateId = "alpha";
-  const ggEnsMult = Number(st.multipliers?.ensemble ?? st.multiplier);
-  const ggEnsArmed = (st.multiplierArmed?.ensemble ?? st.multiplierArmed) === true;
-  // Multiplicateur auto : on l'arme dès qu'il est disponible (x2+).
-  if (Bot.ggAutoMult && ggEnsMult > 1 && ggEnsArmed !== true) {
-    try {
-      const armed = await armCurrentUserGalaxyGateMultiplierOnline(gateId, true);
-      if (armed?.ok) {
-        account.user = armed.user;
-        loadAccountUser();
-        renderGalaxyGateWindow("Multiplicateur activé (bot).");
-        botLog(`GG ${gateId.toUpperCase()} : multiplicateur x${armed.state?.multipliers?.ensemble ?? armed.state?.multiplier ?? ggEnsMult} activé`);
-        user = armed.user;
-      }
-    } catch {}
-  }
-  const built = Number(user?.galaxyGates?.built?.[gateId] || 0);
-  if (built >= GALAXY_GATE_BUILD_LIMIT) return false;
-  const spins = Math.max(1, Math.min(100, Math.floor(Number(Bot.ggSpins) || 1)));
-  let result = null;
-  try { result = await spinCurrentUserGalaxyGateOnline(gateId, spins); } catch { result = null; }
-  if (!result) return false;
-  if (!result.ok) {
-    Bot.status = "Galaxy Gates";
-    Bot.target = String(result.error || "Spin impossible").slice(0, 60);
-    return true;
-  }
+  const todo = botGgWheels().filter((w) => Bot.ggSpinWheels.has(w.group) && botGgWheelNeedsSpin(st, w));
+  if (!todo.length) return false;
+  Bot.ggSpinIdx = ((Number(Bot.ggSpinIdx) || 0) + 1) % todo.length;
+  const wheel = todo[Bot.ggSpinIdx];
+  // Spin d'une roue = spin sur l'une de ses gates (la première pas prête).
+  const gateId = wheel.gates.find((id) => !botGgGateReady(st, id)) || wheel.gates[0];
+  Bot.ggSpinBusy = true;
   try {
-    account.user = result.user;
-    loadAccountUser();
-    player.credits = result.user.credits;
-    player.ammo.x2 = result.user.ammo.x2;
-    player.ammo.x3 = result.user.ammo.x3;
-    player.ammo.x4 = result.user.ammo.x4;
-    player.ammo.sab = result.user.ammo.sab;
-    player.ammo.x6 = result.user.ammo.x6;
-    player.rockets = player.rockets || {};
-    for (const [rocketId, amount] of Object.entries(result.user.rockets || {})) player.rockets[rocketId] = amount;
-    updateAmmoUI();
-  } catch {}
-  const autoPlaced = Array.isArray(result.rewards?.autoDeployed) ? result.rewards.autoDeployed : [];
-  const builtNow = Number(result.state?.built?.[gateId] || 0);
-  const isBuilt = builtNow >= GALAXY_GATE_BUILD_LIMIT || autoPlaced.length > 0;
-  // À 10 passages/s on ne rebuild l'UI et le journal que toutes les ~2 s
-  // (ou dès qu'une gate est construite / placée).
-  const uiDue = isBuilt || Bot.ggUiT <= 0;
-  if (uiDue) {
-    Bot.ggUiT = 2;
-    try { renderGalaxyGateWindow(`${result.performed} spin(s) auto (ensemble)`); } catch {}
-    if (!isBuilt) botLog(`GG spinner auto : +${result.performed} spin(s) (ensemble)`);
-  }
-  // Sécurité legacy : une vieille sauvegarde avec built=1 + non déployée
-  // est posée sur la map (normalement déjà migrée par normalize).
-  for (const id of ["alpha", "beta", "gamma"]) {
-    if (Number(result.state?.built?.[id] || 0) >= GALAXY_GATE_BUILD_LIMIT && result.state?.deployed?.[id] !== true && result.state?.active !== id) {
+    const mult = Number(st.multipliers?.[wheel.group]) || 1;
+    // Multiplicateur auto : on l'arme dès qu'il est disponible (x2+).
+    if (Bot.ggAutoMult && mult > 1 && st.multiplierArmed?.[wheel.group] !== true) {
       try {
-        const dep = await deployCurrentUserGalaxyGateOnline(id);
-        if (dep?.ok) {
-          account.user = dep.user;
+        const armed = await armCurrentUserGalaxyGateMultiplierOnline(gateId, true);
+        if (armed?.ok) {
+          account.user = armed.user;
           loadAccountUser();
-          renderGalaxyGateWindow(`${GALAXY_GATE_DEFINITIONS[id].name} envoyée sur la map (bot).`);
+          renderGalaxyGateWindow("Multiplicateur activé (bot).");
+          botLog(`GG ${wheel.label} : multiplicateur x${armed.state?.multipliers?.[wheel.group] ?? mult} activé`);
         }
       } catch {}
     }
+    const spins = Math.max(1, Math.min(100, Math.floor(Number(Bot.ggSpins) || 1)));
+    let result = null;
+    try { result = await spinCurrentUserGalaxyGateOnline(gateId, spins); } catch { result = null; }
+    if (!result) return false;
+    if (!result.ok) {
+      Bot.status = "Galaxy Gates";
+      Bot.target = String(result.error || "Spin impossible").slice(0, 60);
+      return true;
+    }
+    try {
+      account.user = result.user;
+      loadAccountUser();
+      player.credits = result.user.credits;
+      player.ammo.x2 = result.user.ammo.x2;
+      player.ammo.x3 = result.user.ammo.x3;
+      player.ammo.x4 = result.user.ammo.x4;
+      player.ammo.sab = result.user.ammo.sab;
+      player.ammo.x6 = result.user.ammo.x6;
+      player.rockets = player.rockets || {};
+      for (const [rocketId, amount] of Object.entries(result.user.rockets || {})) player.rockets[rocketId] = amount;
+      updateAmmoUI();
+    } catch {}
+    const autoPlaced = Array.isArray(result.rewards?.autoDeployed) ? result.rewards.autoDeployed : [];
+    const isBuilt = autoPlaced.length > 0
+      || wheel.gates.some((id) => Number(result.state?.built?.[id] || 0) >= GALAXY_GATE_BUILD_LIMIT);
+    // À 10 passages/s on ne rebuild l'UI et le journal que toutes les ~2 s
+    // (ou dès qu'une gate est construite / placée).
+    if (isBuilt || Bot.ggUiT <= 0) {
+      Bot.ggUiT = 2;
+      try { renderGalaxyGateWindow(`${result.performed} spin(s) auto (${wheel.label})`); } catch {}
+      if (!isBuilt) botLog(`GG spinner auto : +${result.performed} spin(s) (${wheel.label})`);
+    }
+    // Sécurité legacy : une vieille sauvegarde avec built=1 + non déployée
+    // est posée sur la map (normalement déjà migrée par normalize).
+    for (const id of wheel.gates) {
+      if (Number(result.state?.built?.[id] || 0) >= GALAXY_GATE_BUILD_LIMIT && result.state?.deployed?.[id] !== true && result.state?.active !== id) {
+        try {
+          const dep = await deployCurrentUserGalaxyGateOnline(id);
+          if (dep?.ok) {
+            account.user = dep.user;
+            loadAccountUser();
+            renderGalaxyGateWindow(`${GALAXY_GATE_DEFINITIONS[id].name} envoyée sur la map (bot).`);
+          }
+        } catch {}
+      }
+    }
+    for (const id of autoPlaced) botLog(`GG ${String(id).toUpperCase()} placée sur la map — direction le portail`);
+    return true;
+  } finally {
+    Bot.ggSpinBusy = false;
   }
-  for (const id of autoPlaced) botLog(`GG ${String(id).toUpperCase()} placée sur la map — direction le portail`);
-  return true;
 }
 
 // Retourne la gate à jouer : active en priorité, sinon la première
@@ -14977,12 +15161,87 @@ function botPickReadyGalaxyGate() {
   let st = null;
   try { st = (account.user || getCurrentUserFull())?.galaxyGates; } catch { st = null; }
   if (!st) return null;
-  const order = ["alpha", "beta", "gamma"];
-  if (st.active && GALAXY_GATE_DEFINITIONS[st.active]) return st.active;
-  for (const id of order) {
-    if (Number(st.built?.[id] || 0) >= GALAXY_GATE_BUILD_LIMIT || st.deployed?.[id] === true) return id;
+  // Gate déjà commencée d'abord (si cochée), puis la gate prête de plus
+  // haute priorité (à égalité, ordre de la fenêtre GG).
+  if (st.active && GALAXY_GATE_DEFINITIONS[st.active] && Bot.ggGates.has(st.active)) return st.active;
+  let best = null;
+  for (const id of botGgGateIds()) {
+    if (!Bot.ggGates.has(id)) continue;
+    if (!(Number(st.built?.[id] || 0) >= GALAXY_GATE_BUILD_LIMIT || st.deployed?.[id] === true)) continue;
+    if (best == null || botGgPrio(id) > botGgPrio(best)) best = id;
   }
-  return null;
+  return best;
+}
+
+// Priorité des gates : 0 (la plus basse, défaut) à 10 (maximum).
+const BOT_GG_PRIO_MAX = 10;
+// Seules Galaxy Gates autorisées au bot : Alpha, Beta, Gamma, Zeta, Kappa.
+// Dans toute autre GG, le bot se met en pause (voir tickBot).
+function botGgGateIds() {
+  return ["alpha", "beta", "gamma", "zeta", "kappa"].filter((id) => GALAXY_GATE_DEFINITIONS[id]);
+}
+
+function botGgPrio(id) {
+  return Math.max(0, Math.min(BOT_GG_PRIO_MAX, Math.floor(Number(Bot.ggPrio[id]) || 0)));
+}
+
+// Gate posée sur la X-1 (portail visible) ou déjà commencée.
+function botGgGateReady(st, id) {
+  return st?.active === id || st?.deployed?.[id] === true || Number(st?.built?.[id] || 0) >= GALAXY_GATE_BUILD_LIMIT;
+}
+
+// Liste « Gates à faire » (même présentation que la liste NPC) : une ligne
+// par gate, pièces construites / requises et « Sur la map » si posée.
+// Lignes construites une fois, puis seuls les chiffres et l'état bougent.
+function botRenderGgGateList() {
+  const list = document.getElementById("botGgGateList");
+  if (!list) return;
+  let st = null;
+  try { st = (account.user || getCurrentUserFull())?.galaxyGates; } catch { st = null; }
+  const gates = botGgGateIds().map((id) => GALAXY_GATE_DEFINITIONS[id]);
+  const sig = gates.map((g) => g.id).join("|");
+  if (list.dataset.built !== sig) {
+    list.dataset.built = sig;
+    list.innerHTML = gates.map((gate) =>
+      `<label class="botNpcRow botGgRow" data-gg="${escapeHtml(gate.id)}">` +
+      `<input class="botNpcSel" type="checkbox" value="${escapeHtml(gate.id)}" title="Faire cette gate" />` +
+      `<div class="botNpcId"><span class="botNpcName">${escapeHtml(gate.name)}</span></div>` +
+      `<input class="botNpcPrio botGgPrio" type="number" min="0" max="${BOT_GG_PRIO_MAX}" step="1" value="0" title="Priorité : plus haute = faite d'abord (10 avant 1). Une gate déjà commencée est toujours terminée en premier." />` +
+      `<span class="botGgParts"></span><span class="botGgState"></span></label>`).join("");
+  }
+  for (const gate of gates) {
+    const row = list.querySelector(`[data-gg="${gate.id}"]`);
+    if (!row) continue;
+    const onMap = botGgGateReady(st, gate.id);
+    // Gate construite (posée ou en stock) : pièces au complet.
+    const built = Number(st?.built?.[gate.id] || 0) >= GALAXY_GATE_BUILD_LIMIT;
+    const have = gate.id === "kronos"
+      ? Object.values(st?.kronosParts || {}).reduce((sum, n) => sum + Math.max(0, Number(n) || 0), 0)
+      : Math.max(0, Number(st?.parts?.[gate.id]) || 0);
+    const parts = `${formatInteger(built ? gate.requiredParts : Math.min(have, gate.requiredParts))} / ${formatInteger(gate.requiredParts)}`;
+    const partsEl = row.querySelector(".botGgParts");
+    if (partsEl && partsEl.textContent !== parts) partsEl.textContent = parts;
+    const stateEl = row.querySelector(".botGgState");
+    const state = onMap ? "Sur la map" : "—";
+    if (stateEl && stateEl.textContent !== state) stateEl.textContent = state;
+    stateEl?.classList.toggle("ready", onMap);
+    const box = row.querySelector("input.botNpcSel");
+    if (box) box.checked = Bot.ggGates.has(gate.id);
+    // Pas de réécriture pendant la saisie.
+    const prioEl = row.querySelector("input.botGgPrio");
+    if (prioEl && document.activeElement !== prioEl && prioEl.value !== String(botGgPrio(gate.id))) prioEl.value = String(botGgPrio(gate.id));
+  }
+}
+
+// Mode Galaxy Gates : la map de travail et les box en combat ne servent pas.
+function botSyncGgModeUi() {
+  const gg = Bot.module === "galaxy";
+  const mapField = document.getElementById("botMapField");
+  if (mapField) mapField.style.display = gg ? "none" : "";
+  const grabField = document.getElementById("botGrabField");
+  if (grabField) grabField.style.display = gg ? "none" : "";
+  const note = document.getElementById("botGgModeNote");
+  if (note) { note.hidden = false; note.style.display = gg ? "" : "none"; }
 }
 
 // Hors gate, module Galaxy : vole vers la base mère puis vers le portail GG
@@ -14992,11 +15251,10 @@ function botTickGalaxyEnter(dt) {
   if (rules?.mode === "gate") return false;
   if (Bot.selling || Bot.fleeing) return false;
   const gateId = botPickReadyGalaxyGate();
-  if (!gateId) return false;
   let st = null;
   try { st = (account.user || getCurrentUserFull())?.galaxyGates; } catch { st = null; }
   // Sécurité legacy : pose un stock restant non déployé (migration auto normale).
-  if (Number(st?.built?.[gateId] || 0) >= GALAXY_GATE_BUILD_LIMIT && st?.deployed?.[gateId] !== true && st?.active !== gateId) {
+  if (gateId && Number(st?.built?.[gateId] || 0) >= GALAXY_GATE_BUILD_LIMIT && st?.deployed?.[gateId] !== true && st?.active !== gateId) {
     try {
       deployCurrentUserGalaxyGateOnline(gateId).then(dep => {
         if (!dep?.ok) return;
@@ -15036,7 +15294,7 @@ function botTickGalaxyEnter(dt) {
       botRefreshHudThrottled(dt);
       return true;
     }
-    Bot.status = `Galaxy Gates → ${gateId.toUpperCase()}`;
+    Bot.status = gateId ? `Galaxy Gates → ${gateId.toUpperCase()}` : "Galaxy Gates";
     Bot.target = `Retour base (${Math.round(Math.hypot(portalStep.x - player.x, portalStep.y - player.y))}m)`;
     if (attackActive) { try { stopAttack(); } catch {} }
     try { cancelCollectableTarget(); } catch {}
@@ -15050,6 +15308,8 @@ function botTickGalaxyEnter(dt) {
     botRefreshHudThrottled(dt);
     return true;
   }
+  // Sur la X-1 sans gate prête : on attend ici (spinner ou pose manuelle).
+  if (!gateId) return false;
   // 2. Sur la base mère : foncer sur le portail GG et sauter dedans.
   const ggPortal = (zonePortals || []).find((p) => String(p.toMap || "").toLowerCase() === gateId);
   if (!ggPortal) {
@@ -15231,6 +15491,20 @@ function tickBot(dt) {
     return;
   }
   Bot.wasDead = false;
+  // Galaxy Gate non autorisée (Delta, Epsilon, Lambda, Kronos, Awakened…) :
+  // le bot s'arrête, quel que soit le mode de farm.
+  if (rules?.mode === "gate") {
+    const ggHere = String(window.__CURRENT_MAP_ID__ || "").toLowerCase();
+    if (GALAXY_GATE_DEFINITIONS[ggHere] && !botGgGateIds().includes(ggHere)) {
+      try { stopAttack(); } catch {}
+      try { if (Target.get()) Target.clear(); } catch {}
+      moveTarget.active = false;
+      botLog(`Bot interdit en GG ${GALAXY_GATE_DEFINITIONS[ggHere].name} — bot arrêté`);
+      try { showNotification(`Bot interdit en GG ${GALAXY_GATE_DEFINITIONS[ggHere].name}`, 3, "info"); } catch {}
+      botSetActive(false);
+      return;
+    }
+  }
   Bot.grabCd = Math.max(0, (Bot.grabCd || 0) - dt);
   Bot.postKillScanT = Math.max(0, (Bot.postKillScanT || 0) - dt);
   Bot.petFuelT = Math.max(0, (Bot.petFuelT || 0) - dt);
@@ -15503,7 +15777,7 @@ function tickBot(dt) {
   const curMap = String(window.__CURRENT_MAP_ID__ || "1-1").toLowerCase();
   // Module Galaxy Gates : le voyage manuel est désactivé (l'entrée GG gère
   // elle-même le retour base + le saut), sauf override de vente.
-  if (wantMap && wantMap !== curMap) {
+  if (wantMap && wantMap !== curMap && (Bot.module !== "galaxy" || Bot.travelOverride)) {
     Bot.travelCd -= dt;
     Bot.jumpCd -= dt;
     botApplyMoveProfile("travel");
@@ -15629,7 +15903,8 @@ function tickBot(dt) {
       botTickGalaxySpin(dt).catch(() => {});
       if (botTickGalaxyEnter(dt)) return;
       Bot.status = "Galaxy Gates";
-      Bot.target = Bot.ggSpin ? "Spinner auto… (aucune gate prête)" : "Active le spinner auto (onglet Galaxy)";
+      Bot.target = !Bot.ggGates.size ? "Aucune gate cochée (onglet Galaxy Gates)"
+        : Bot.ggSpin ? "Spinner auto… (aucune gate prête)" : "Aucune gate prête — en attente sur la X-1";
       if (attackActive) { try { stopAttack(); } catch {} }
       try { if (Target.get()) Target.clear(); } catch {}
       try { cancelCollectableTarget(); } catch {}

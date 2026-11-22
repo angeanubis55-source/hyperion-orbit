@@ -18847,6 +18847,15 @@ html body #profileOverlay #profileWindow.gameWindow > .gameWinBar .gameWinMinBtn
 #botWindow .botNpcRow input.botNpcPrio { width:100%; height:28px; text-align:center; }
 /* Priorité négative = immédiat : chiffre et bord orange. */
 #botWindow .botNpcRow input.botNpcPrio.instant { color:#ffb35c; border-color:rgba(255,160,60,.6); }
+/* Galaxy Gates : liste façon NPC (case, nom, état). */
+.botNpcColumns.botGgRow, .botNpcRow.botGgRow { grid-template-columns:22px minmax(0,1fr) 62px 90px 100px; cursor:pointer; }
+#botWindow .botNpcRow input.botGgPrio { width:100%; height:28px; text-align:center; }
+.botNpcColumns.botGgWheelRow, .botNpcRow.botGgWheelRow { grid-template-columns:22px minmax(0,1fr) 48px; cursor:pointer; }
+.botGgMult { text-align:center; color:rgba(204,228,241,.75); font-size:12px; font-weight:800; font-variant-numeric:tabular-nums; }
+.botGgMult.armed { color:#ffb35c; }
+.botGgParts { text-align:center; color:#ffe14d; font-size:12px; font-weight:800; font-variant-numeric:tabular-nums; }
+.botGgState { text-align:center; color:rgba(204,228,241,.75); font-size:11px; font-weight:800; font-variant-numeric:tabular-nums; }
+.botGgState.ready { color:#7dffb0; }
 .botSwitchSm { gap:6px; font-size:11px; font-weight:800; color:rgba(204,228,241,.9); }
 .botSwitchSm i { width:40px; height:22px; }
 .botSwitchSm i::after { top:3px; left:3px; width:14px; height:14px; }
