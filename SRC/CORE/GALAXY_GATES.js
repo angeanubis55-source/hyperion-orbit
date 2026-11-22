@@ -209,6 +209,10 @@ export function normalizeGalaxyGateState(raw) {
     // cours après un refresh ou une mort (re-entrée dans la GG).
     // `killed` = nombre de NPC du plan de vague déjà éliminés.
     waveKills: {},
+    // Run « sale » : le bot a été actif au moins une fois pendant ce run de
+    // la gate -> récompense de fin réduite à 25 %. Effacé au début d'un
+    // nouveau run, à la perte de la gate et à la complétion.
+    botRun: {},
     lastOpenedGate: GALAXY_GATE_DEFINITIONS[String(source.lastOpenedGate || "").toLowerCase()] ? String(source.lastOpenedGate).toLowerCase() : "alpha",
     history: Array.isArray(source.history) ? source.history.slice(-30) : [],
   };
@@ -220,6 +224,7 @@ export function normalizeGalaxyGateState(raw) {
     state.completed[gate.id] = Math.max(0, Math.floor(Number(source.completed?.[gate.id]) || 0));
     state.lives[gate.id] = Math.min(gate.maxLives, Math.max(0, Math.floor(Number(source.lives?.[gate.id]) || gate.maxLives)));
     state.waves[gate.id] = Math.min(gate.maxWaves, Math.max(0, Math.floor(Number(source.waves?.[gate.id]) || 0)));
+    state.botRun[gate.id] = source.botRun?.[gate.id] === true;
     // ✅ migration/validation des kills intra-vague (ancien format ignoré).
     // On garde le marqueur de vague même à killed=0 (vague démarrée, aucun
     // kill) : seul { wave: 0 } signifie « aucune progression ».
@@ -494,7 +499,7 @@ export function consumeBuiltGalaxyGate(stateInput, gateId) {
     state.active = id;
     state.activeWave = hadProgress ? state.waves[id] : 1;
     state.waves[id] = Math.min(GALAXY_GATE_DEFINITIONS[id].maxWaves, Math.max(1, state.activeWave));
-    if (!hadProgress) state.lives[id] = GALAXY_GATE_DEFINITIONS[id].maxLives;
+    if (!hadProgress) { state.lives[id] = GALAXY_GATE_DEFINITIONS[id].maxLives; state.botRun[id] = false; }
     return { ok: true, state, switched: true, from: previous };
   }
   if (!state.deployed[id]) return { ok: false, state };
@@ -503,7 +508,7 @@ export function consumeBuiltGalaxyGate(stateInput, gateId) {
   state.active = id;
   state.activeWave = hadProgress ? state.waves[id] : 1;
   state.waves[id] = Math.min(GALAXY_GATE_DEFINITIONS[id].maxWaves, Math.max(1, state.activeWave));
-  if (!hadProgress) state.lives[id] = GALAXY_GATE_DEFINITIONS[id].maxLives;
+  if (!hadProgress) { state.lives[id] = GALAXY_GATE_DEFINITIONS[id].maxLives; state.botRun[id] = false; }
   return { ok: true, state };
 }
 
@@ -574,6 +579,7 @@ export function completeActiveGalaxyGate(stateInput, gateId, now = Date.now()) {
   state.waveKills ||= {};
   state.waveKills[id] = { wave: 0, killed: 0 };
   state.lives[id] = GALAXY_GATE_DEFINITIONS[id].maxLives;
+  state.botRun[id] = false;
   state.completed[id]++;
   // ✅ auto-placement du stock : si une GG était en stock 1/1 pendant le run,
   // elle est posée automatiquement sur la map dès la fin de la gate.
@@ -605,6 +611,7 @@ export function loseGalaxyGateLife(stateInput, gateId) {
     // repart de zéro) et les ressources non ramassées seront purgées côté moteur.
     state.waveKills ||= {};
     state.waveKills[id] = { wave: 0, killed: 0 };
+    state.botRun[id] = false;
   } else {
     state.waves[id] = Math.min(GALAXY_GATE_DEFINITIONS[id].maxWaves, Math.max(1, state.activeWave));
   }

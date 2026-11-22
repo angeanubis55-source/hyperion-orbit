@@ -18850,6 +18850,10 @@ html body #profileOverlay #profileWindow.gameWindow > .gameWinBar .gameWinMinBtn
 /* Galaxy Gates : liste façon NPC (case, nom, état). */
 .botNpcColumns.botGgRow, .botNpcRow.botGgRow { grid-template-columns:22px minmax(0,1fr) 62px 90px 100px; cursor:pointer; }
 #botWindow .botNpcRow input.botGgPrio { width:100%; height:28px; text-align:center; }
+.botGgCfgRow { grid-template-columns:180px auto minmax(0,200px) minmax(0,1fr); }
+.botGgApplyRow { display:flex; align-items:center; gap:10px; }
+#botWindow .botGgApplyBtn { padding:5px 18px; border:1px solid rgba(124,240,255,.45); border-radius:6px; background:rgba(0,140,185,.22); color:#eaffff; font-weight:800; cursor:pointer; }
+#botWindow .botGgApplyBtn:hover { border-color:rgba(124,240,255,.75); background:rgba(0,140,185,.36); }
 .botNpcColumns.botGgWheelRow, .botNpcRow.botGgWheelRow { grid-template-columns:22px minmax(0,1fr) 48px; cursor:pointer; }
 .botGgMult { text-align:center; color:rgba(204,228,241,.75); font-size:12px; font-weight:800; font-variant-numeric:tabular-nums; }
 .botGgMult.armed { color:#ffb35c; }

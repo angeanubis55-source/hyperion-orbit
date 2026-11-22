@@ -2490,7 +2490,11 @@ function awardNpcDeaths(mapId, deaths) {
     // Le nerf appartient au kill : si le tueur utilisait le bot, le pool
     // total crédits/XP/honneur tombe à 25 % avant la répartition. Tous les
     // membres reçoivent donc 25 % de leur part normale.
-    const botRewardFactor = findPeerState(killerId)?.bot === true ? 0.25 : 1;
+    // Bot actif au kill, ou utilisé à un moment pendant que le tueur tirait
+    // ce NPC (bot coupé avant la fin) : même réduction.
+    const killerUsedBot = findPeerState(killerId)?.bot === true
+      || (Array.isArray(death.botBy) && death.botBy.includes(String(killerId)));
+    const botRewardFactor = killerUsedBot ? 0.25 : 1;
     for (const share of npcRewardShares(killerId, mapId, death)) {
       if (!(share.percent > 0)) continue;
       const accountId = share.pid.slice(2);
@@ -4987,7 +4991,7 @@ setInterval(() => {
             s.safe = playerZna(s, sim, now);
             s.serverSafe = s.safe;
             const serverDead = s.pvpDead === true || !(Number(s.hp) > 0);
-            sim.setPlayer(pid, s.x, s.y, { dead: serverDead, safe: s.serverSafe, untargetableUntil: Number(s.iemUntil) || 0, cloaked: s.cloaked === true || s.cloakCpu === true, shipId: s.shipId, lockedTarget: s.lockedTarget, shPct: s.shPct });
+            sim.setPlayer(pid, s.x, s.y, { dead: serverDead, safe: s.serverSafe, untargetableUntil: Number(s.iemUntil) || 0, cloaked: s.cloaked === true || s.cloakCpu === true, shipId: s.shipId, lockedTarget: s.lockedTarget, shPct: s.shPct, bot: s.bot === true });
           }
         }
         if (typeof sim.prunePlayers === "function") {

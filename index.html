@@ -812,7 +812,7 @@
       <div class="botBody">
         <div class="botTopRow">
           <button id="botPlayBtn" class="botPlayBtn" type="button" title="Démarrer">▶</button>
-          <p class="botRule"><b>L'utilisation du bot est autorisée.</b> En contrepartie, tout ce qu'il rapporte est réduit de <b>75 %</b> :<br />NPC détruits (crédits, expérience, honneur) et box ramassées. Seuls le palladium et les Sun Box gardent leur gain complet.</p>
+          <p class="botRule"><b>L'utilisation du bot est autorisée.</b> En contrepartie, tout ce qu'il rapporte est réduit de <b>75 %</b> :<br />NPC détruits (crédits, expérience, honneur), box ramassées et récompense de fin des Galaxy Gates (dès que le bot a été activé pendant la gate). Seuls le palladium et les Sun Box gardent leur gain complet.</p>
         </div>
         <nav class="botTabs" id="botTabs" aria-label="Sections du bot">
           <button class="botTab active" data-bot-tab="dash" type="button">Tableau de bord</button>
@@ -891,6 +891,14 @@
             <div id="botGgGateList" class="botCheckList botNpcList"></div>
             <small class="botNote">Mode de farm « Galaxy Gates » : le bot rejoint la X-1 de sa firme, entre dans la première gate cochée posée sur la map, enchaîne les vagues puis recommence.</small>
             <small class="botNote">Munition, SAB, salve, config et formation de chaque NPC : réglages de l'onglet NPC.</small>
+          </section>
+          <section class="botSection botSpan" data-bot-section="galaxy">
+            <div class="botSectionTitle">Configuration et formation</div>
+            <label class="botField"><span>Galaxy Gate</span><select id="botGgCfgGate" aria-label="Galaxy Gate à régler"></select></label>
+            <div class="botCfgRow botGgCfgRow"><span>Attaque</span><div class="botSeg" id="botGgAtkCfgSeg" role="group" aria-label="Configuration d’attaque en gate"><button type="button" data-v="">—</button><button type="button" data-v="1">1</button><button type="button" data-v="2">2</button></div><select id="botGgAtkForm" aria-label="Formation d’attaque en gate"></select><select id="botGgAtkAmmo" aria-label="Munition d’attaque en gate"></select></div>
+            <div class="botCfgRow botGgCfgRow"><span>Exploration</span><div class="botSeg" id="botGgExpCfgSeg" role="group" aria-label="Configuration d’exploration en gate"><button type="button" data-v="">—</button><button type="button" data-v="1">1</button><button type="button" data-v="2">2</button></div><select id="botGgExpForm" aria-label="Formation d’exploration en gate"></select><small class="botCfgHint">Entre les vagues, aucun NPC en vue.</small></div>
+            <div class="botGgApplyRow"><button id="botGgApply" class="botGgApplyBtn" type="button">Appliquer</button><small id="botGgApplyInfo" class="botNote"></small></div>
+            <small class="botNote">Appliquer copie l'attaque (configuration, formation, munition) sur tous les NPC de la gate choisie, dans l'onglet NPC. L'exploration sert dans cette gate quand aucun NPC n'est en vue.</small>
           </section>
           <section class="botSection" data-bot-section="galaxy">
             <div class="botSectionTitle">Spinner automatique</div>

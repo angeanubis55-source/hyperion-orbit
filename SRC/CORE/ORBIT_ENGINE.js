@@ -11996,6 +11996,10 @@ const Bot = {
   // Mode de farm « Galaxy Gates » : module "galaxy" (Bot.mode reste "kill").
   module: "",
   ggGates: new Set(botGgGateIds()),
+  // Réglages par gate (onglet Galaxy Gates, bouton Appliquer) :
+  // { atkCfg, atkForm, ammo, expCfg, expForm }.
+  ggProfiles: Object.create(null),
+  ggCfgGate: "alpha",
   // Priorité par gate (plus haute = faite d'abord ; 0 par défaut).
   ggPrio: Object.create(null),
   // Roues spinnées par le spinner auto (groupes de spin).
@@ -12078,6 +12082,8 @@ function botSaveConfig() {
       tab: Bot.tab,
       module: Bot.module,
       ggGates: [...Bot.ggGates],
+      ggProfiles: Bot.ggProfiles,
+      ggCfgGate: Bot.ggCfgGate,
       ggPrio: Bot.ggPrio,
       ggSpinWheels: [...Bot.ggSpinWheels],
       ggBuild2: Bot.ggBuild2,
@@ -12231,6 +12237,13 @@ function botLoadConfig() {
         if (GALAXY_GATE_DEFINITIONS[id] && Number.isFinite(p) && p > 0) Bot.ggPrio[id] = Math.min(BOT_GG_PRIO_MAX, p);
       }
     }
+    if (data.ggProfiles && typeof data.ggProfiles === "object") {
+      for (const [id, p] of Object.entries(data.ggProfiles)) {
+        if (!botGgGateIds().includes(id) || !p || typeof p !== "object") continue;
+        Bot.ggProfiles[id] = botGgCleanProfile(p);
+      }
+    }
+    if (botGgGateIds().includes(data.ggCfgGate)) Bot.ggCfgGate = data.ggCfgGate;
     if (Array.isArray(data.ggGates)) Bot.ggGates = new Set(data.ggGates.map(String).filter((id) => botGgGateIds().includes(id)));
     if (Array.isArray(data.ggSpinWheels)) {
       const groups = new Set(["ensemble", "zeta", "kappa"]);
@@ -13919,6 +13932,7 @@ function wireBotWindow() {
       questsClaimBox.addEventListener("change", () => { Bot.questsClaim = questsClaimBox.checked; botSaveConfig(); });
     }
   }
+  try { wireBotGgConfig(); } catch {}
   // Onglet Galaxy Gates : gates à faire (Tout / Aucun).
   const ggGateList = document.getElementById("botGgGateList");
   if (ggGateList && !ggGateList.dataset.wired) {
@@ -15175,6 +15189,141 @@ function botPickReadyGalaxyGate() {
 
 // Priorité des gates : 0 (la plus basse, défaut) à 10 (maximum).
 const BOT_GG_PRIO_MAX = 10;
+// Réglages d'une gate (Configuration et formation de l'onglet Galaxy Gates).
+function botGgCleanProfile(p) {
+  const cfg = (v) => (v === "1" || v === "2" ? v : "");
+  const form = (v) => (typeof v === "string" ? v.slice(0, 40) : "");
+  const ammo = String(p?.ammo || "").toLowerCase();
+  return { atkCfg: cfg(p?.atkCfg), atkForm: form(p?.atkForm), ammo: BOT_AMMO_IDS.includes(ammo) ? ammo : "x1",
+    expCfg: cfg(p?.expCfg), expForm: form(p?.expForm) };
+}
+
+// Types de NPC d'une gate (liste fixe de l'onglet NPC, groupe "gg:<id>").
+function botGgNpcTypes(gateId) {
+  const rows = botNpcCatalog();
+  if (!rows) return null;
+  const types = new Set();
+  for (const row of rows) if (row.groups.includes(`gg:${gateId}`)) for (const t of row.types) types.add(t);
+  return [...types];
+}
+
+// Brouillon affiché = réglages appliqués de la gate (ou défauts).
+function botGgLoadDraft() {
+  Bot.ggCfgDraft = botGgCleanProfile(Bot.ggProfiles[Bot.ggCfgGate] || {});
+  const gateSel = document.getElementById("botGgCfgGate");
+  if (gateSel) gateSel.value = Bot.ggCfgGate;
+  const atkForm = document.getElementById("botGgAtkForm");
+  if (atkForm) atkForm.value = Bot.ggCfgDraft.atkForm;
+  const expForm = document.getElementById("botGgExpForm");
+  if (expForm) expForm.value = Bot.ggCfgDraft.expForm;
+  const ammo = document.getElementById("botGgAtkAmmo");
+  if (ammo) ammo.value = Bot.ggCfgDraft.ammo;
+  for (const [segId, key] of [["botGgAtkCfgSeg", "atkCfg"], ["botGgExpCfgSeg", "expCfg"]]) {
+    document.getElementById(segId)?.querySelectorAll("button").forEach((b) => {
+      b.classList.toggle("on", String(b.dataset.v || "") === Bot.ggCfgDraft[key]);
+    });
+  }
+  const info = document.getElementById("botGgApplyInfo");
+  if (info) info.textContent = Bot.ggProfiles[Bot.ggCfgGate] ? "Réglages appliqués" : "";
+}
+
+function wireBotGgConfig() {
+  const gateSel = document.getElementById("botGgCfgGate");
+  if (!gateSel || gateSel.dataset.wired) return;
+  gateSel.dataset.wired = "1";
+  gateSel.innerHTML = botGgGateIds().map((id) => `<option value="${escapeHtml(id)}">${escapeHtml(GALAXY_GATE_DEFINITIONS[id].name)}</option>`).join("");
+  const formOpts = [`<option value="">Par défaut</option>`,
+    ...DRONE_FORMATIONS.map((f) => `<option value="${escapeHtml(f.id)}">${escapeHtml(botFormationLabel(f))}</option>`)].join("");
+  for (const id of ["botGgAtkForm", "botGgExpForm"]) {
+    const sel = document.getElementById(id);
+    if (sel) sel.innerHTML = formOpts;
+  }
+  const ammo = document.getElementById("botGgAtkAmmo");
+  if (ammo) ammo.innerHTML = botAmmoOptions("x1");
+  gateSel.addEventListener("change", () => {
+    if (botGgGateIds().includes(gateSel.value)) Bot.ggCfgGate = gateSel.value;
+    botSaveConfig();
+    botGgLoadDraft();
+  });
+  document.getElementById("botGgAtkForm")?.addEventListener("change", (e) => { Bot.ggCfgDraft.atkForm = String(e.target.value || ""); });
+  document.getElementById("botGgExpForm")?.addEventListener("change", (e) => { Bot.ggCfgDraft.expForm = String(e.target.value || ""); });
+  ammo?.addEventListener("change", () => { Bot.ggCfgDraft.ammo = String(ammo.value || "x1"); });
+  for (const [segId, key] of [["botGgAtkCfgSeg", "atkCfg"], ["botGgExpCfgSeg", "expCfg"]]) {
+    const seg = document.getElementById(segId);
+    seg?.addEventListener("click", (e) => {
+      const b = e.target.closest?.("button");
+      if (!b) return;
+      const v = String(b.dataset.v || "");
+      Bot.ggCfgDraft[key] = v === "1" || v === "2" ? v : "";
+      seg.querySelectorAll("button").forEach((x) => x.classList.toggle("on", String(x.dataset.v || "") === Bot.ggCfgDraft[key]));
+    });
+  }
+  document.getElementById("botGgApply")?.addEventListener("click", () => {
+    const gateId = Bot.ggCfgGate;
+    const gateName = GALAXY_GATE_DEFINITIONS[gateId]?.name || gateId;
+    const types = botGgNpcTypes(gateId);
+    const info = document.getElementById("botGgApplyInfo");
+    if (!types) { if (info) info.textContent = "Liste des NPC pas encore chargée, réessaie."; return; }
+    const p = botGgCleanProfile(Bot.ggCfgDraft);
+    Bot.ggProfiles[gateId] = p;
+    for (const t of types) {
+      Bot.npcAmmo[t] = p.ammo;
+      Bot.npcCfg[t] = p.atkCfg;
+      Bot.npcForm[t] = p.atkForm;
+    }
+    botSaveConfig();
+    try { botRenderNpcList(); } catch {}
+    if (info) info.textContent = `Appliqué à ${types.length} NPC`;
+    botLog(`GG ${gateName} : réglages appliqués à ${types.length} NPC`);
+  });
+  botGgLoadDraft();
+}
+
+// Exploration en gate : réglages de la gate courante (sinon Configuration).
+function botGgUseExploreProfile() {
+  if (botGalaxyIsFinishWave()) return;
+  const p = Bot.ggProfiles[String(window.__CURRENT_MAP_ID__ || "").toLowerCase()];
+  if (p && (p.expCfg || p.expForm)) botUseProfile("explore", p.expForm || Bot.formMove, p.expCfg || Bot.cfgFly);
+  else botApplyMoveProfile("explore");
+}
+
+// Run de Galaxy Gate marqué « bot utilisé » (persisté dans le compte,
+// synchronisé avec le serveur, survit au refresh et aux morts).
+function botMarkGgRun() {
+  if (rules?.mode !== "gate") return;
+  const id = String(window.__CURRENT_MAP_ID__ || "").toLowerCase();
+  if (!GALAXY_GATE_DEFINITIONS[id]) return;
+  const gg = account.user?.galaxyGates;
+  if (!gg || gg.botRun?.[id] === true) return;
+  gg.botRun = { ...(gg.botRun || {}), [id]: true };
+  try {
+    const canonical = getCurrentUserFull();
+    if (canonical?.galaxyGates && String(canonical.id) === String(account.user.id)) {
+      canonical.galaxyGates.botRun = { ...(canonical.galaxyGates.botRun || {}), [id]: true };
+    }
+  } catch {}
+  markProgressDirty();
+  try { saveProgressNow(); } catch {}
+  try { flushNetUser().catch(() => {}); } catch {}
+  botLog(`GG ${GALAXY_GATE_DEFINITIONS[id].name} : bot utilisé — récompense de fin réduite de 75 %`);
+}
+
+function botGgRunTainted(id, ...users) {
+  return users.some((u) => u?.galaxyGates?.botRun?.[id] === true);
+}
+
+// Récompense de fin d'un run « sale » : 25 % de l'XP, de l'honneur, des
+// crédits, UCB-100, énergie, Xénomit et ressources (drops inchangés).
+function botReduceGgReward(reward) {
+  if (!reward) return reward;
+  const q = (v) => Math.max(0, Math.floor((Number(v) || 0) * 0.25));
+  const qr = (v) => Array.isArray(v) ? v.map(q) : q(v);
+  return { ...reward, exp: q(reward.exp), honor: q(reward.honor), credits: q(reward.credits), x4: q(reward.x4),
+    energy: q(reward.energy), xenomit: q(reward.xenomit),
+    resources: Object.fromEntries(Object.entries(reward.resources || {}).map(([k, v]) => [k, qr(v)])),
+    botReduced: true };
+}
+
 // Seules Galaxy Gates autorisées au bot : Alpha, Beta, Gamma, Zeta, Kappa.
 // Dans toute autre GG, le bot se met en pause (voir tickBot).
 function botGgGateIds() {
@@ -15446,6 +15595,12 @@ function tickBot(dt) {
   try { botTickNpcCatalog(dt); } catch {}
   try { botTickCargoView(dt); } catch {}
   if (!Bot.active) return;
+  // Bot actif dans une Galaxy Gate, ne serait-ce qu'une frame : le run est
+  // marqué « sale » (récompense de fin réduite, même bot coupé ensuite).
+  try { botMarkGgRun(); } catch {}
+  // NPC locaux (gates) déjà touchés : marqués « bot », récompense réduite
+  // même si le bot est coupé avant la mort.
+  try { for (const e of enemies) if (e && e._damagedByPlayer === true && !e._netUid) e._botTainted = true; } catch {}
   if (StarJump.channel) return;
   if (!started || player.dead) {
     Bot.cloakPendingMap = null;
@@ -15931,6 +16086,7 @@ function tickBot(dt) {
       found = nearest;
     }
     if (!found) {
+      try { botGgUseExploreProfile(); } catch {}
       // Entre les vagues : le bot vole jusqu'au portail "continuer" et saute
       // dedans automatiquement (proximité + startGatePortalJump).
       if (attackActive) { try { stopAttack(); } catch {} }
@@ -32906,7 +33062,7 @@ function killRewards(e) {
   // Combat local (Galaxy Gates) : un kill réalisé pendant que le bot est
   // actif ne génère que 25 % des crédits, XP et honneur. En multi, le même
   // coefficient est appliqué autoritairement par le serveur avant partage.
-  const botRewardFactor = !serverReward && Bot.active === true ? 0.25 : 1;
+  const botRewardFactor = !serverReward && (Bot.active === true || e._botTainted === true) ? 0.25 : 1;
   const rewardPct = (serverReward ? Number(serverReward.percent) || 100 : groupNpcRewardPercent(e)) * botRewardFactor;
   let credits, experience, honor, gainedXp, gainedHonor;
   if (serverReward) {
@@ -33812,6 +33968,7 @@ function scheduleGalaxyGateCompletion(gateId, completion) {
       ...(Array.isArray(reward.resourceMessages) ? reward.resourceMessages : []),
       ...(galaxyGateDroneDesignRewardMessage(reward.droneDesign) ? [galaxyGateDroneDesignRewardMessage(reward.droneDesign)] : []),
       ...(galaxyGateEquipmentRewardMessage(reward.equipment) ? [galaxyGateEquipmentRewardMessage(reward.equipment)] : []),
+      ...(reward.botReduced ? ["Récompense réduite de 75 % (bot utilisé pendant la gate)"] : []),
     ];
     showNotificationGroup(messages, "reward");
     addGameLog(`${gateName} · ${messages.join(" · ")}`, "reward");
@@ -34133,6 +34290,9 @@ function runOnKillAction(action, pos = null) {
       // Les credits de combat sont portes par le joueur jusqu'a la prochaine
       // sauvegarde. Les inclure avant d'ajouter le bonus evite un total stale.
       if (account.user) account.user.credits = Math.max(0, Math.floor(Number(player.credits) || 0));
+      // Bot utilisé pendant ce run (lu avant la resynchro du compte).
+      let botTainted = Bot.active === true;
+      try { botTainted = botTainted || botGgRunTainted(currentGateId, account.user, getCurrentUserFull()); } catch {}
       // L'activation (spinner/entrée) est persistée dans le compte canonique.
       // `account.user` peut être un clone réseau plus ancien (sans active) :
       // resynchroniser la tranche gates évite de rater la complétion + quête.
@@ -34143,6 +34303,7 @@ function runOnKillAction(action, pos = null) {
         }
       } catch {}
       const completion = completeCurrentUserGalaxyGate(currentGateId, account.user, { deferReward: true });
+      if (completion.ok && botTainted) completion.reward = botReduceGgReward(completion.reward);
       if (completion.ok) {
         advanceQuestProgress("gate", currentGateId);
         account.user = completion.user;

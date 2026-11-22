@@ -296,9 +296,11 @@ export class ZoneNpcSim {
     const pid = String(clientId);
     const prev = this.players.get(pid);
     const cloaked = f.cloaked === true;
+    const bot = f.bot === true;
     this.players.set(pid, {
       x: Number(x) || 0, y: Number(y) || 0,
       dead: f.dead === true,
+      bot,
       safe: f.safe === true,
       shipId: String(f.shipId || prev?.shipId || ""),
       untargetableUntil: Math.max(0, Number(f.untargetableUntil) || 0),
@@ -307,6 +309,13 @@ export class ZoneNpcSim {
       // Bouclier (0..1) pour la formation de riposte JPC (papillon/foreuse).
       shPct: Number.isFinite(Number(f.shPct)) ? Math.max(0, Math.min(1, Number(f.shPct))) : (Number.isFinite(Number(prev?.shPct)) ? prev.shPct : null),
     });
+    // Bot activé : tous les NPC déjà touchés par ce joueur sont marqués
+    // (récompense réduite même si le bot est coupé avant la mort).
+    if (bot && !prev?.bot) {
+      for (const e of this.entries.values()) {
+        if (e?.dmgBy && e.dmgSeq === e.seq && e.dmgBy.has(pid)) this.markBotHit(e, pid);
+      }
+    }
     // Camouflage (ultime ou CPU) : les NPC perdent la cible sur le front
     // montant, comme en local (pas de poursuite ni de tir sur l'invisible).
     if (cloaked && !prev?.cloaked) {
@@ -319,6 +328,16 @@ export class ZoneNpcSim {
         if (String(e.chaseId || "") === pid) e.chaseId = null;
       }
     }
+  }
+
+  // NPC touché par un joueur qui avait le bot actif (par incarnation).
+  markBotHit(entry, pid) {
+    if (!entry) return;
+    if (!(entry.botBy instanceof Set) || entry.botSeq !== entry.seq) {
+      entry.botBy = new Set();
+      entry.botSeq = entry.seq;
+    }
+    entry.botBy.add(String(pid));
   }
 
   inSafe(x, y) {
@@ -2100,6 +2119,7 @@ drainPlayerHits() {
           entry.dmgSeq = entry.seq;
         }
         entry.dmgBy.set(String(clientId), Math.max(0, Number(entry.dmgBy.get(String(clientId))) || 0) + applied);
+        if (shooter.bot === true) this.markBotHit(entry, clientId);
       } catch {}
     }
     // Feed degats (100 ms) : les autres ecrans voient les chiffres.
@@ -2183,6 +2203,8 @@ drainPlayerHits() {
       try { this.spawnOnKillWave(entry, nowMs); } catch {}
       try { markDead(this.universe, this.mapId, uid, Date.now()); } catch {}
       const death = { uid, type: entry.type, x: Math.round(entry.x), y: Math.round(entry.y), killer: entry.killer, cause: "gun", seq: entry.seq || 0, at: Date.now() };
+      // Joueurs ayant tiré ce NPC avec le bot actif (même un instant).
+      if (entry.botBy instanceof Set && entry.botSeq === entry.seq && entry.botBy.size) death.botBy = [...entry.botBy];
       // Invoke / Mindfire / Boss Halloween / UFONIT dominical : classement
       // dégâts pour les soleils (top 10) et la récompense de destruction
       // proportionnelle (tous les tapeurs). Hitac / Minion Givré : partage
@@ -2471,7 +2493,8 @@ drainPlayerHits() {
             ? e.firstBy : (damagedByPlayer ? (e.masterKiller || e.lastHitBy) : null);
           e.killer = String(kb || "");
           e.cause = "gun";
-          this.recordDeath({ uid: e.uid, type: e.type, x: Math.round(e.x), y: Math.round(e.y), killer: e.killer, cause: "gun", seq: e.seq || 0, at: nowMs });
+          this.recordDeath({ uid: e.uid, type: e.type, x: Math.round(e.x), y: Math.round(e.y), killer: e.killer, cause: "gun", seq: e.seq || 0, at: nowMs,
+            ...(e.botBy instanceof Set && e.botSeq === e.seq && e.botBy.size ? { botBy: [...e.botBy] } : {}) });
           continue;
         }
         if (e.decayAge < 3) {
