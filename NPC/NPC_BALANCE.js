@@ -194,6 +194,8 @@ export const NPC_REWARDS = Object.freeze({
   npc_Hitac_2_5: { credits: 1000000, exp: 25000, honor: 100 },
   npc_Hitac_Minion_2_0: { credits: 5000000, exp: 25000, honor: 100 },
   npc_Hitac_Minion_2_5: { credits: 2500000, exp: 25000, honor: 100 },
+  npc_Hitac_Frost: { credits: 2000000, exp: 10000000, honor: 100000 },
+  npc_Hitac_Minion_Frost: { credits: 5000000, exp: 25000, honor: 100 },
   npc_Boss_Curcubitor: { credits: 163841, exp: 20480, honor: 63 },
   npc_Curcubitor: { credits: 1001, exp: 800, honor: 4 },
   npc_Skoll: { credits: 1000000, exp: 25000, honor: 100 },

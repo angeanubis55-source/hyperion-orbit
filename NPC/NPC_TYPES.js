@@ -1551,6 +1551,41 @@ export const NPC_TYPES = {
     bulletSprite: { src: "COMBAT/MUNITIONS/SPECIAL8.png", w: 55, h: 17, glow: true, invert: true },
     r: 20, hp: 2000000, shield: 1500000, speed: 250, bulletDmg: 3000, bulletSpeed: 4500, shootRange: 550,
   },
+  // Micro-event « Hitac enneigée » (NPC/NPC_HITAC_SNOW.js) : Hitac givré
+  // en 1-3 et ses 6 minions en formation. Stats des 2.0. Images fixes
+  // fournies, groupe agrandi x1,25 (HITAC_SNOW_SCALE) pour que le minion ait
+  // la taille de celui du SWF givré : Hitac 500x444, minion 112x100.
+  npc_Hitac_Frost: {
+    name: "-=[ Hitac Givré ]=-",
+    // 10 images = cœur bleu animé du SWF (45 i/s), joué en boucle.
+    sprite: { path: "NPC/NPC_SPRITES/HITAC_FROST_V4/", frames: 10, firstNumber: 1, ext: ".png", w: 500, h: 444, loopFps: 45 },
+    // Voile blanc qui épouse les contours, dessiné sous tous les NPC.
+    underGlow: { src: "NPC/NPC_SPRITES/HITAC_FROST_V4/glow.png", w: 760, h: 704 },
+    playSprite: true,
+    passiveNative: false,
+    spriteSpeed: 0,
+    bulletSprite: { src: "COMBAT/MUNITIONS/SPECIAL8.png", w: 55, h: 17, glow: true, invert: true },
+    // Pas de tir : JAMX Creed toutes les 10 s (750 px, brouillage 6 s, 7 500 dégâts).
+    creedPulse: { interval: 10, radius: 750, duration: 6, damage: 7500 },
+    // Roquette DCR-250 invisible toutes les 3 s sur un joueur au hasard à
+    // portée : ralenti de 30 % pendant 5 s (comme la DCR-250 joueur).
+    // Creed « visuel » toutes les 3 s : même halo, sans brouillage ni
+    // décamouflage, 30 000 dégâts à chaque joueur à portée.
+    creedBlast: { interval: 3, radius: 750, damage: 30000 },
+    dcrRocket: { interval: 3, range: 750, slowPct: 30, duration: 5 },
+    r: 90, hp: 14500000, shield: 8000000, speed: 250, bulletDmg: 60000, bulletSpeed: 4500, shootRange: 550,
+  },
+  npc_Hitac_Minion_Frost: {
+    name: "-=[ Minion Givré ]=-",
+    // 10 images = cœur bleu tournant du SWF (fx_blue, 45 i/s), joué en boucle.
+    sprite: { path: "NPC/NPC_SPRITES/HITAC_MINION_FROST_V5/", frames: 10, firstNumber: 1, ext: ".png", w: 112, h: 100, loopFps: 45 },
+    underGlow: { src: "NPC/NPC_SPRITES/HITAC_MINION_FROST_V5/glow.png", w: 252, h: 240 },
+    playSprite: true,
+    passiveNative: false,
+    spriteSpeed: 0,
+    bulletSprite: { src: "COMBAT/MUNITIONS/SPECIAL8.png", w: 55, h: 17, glow: true, invert: true },
+    r: 20, hp: 5500000, shield: 3500000, speed: 250, bulletDmg: 20000, bulletSpeed: 4500, shootRange: 550,
+  },
   npc_Boss_Curcubitor: {
     name: "..::{ Boss Curcubitor }::..",
     sprite: { path: "NPC/NPC_SPRITES/BOSS_CURCUBITOR/", frames: 21, firstNumber: 1, ext: ".png", w: 263, h: 257 },

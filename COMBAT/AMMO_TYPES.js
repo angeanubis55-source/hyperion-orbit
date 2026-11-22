@@ -25,7 +25,8 @@ export const AMMO = {
   tent: { mult: 4.0, vsMatch: [/Lordakium/], vsMult: 8.0, color: "rgba(122,111,255,0.95)" },
   // ICE : comme SBL (Sibelons) / TENT (Lordakiums), bonus contre l'Emperor
   // Kristallon et tous les NPC de la GG d'hiver (npc_Convoy_*).
-  ice: { mult: 4.0, vsMatch: [/Emperor_Kristallon/, /^npc_Convoy_/], vsMult: 8.0, color: "rgba(150,225,255,0.95)" },
+  // + Hitac Givré et Minion Givré (micro-event Hitac enneigée).
+  ice: { mult: 4.0, vsMatch: [/Emperor_Kristallon/, /^npc_Convoy_/, /^npc_Hitac(_Minion)?_Frost$/], vsMult: 8.0, color: "rgba(150,225,255,0.95)" },
 };
 
 const AMMO_DESCRIPTIONS = Object.freeze({

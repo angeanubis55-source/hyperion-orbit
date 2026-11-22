@@ -3672,6 +3672,9 @@ export function adminGiveModule(pseudo, shipId, stat, pct) {
 const SUNDAY_MODULE_SPEC = Object.freeze({
   common: Object.freeze({ tier: "x1", statCount: 1 }),
   rare: Object.freeze({ tier: "x2", statCount: 2 }),
+  // Box Strike Big (Hitac Givré) : 3 ou 4 stats.
+  epic: Object.freeze({ tier: "x3", statCount: 3 }),
+  legendary: Object.freeze({ tier: "x3", statCount: 4 }),
 });
 const SUNDAY_MODULE_TYPES = Object.freeze(["hp", "shd", "dmg", "spc"]);
 function sundayRollPct(min, max) {

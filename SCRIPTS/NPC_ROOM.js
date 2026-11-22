@@ -10,6 +10,7 @@ import { createUniverse, deserializeUniverse, ensureMapSlots, markDead, markAliv
 import { appendHalloweenCamps, applyHalloweenKill, halloweenCampBlocked, halloweenRoleOf, isHalloweenBossVariant, isHalloweenMapActive, isHalloweenVariantType, normalizeHalloweenState } from "../NPC/NPC_HALLOWEEN.js";
 import { SUNDAY_DMG_MULT, SUNDAY_MAPS, SUNDAY_UFONIT_TYPE, buildSundayCamp, isSundayBossVariant, isSundayEventActive, sundayPickMap } from "../NPC/NPC_SUNDAY.js";
 import { WINTER_SPAWN_GROUPS, WINTER_TYPES, buildWinterCamp, isWinterEventActive, winterPickMap } from "../NPC/NPC_WINTER.js";
+import { HITAC_SNOW_EVENT, HITAC_SNOW_MAPS, HITAC_SNOW_TYPE, HITAC_SNOW_MINION_TYPE, buildHitacSnowCamp, hitacSnowPickMap, isHitacSnowActive } from "../NPC/NPC_HITAC_SNOW.js";
 import { NPC_TYPES } from "../NPC/NPC_TYPES.js";
 import { damageEnemyLayers } from "../COMBAT/COMBAT_RULES.js";
 import { JPC_LASER, jpcVolleyParts, tickJpcRepair, jpcTravel, jpcCombatMove, jpcCombatDistance, jpcEngageRange } from "../NPC/JPC_BEHAVIOR.js";
@@ -165,6 +166,9 @@ export class ZoneNpcSim {
     this.healFeed = new Map(); // uid -> { uid, hp, sh } (reparation JPC du tick)
     this.recentGone = []; // uids retires sans mort (despawn vague) : purge immediate cote client
     this.playerHits = []; // impacts NPC autoritaires a appliquer par MULTI_SERVER
+    this.playerJams = [];
+    this.playerSlows = []; // DCR-250 invisibles lancées par un NPC (MULTI_SERVER) // brouillages JAMX Creed lancés par un NPC (MULTI_SERVER)
+    this.creedFx = []; // halos JAMX Creed de NPC à diffuser
     this.decloaks = []; // camouflages dissipés par les halos Mindfire
     this.iemBursts = []; // IEM claquées par les bots JPC : { playerId, npcUid, x, y }
     this.shotFx = []; // Visuels de tir des fights JPC : { by, x, y, tx, ty, key, n, npc }
@@ -748,13 +752,70 @@ export class ZoneNpcSim {
       bulletDmg: stats.bulletDmg, burst: stats.burst, shootCd: 0.2 + Math.random() * 0.5,
       aggroRange: camp.aggroRange, aggroHoldMs: Math.max(1000, (camp.aggroHold ?? 3.5) * 1000),
       hunter: camp.hunter === true,
+      // Camp immobile (Hitac enneigée) : tire mais ne se déplace jamais.
+      stationary: camp.stationary === true,
+      // Errance seule (Hitac Givré) : se déplace sur la map sans jamais
+      // chasser ni fuir ; ses attaques (Creed, DCR) restent actives.
+      roamOnly: camp.roamOnly === true,
       aggroBy: null, aggroUntil: 0,
       tx: null, ty: null, killer: null, firstBy: null, lastHitBy: null,
       lockBy: null, lockHitAt: 0, lockReleaseAt: 0, hitHist: [],
       orbitDir: Math.random() < 0.5 ? -1 : 1, orbitT: 2 + Math.random() * 3,
       seq: this.nextSpawnSequence(uid),
     });
+    if (camp.escort) {
+      try {
+        const master = this.entries.get(uid);
+        if (master) master.escortShield = camp.escort.shieldMaster === true;
+        this.spawnEscort(master, camp.escort);
+      } catch {}
+    }
     return true;
+  }
+
+  // Escorte en formation (Hitac enneigée) : minions liés au maître, chacun
+  // à un décalage fixe autour de lui (recollés à chaque tick, voir tick).
+  // Maître mort : désagrégation comme les Protegit d'un Cubikon.
+  spawnEscort(master, escort) {
+    if (!master || !statsFor(escort?.type) || !Array.isArray(escort.offsets)) return;
+    for (const [i, off] of escort.offsets.entries()) this.spawnEscortOne(master, escort, i, off, 0);
+  }
+
+  // Un minion d'escorte. life = n° de vie (0 = apparition, puis 1, 2…) :
+  // uid distinct à chaque réapparition (le client le voit comme un nouveau
+  // NPC), suffixe ":es<i>" gardé pour l'ordre d'affichage.
+  spawnEscortOne(master, escort, i, off, life) {
+    const stats = statsFor(escort?.type);
+    if (!master || !stats) return;
+    {
+      const uid = life > 0 ? `${master.uid}:r${life}:es${i}` : `${master.uid}:es${i}`;
+      const seq = i + 1 + life * 10 + (Number(master.seq) || 0) * 100000;
+      this.entries.set(uid, {
+        uid, campId: null, type: escort.type,
+        masterUid: master.uid, masterSeq: Number(master.seq) || 0,
+        escortOffset: { dx: Number(off.dx) || 0, dy: Number(off.dy) || 0 },
+        escortIdx: i, escortLife: life, escortDef: escort,
+        x: clamp(master.x + (Number(off.dx) || 0), 80, this.world.w - 80),
+        y: clamp(master.y + (Number(off.dy) || 0), 80, this.world.h - 80),
+        angle: 0,
+        hp: stats.hpMax, sh: stats.shMax,
+        hpMax: stats.hpMax, shMax: stats.shMax,
+        speed: stats.speed, dr: stats.dr, spread: stats.spread,
+        r: stats.r,
+        passive: false, kamikaze: false,
+        explodeOnTouch: false, explodeRadius: 0, explodeDmg: 0,
+        canShoot: stats.canShoot, shootRange: stats.shootRange, shootRate: stats.shootRate,
+        bulletDmg: stats.bulletDmg, burst: stats.burst, shootCd: 0.2 + Math.random() * 0.5,
+        aggroRange: 750, aggroHoldMs: 8000,
+        aggroBy: null, aggroUntil: 0,
+        tx: null, ty: null, killer: null, firstBy: null, lastHitBy: null,
+        lockBy: null, lockHitAt: 0, lockReleaseAt: 0, hitHist: [],
+        masterKiller: null, decaying: false, decayPerSec: 0, decayAge: 0,
+        fleeVx: 0, fleeVy: 0, deadAt: 0,
+        orbitDir: 1, orbitT: 3,
+        seq,
+      });
+    }
   }
 
   // ---- Bots JPC natifs (multijoueur) ----
@@ -1489,6 +1550,21 @@ drainPlayerHits() {
     return this.playerHits.splice(0, this.playerHits.length);
   }
 
+  drainPlayerJams() {
+    if (!this.playerJams?.length) return [];
+    return this.playerJams.splice(0, this.playerJams.length);
+  }
+
+  drainPlayerSlows() {
+    if (!this.playerSlows?.length) return [];
+    return this.playerSlows.splice(0, this.playerSlows.length);
+  }
+
+  drainCreedFx() {
+    if (!this.creedFx?.length) return [];
+    return this.creedFx.splice(0, this.creedFx.length);
+  }
+
   // Camouflages dissipés par les halos Mindfire : { playerId, npcUid }.
   drainDecloaks() {
     if (!this.decloaks || !this.decloaks.length) return [];
@@ -1934,6 +2010,8 @@ drainPlayerHits() {
     if (!entry || !(entry.hp > 0)) return;
     // Bulle ISH des bots JPC : invulnérable (comme un vrai joueur).
     if (entry.jpc === true && Date.now() < Number(entry.jpcIshUntil || 0)) return 0;
+    // Hitac Givré protégé par ses minions : invulnérable.
+    if (entry.escortShieldOn === true) return 0;
     // Bots JPC : même protection ZNA que les joueurs (portail/base). Un bot
     // à l'abri ne prend rien et ne donne rien (ni lock, ni aggro) — pas de
     // vol de kill au portail pendant sa réparation.
@@ -2107,8 +2185,10 @@ drainPlayerHits() {
       const death = { uid, type: entry.type, x: Math.round(entry.x), y: Math.round(entry.y), killer: entry.killer, cause: "gun", seq: entry.seq || 0, at: Date.now() };
       // Invoke / Mindfire / Boss Halloween / UFONIT dominical : classement
       // dégâts pour les soleils (top 10) et la récompense de destruction
-      // proportionnelle (tous les tapeurs).
-      if (entry.type === "npc_Invoke_XVI" || entry.type === "npc_Mindfire_Behemoth" || isHalloweenBossVariant(entry.type) || isSundayBossVariant(entry.type)) {
+      // proportionnelle (tous les tapeurs). Hitac / Minion Givré : partage
+      // proportionnel seul (tous les tapeurs, pas de box top 10).
+      if (entry.type === "npc_Invoke_XVI" || entry.type === "npc_Mindfire_Behemoth" || isHalloweenBossVariant(entry.type) || isSundayBossVariant(entry.type)
+        || entry.type === HITAC_SNOW_TYPE || entry.type === HITAC_SNOW_MINION_TYPE) {
         try {
           const shares = [];
           if (entry.dmgBy && entry.dmgSeq === entry.seq) {
@@ -2126,9 +2206,11 @@ drainPlayerHits() {
       // [ UFONIT ] : camp consommé à la mort, sinon le tick (20 Hz) respawn
       // sur la même map avant que le contrôleur (2 s) ne relocalise.
       // Le contrôleur recrée un camp sur une map tirée au hasard.
-      if (isSundayBossVariant(entry.type)) {
+      // Hitac Givré : même chose, il repart sur une autre map / position.
+      if (isSundayBossVariant(entry.type) || entry.type === HITAC_SNOW_TYPE) {
+        const ev = entry.type === HITAC_SNOW_TYPE ? HITAC_SNOW_EVENT : "sunday";
         try {
-          this.camps = this.camps.filter((c) => !(c && c.id === entry.campId && c.event === "sunday"));
+          this.camps = this.camps.filter((c) => !(c && c.id === entry.campId && c.event === ev));
           ensureMapSlots(this.universe, this.mapId, this.camps, nowMs);
         } catch {}
       }
@@ -2247,6 +2329,58 @@ drainPlayerHits() {
         }
       }
     } catch {}
+    // Minion d'escorte tué : réapparaît tant qu'il lui reste des vies
+    // (escort.lives au total), escort.respawnSec après sa mort.
+    for (const m of this.entries.values()) {
+      if (!m || !m.escortDef || m.escortQueued || m.hp > 0) continue;
+      m.escortQueued = true;
+      const life = Number(m.escortLife) || 0;
+      if (life + 1 >= (Number(m.escortDef.lives) || 1)) continue;
+      (this.escortRespawns ||= []).push({
+        masterUid: m.masterUid, masterSeq: m.masterSeq, idx: m.escortIdx, off: m.escortOffset,
+        def: m.escortDef, life: life + 1, at: Number(m.deadAt || nowMs) + Math.max(0, Number(m.escortDef.respawnSec) || 0) * 1000,
+      });
+    }
+    // Réapparitions d'escorte dues (maître toujours vivant, même vie).
+    if (this.escortRespawns?.length) {
+      this.escortRespawns = this.escortRespawns.filter((r) => {
+        const master = this.entries.get(String(r.masterUid));
+        if (!master || !(master.hp > 0) || (Number(master.seq) || 0) !== (Number(r.masterSeq) || 0)) return false;
+        if (nowMs < r.at) return true;
+        try { this.spawnEscortOne(master, r.def, r.idx, r.off, r.life); } catch {}
+        return false;
+      });
+    }
+    // Maître protégé (Hitac Givré) : invincible tant qu'un de ses minions
+    // est en vie ou qu'un cycle de réapparition reste à jouer.
+    {
+      const shielded = new Set();
+      const sameMaster = (muid, mseq) => {
+        const m = this.entries.get(String(muid));
+        return m && m.escortShield && m.hp > 0 && (Number(m.seq) || 0) === (Number(mseq) || 0) ? m : null;
+      };
+      for (const e of this.entries.values()) {
+        if (!e || !e.escortDef || !(e.hp > 0)) continue;
+        const m = sameMaster(e.masterUid, e.masterSeq);
+        if (m) shielded.add(m);
+      }
+      for (const r of this.escortRespawns || []) {
+        const m = sameMaster(r.masterUid, r.masterSeq);
+        if (m) shielded.add(m);
+      }
+      for (const e of this.entries.values()) {
+        if (!e || !e.escortShield) continue;
+        const on = shielded.has(e);
+        e.escortShieldOn = on;
+        // Filet de sécurité : tout dégât passé par un autre chemin est annulé.
+        if (on && e._shieldHp != null) {
+          e.hp = Math.max(Number(e.hp) || 0, e._shieldHp);
+          e.sh = Math.max(Number(e.sh) || 0, e._shieldSh);
+        }
+        e._shieldHp = on ? e.hp : null;
+        e._shieldSh = on ? e.sh : null;
+      }
+    }
     // 1bis) Vagues Cubikon : transitions d'animation, spawn partage,
     // dechet des minions orphelins et re-armement apres 15 s sans coup.
     for (const [muid, m] of [...this.entries]) {
@@ -2574,7 +2708,9 @@ drainPlayerHits() {
       // Chasseurs (raid) : jamais de fuite, combat à mort comme en gate.
       // Ancres (Cubikon + boss BL) : jamais de fuite non plus.
       // JPC : fuite propre vers le portail (jpcMove), pas la fuite générique.
-      const fleeing = !e.jpc && !e.kamikaze && e.hunter !== true && !isAnchoredNpcType(e.type) && e.hpMax > 0 && e.hp / e.hpMax < 0.10;
+      // UFONIT et Hitac Givré : jamais de fuite sous 10 %.
+      const fleeing = !e.jpc && !e.kamikaze && e.hunter !== true && !isAnchoredNpcType(e.type)
+        && !isSundayBossVariant(e.type) && e.type !== HITAC_SNOW_TYPE && !e.roamOnly && e.hpMax > 0 && e.hp / e.hpMax < 0.10;
       if (!fleeing) e.fleeDirection = null;
       const from = attacker || close;
       // Bots JPC : logique faux-joueur (farm/fuite/repair/riposte). Les tirs
@@ -2583,6 +2719,18 @@ drainPlayerHits() {
         const mv = this.jpcMove(e, chase, dt, nowMs);
         if (mv.dead) continue;
         mx = Number(mv.mx) || 0; my = Number(mv.my) || 0; spd = Math.max(0, Number(mv.spd) || 0);
+      } else if (cubeAnchored && e.escortOffset) {
+        mx = 0; my = 0; spd = 0;
+      } else if (e.roamOnly) {
+        if (e.tx == null || Math.hypot(e.tx - e.x, e.ty - e.y) < 100) {
+          const a = Math.random() * TAU, dist = 400 + Math.random() * 800;
+          e.tx = clamp(e.x + Math.cos(a) * dist, 80, this.world.w - 80);
+          e.ty = clamp(e.y + Math.sin(a) * dist, 80, this.world.h - 80);
+        }
+        const dx = e.tx - e.x, dy = e.ty - e.y;
+        const d = Math.hypot(dx, dy) || 1;
+        mx = dx / d; my = dy / d; spd = e.speed * 0.55;
+        if (spd > 0) e.angle = Math.atan2(dy, dx);
       } else if (cubeAnchored) {
         const patrol = protegitPatrol(e, cubeMaster, this.world, dt, Math.random, minionMasterSpec(cubeMaster.type)?.patrol);
         mx = patrol.x; my = patrol.y; spd = e.speed * patrol.speed;
@@ -2632,12 +2780,12 @@ drainPlayerHits() {
         e.angle = Math.atan2(dy, dx);
         e.tx = null; e.ty = null;
       }
-      if (frozen) spd = 0;
+      if (frozen || e.stationary) spd = 0;
       else spd *= slowMult;
       // Ice Meteoroid : ne bouge plus tant qu'il est attaqué (lui ou ses
       // Icy, dernier coup < 15 s), ses Icy patrouillent autour de lui.
       if (isHoldingMinionMaster(e, nowMs)) spd = 0;
-      const radiationTravel = !!chase || outsideMap;
+      const radiationTravel = (!!chase && !e.roamOnly) || outsideMap;
       const minBound = radiationTravel ? 80 - RADIATION_CHASE_MARGIN : 80;
       const maxBoundX = radiationTravel ? this.world.w - 80 + RADIATION_CHASE_MARGIN : this.world.w - 80;
       const maxBoundY = radiationTravel ? this.world.h - 80 + RADIATION_CHASE_MARGIN : this.world.h - 80;
@@ -2680,9 +2828,80 @@ drainPlayerHits() {
           }
         }
       }
+      // Aptitude JAMX Creed à la place du tir (Hitac Givré) : toutes les
+      // `interval` s, tous les joueurs à portée sont brouillés comme par un
+      // vrai Creed et prennent `damage` dégâts.
+      const creedCfg = NPC_TYPES[e.type]?.creedPulse;
+      if (creedCfg) {
+        e.creedCd = Math.max(0, Number(e.creedCd || 0) - dt);
+        if (!frozen && e.creedCd <= 0 && !(nowMs < Number(e.jamUntil || 0))) {
+          const radius = Math.max(1, Number(creedCfg.radius) || 1000);
+          const victims = [];
+          for (const [pid, p] of this.players) {
+            if (!p || p.dead || p.safe || nowMs < Number(p.untargetableUntil || 0)) continue;
+            if (Math.hypot(Number(p.x) - e.x, Number(p.y) - e.y) > radius) continue;
+            victims.push(String(pid));
+          }
+          if (victims.length) {
+            e.creedCd = Math.max(0.5, Number(creedCfg.interval) || 5);
+            const durMs = Math.max(0, Number(creedCfg.duration) || 6) * 1000;
+            for (const pid of victims) {
+              this.playerHits.push({ playerId: pid, npcUid: e.uid, damage: Math.max(0, Number(creedCfg.damage) || 0), kind: "creed" });
+              this.playerJams.push({ playerId: pid, npcUid: e.uid, durMs });
+            }
+            if (this.creedFx.length > 16) this.creedFx.shift();
+            this.creedFx.push({ uid: e.uid, x: Math.round(e.x), y: Math.round(e.y), radius, durMs });
+          }
+        }
+      }
+      // Roquette DCR-250 invisible (Hitac Givré) : toutes les `interval` s,
+      // un joueur au hasard à portée est ralenti comme par une vraie DCR-250.
+      const dcrCfg = NPC_TYPES[e.type]?.dcrRocket;
+      if (dcrCfg) {
+        e.dcrCd = Math.max(0, Number(e.dcrCd || 0) - dt);
+        if (!frozen && e.dcrCd <= 0 && !(nowMs < Number(e.jamUntil || 0))) {
+          const range = Math.max(1, Number(dcrCfg.range) || 750);
+          const pool = [];
+          for (const [pid, p] of this.players) {
+            if (!p || p.dead || p.safe || nowMs < Number(p.untargetableUntil || 0)) continue;
+            if (Math.hypot(Number(p.x) - e.x, Number(p.y) - e.y) > range) continue;
+            pool.push(String(pid));
+          }
+          if (pool.length) {
+            e.dcrCd = Math.max(0.5, Number(dcrCfg.interval) || 3);
+            this.playerSlows.push({ playerId: pool[Math.floor(Math.random() * pool.length)], npcUid: e.uid,
+              slowPct: Math.max(0, Math.min(95, Number(dcrCfg.slowPct) || 30)),
+              durMs: Math.max(0, Number(dcrCfg.duration) || 5) * 1000 });
+          }
+        }
+      }
+      // Creed « visuel » (Hitac Givré) : toutes les `interval` s, même halo
+      // blanc que le JAMX Creed mais sans brouillage ni décamouflage, juste
+      // `damage` dégâts à chaque joueur à portée.
+      const blastCfg = NPC_TYPES[e.type]?.creedBlast;
+      if (blastCfg) {
+        e.blastCd = Math.max(0, Number(e.blastCd || 0) - dt);
+        if (!frozen && e.blastCd <= 0 && !(nowMs < Number(e.jamUntil || 0))) {
+          const radius = Math.max(1, Number(blastCfg.radius) || 750);
+          const victims = [];
+          for (const [pid, p] of this.players) {
+            if (!p || p.dead || p.safe || nowMs < Number(p.untargetableUntil || 0)) continue;
+            if (Math.hypot(Number(p.x) - e.x, Number(p.y) - e.y) > radius) continue;
+            victims.push(String(pid));
+          }
+          if (victims.length) {
+            e.blastCd = Math.max(0.5, Number(blastCfg.interval) || 3);
+            for (const pid of victims) {
+              this.playerHits.push({ playerId: pid, npcUid: e.uid, damage: Math.max(0, Number(blastCfg.damage) || 0), kind: "creed" });
+            }
+            if (this.creedFx.length > 16) this.creedFx.shift();
+            this.creedFx.push({ uid: e.uid, x: Math.round(e.x), y: Math.round(e.y), radius, durMs: 0, soft: true });
+          }
+        }
+      }
       const chasePlayer = chase ? this.players.get(String(chase.id)) : null;
       const chaseTargetOk = this.validTarget(chasePlayer) || this.retaliationOpen(e, chase ? chase.id : null, nowMs);
-      if (!frozen && !(nowMs < Number(e._redirectSilenceUntil || 0)) && e.canShoot !== false && e.shootRate > 0 && chase && chaseTargetOk
+      if (!creedCfg && !blastCfg && !frozen && !(nowMs < Number(e._redirectSilenceUntil || 0)) && e.canShoot !== false && e.shootRate > 0 && chase && chaseTargetOk
         && (!e.jpc || nowMs >= Number(e.jpcIshUntil || 0))) {
         const distance = Math.hypot(chase.x - e.x, chase.y - e.y);
         if (distance <= e.shootRange && e.shootCd <= 0) {
@@ -2730,6 +2949,8 @@ drainPlayerHits() {
         // Attaquants du convoi : traversée libre entre eux.
         if (a.convoyAttacker === true || b.convoyAttacker === true) return;
         if (isHoldingMinionMaster(a, nowMs) || isHoldingMinionMaster(b, nowMs)) return;
+        // Escorte en formation : ni elle ni son maître ne se repoussent.
+        if (a.escortOffset || b.escortOffset || a.escortMaster || b.escortMaster) return;
         let dx = b.x - a.x, dy = b.y - a.y;
         const minimum = (Number(a.r) || 18) + (Number(b.r) || 18) + 6;
         let squared = dx * dx + dy * dy;
@@ -2758,6 +2979,16 @@ drainPlayerHits() {
         b.y = clamp(b.y + (ny * push - ty * side), bMin, bRadiation ? this.world.h - 80 + RADIATION_CHASE_MARGIN : this.world.h - 80);
       });
     } catch {}
+    // 2ter) Escorte en formation : chaque minion recollé à son décalage
+    // autour de son maître vivant (même incarnation).
+    for (const e of this.entries.values()) {
+      if (!e || !e.escortOffset || !(e.hp > 0) || e.decaying) continue;
+      const m = this.entries.get(e.masterUid);
+      if (!m || !(m.hp > 0) || Number(m.seq || 0) !== Number(e.masterSeq || 0)) continue;
+      m.escortMaster = true;
+      e.x = m.x + e.escortOffset.dx;
+      e.y = m.y + e.escortOffset.dy;
+    }
   }
 
   snapshot() {
@@ -2829,6 +3060,8 @@ drainPlayerHits() {
             jpDes: (Array.isArray(e.jpcDrones?.designs) ? e.jpcDrones.designs : []).slice(0, 12).map(String),
             jpIsh: nowMs < Number(e.jpcIshUntil || 0) ? 1 : 0,
           } : null),
+          // Bulle ISH permanente (Hitac Givré protégé par ses minions).
+          npcIsh: e.escortShieldOn === true ? 1 : 0,
           // Animation d'ouverture du Cubikon : phase + temps restant pour
           // que tous les ecrans jouent l'ouverture en meme temps.
           cube: (e.type === "npc_Cubikon" && e.cube && e.cube.phase) ? String(e.cube.phase) : null,
@@ -2946,6 +3179,14 @@ const WINTER_CONTROLLERS = WINTER_SPAWN_GROUPS.map(({ maps, type }) => createRoa
   isActive: isWinterEventActive, pickMap: (random) => winterPickMap(maps, random),
   buildCamp: (world, random) => buildWinterCamp(world, random, type),
 }));
+// Micro-event « Hitac enneigée » : comme l'UFONIT, Hitac givré immobile +
+// escorte sur une map au hasard (4-1 / 4-2 / 4-3), position aléatoire.
+export const syncHitacSnowEvent = createRoamingEventController({
+  event: HITAC_SNOW_EVENT, type: HITAC_SNOW_TYPE, maps: HITAC_SNOW_MAPS,
+  isActive: isHitacSnowActive, pickMap: hitacSnowPickMap,
+  buildCamp: (world, random) => buildHitacSnowCamp(world, random),
+});
+
 // Même contrat que syncSundayEvent, sauf liveMaps (1 map par paire) ;
 // "start" / "end" ne sont émis qu'une fois pour toutes les paires.
 export function syncWinterEvent(getSim, nowMs = Date.now()) {

@@ -53,6 +53,7 @@ import { SpatialIndex } from "./SPATIAL_INDEX.js";
 import { normalizeMapId } from "./MAP_REGISTRY.js";
 import { getPortalSkinForMap } from "./PORTAL_SKINS.js";
 import { WINTER_TYPES, isWinterEventActive, winterPreloadTypes } from "../../NPC/NPC_WINTER.js";
+import { HITAC_SNOW_DEBUG_CENTER, HITAC_SNOW_MINION_TYPE as HITAC_SNOW_MINION_DRAW_TYPE, HITAC_SNOW_TYPE, hitacSnowDrawLayer, hitacSnowPreloadTypes } from "../../NPC/NPC_HITAC_SNOW.js";
 "use strict";
 import {
   getCurrentUserFull,
@@ -7885,7 +7886,7 @@ function breakCpuCloak(reason) {
   persistCpuCloak();
   // 1 s anti-spam à la sortie (comme à l'activation manuelle).
   cloakCd = Math.max(cloakCd, CPU_CLOAK_COOLDOWN);
-  showNotification(reason === "iem" ? "CPU CL04K-XL dévoilé par une IEM !" : reason === "mindfire" ? "CPU CL04K-XL dissipé par le Mindfire !" : "CPU CL04K-XL désactivé (attaque)", 2, "info");
+  showNotification(reason === "iem" ? "CPU CL04K-XL dévoilé par une IEM !" : reason === "mindfire" ? "CPU CL04K-XL dissipé par le Mindfire !" : reason === "creed" ? "CPU CL04K-XL dissipé par le JAMX Creed !" : "CPU CL04K-XL désactivé (attaque)", 2, "info");
   try { updateSkillUI(); } catch {}
 }
 // ✅ Galaxy Gates : le camouflage ne suit pas dans la gate. Suspendu à
@@ -7955,6 +7956,18 @@ function stripCloakByMindfire() {
   }
   if (player.cpuCloak === true) {
     try { breakCpuCloak("mindfire"); } catch {}
+  }
+}
+// JAMX Creed du Hitac Givré : dissipe le camouflage (ultime + CPU).
+function stripCloakByCreed() {
+  if (player.dead) return;
+  if ((player.cloakT || 0) > 0) {
+    player.cloakT = 0;
+    try { startPoliceCloakCooldown(); } catch {}
+    showNotification("Camouflage dissipé par le JAMX Creed !", 2, "info");
+  }
+  if (player.cpuCloak === true) {
+    try { breakCpuCloak("creed"); } catch {}
   }
 }
 function toggleCpuCloak() {
@@ -26283,7 +26296,7 @@ const petLocator = { enemyId: null, manualType: null, needsPick: true, picked: n
 // choix) garde son fonctionnement : nouveau tirage quand la famille disparaît.
 // NPC itinérants : un seul à la fois sur un groupe de maps, il réapparaît
 // sur une map tirée au hasard (pas forcément celle où il a été tué).
-const ROAMING_NPC_TYPES = new Set([...WINTER_TYPES, SUNDAY_UFONIT_TYPE].map(String));
+const ROAMING_NPC_TYPES = new Set([...WINTER_TYPES, SUNDAY_UFONIT_TYPE, HITAC_SNOW_TYPE].map(String));
 function isRoamingNpcType(type) {
   return ROAMING_NPC_TYPES.has(String(type || ""));
 }
@@ -27804,8 +27817,44 @@ function drawJamxHalos(ox, oy) {
     if (r <= 0) continue;
     const x = Number(h.x || 0) + ox, y = Number(h.y || 0) + oy;
     if (x < -r || y < -r || x > viewW + r || y > viewH + r) continue;
-    drawJamxHalo(x, y, r, Number(h.max || 0));
+    if (h.white) drawWhiteCreedHalo(x, y, r, Number(h.max || 0));
+    else drawJamxHalo(x, y, r, Number(h.max || 0));
   }
+}
+// JAMX Creed du Hitac Givré : anneau blanc + traînée. Rendu UNE fois dans
+// une petite image (256 px), puis simplement agrandie à chaque frame :
+// 1 drawImage, aucun dégradé ni tracé recalculé.
+let whiteCreedHaloImg = null;
+function whiteCreedHaloSprite() {
+  if (whiteCreedHaloImg) return whiteCreedHaloImg;
+  const S = 256, R = S / 2 - 2;
+  const c = document.createElement("canvas");
+  c.width = S; c.height = S;
+  const g2 = c.getContext("2d");
+  const inner = R * 0.84;
+  const g = g2.createRadialGradient(S / 2, S / 2, inner, S / 2, S / 2, R);
+  g.addColorStop(0, "rgba(255,255,255,0)");
+  g.addColorStop(0.7, "rgba(255,255,255,0.22)");
+  g.addColorStop(0.93, "rgba(255,255,255,1)");
+  g.addColorStop(1, "rgba(255,255,255,0)");
+  g2.fillStyle = g;
+  g2.beginPath();
+  g2.arc(S / 2, S / 2, R, 0, TAU);
+  g2.arc(S / 2, S / 2, inner, 0, TAU, true);
+  g2.fill();
+  whiteCreedHaloImg = c;
+  return c;
+}
+function drawWhiteCreedHalo(x, y, r, maxR) {
+  if (!(r > 0) || !(maxR > r)) return;
+  const fade = Math.max(0, Math.min(1, 1 - r / maxR));
+  const img = whiteCreedHaloSprite();
+  const k = r / (img.width / 2 - 2);
+  const half = (img.width / 2) * k;
+  ctx.save();
+  ctx.globalAlpha = 0.85 * fade;
+  ctx.drawImage(img, x - half, y - half, half * 2, half * 2);
+  ctx.restore();
 }
 
 // Voltage Link (Tempest) : éclairs bleu nuit entre les maillons de la chaîne
@@ -31837,6 +31886,8 @@ function damageEnemy(e, dmg, shieldPenetration, crit, opts = {}) {
   }
   // Bots JPC : bulle ISH (invulnérable, ne tire plus — comme un vrai joueur).
   if (e.isJpcBot === true && (e.ishT || 0) > 0) return emptyEnemyDamageResult();
+  // Hitac Givré protégé par ses minions : invulnérable.
+  if (e.npcIsh === true) return emptyEnemyDamageResult();
   // Bots JPC : même protection ZNA que les joueurs (portail/base). Un bot à
   // l'abri ne prend rien — pas de vol de kill au portail pendant sa réparation.
   if (e.isJpcBot === true) {
@@ -32884,8 +32935,13 @@ function processDeaths() {
               }
             }
           } catch {}
-          const rare = String(ev.rarity || ev.module?.rarity || "").toLowerCase() === "rare";
-          try { showNotification(`Vous avez reçu un module ${rare ? "Rare" : "Commun"} ! [ UFONIT ]`, 4, "info", { goldTerms: [rare ? "Rare" : "Commun"] }); } catch {}
+          const rar = String(ev.rarity || ev.module?.rarity || "").toLowerCase();
+          const rarLabel = rar === "legendary" ? "Légendaire" : rar === "epic" ? "Épique" : rar === "rare" ? "Rare" : "Commun";
+          if (ev.src === "strike") {
+            try { showNotification(`Vous avez reçu un module ${rarLabel} ! [ Box Strike ]`, 5, "info", { goldTerms: [rarLabel] }); } catch {}
+          } else {
+            try { showNotification(`Vous avez reçu un module ${rarLabel} ! [ UFONIT ]`, 4, "info", { goldTerms: [rarLabel] }); } catch {}
+          }
         } else if (ev.win === true && ev.prize === "ticket") {
           const qty = Math.max(1, Math.floor(Number(ev.ticketQty) || 0));
           try {
@@ -32916,7 +32972,7 @@ function processDeaths() {
             try { updateAmmoUI(); } catch {}
           } catch {}
           try { showNotification(`Vous avez reçu ${qty} munitions X4 ! [ UFONIT ]`, 4, "info", { goldTerms: ["X4"] }); } catch {}
-        } else {
+        } else if (ev.src !== "strike") {
           try { showNotification("Vous n'avez rien reçu, à la prochaine fois. [ UFONIT ]", 3, "info"); } catch {}
         }
       }
@@ -36476,6 +36532,8 @@ function syncNetNpcs(dt) {
       }
       e.ishT = Number(s.jpIsh) > 0 ? 1 : 0;
     }
+    // Hitac Givré : bulle ISH tant que ses minions le protègent.
+    e.npcIsh = Number(s.npcIsh) === 1;
     e.rocketSlowPct = Number(s.rocketSlowPct) || 0;
     e.rocketSlowT = Number(s.rocketSlowT) || 0;
     e.keresSprT = Number(s.keresSprT) || 0;
@@ -37569,6 +37627,10 @@ async function collectHomeBaseJobs({ skipCurrentMap = false } = {}) {
         for (const type of winterPreloadTypes(id)) {
           if (NPC_TYPES[type]) jobs.push(ensureNpcLoaded(type));
         }
+        // Hitac enneigée : Hitac givré + minions (spawn serveur, 1-3).
+        for (const type of hitacSnowPreloadTypes(id)) {
+          if (NPC_TYPES[type]) jobs.push(ensureNpcLoaded(type));
+        }
         for (const targetPortal of (rules.getZonePortals?.(world) || [])) {
           jobs.push(...preloadPortalSprites(targetPortal));
         }
@@ -38207,12 +38269,27 @@ function drawJpcBotPlate(e, showBars) {
   } catch {}
 }
 
+// Images des voiles sous NPC (underGlow), chargées à la première demande.
+const npcUnderGlowImages = new Map();
+function npcUnderGlowImage(src) {
+  let img = npcUnderGlowImages.get(src);
+  if (!img) {
+    img = new Image();
+    img.decoding = "async";
+    img.src = src;
+    npcUnderGlowImages.set(src, img);
+  }
+  return img;
+}
+
 function npcLabelFor(e) {
   // ✅ Awakened : nom brouillé (code 25 caractères lettres/chiffres/?),
   // régénéré toutes les 0,05 s, différent par NPC.
   if (e && typeof e.type === "string" && e.type.indexOf("npc_Awakened_") === 0) {
     try { return awakenedScrambleName(e); } catch {}
   }
+  // Nom masqué (escorte du Hitac givré) : barres seules, sans libellé.
+  if (e && NPC_TYPES[e.type]?.hideName === true) return "";
   const name = e && e.name ? String(e.name).trim() : "";
   return name || `NPC ${e?.id ?? "?"}`;
 }
@@ -39008,6 +39085,21 @@ function tickNetplayVisuals(dt) {
   try {
     for (const ev of drainNetSkillInbox()) {
       if (!ev?.by) continue;
+      // JAMX Creed lancé par un NPC (Hitac Givré) : halo arc-en-ciel
+      // centré sur le NPC (le brouillage arrive par le snapshot jamAt).
+      if (ev.npc === true) {
+        if (ev.skill === "ability_spearhead-plus_jamx-creed") {
+          if (!Array.isArray(player.jamxHalos)) player.jamxHalos = [];
+          player.jamxHalos.push({ x: ev.x, y: ev.y, r: 40, max: ev.radius || CREED_RADIUS, fixed: true, white: true });
+          // Joueur dans la zone (hors zone sûre) : camouflage dissipé
+          // (sauf Creed « visuel » : halo + dégâts seulement).
+          if (ev.soft !== true) try {
+            const cr = ev.radius || CREED_RADIUS;
+            if (!player.dead && !playerIsInSafeZone() && Math.hypot(Number(player.x) - ev.x, Number(player.y) - ev.y) <= cr) stripCloakByCreed();
+          } catch {}
+        }
+        continue;
+      }
       applyTechVisualEvent(ev);
       if (ev.forced && ev.enabled === false && String(ev.by) === String(netMyId())) {
         cancelMovementAbilityByServer(ev.skill, Number(getAbilityInfo(ev.skill)?.cooldownSec) || 0);
@@ -44260,8 +44352,10 @@ function update(dt) {
     player.jamxHalos = player.jamxHalos.filter((h) => {
       if (!h) return false;
       h.r = Number(h.r || 0) + Number(h.max || 0) * 2.2 * dt;
-      h.x = Number(player.x || 0);
-      h.y = Number(player.y || 0);
+      if (!h.fixed) {
+        h.x = Number(player.x || 0);
+        h.y = Number(player.y || 0);
+      }
       return h.r < Number(h.max || 0);
     });
   }
@@ -47922,7 +48016,27 @@ function draw() {
     if (x < -pulse.radius || y < -pulse.radius || x > viewW + pulse.radius || y > viewH + pulse.radius) continue;
     drawHaloPulse(x, y, pulse.radius, k, pulse.fill, pulse.edge, pulse.alpha ?? 1, pulse.maxWidth ?? 6, pulse.glow);
   }
-  for (const e of spatialNpcsInRect(-ox - 240, -oy - 240, -ox + viewW + 240, -oy + viewH + 240)) {
+  // Ordre d'affichage autour du Hitac Givré : autres NPC (-2) sous tout le
+  // groupe, minions de derrière (-1), Hitac (0), minions de devant (1).
+  // Tri stable, seulement si le groupe est à l'écran.
+  let drawNpcList = spatialNpcsInRect(-ox - 240, -oy - 240, -ox + viewW + 240, -oy + viewH + 240);
+  if (drawNpcList.some(n => n?.type === HITAC_SNOW_MINION_DRAW_TYPE || n?.type === HITAC_SNOW_TYPE)) {
+    drawNpcList = [...drawNpcList].sort((a, b) => hitacSnowDrawLayer(a?.type, a?._netUid) - hitacSnowDrawLayer(b?.type, b?._netUid));
+  }
+  // Voiles sous les NPC (underGlow, ex. Hitac Givré + minions) : une passe
+  // avant tous les vaisseaux, pour rester derrière tout le groupe.
+  for (const e of drawNpcList) {
+    const glow = e.hp > 0 ? NPC_TYPES[e.type]?.underGlow : null;
+    if (!glow) continue;
+    if (!shouldDetectNpc(player, e, NPC_SENSOR_RANGES.visibility, selectedEnemyForBars)) continue;
+    const img = npcUnderGlowImage(glow.src);
+    if (!isImgReady(img)) continue;
+    ctx.drawImage(img, e.x + ox - glow.w / 2, e.y + oy - glow.h / 2, glow.w, glow.h);
+  }
+  // Noms + barres de vie : dessinés après TOUS les NPC (jamais recouverts
+  // par un autre vaisseau, ex. minions derrière le Hitac givré).
+  const npcStatusDraws = [];
+  for (const e of drawNpcList) {
     if (e.hp <= 0) continue;
     if (!shouldDetectNpc(player, e, NPC_SENSOR_RANGES.visibility, selectedEnemyForBars)) continue;
 
@@ -47966,17 +48080,7 @@ function draw() {
           ctx.restore();
         }
       } catch {}
-      try {
-        // Bots JPC : plaque joueur (pseudo, grade/firme BOT, titre violet).
-        if (e.isJpcBot === true) drawJpcBotPlate(e, shouldShowNpcBars(e, selectedEnemyForBars));
-        else drawNpcStatus(
-          ctx,
-          e,
-          npcLabelFor(e),
-          shouldShowNpcBars(e, selectedEnemyForBars),
-          worldUiScale(),
-        );
-      } catch {}
+      npcStatusDraws.push({ e, x, y, alpha: ctx.globalAlpha });
       ctx.restore();
       ctx.globalAlpha = 1;
       continue;
@@ -48210,18 +48314,75 @@ function draw() {
       ctx.restore();
     }
 
-    // Bots JPC : plaque joueur (pseudo, grade/firme BOT, titre violet).
-    if (e.isJpcBot === true) drawJpcBotPlate(e, shouldShowNpcBars(e, selectedEnemyForBars));
-    else drawNpcStatus(
-      ctx,
-      e,
-      npcLabelFor(e),
-      shouldShowNpcBars(e, selectedEnemyForBars),
-      worldUiScale(),
-    );
+    // Hitac Givré protégé : halo de bouclier du joueur (SHIELD_SHIMMER)
+    // joué en boucle, à la même taille que sur notre vaisseau.
+    if (e.npcIsh === true) {
+      try {
+        if (!shieldShimmerReady) { try { ensureShieldShimmerLoaded(); } catch {} }
+        if (shieldShimmerReady && shieldShimmerImgs?.length) {
+          const frames = shieldShimmerImgs.length;
+          const t = (typeof performance !== "undefined" ? performance.now() : Date.now()) / 1000;
+          const img = shieldShimmerImgs[Math.floor(t * SHIELD_SHIMMER_PACK.fps) % frames];
+          if (isImgReady(img)) {
+            // Taille normale : exactement celle du halo sur notre vaisseau.
+            const pack = ACTIVE_SHIP || SHIP_PACKS[0];
+            const size = Math.max(pack?.w ?? 170, pack?.h ?? 170) + 30;
+            ctx.save();
+            ctx.imageSmoothingEnabled = false;
+            ctx.drawImage(img, -size / 2, -size / 2, size, size);
+            ctx.restore();
+          }
+        }
+      } catch {}
+    }
+
+    npcStatusDraws.push({ e, x, y, alpha: ctx.globalAlpha });
 
     ctx.restore();
     ctx.globalAlpha = 1;
+  }
+  for (const { e, x, y, alpha } of npcStatusDraws) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.globalAlpha = alpha;
+    try {
+      // Bots JPC : plaque joueur (pseudo, grade/firme BOT, titre violet).
+      if (e.isJpcBot === true) drawJpcBotPlate(e, shouldShowNpcBars(e, selectedEnemyForBars));
+      else drawNpcStatus(
+        ctx,
+        e,
+        npcLabelFor(e),
+        shouldShowNpcBars(e, selectedEnemyForBars),
+        worldUiScale(),
+      );
+    } catch {}
+    ctx.restore();
+  }
+  ctx.globalAlpha = 1;
+  // Debug Hitac Givré : centre du sprite (croix) + cadre de l'image.
+  if (HITAC_SNOW_DEBUG_CENTER) {
+    for (const { e, x, y } of npcStatusDraws) {
+      if (e.type !== HITAC_SNOW_MINION_DRAW_TYPE && e.type !== HITAC_SNOW_TYPE) continue;
+      const sp = NPC_TYPES[e.type]?.sprite;
+      const w = Number(sp?.w) || 0, h = Number(sp?.h) || 0;
+      const col = e.type === HITAC_SNOW_TYPE ? "#ffd400" : "#ff2bd6";
+      ctx.save();
+      ctx.translate(Math.round(x) + 0.5, Math.round(y) + 0.5);
+      ctx.lineWidth = 1;
+      ctx.strokeStyle = col;
+      if (w && h) {
+        ctx.setLineDash([4, 3]);
+        ctx.strokeRect(-w / 2, -h / 2, w, h);
+        ctx.setLineDash([]);
+      }
+      ctx.beginPath();
+      ctx.moveTo(-10, 0); ctx.lineTo(10, 0);
+      ctx.moveTo(0, -10); ctx.lineTo(0, 10);
+      ctx.stroke();
+      ctx.fillStyle = col;
+      ctx.fillRect(-1.5, -1.5, 3, 3);
+      ctx.restore();
+    }
   }
 
   drawExplosions(ox, oy);
@@ -49101,6 +49262,7 @@ function npcTypesForCurrentSector() {
       for (const spawn of rules.getZoneSpawns(WORLD) || []) if (spawn?.type) types.add(spawn.type);
       for (const type of halloweenPreloadTypes(window.__CURRENT_MAP_ID__, NPC_TYPES)) types.add(type);
       for (const type of winterPreloadTypes(window.__CURRENT_MAP_ID__)) types.add(type);
+      for (const type of hitacSnowPreloadTypes(window.__CURRENT_MAP_ID__)) types.add(type);
     } else {
       for (let waveNo = 1; waveNo <= 32; waveNo++) {
         for (const spawn of getWavePlan(waveNo)?.spawns || []) if (spawn?.type) types.add(spawn.type);
@@ -49817,6 +49979,7 @@ async function switchMapConfig(nextConfig, { mapId, spawnId = null } = {}) {
   for (const camp of preparedZoneCamps) if (camp?.type && NPC_TYPES[camp.type]) jobs.push(ensureNpcLoaded(camp.type));
   for (const type of halloweenPreloadTypes(mapId, NPC_TYPES)) if (NPC_TYPES[type]) jobs.push(ensureNpcLoaded(type));
   for (const type of winterPreloadTypes(mapId)) if (NPC_TYPES[type]) jobs.push(ensureNpcLoaded(type));
+  for (const type of hitacSnowPreloadTypes(mapId)) if (NPC_TYPES[type]) jobs.push(ensureNpcLoaded(type));
   if (nextRules.mode !== "zone" && typeof nextConfig.getWavePlan === "function") {
     const gateTypes = new Set();
     for (let waveNo = 1; waveNo <= 32; waveNo++) {

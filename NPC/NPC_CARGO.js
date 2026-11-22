@@ -103,6 +103,8 @@ const BASE_CARGO = Object.freeze({
   npc_Hitac_2_5: Object.freeze({ ...tri(3600, 3600, 3600), prometid: 1536, duranium: 1536, promerium: 192, xenomit: 384 }),
   npc_Hitac_Minion_2_0: Object.freeze({ ...tri(3600, 3600, 3600), prometid: 1536, duranium: 1536, promerium: 192, xenomit: 384 }),
   npc_Hitac_Minion_2_5: Object.freeze({ ...tri(2400, 2400, 2400), prometid: 1024, duranium: 1024, promerium: 128, xenomit: 256 }),
+  npc_Hitac_Frost: Object.freeze({ ...tri(4800, 4800, 4800), prometid: 2048, duranium: 2048, promerium: 256, xenomit: 512 }),
+  npc_Hitac_Minion_Frost: Object.freeze({ ...tri(3600, 3600, 3600), prometid: 1536, duranium: 1536, promerium: 192, xenomit: 384 }),
   npc_Hitac_Underling: Object.freeze({ ...tri(300, 300, 300), prometid: 128, duranium: 128, promerium: 16 }),
   npc_Hitac_Underboss: Object.freeze({ ...tri(300, 300, 300), prometid: 128, duranium: 128, promerium: 16 }),
   npc_I_Hitac: Object.freeze({ ...tri(300, 300, 300), prometid: 128, duranium: 128, promerium: 16 }),

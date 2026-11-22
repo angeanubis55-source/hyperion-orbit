@@ -1497,6 +1497,7 @@ export function ensureNetplayConnection() {
         pct: Math.max(-100, Math.min(100, Math.floor(Number(b?.pct) || 0))),
       })) : [];
       netSundayInbox.push({
+        src: msg.src === "strike" ? "strike" : "",
         map: String(msg.map || "").toLowerCase(),
         uid: String(msg.uid || ""),
         seq: Number(msg.seq) || 0,
@@ -1603,6 +1604,9 @@ export function ensureNetplayConnection() {
           y: Number.isFinite(Number(msg.y)) ? Math.round(Number(msg.y)) : 0,
           target: String(msg.target || "").slice(0, 64),
           chain: sanitizeVoltChain(msg.chain),
+          npc: msg.npc === true,
+          soft: msg.soft === true,
+          radius: Math.max(0, Math.min(5000, Number(msg.radius) || 0)),
         });
         dbgRecordSkillFx({ skill: key, by: String(msg.by || "") });
         return;
@@ -2124,6 +2128,7 @@ export function ensureNetplayConnection() {
             jpLvl: Math.max(1, Math.min(6, Number(n.jpLvl) || 1)),
             jpDes: Array.isArray(n.jpDes) ? n.jpDes.slice(0, 12).map(d => String(d).slice(0, 32)) : [],
             jpIsh: n.jpIsh === 1 ? 1 : 0,
+            npcIsh: n.npcIsh === 1 ? 1 : 0,
             jpSpeed: Math.max(40, Math.min(2000, Number(n.jpSpeed) || 300)),
             jpMode: String(n.jpMode || "farm").slice(0, 16),
             angle: Number(n.angle) || 0,

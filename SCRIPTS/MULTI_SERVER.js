@@ -7,7 +7,8 @@ import { dirname, extname, join, normalize, resolve } from "node:path";
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import { WebSocketServer } from "ws";
 import { discordWebhookUrl, startDiscordAnnounce } from "./DISCORD_ANNOUNCE.js";
-import { ZoneNpcSim, syncSundayEvent, syncWinterEvent } from "./NPC_ROOM.js";
+import { ZoneNpcSim, syncHitacSnowEvent, syncSundayEvent, syncWinterEvent } from "./NPC_ROOM.js";
+import { HITAC_SNOW_MAPS, HITAC_SNOW_TYPE, HITAC_SNOW_MINION_TYPE } from "../NPC/NPC_HITAC_SNOW.js";
 import { WINTER_MAPS, isWinterEventActive } from "../NPC/NPC_WINTER.js";
 import {
   ANTICHEAT as AC,
@@ -2309,8 +2310,10 @@ function npcRewardShares(killerId, mapId, death) {
   //   map, au prorata exact des dégâts, y compris une part inférieure à 1 %.
   // - Invoke / Mindfire / Boss Halloween : box perso au top 10 dégâts.
   // - UFONIT : loterie module du top 10 (voir awardNpcDeaths, sans box).
+  // - Hitac / Minion Givré : même partage au prorata, sans box (sun ignoré).
   if ((death?.type === "npc_Invoke_XVI" || death?.type === "npc_Mindfire_Behemoth"
-    || isHalloweenBossVariant(death?.type) || isSundayBossVariant(death?.type))
+    || isHalloweenBossVariant(death?.type) || isSundayBossVariant(death?.type)
+    || death?.type === HITAC_SNOW_TYPE || death?.type === HITAC_SNOW_MINION_TYPE)
     && Array.isArray(death?.shares) && death.shares.length) {
     try {
       const ranked = death.shares
@@ -2356,6 +2359,51 @@ function npcRewardShares(killerId, mapId, death) {
 // Récompenses NPC immédiates : chaque mort est traitée entièrement,
 // sans file, budget de temps, minuterie ni plafond de kills.
 const announcedNpcSuns = new Map();
+// Box Strike (micro-event Hitac enneigée) : très petite chance à chaque mort
+// d'un Hitac / Minion Givré. Une seule box partagée au point de mort, le
+// premier qui la ramasse gagne le module ; disparaît après 5 min.
+const STRIKE_BOX_DROP_CHANCE = Object.freeze({ npc_Hitac_Frost: 0.03, npc_Hitac_Minion_Frost: 0.01 });
+const STRIKE_BOX_WEIGHTS = Object.freeze([["Strike_Box", 70], ["Strike_Box_Medium", 25], ["Strike_Box_Big", 5]]);
+const STRIKE_BOX_TTL_MS = 5 * 60_000;
+function isStrikeBoxType(type) {
+  return type === "Strike_Box" || type === "Strike_Box_Medium" || type === "Strike_Box_Big";
+}
+// Normale : Commun. Medium : Commun ou Rare (50/50). Big : Épique (75 %) ou Légendaire (25 %).
+function rollStrikeBoxRarity(type) {
+  const r = Math.random();
+  if (type === "Strike_Box_Big") return r < 0.25 ? "legendary" : "epic";
+  if (type === "Strike_Box_Medium") return r < 0.5 ? "rare" : "common";
+  return "common";
+}
+function maybeDropStrikeBox(mapId, death, deathKey) {
+  const chance = Number(STRIKE_BOX_DROP_CHANCE[death?.type]) || 0;
+  if (!(chance > 0) || Math.random() >= chance) return;
+  const total = STRIKE_BOX_WEIGHTS.reduce((s, [, w]) => s + w, 0);
+  let roll = Math.random() * total, type = STRIKE_BOX_WEIGHTS[0][0];
+  for (const [t, w] of STRIKE_BOX_WEIGHTS) { if ((roll -= w) < 0) { type = t; break; } }
+  const key = String(mapId || "").toLowerCase();
+  const uid = `${type}@${deathKey}`.slice(0, 64);
+  ensureBoxRoom(key).then((set) => {
+    if (!(set instanceof Map) || set.has(uid)) return;
+    const box = { type, x: Math.round(Number(death.x) || 0), y: Math.round(Number(death.y) || 0) };
+    set.set(uid, { ...box, expireAt: Date.now() + STRIKE_BOX_TTL_MS });
+    const room = rooms.get(key);
+    if (room?.size) broadcastRoom(room, JSON.stringify({ t: "box", op: "spawn", box: { uid, ...box } }));
+  }).catch(() => {});
+}
+// Expiration des Box Strike non ramassées.
+setInterval(() => {
+  const now = Date.now();
+  for (const [mapId, set] of boxRooms) {
+    if (!(set instanceof Map)) continue;
+    const gone = [];
+    for (const [uid, b] of set) {
+      if (b && isStrikeBoxType(b.type) && Number(b.expireAt) > 0 && now >= Number(b.expireAt)) { set.delete(uid); gone.push(uid); }
+    }
+    const room = rooms.get(mapId);
+    if (gone.length && room?.size) broadcastRoom(room, JSON.stringify({ t: "box", op: "unspawn", uids: gone }));
+  }
+}, 1000);
 function npcDeathKey(mapId, death) {
   return `${String(mapId).toLowerCase()}:${String(death?.uid || "")}:${Number(death?.seq) || 0}`;
 }
@@ -2422,6 +2470,10 @@ function awardNpcDeaths(mapId, deaths) {
       rewardedNpcDeaths.set(deathKey, now);
       try { pumpSundayEvent(); } catch {}
       continue;
+    }
+    if (STRIKE_BOX_DROP_CHANCE[death.type] && !rewardedNpcDeaths.has(`strike:${deathKey}`)) {
+      rewardedNpcDeaths.set(`strike:${deathKey}`, now);
+      try { maybeDropStrikeBox(mapId, death, deathKey); } catch {}
     }
     const killerPseudo = String(findPeerState(killerId)?.pseudo || "");
     const isSunBoss = death.type === "npc_Invoke_XVI" || death.type === "npc_Mindfire_Behemoth" || isHalloweenBossVariant(death.type) || isSundayBossVariant(death.type);
@@ -2546,6 +2598,22 @@ function pumpWinterEvent() {
   }
 }
 setInterval(() => { try { pumpWinterEvent(); } catch {} }, 2000).unref?.();
+
+// --- Micro-event « Hitac enneigée » : Hitac givré immobile + 6 minions, 1-3 (4000, 4000) ---
+function pumpHitacSnowEvent() {
+  try { for (const m of HITAC_SNOW_MAPS) { try { ensureNpcSim(m); } catch {} } } catch {}
+  let res = null;
+  try { res = syncHitacSnowEvent(sundaySimGetter, Date.now()); } catch { res = null; }
+  if (!res || !Array.isArray(res.events)) return;
+  for (const ev of res.events) {
+    try {
+      if (ev?.t === "spawn" && ev.map) console.info(`[hitac] spawn ${String(ev.map).toLowerCase()}`);
+      else if (ev?.t === "start") console.info("[hitac] Hitac enneigée : début");
+      else if (ev?.t === "end") console.info("[hitac] Hitac enneigée : fin");
+    } catch {}
+  }
+}
+setInterval(() => { try { pumpHitacSnowEvent(); } catch {} }, 2000).unref?.();
 // --- Audit anticheat périodique (10 s) : signalement seulement. Kick, gel
 // et ban sont des actions manuelles de l'admin. Voir ANTICHEAT.js.
 const CHEAT_KICK_MESSAGE = "Vous avez triché. La modération étudie actuellement votre cas. Si cela est avéré, vous serez définitivement banni.";
@@ -2779,10 +2847,26 @@ wss.on("connection", (ws) => {
           if (accepted) {
             try { acRecordCollection(audOf(state), state._combat); } catch {}
             broadcastRoom(room, JSON.stringify({ t: "box", op: "collect", uid }), id);
-            const cfg = COLLECTABLE_TYPES[box.type] || {};
-            const delayMs = Math.max(250, Math.floor((Number(cfg.respawnDelaySec ?? 60) || 0) * 1000));
-            if (!boxRespawns.has(mapId)) boxRespawns.set(mapId, []);
-            boxRespawns.get(mapId).push({ uid, type: box.type, at: Date.now() + delayMs });
+            if (isStrikeBoxType(box.type)) {
+              // Box Strike : pas de respawn, module tiré et donné par le serveur.
+              let mod = null;
+              try {
+                if (authed && accountId) {
+                  const res = grantSundayModule(String(accountId), rollStrikeBoxRarity(box.type));
+                  if (res && res.ok && res.module) mod = res.module;
+                }
+              } catch {}
+              try {
+                ws.send(JSON.stringify({ t: "sundayModule", src: "strike", box: box.type, map: String(mapId), uid, seq: 0,
+                  win: !!mod, prize: mod ? "module" : null, rarity: mod ? mod.rarity : null,
+                  module: mod ? sanitizeSundayModule(mod) : null, ticketQty: 0, ammoQty: 0 }));
+              } catch {}
+            } else {
+              const cfg = COLLECTABLE_TYPES[box.type] || {};
+              const delayMs = Math.max(250, Math.floor((Number(cfg.respawnDelaySec ?? 60) || 0) * 1000));
+              if (!boxRespawns.has(mapId)) boxRespawns.set(mapId, []);
+              boxRespawns.get(mapId).push({ uid, type: box.type, at: Date.now() + delayMs });
+            }
           }
           // Le demandeur ne touche la recompense qu'apres cette confirmation.
           try { ws.send(JSON.stringify({ t: "box", op: "claim", uid, ok: accepted, box: !accepted && box ? { uid, type: box.type, x: box.x, y: box.y } : undefined })); } catch {}
@@ -4901,6 +4985,41 @@ setInterval(() => {
         // Les tirs NPC partages retirent les PV dans le meme pool autoritaire
         // que le PvP. Les soins du client (reparateur, regen) remontent ce
         // pool via les pos ; les degats serveur restent prioritaires.
+        // JAMX Creed lancé par un NPC (Hitac Givré) : brouillage identique
+        // au Creed joueur (locks coupés, aptitudes coupées, modules
+        // verrouillés) + halo diffusé à toute la map.
+        if (typeof sim.drainPlayerJams === "function") {
+          for (const jam of sim.drainPlayerJams()) {
+            const ps = room.get(String(jam?.playerId))?.state;
+            if (!ps || ps.pvpDead === true || !(Number(ps.hp) > 0)) continue;
+            if (Date.now() < Number(ps.ishUntil || 0) || Date.now() < Number(ps.iemUntil || 0)) continue;
+            try { jamPlayerAbilities(ps, room, Date.now(), Math.max(0, Number(jam.durMs) || 6000)); } catch {}
+          }
+        }
+        // DCR-250 invisible lancée par un NPC : même ralentissement que la
+        // roquette joueur (slowPct / slowUntil, renvoyés au client via slowT).
+        if (typeof sim.drainPlayerSlows === "function") {
+          for (const sl of sim.drainPlayerSlows()) {
+            const ps = room.get(String(sl?.playerId))?.state;
+            if (!ps || ps.pvpDead === true || !(Number(ps.hp) > 0)) continue;
+            const t = Date.now();
+            if (t < Number(ps.ishUntil || 0) || t < Number(ps.iemUntil || 0)) continue;
+            try {
+              takeMovement(ps, ps._combat, ps.x, ps.y, t);
+              ps.slowPct = Math.max(t < Number(ps.slowUntil) ? Number(ps.slowPct) || 0 : 0, Number(sl.slowPct) || 30);
+              ps.slowUntil = Math.max(Number(ps.slowUntil) || 0, t + (Number(sl.durMs) || 5000));
+            } catch {}
+          }
+        }
+        if (typeof sim.drainCreedFx === "function") {
+          for (const fx of sim.drainCreedFx()) {
+            const at = Date.now();
+            try {
+              broadcastRoom(room, JSON.stringify({ t: "skillFx", skill: "ability_spearhead-plus_jamx-creed", by: String(fx.uid || ""),
+                npc: true, soft: fx.soft === true, at, until: at + (Number(fx.durMs) || 6000), x: fx.x, y: fx.y, radius: fx.radius, target: "" }));
+            } catch {}
+          }
+        }
         if (typeof sim.drainPlayerHits === "function") {
           const npcHitVictims = new Set();
           for (const hit of sim.drainPlayerHits()) {
@@ -4917,7 +5036,8 @@ setInterval(() => {
               if (!safeHitOk) continue;
             }
             const scramble = activeAbility(s, "ability_mimesis_scramble", now);
-            if (Math.random() < Math.max(0, Math.min(0.9, (Number(s.evade) || 0) + (scramble ? 0.65 : 0)))) continue;
+            // JAMX Creed de NPC : impact de zone, jamais esquivé.
+            if (hit?.kind !== "creed" && Math.random() < Math.max(0, Math.min(0.9, (Number(s.evade) || 0) + (scramble ? 0.65 : 0)))) continue;
             const hitNow = Date.now();
             const damage = Math.max(0, Math.min(1e8, Number(hit?.damage) || 0));
             if (!(damage > 0)) continue;

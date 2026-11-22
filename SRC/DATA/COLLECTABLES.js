@@ -581,6 +581,96 @@ export const COLLECTABLE_TYPES = Object.freeze({
     rewards: { resources: { candy: [2, 4] } },
   },
 
+  // Box Strike : 1 module Commun.
+  // Drop rare du Hitac Givré / Minion Givré (jamais en ambient) : une seule
+  // box partagée, le premier qui la ramasse gagne un module (tiré serveur).
+  Strike_Box: {
+    name: "Box Strike",
+    maps: "*",
+    qty: 0,
+    spawnBatch: 1,
+    minSpacing: 100,
+    avoidPlayer: 0,
+    npcDespawnAfter: 0,
+    respawnDelaySec: 0,
+    r: 30,
+    pickupRadius: 50,
+    bob: 5,
+    sprite: {
+      path: "ASSETS/COLLECTABLES/STRIKE_BOX/",
+      frames: 36,
+      firstNumber: 1,
+      ext: ".png",
+      fps: 24,
+      w: 120,
+      h: 125,
+      scale: 1,
+      randomStart: true,
+      glow: false,
+    },
+    rewards: { resources: {} },
+  },
+
+  // Box Strike Medium : 1 module Commun ou Rare.
+  // Drop rare du Hitac Givré / Minion Givré (jamais en ambient) : une seule
+  // box partagée, le premier qui la ramasse gagne un module (tiré serveur).
+  Strike_Box_Medium: {
+    name: "Box Strike Medium",
+    maps: "*",
+    qty: 0,
+    spawnBatch: 1,
+    minSpacing: 100,
+    avoidPlayer: 0,
+    npcDespawnAfter: 0,
+    respawnDelaySec: 0,
+    r: 30,
+    pickupRadius: 50,
+    bob: 5,
+    sprite: {
+      path: "ASSETS/COLLECTABLES/STRIKE_BOX_MEDIUM/",
+      frames: 36,
+      firstNumber: 1,
+      ext: ".png",
+      fps: 24,
+      w: 120,
+      h: 125,
+      scale: 1,
+      randomStart: true,
+      glow: false,
+    },
+    rewards: { resources: {} },
+  },
+
+  // Box Strike Big : 1 module Épique ou Légendaire.
+  // Drop rare du Hitac Givré / Minion Givré (jamais en ambient) : une seule
+  // box partagée, le premier qui la ramasse gagne un module (tiré serveur).
+  Strike_Box_Big: {
+    name: "Box Strike Big",
+    maps: "*",
+    qty: 0,
+    spawnBatch: 1,
+    minSpacing: 100,
+    avoidPlayer: 0,
+    npcDespawnAfter: 0,
+    respawnDelaySec: 0,
+    r: 30,
+    pickupRadius: 50,
+    bob: 5,
+    sprite: {
+      path: "ASSETS/COLLECTABLES/STRIKE_BOX_BIG/",
+      frames: 36,
+      firstNumber: 1,
+      ext: ".png",
+      fps: 24,
+      w: 120,
+      h: 125,
+      scale: 1,
+      randomStart: true,
+      glow: false,
+    },
+    rewards: { resources: {} },
+  },
+
   // Box de Boss Cucurbitors : drop des Boss Curcubitors (100 %), bonbons uniquement.
   // Reste au sol indéfiniment (pas de timer).
   // Jamais sur la map maudite.
