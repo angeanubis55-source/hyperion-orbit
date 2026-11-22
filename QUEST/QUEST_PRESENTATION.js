@@ -9,6 +9,9 @@ import {
   findQuestDefinition,
   forgeGeneratedTitle,
   forgePreview,
+  getForgeCondition,
+  getForgeHistoryQuests,
+  isForgeQuestDone,
   forgeTargetName,
   getForgeBlock,
   getForgeQuest,
@@ -136,6 +139,9 @@ const CHALLENGE_SHIP_NAMES = { phoenix_bleu: "Phoenix Bleu", liberator: "Liberat
 const CHALLENGE_LASER_NAMES = { laser_lf1: "LF-1" };
 function questChallengeTokens(objective) {
   const cond = objective?.cond;
+  if (Array.isArray(objective?.forgeRules) && objective.forgeRules.length) {
+    return objective.forgeRules.map((id) => getForgeCondition(id)?.label).filter(Boolean);
+  }
   if (!cond) return [];
   const tokens = [];
   if (cond.solo) tokens.push("En solo");
@@ -287,6 +293,7 @@ const QUEST_STATUS_LABELS = { open: "Disponible", active: "En cours", locked: "V
 // Onglet du terminal où se trouve une mission (done / active / locked / open).
 export function getQuestTerminalStatus(questState, questId) {
   if (questState.completed.includes(questId)) return "done";
+  if (String(questId).startsWith("forge_") && isForgeQuestDone(questState, questId)) return "done";
   if (questState.active[questId] != null) return "active";
   const quest = findQuestDefinition(questId, questState);
   return quest && getQuestPrerequisiteIds(quest).some((id) => !questState.completed.includes(id)) ? "locked" : "open";
@@ -309,19 +316,14 @@ function forgeDelay(ms) {
   return { h: Math.floor(minutes / 60), m: minutes % 60 };
 }
 function forgeMult(value) {
-  return `×${String(Math.round(value * 100) / 100).replace(".", ",")}`;
+  return `×${(Math.round(value * 100) / 100).toFixed(2).replace(".", ",")}`;
 }
-const FORGE_COND_HELP = {
-  solo: "Hors groupe, et le kill doit être le tien.",
-  config1: "Le NPC doit être détruit en configuration 1.",
-  config2: "Le NPC doit être détruit en configuration 2.",
-  lf1: "Seuls des lasers LF-1 équipés sur la config active.",
-  onelaser: "Un seul laser équipé sur la config active.",
-  x1: "Le NPC ne doit être touché qu'avec des munitions LCB-10.",
-  stayed: "Ne bouge pas pendant tout le combat contre le NPC.",
-  hull: "Ne perds aucun point de coque pendant le combat (le bouclier peut descendre).",
-};
-function buildForgePanel({ questState, draft, npcLocations, npcTypes, collectables, hasAccess, playerCredits, now, forged, row, expanded, selectedQuestId }) {
+function forgePct(value) {
+  return `+${Math.round(value * 100)} %`;
+}
+const FORGE_AMOUNT_PRESETS = [50, 100, 250, 500, 1000];
+// Même DA que la fenêtre Aide (wikiCard / wikiCardTitle / wikiTable / wikiNote).
+function buildForgePanel({ questState, draft, npcLocations, npcTypes, collectables, hasAccess, playerCredits, now, forged, row, forgeIssues = [] }) {
   const forge = questState.forge || {};
   const cooldown = Math.max(0, Number(forge.cooldownUntil || 0) - now);
   const delay = forgeDelay(cooldown);
@@ -340,63 +342,77 @@ function buildForgePanel({ questState, draft, npcLocations, npcTypes, collectabl
     .map((type) => [type, forgePreview({ type, amount: 1 }).reward.credits])
     .sort((a, b) => a[1] - b[1] || a[0].localeCompare(b[0]))
     .map(([type]) => type);
-  const spec = { ...(draft || {}) };
+  const spec = { ...(draft || {}), title: "" };
   if (!types.includes(spec.type)) spec.type = types.includes("npc_Streuner") ? "npc_Streuner" : (types[0] || spec.type || "npc_Streuner");
   const maps = (npcLocations?.[spec.type] || []).map(String).filter((map) => map && !/^gate\s/i.test(map));
   if (spec.map && !maps.some((map) => map.toLowerCase() === String(spec.map).toLowerCase())) spec.map = "";
   const preview = forgePreview(spec);
   if (!preview) return `<div class="qtEmpty">Fabricateur indisponible.</div>`;
-  const amountClamped = preview.spec.amount;
+  const amount = preview.spec.amount;
 
   const block = getForgeBlock(questState, now);
   const broke = playerCredits < preview.cost;
   const reason = !hasAccess ? "Rapproche-toi du bâtiment de quêtes pour créer un contrat."
     : block === "cooldown" ? delayText
     : block === "full" ? `Carnet plein : termine ou abandonne une mission (${MAX_ACTIVE_QUESTS} maximum).`
+    : forgeIssues.length ? forgeIssues[0]
     : broke ? "Pas assez de crédits."
     : "";
   const canCreate = !reason;
-
+  const perKill = Math.floor(preview.reward.credits / Math.max(1, amount));
   const typeOptions = types.length ? types : [spec.type];
-  const hint = (text) => `<small class="qfHint">${text}</small>`;
-  const step = (n, label) => `<span class="qfLabel"><i>${n}</i>${label}</span>`;
-  const perKill = Math.floor(preview.reward.credits / Math.max(1, amountClamped));
-  const fieldsHtml = `<div class="qfForm">`
-    + `<p class="qfIntro qfWide">Compose ton propre contrat : choisis la cible, combien en détruire et, si tu veux, des contraintes de défi. Plus le contrat est long et difficile, plus la récompense est grosse.</p>`
-    + `<div class="qfField"><span>${step(1, "Cible")}</span><select data-forge-field="type" aria-label="Cible">${typeOptions.map((type) => `<option value="${escapeAttr(type)}"${type === spec.type ? " selected" : ""}>${forgeTargetName(type)}</option>`).join("")}</select>${hint("Le NPC à détruire. Les plus puissants rapportent bien plus par kill.")}</div>`
-    + `<label class="qfField"><span>${step(2, "Quantité")}</span><input type="text" inputmode="numeric" maxlength="4" value="${amountClamped}" data-forge-field="amount">${hint("De 1 à 5 000. Chaque NPC en plus augmente la récompense.")}</label>`
-    + `<div class="qfField qfWide"><span>${step(3, "Carte")}</span><select data-forge-field="map" aria-label="Carte"><option value="">Toutes les cartes</option>${maps.map((map) => `<option value="${escapeAttr(map)}"${String(spec.map).toLowerCase() === map.toLowerCase() ? " selected" : ""}>${map}</option>`).join("")}</select>${hint("Facultatif : seuls les kills sur cette carte compteront. Ne change pas la récompense.")}</div>`
-    + `<div class="qfField qfWide"><span>${step(4, "Contraintes de défi")}</span><div class="qfConds">${FORGE_CONDITIONS.map((cond) => {
-      const on = preview.spec.conds.includes(cond.id);
-      const help = FORGE_COND_HELP[cond.id] || "";
-      return `<button type="button" class="qfCond${on ? " isOn" : ""}" data-forge-cond="${cond.id}" aria-pressed="${on}"${help ? ` title="${escapeAttr(help)}"` : ""}><span>${cond.label}</span><b>${forgeMult(cond.mult)}</b></button>`;
-    }).join("")}</div>${hint("Facultatif : chaque contrainte multiplie la récompense (jusqu'à ×4 au total). Un kill ne compte que si toutes les contraintes choisies sont respectées. Survole une contrainte pour le détail.")}</div>`
-    + `<label class="qfField qfWide"><span>${step(5, "Nom du contrat")}</span><span class="qfName"><input type="text" maxlength="48" value="${escapeAttr(spec.title || "")}" placeholder="${escapeAttr(forgeGeneratedTitle(preview.spec.type, preview.spec.titleIdx))}" data-forge-field="title"><button type="button" class="qfDice" data-forge-reroll="1" title="Autre nom">${SVG_DICE}</button></span>${hint("Facultatif : laisse vide pour garder le nom proposé, ou lance le dé.")}</label>`
-    + `</div>`;
+
+  const objectiveCard = `<section class="wikiCard qfCard"><div class="wikiCardTitle">Objectif</div>`
+    + `<div class="qfFields">`
+    + `<label class="wikiField qfField"><span>Cible</span><select data-forge-field="type" aria-label="Cible">${typeOptions.map((type) => `<option value="${escapeAttr(type)}"${type === spec.type ? " selected" : ""}>${forgeTargetName(type)}</option>`).join("")}</select></label>`
+    + `<label class="wikiField qfField"><span>Carte</span><select data-forge-field="map" aria-label="Carte"><option value="">Toutes les cartes</option>${maps.map((map) => `<option value="${escapeAttr(map)}"${String(spec.map).toLowerCase() === map.toLowerCase() ? " selected" : ""}>${map}</option>`).join("")}</select></label>`
+    + `<div class="wikiField qfField qfWide"><span>Quantité</span><div class="qfAmount">`
+    + `<span class="qfStepper"><button type="button" data-forge-step="-10" aria-label="Moins 10">−</button><input type="text" inputmode="numeric" maxlength="4" value="${amount}" data-forge-field="amount" aria-label="Quantité"><button type="button" data-forge-step="10" aria-label="Plus 10">+</button></span>`
+    + `<span class="qfPresets">${FORGE_AMOUNT_PRESETS.map((n) => `<button type="button" class="qfPreset${n === amount ? " active" : ""}" data-forge-amount="${n}">${formatInteger(n)}</button>`).join("")}</span>`
+    + `</div></div></div>`
+    + `</section>`;
+
+  const condRows = FORGE_CONDITIONS.map((cond) => {
+    const on = preview.spec.conds.includes(cond.id);
+    return `<tr class="qfCondRow${on ? " active" : ""}" data-forge-cond="${cond.id}" role="checkbox" aria-checked="${on}" tabindex="0">`
+      + `<td class="qfCheckCell"><span class="qfCheck" aria-hidden="true"></span></td>`
+      + `<td><b>${cond.label}</b></td>`
+      + `<td class="qfRule">${cond.rule}</td>`
+      + `<td class="qfBonus">${forgePct(cond.bonus)}</td></tr>`;
+  }).join("");
+  const condCard = `<section class="wikiCard qfCard">`
+    + `<div class="qfCardHead"><div class="wikiCardTitle">Contraintes de défi</div><span class="qfTotal">Bonus total <b>${forgePct(preview.bonus)}</b></span></div>`
+    + `<div class="wikiTableWrap"><table class="wikiTable qfTable"><thead><tr><th></th><th>Contrainte</th><th>Annule le contrat si…</th><th>Bonus</th></tr></thead><tbody>${condRows}</tbody></table></div>`
+    + `<p class="wikiNote">Facultatif. Les bonus s'additionnent, sans plafond. Une infraction annule le contrat.</p>`
+    + `</section>`;
 
   const quest = { id: "forge_preview", title: preview.title, objectives: [preview.objective], reward: preview.reward };
   const objective = preview.objective;
-  const rewards = rewardRows(quest).map(([label, value]) => `<div class="qtReward"><span>${label}</span><b>${value}</b></div>`).join("");
-  const breakdown = [
-    ["Récompense de base", formatInteger(preview.base.credits)],
-    ["Bonus contraintes", forgeMult(preview.mult)],
-    ["Soit par NPC", `≈ ${formatInteger(perKill)}`],
-  ].map(([label, value]) => `<div class="qtReward"><span>${label}</span><b>${value}</b></div>`).join("");
-  const previewHtml = `<aside class="qfPreview">`
+  const rows = rewardRows(quest);
+  const tr = (label, value, cls = "") => `<tr${cls ? ` class="${cls}"` : ""}><td>${label}</td><td>${value}</td></tr>`;
+  const summary = `<aside class="wikiCard qfSummary">`
+    + `<div class="wikiCardTitle">Aperçu du contrat</div>`
     + `<h3 class="qfTitle">${preview.title}</h3>`
-    + `<div class="qtObjective"><span class="qtObjIcon">${spriteImg(questObjectiveSprite(objective, collectables, npcTypes), questObjectiveImage(objective, collectables, npcTypes), OBJECTIVE_ICON_TARGET)}</span>`
-    + `<span class="qtObjBody"><span class="qtObjTop"><span>${apercuObjectiveLabel(objective)}</span></span>`
-    + `<small>${objectiveWhere(objective, npcLocations, collectables)}</small>${challengeChips(objective, "qtConds")}</span></div>`
-    + `<div class="qtSide"><h3>Récompenses</h3><div class="qtRewards">${rewards}</div></div>`
-    + `<div class="qtSide qfBreak"><h3>Calcul</h3><div class="qtRewards">${breakdown}</div></div>`
-    + `<div class="qtSide"><h3>Coût</h3><div class="qtRewards"><div class="qtReward"><span>Frais de dossier</span><b>${formatInteger(preview.fee)}</b></div></div>${hint("20 % des crédits gagnés (minimum 5 000), payés à la création et non remboursés.")}</div>`
-    + `<div class="qtSideFoot">${reason ? `<p class="qtNote">${reason}</p>` : `<p class="qfHint">Un seul contrat à la fois. Après sa création, 24 h d'attente avant le suivant (même en cas d'abandon).</p>`}`
-    + `<button type="button" class="qtAction" data-forge-create="1"${canCreate ? "" : " disabled"}>Créer le contrat</button></div>`
+    + `<div class="qfObjective"><span class="qtObjIcon">${spriteImg(questObjectiveSprite(objective, collectables, npcTypes), questObjectiveImage(objective, collectables, npcTypes), OBJECTIVE_ICON_TARGET)}</span>`
+    + `<span class="qfObjBody"><b>${apercuObjectiveLabel(objective)}</b><small>${objectiveWhere(objective, npcLocations, collectables)}</small></span></div>`
+    + `<table class="wikiTable qfSumTable"><thead><tr><th colspan="2">Récompenses</th></tr></thead><tbody>`
+    + rows.map(([label, value]) => tr(label, value, label === "Crédits" ? "qfGoldRow" : "")).join("")
+    + `</tbody></table>`
+    + `<table class="wikiTable qfSumTable"><thead><tr><th colspan="2">Calcul</th></tr></thead><tbody>`
+    + tr("Récompense de base", formatInteger(preview.base.credits))
+    + tr("Bonus contraintes", `${forgePct(preview.bonus)} (${forgeMult(preview.mult)})`, "qfGoldRow")
+    + tr("Soit par NPC", `≈ ${formatInteger(perKill)}`)
+    + tr("Frais de dossier", formatInteger(preview.fee))
+    + `</tbody></table>`
+    + `<p class="wikiNote">Frais : 20 % des crédits gagnés (minimum 5 000), payés à la création et non remboursés.</p>`
+    + `<div class="qfSumFoot">${reason ? `<p class="qfReason">${reason}</p>` : `<p class="wikiNote">Un seul contrat à la fois, puis 24 h d'attente avant le suivant (même en cas d'abandon ou d'échec).</p>`}`
+    + `<button type="button" class="qtAction qfCreate" data-forge-create="1"${canCreate ? "" : " disabled"}>Créer le contrat</button></div>`
     + `</aside>`;
-  return `<div class="qfPanel">${fieldsHtml}${previewHtml}</div>`;
+
+  return `<div class="qfPanel"><div class="qfMain">${objectiveCard}${condCard}</div>${summary}</div>`;
 }
 
-export function buildQuestTerminalView({ questState, selectedId, hasAccess, collectables, npcTypes, npcLocations = {}, searchQuery = "", filter = "open", playerSector = null, expanded = true, forgeDraft = null, playerCredits = 0, now = Date.now() }) {
+export function buildQuestTerminalView({ questState, selectedId, hasAccess, collectables, npcTypes, npcLocations = {}, searchQuery = "", filter = "open", playerSector = null, expanded = true, forgeDraft = null, forgeIssues = [], playerCredits = 0, now = Date.now() }) {
   const tab = QUEST_TERMINAL_TABS.some(([id]) => id === filter) ? filter : "open";
   const query = String(searchQuery || "").trim().toLowerCase();
   const matches = (quest) => !query || String(quest.title || "").toLowerCase().includes(query);
@@ -408,7 +424,7 @@ export function buildQuestTerminalView({ questState, selectedId, hasAccess, coll
   // compte des maps de spawn (un Uber 4-5 vaut niv. 12).
   const levelContext = { npcLocations, collectables };
   const forged = getForgeQuest(questState);
-  const ordered = forged ? [...getOrderedQuestDefinitions(), forged] : getOrderedQuestDefinitions();
+  const ordered = [...getOrderedQuestDefinitions(), ...(forged ? [forged] : []), ...getForgeHistoryQuests(questState)];
   const levels = new Map(ordered.map((quest) => [quest.id, getQuestRequiredLevel(quest, playerSector, levelContext)]));
   const sorted = [...ordered].sort((a, b) => levels.get(a.id) - levels.get(b.id) || String(a.title || "").localeCompare(String(b.title || ""), "fr"));
   const counts = { open: 0, active: 0, locked: 0, done: 0, forge: 0 };
@@ -511,7 +527,7 @@ export function buildQuestTerminalView({ questState, selectedId, hasAccess, coll
   const rowsHtml = flat.length ? flat.map(row).join("") : `<div class="qtEmpty">${emptyText}</div>`;
   const isForge = tab === "forge";
   const tableHtml = isForge
-    ? buildForgePanel({ questState, draft: forgeDraft, npcLocations, npcTypes, collectables, hasAccess, playerCredits, now, forged, row, expanded, selectedQuestId })
+    ? buildForgePanel({ questState, forgeIssues, draft: forgeDraft, npcLocations, npcTypes, collectables, hasAccess, playerCredits, now, forged, row, expanded, selectedQuestId })
     : `<div class="qtTable">`
       + `<div class="qtHeadRow" aria-hidden="true"><span></span><span>Mission</span><span>Objectifs</span><span>Crédits</span><span>Expérience</span><span></span></div>`
       + `<div class="qtRows" id="questTerminalRows" role="list">${rowsHtml}</div>`

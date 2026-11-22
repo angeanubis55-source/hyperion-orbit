@@ -233,6 +233,10 @@ import {
   canAcceptQuest,
   claimQuest,
   createForgeQuest,
+  failForgeQuest,
+  forgeHasRule,
+  getForgeCondition,
+  FORGE_MAX_AMOUNT,
   findQuestDefinition,
   forgePreview,
   getForgeBlock,
@@ -19800,6 +19804,7 @@ function renderQuestTerminal() {
     playerSector: pilotSector,
     expanded: questTerminalExpanded,
     forgeDraft: questForgeDraft,
+    forgeIssues: forgeCreationIssues(questForgeDraft),
     playerCredits: Math.max(0, Math.floor(Number(player.credits) || 0)),
     now: Date.now(),
   });
@@ -19903,7 +19908,7 @@ function handleQuestForgeField(event) {
 // Pendant la frappe : seul l'aperçu (récompenses, coût) est reconstruit,
 // le champ garde son focus et son curseur. Le rendu complet a lieu au blur.
 function refreshQuestForgePreview() {
-  const current = ui.questOfferList?.querySelector(".qfPreview");
+  const current = ui.questOfferList?.querySelector(".qfSummary");
   if (!current) { renderQuestTerminal(); return; }
   const view = buildQuestTerminalView({
     questState,
@@ -19916,12 +19921,13 @@ function refreshQuestForgePreview() {
     filter: questTerminalFilter,
     expanded: questTerminalExpanded,
     forgeDraft: questForgeDraft,
+    forgeIssues: forgeCreationIssues(questForgeDraft),
     playerCredits: Math.max(0, Math.floor(Number(player.credits) || 0)),
     now: Date.now(),
   });
   const tpl = document.createElement("template");
   tpl.innerHTML = view.listHtml;
-  const next = tpl.content.querySelector(".qfPreview");
+  const next = tpl.content.querySelector(".qfSummary");
   if (next) current.replaceWith(next);
 }
 ui.questOfferList?.addEventListener("change", event => {
@@ -19953,10 +19959,19 @@ function handleQuestTerminalAction(event) {
     if (conds.has(id)) conds.delete(id);
     else {
       conds.add(id);
-      if (id === "config1") conds.delete("config2");
-      if (id === "config2") conds.delete("config1");
     }
     questForgeDraft.conds = [...conds];
+    renderQuestTerminal();
+    return true;
+  }
+  // Quantité : boutons − / + (pas de 10) et raccourcis 50 / 100 / 250…
+  const amountBtn = event.target.closest("[data-forge-step], [data-forge-amount]");
+  if (amountBtn) {
+    const current = Math.max(1, Math.floor(Number(questForgeDraft.amount) || 1));
+    const next = amountBtn.dataset.forgeAmount != null
+      ? Number(amountBtn.dataset.forgeAmount)
+      : current + Number(amountBtn.dataset.forgeStep || 0);
+    questForgeDraft.amount = Math.max(1, Math.min(FORGE_MAX_AMOUNT, Math.floor(next) || 1));
     renderQuestTerminal();
     return true;
   }
@@ -20016,11 +20031,16 @@ function createQuestFromForge() {
   }
   const preview = forgePreview(questForgeDraft);
   if (!preview) return;
+  const issue = forgeCreationIssues(preview.spec)[0];
+  if (issue) {
+    showToast(issue, 2);
+    return;
+  }
   if (player.credits < preview.cost) {
     showToast("Pas assez de crédits", 1.4);
     return;
   }
-  const quest = createForgeQuest(questState, preview.spec, now);
+  const quest = createForgeQuest(questState, preview.spec, now, { config: forgeLoadout().config });
   if (!quest) return;
   player.credits -= preview.cost;
   try { noteNetPurchase(preview.cost); } catch {}
@@ -20047,6 +20067,64 @@ for (const node of [ui.questWindow, ui.questOfferWindow]) {
   });
 }
 
+// Contrat fabriqué : règles de contrat. La moindre infraction annule le
+// contrat (failForgeQuest) : progression perdue, délai de 24 h conservé.
+function forgeLoadout() {
+  let config = 1;
+  let lasers = 0;
+  try {
+    const hangar = getActiveHangarFromUser(account.user || getCurrentUserFull());
+    config = Number(hangar?.activeConfig) === 2 ? 2 : 1;
+    const fit = hangar?.fits?.[String(config)] || hangar?.fit || {};
+    lasers = (fit.lasers || []).filter(Boolean).length;
+  } catch {}
+  let grouped = false;
+  try { grouped = !!getNetGroup(); } catch {}
+  return { config, lasers, grouped };
+}
+// Contraintes déjà enfreintes au moment de créer le contrat.
+function forgeCreationIssues(spec) {
+  const conds = Array.isArray(spec?.conds) ? spec.conds : [];
+  if (!conds.length) return [];
+  const lo = forgeLoadout();
+  const issues = [];
+  if (conds.includes("onelaser") && lo.lasers > 1) issues.push("Contrainte « 1 laser équipé » : ne garde qu'un seul laser sur ta config.");
+  if (conds.includes("solo") && lo.grouped) issues.push("Contrainte « En solo » : quitte ton groupe d'abord.");
+  return issues;
+}
+function isForgeTarget(e) {
+  const forge = questState?.forge;
+  return !!e && forge?.status === "active" && !!forge.spec && String(e.type || "") === String(forge.spec.type);
+}
+function breakForgeRule(ruleId) {
+  if (!forgeHasRule(questState, ruleId)) return false;
+  const quest = failForgeQuest(questState, ruleId);
+  if (!quest) return false;
+  const label = getForgeCondition(ruleId)?.label || ruleId;
+  if (selectedQuestId === quest.id) selectedQuestId = null;
+  showNotification(`Contrat annulé — contrainte « ${label} » non respectée`, 4, "error");
+  markProgressDirty();
+  saveProgressNow();
+  questJournalRenderPending = true;
+  questTerminalRenderPending = true;
+  try { renderQuestWindow(); } catch {}
+  try { refreshPendingQuestViews(); } catch {}
+  return true;
+}
+// Vérifications continues (config, lasers, groupe), 2 fois par seconde.
+let forgeRuleTickT = 0;
+function tickForgeRules(dt) {
+  if (questState?.forge?.status !== "active") return;
+  forgeRuleTickT += dt;
+  if (forgeRuleTickT < 0.5) return;
+  forgeRuleTickT = 0;
+  const lo = forgeLoadout();
+  const lock = Number(questState.forge.lockConfig) || 0;
+  if (lock && lo.config !== lock && breakForgeRule("oneconfig")) return;
+  if (lo.lasers > 1 && breakForgeRule("onelaser")) return;
+  if (lo.grouped) breakForgeRule("solo");
+}
+
 // Défis de quête : suivi du combat sur une cible, du premier tir au kill
 // (position, coque, munitions utilisées).
 function noteQuestChallengeShot(target, ammoKey) {
@@ -20058,6 +20136,11 @@ function noteQuestChallengeShot(target, ammoKey) {
   fight.ammo.add(String(ammoKey || "x1"));
   if (!fight.moved && Math.hypot(player.x - fight.x, player.y - fight.y) > QUEST_STAY_RADIUS) fight.moved = true;
   if (!fight.hullLost && (Number(player.hp) || 0) < fight.hp - 1) fight.hullLost = true;
+  // Contrat fabriqué : munition ou déplacement interdits sur la cible.
+  if (isForgeTarget(target)) {
+    if (String(ammoKey || "x1") !== "x1" && breakForgeRule("x1")) return;
+    if (fight.moved) breakForgeRule("stayed");
+  }
 }
 const QUEST_STAY_RADIUS = 40;
 
@@ -31647,9 +31730,10 @@ function makeEnemy(type, x, y) {
     const baseName = String(NPC_TYPES[type]?.name || type).replace(/\s*★\s*\d+\s*$/, "");
     factoryEntity.name = `${baseName} ★ ${wave + (eternalMult - 1) * 12}`;
   }
-  // ✅ Mode Frénésie : NPC de la gate deux fois plus rapides.
+  // ✅ Mode Frénésie : NPC de la gate deux fois plus rapides, plafonnés à
+  // la vitesse du joueur (calcul en direct dans npcEffectiveSpeed).
   try {
-    if (isGalaxyGateFrenzyActive()) factoryEntity.speed = Math.floor((Number(factoryEntity.speed) || 0) * 2);
+    if (isGalaxyGateFrenzyActive()) factoryEntity._frenzySpeed = true;
   } catch {}
   enemiesById.set(factoryEntity.id, factoryEntity);
   const encounter = rules?.bossEncounter;
@@ -32891,7 +32975,14 @@ function npcEffectiveSpeed(e, fallback = 320) {
     return (playerSpeed / (Number(NPC_DIRECT_SPEED_FACTOR) || 0.75)) * (1 - slowPct / 100);
   }
   const raw = Number(e?.speed);
-  const baseSpeed = Number.isFinite(raw) ? Math.max(0, raw) : fallback;
+  let baseSpeed = Number.isFinite(raw) ? Math.max(0, raw) : fallback;
+  // ✅ Mode Frénésie : vitesse ×2, sans dépasser la vitesse du joueur
+  // (ex. joueur à 648 → NPC plafonnés à 648). Un NPC déjà plus rapide que
+  // le joueur garde sa vitesse normale (jamais ralenti).
+  if (e?._frenzySpeed === true && baseSpeed > 0) {
+    const playerSpeed = Math.max(0, Number(player?.baseSpeed) || 0);
+    baseSpeed = Math.min(baseSpeed * 2, Math.max(baseSpeed, playerSpeed));
+  }
   const slowPct = (e?.rocketSlowT || 0) > 0
     ? clamp(Number(e.rocketSlowPct) || 0, 0, 95)
     : 0;
@@ -33061,6 +33152,8 @@ function hurtPlayer(amount, source = null) {
   }
 
   onPlayerPreparationDamage(Math.max(0, dmgRes.hp - redirected), dmgRes.sh);
+  // Contrat fabriqué « Sans perte de coque » : un point de coque perdu l'annule.
+  if (dmgRes.hp - redirected > 0) { try { breakForgeRule("hull"); } catch {} }
   addPlayerCombatFloat(Math.max(0, Math.round(amount - redirected)), "rgba(255,80,100,0.95)");
 
   if (player.hp <= 0) {
@@ -35025,6 +35118,7 @@ function tryFireRocket(opts = {}) {
 
   // Tir réel : toute attaque casse le camouflage ultime.
   breakPoliceCloak();
+  if (isForgeTarget(t)) { try { breakForgeRule("norocket"); } catch {} }
   spawnRocketProjectile(rocket, t, { volleyId: volleySeq++, volleySize: 1 });
   return true;
 }
@@ -35164,6 +35258,7 @@ function tryFireSalvo(opts = {}) {
 
   // Salve réelle : toute attaque casse le camouflage ultime.
   breakPoliceCloak();
+  if (isForgeTarget(t)) { try { breakForgeRule("nolauncher"); } catch {} }
   const volleyId = volleySeq++;
   const volleyMiss = Math.random() < Math.max(0, PLAYER_SHOTS.missChance - ((Number(player.rocketHitBonusPct || 0) + playerPilotMults().rocketHit) / 100));
   for (let i = 0; i < n; i++) {
@@ -45677,6 +45772,7 @@ function update(dt) {
 
   tickAutoAttack(dt);
   tickAutoRockets();
+  try { tickForgeRules(dt); } catch {}
   tickVolleyFloats(dt);
   tickExplosions(dt);
   tickShipDamages(dt);
