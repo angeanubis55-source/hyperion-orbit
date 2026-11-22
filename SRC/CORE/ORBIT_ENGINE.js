@@ -19702,7 +19702,7 @@ let selectedQuestOfferId = null;
 let questTerminalSearch = "";
 let questTerminalFilter = "open";
 // Fabricateur : brouillon du contrat en cours de composition.
-let questForgeDraft = { type: "npc_Streuner", amount: 50, map: "", conds: [], stake: 0, title: "", titleIdx: Math.floor(Math.random() * 8) };
+let questForgeDraft = { type: "npc_Streuner", amount: 50, map: "", conds: [], title: "", titleIdx: Math.floor(Math.random() * 8) };
 // Ligne sélectionnée dépliée (re-clic = repliée).
 let questTerminalExpanded = true;
 let questNpcLocations = {};
@@ -19822,25 +19822,45 @@ function handleQuestForgeField(event) {
     if (key === "type") {
       questForgeDraft.type = String(value);
       questForgeDraft.map = "";
-    } else if (key === "amount" || key === "stake") {
-      questForgeDraft[key] = Math.max(0, Math.floor(Number(String(value).replace(/\s/g, "")) || 0));
+    } else if (key === "amount") {
+      // Chiffres uniquement ; le champ n'est pas re-rendu pendant la frappe.
+      const digits = String(value).replace(/\D/g, "");
+      if (digits !== value) field.value = digits;
+      questForgeDraft.amount = Math.max(0, Math.floor(Number(digits) || 0));
     } else if (key === "map" || key === "title") {
       questForgeDraft[key] = String(value);
     } else return false;
-    const caret = typeof field.selectionStart === "number" ? field.selectionStart : null;
-    renderQuestTerminal();
-    try {
-      const next = ui.questOfferList.querySelector(`[data-forge-field="${key}"]`);
-      if (next && field.tagName !== "SELECT") {
-        next.focus();
-        if (caret != null && typeof next.setSelectionRange === "function") next.setSelectionRange(caret, caret);
-      }
-    } catch {}
+    if (field.tagName === "SELECT" || event.type === "change") renderQuestTerminal();
+    else refreshQuestForgePreview();
     return true;
   }
 }
+// Pendant la frappe : seul l'aperçu (récompenses, coût) est reconstruit,
+// le champ garde son focus et son curseur. Le rendu complet a lieu au blur.
+function refreshQuestForgePreview() {
+  const current = ui.questOfferList?.querySelector(".qfPreview");
+  if (!current) { renderQuestTerminal(); return; }
+  const view = buildQuestTerminalView({
+    questState,
+    selectedId: selectedQuestOfferId,
+    hasAccess: hasQuestTerminalAccess(),
+    collectables: COLLECTABLE_DEFS,
+    npcTypes: NPC_TYPES,
+    npcLocations: questNpcLocations,
+    searchQuery: questTerminalSearch,
+    filter: questTerminalFilter,
+    expanded: questTerminalExpanded,
+    forgeDraft: questForgeDraft,
+    playerCredits: Math.max(0, Math.floor(Number(player.credits) || 0)),
+    now: Date.now(),
+  });
+  const tpl = document.createElement("template");
+  tpl.innerHTML = view.listHtml;
+  const next = tpl.content.querySelector(".qfPreview");
+  if (next) current.replaceWith(next);
+}
 ui.questOfferList?.addEventListener("change", event => {
-  if (event.target.tagName === "SELECT") handleQuestForgeField(event);
+  if (event.target.tagName === "SELECT" || event.target.matches?.('[data-forge-field="amount"]')) handleQuestForgeField(event);
 });
 ui.questOfferList?.addEventListener("input", event => {
   if (event.target.tagName !== "SELECT" && handleQuestForgeField(event)) return;
@@ -19917,7 +19937,7 @@ function handleQuestTerminalAction(event) {
 }
 
 // Fabricateur : un contrat à la fois, 24 h entre deux créations.
-// Coût = frais + mise (débités tout de suite, mise perdue si abandon).
+// Coût = frais de dossier, débités tout de suite.
 function createQuestFromForge() {
   if (!hasQuestTerminalAccess()) {
     showToast("Rapproche-toi du bâtiment de quêtes", 1.5);

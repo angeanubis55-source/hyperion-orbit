@@ -28217,6 +28217,39 @@ display: flex;
   color:#8fcddd;
   font:700 10px/1.35 ui-sans-serif,system-ui;
 }
+/* Explications en doré. */
+.qfField > small.qfHint,
+.qfHint {
+  margin:0;
+  color:#e8c46a;
+  font:700 10.5px/1.4 ui-sans-serif,system-ui;
+}
+.qtSide > .qfHint { margin-top:4px; }
+.qfIntro {
+  grid-column:1 / -1;
+  margin:0;
+  padding:9px 11px;
+  border:1px solid rgba(255,211,107,.3);
+  border-left:3px solid #ffd36b;
+  border-radius:8px;
+  color:#f1d48a;
+  background:rgba(255,211,107,.06);
+  font:700 11.5px/1.45 ui-sans-serif,system-ui;
+}
+.qfLabel { display:inline-flex; align-items:center; gap:6px; }
+.qfLabel i {
+  display:inline-grid;
+  place-items:center;
+  width:16px;
+  height:16px;
+  border-radius:50%;
+  color:#1a1405;
+  background:#ffd36b;
+  font:900 9.5px/1 ui-sans-serif,system-ui;
+  font-style:normal;
+}
+.qfBreak .qtReward b { color:#e8c46a; }
+.qfPreview .qfBreak .qtReward:first-child b { color:#e8c46a; }
 .qfField select,
 .qfField input {
   width:100%;

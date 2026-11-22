@@ -968,12 +968,11 @@ export const QUEST_DEFINITIONS = Object.freeze([...QUEST_CATALOG.map(withTitleRe
 
 // ---------------------------------------------------------------------------
 // Fabricateur de quêtes (onglet du terminal).
-// Le pilote compose UN contrat à la fois : cible, quantité, carte, contraintes
-// de défi et mise. Un nouveau contrat n'est possible que 24 h après la
+// Le pilote compose UN contrat à la fois : cible, quantité, carte et
+// contraintes de défi. Un nouveau contrat n'est possible que 24 h après la
 // création du précédent (abandon compris). Récompense = calcul standard des
-// quêtes kill × multiplicateur des contraintes (plafonné). La mise est
-// rendue × ce multiplicateur en cas de réussite, perdue en cas d'abandon ;
-// elle n'est jamais doublée par les boosters de quête.
+// quêtes kill × multiplicateur des contraintes (plafonné). Plus de mise :
+// seuls les contrats déjà engagés avec une mise la rendent encore.
 // ---------------------------------------------------------------------------
 export const FORGE_COOLDOWN_MS = 24 * 60 * 60 * 1000;
 export const FORGE_MAX_AMOUNT = 5000;
@@ -1046,9 +1045,14 @@ export function forgePreview(rawSpec) {
   mult = Math.min(FORGE_MAX_MULT, Math.round(mult * 100) / 100);
   const objective = { ...xKill("forge_kill", spec.type, spec.amount, spec.map || undefined), ...(cond ? { cond } : {}) };
   const raw = balancedKillReward([objective]);
+  // Au-delà du plafond du plancher par kill (~334 NPC), la récompense ne
+  // grimpait plus que du farm (presque rien sur les petits NPC) : le
+  // fabricateur continue de payer chaque kill en plus, à demi-tarif.
+  const capKills = Math.floor(QUEST_FLOOR_CAP.credits / QUEST_FLOOR_PER_KILL.credits);
+  const extraKills = Math.max(0, spec.amount - capKills);
   const base = {
-    credits: Math.max(0, raw.credits - QUEST_FLAT_BONUS.credits),
-    exp: Math.max(0, raw.exp - QUEST_FLAT_BONUS.exp),
+    credits: Math.max(0, raw.credits - QUEST_FLAT_BONUS.credits) + Math.floor(extraKills * QUEST_FLOOR_PER_KILL.credits / 2),
+    exp: Math.max(0, raw.exp - QUEST_FLAT_BONUS.exp) + Math.floor(extraKills * QUEST_FLOOR_PER_KILL.exp / 2),
     honor: Math.max(0, raw.honor - QUEST_FLAT_BONUS.honor),
   };
   // Mise plafonnée à 5x la récompense de base : parier gros exige un gros
@@ -1062,7 +1066,7 @@ export function forgePreview(rawSpec) {
     ...(spec.stake > 0 ? { forgeStake: Math.floor(spec.stake * mult) } : {}),
   };
   const fee = Math.max(FORGE_FEE_MIN, Math.floor(reward.credits * FORGE_FEE_RATE / 1000) * 1000);
-  return { spec, objective, reward, mult, stakeCap, fee, cost: fee + spec.stake, title: spec.title || forgeGeneratedTitle(spec.type, spec.titleIdx) };
+  return { spec, objective, reward, base, mult, stakeCap, fee, cost: fee + spec.stake, title: spec.title || forgeGeneratedTitle(spec.type, spec.titleIdx) };
 }
 
 function normalizeForgeState(raw) {
@@ -1125,7 +1129,7 @@ export function getForgeBlock(state, now = Date.now()) {
 }
 export function createForgeQuest(state, rawSpec, now = Date.now()) {
   if (getForgeBlock(state, now)) return null;
-  const preview = forgePreview(rawSpec);
+  const preview = forgePreview({ ...(rawSpec || {}), stake: 0 });
   if (!preview) return null;
   const seq = forgeInt(state.forge?.seq, 0, 1e9) + 1;
   state.forge = { seq, status: "active", spec: preview.spec, cooldownUntil: now + FORGE_COOLDOWN_MS };
