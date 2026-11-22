@@ -6,6 +6,7 @@
 // - Test manuel : DISCORD_UFONIT_WEBHOOK=<url> node SCRIPTS/DISCORD_ANNOUNCE.js --test
 //   (vérifie le webhook sans @everyone ; --test-ufonit poste la vraie annonce)
 import { HALLOWEEN_END, HALLOWEEN_START } from "../NPC/NPC_HALLOWEEN.js";
+import { HITAC_SNOW_END_AT, HITAC_SNOW_START_AT } from "../NPC/NPC_HITAC_SNOW.js";
 import { SUNDAY_END_MINUTES, SUNDAY_START_MINUTES, SUNDAY_WEEKDAY } from "../NPC/NPC_SUNDAY.js";
 import { GALAXY_EVENT_END_MINUTES, GALAXY_EVENT_START_MINUTES, GALAXY_EVENT_WEEKDAY, GALAXY_SATURDAY_WEEKDAY } from "../SRC/CORE/GALAXY_GATES.js";
 
@@ -83,6 +84,30 @@ Les Curcubitors ont disparu. Merci à tous d'avoir participé !
 
 :calendar: **Prochain rendez-vous : le ${pad(HALLOWEEN_START.day)}/${pad(HALLOWEEN_START.month + 1)} de l'année prochaine**`;
 
+export const HITAC_SNOW_MESSAGE = `@everyone
+# :snowflake: ÉVÉNEMENT HITAC ENNEIGÉE :snowflake:
+:clock3: **Du ${dayAt(HITAC_SNOW_START_AT)} au ${dayAt(HITAC_SNOW_END_AT)} (heure de Paris)**
+Le **Hitac Givré** et ses **6 Minions Givrés** rôdent dans le secteur 4 !
+
+:space_invader: **Le Hitac Givré**
+> Apparaît sur **4-1, 4-2 ou 4-3**, à une position au hasard
+> **Invulnérable** tant que ses Minions le protègent : détruisez-les d'abord !
+> JAMX Creed, Creed et roquettes de ralentissement à **1 000 px**
+> À sa mort, il réapparaît aussitôt sur une autre map
+
+:package: **Les Box Strike**
+> Chaque Hitac et chaque Minion détruit donne une **Box Strike personnelle** à tous ceux qui l'ont touché
+> **20 %** de chance d'obtenir un **module** (commun à **légendaire**)
+> Sinon : énergie Galaxy Gates, ICE-100, roquettes R-IC3 ou tickets module
+> Les box restent **24 h**, même après une déconnexion
+
+Bonne chasse à tous ! :rocket:`;
+
+export const HITAC_SNOW_END_MESSAGE = `@everyone
+# :snowflake: FIN DE L'ÉVÉNEMENT HITAC ENNEIGÉE :snowflake:
+Le Hitac Givré a quitté le secteur. Merci à tous d'avoir participé !
+> Les Box Strike encore au sol restent ramassables pendant leurs 24 h`;
+
 export const GG_SUNDAY_MESSAGE = `@everyone
 # :cyclone: ÉVÉNEMENT DIMANCHE GALAXY GATES :cyclone:
 :clock3: **Ce dimanche de ${hm(GALAXY_EVENT_START_MINUTES)} à ${hm(GALAXY_EVENT_END_MINUTES)} (heure de Paris)**
@@ -141,8 +166,9 @@ function weekly(weekday, minutes, offset = 0) {
 }
 // Créneau annuel (mois 0-11) décalé de `offset` minutes ; mois 1-12 en sortie.
 function yearly(at, offset = 0) {
-  const d = new Date(Date.UTC(2001, at.month, at.day, at.hour, at.minute + offset));
-  return { month: d.getUTCMonth() + 1, day: d.getUTCDate(), hour: d.getUTCHours(), minute: d.getUTCMinutes() };
+  const d = new Date(Date.UTC(at.year || 2001, at.month, at.day, at.hour, at.minute + offset));
+  return { ...(at.year ? { year: d.getUTCFullYear() } : {}),
+    month: d.getUTCMonth() + 1, day: d.getUTCDate(), hour: d.getUTCHours(), minute: d.getUTCMinutes() };
 }
 
 // Planification (heures de Paris), même webhook pour tous :
@@ -158,6 +184,9 @@ const SCHEDULES = [
   { key: "ufonit_end", ...weekly(SUNDAY_WEEKDAY, SUNDAY_END_MINUTES), message: () => UFONIT_END_MESSAGE, label: "fin UFONIT" },
   { key: "halloween_start", ...yearly(HALLOWEEN_START, -ANNOUNCE_LEAD_MINUTES), message: () => HALLOWEEN_MESSAGE, label: "Halloween" },
   { key: "halloween_end", ...yearly(HALLOWEEN_END), message: () => HALLOWEEN_END_MESSAGE, label: "fin Halloween" },
+  // Hitac enneigée (une seule fois, année fixée) : début à l'ouverture, fin à la fermeture.
+  // Début Hitac enneigée 2026 : annonce postée à la main le 22/11 à 23h15.
+  { key: "hitac_snow_end", ...yearly(HITAC_SNOW_END_AT), message: () => HITAC_SNOW_END_MESSAGE, label: "fin Hitac enneigée" },
 ];
 
 // Horaires d'envoi lisibles (journal de démarrage, tests).
@@ -174,6 +203,7 @@ export function dueAnnouncementKeys(now) {
 
 function slotDue(slot, now) {
   if (now.getHours() !== slot.hour || now.getMinutes() !== slot.minute) return false;
+  if (slot.year != null && now.getFullYear() !== slot.year) return false;
   if (slot.month != null && slot.day != null) {
     return now.getMonth() + 1 === slot.month && now.getDate() === slot.day;
   }

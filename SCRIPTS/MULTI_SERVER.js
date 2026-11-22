@@ -2676,8 +2676,16 @@ function pumpHitacSnowEvent() {
   for (const ev of res.events) {
     try {
       if (ev?.t === "spawn" && ev.map) console.info(`[hitac] spawn ${String(ev.map).toLowerCase()}`);
-      else if (ev?.t === "start") console.info("[hitac] Hitac enneigée : début");
-      else if (ev?.t === "end") console.info("[hitac] Hitac enneigée : fin");
+      else if (ev?.t === "start") {
+        console.info("[hitac] Hitac enneigée : début");
+        broadcastAll(JSON.stringify({ t: "chatMsg", from: "[EVENT]", by: "event", at: Date.now(),
+          text: "Le Hitac Givré et ses Minions rôdent sur 4-1 / 4-2 / 4-3 jusqu'au 29/11 23h59 ! Box Strike à la clé." }));
+      }
+      else if (ev?.t === "end") {
+        console.info("[hitac] Hitac enneigée : fin");
+        broadcastAll(JSON.stringify({ t: "chatMsg", from: "[EVENT]", by: "event", at: Date.now(),
+          text: "Le Hitac Givré a quitté le secteur. Merci à tous d'avoir participé !" }));
+      }
     } catch {}
   }
 }

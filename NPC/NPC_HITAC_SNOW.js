@@ -11,7 +11,7 @@ import { winterParisTime } from "./NPC_WINTER.js";
 
 // Test : true = event actif tout de suite, quelle que soit la date.
 // À repasser à false une fois le visuel validé.
-export const HITAC_SNOW_FORCE = true;
+export const HITAC_SNOW_FORCE = false;
 // Test : croix au centre du sprite + cadre du sprite sur le Hitac et les minions.
 export const HITAC_SNOW_DEBUG_CENTER = false;
 
@@ -19,6 +19,9 @@ export const HITAC_SNOW_EVENT = "hitac_snow";
 export const HITAC_SNOW_TYPE = "npc_Hitac_Frost";
 export const HITAC_SNOW_MINION_TYPE = "npc_Hitac_Minion_Frost";
 export const HITAC_SNOW_MAPS = Object.freeze(["4-1", "4-2", "4-3"]);
+// Mois 0-11 (comme HALLOWEEN_START) : lus aussi par les annonces Discord.
+export const HITAC_SNOW_START_AT = Object.freeze({ year: 2026, month: 10, day: 23, hour: 0, minute: 1 });
+export const HITAC_SNOW_END_AT = Object.freeze({ year: 2026, month: 10, day: 29, hour: 23, minute: 59 });
 export const HITAC_SNOW_START = winterParisTime(2026, 10, 23, 0, 1);
 export const HITAC_SNOW_END = winterParisTime(2026, 10, 29, 23, 59, 59);
 
