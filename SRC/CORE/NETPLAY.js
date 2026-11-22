@@ -605,6 +605,10 @@ export function drainNetStrikeInbox() {
   if (!netStrikeInbox.length) return [];
   return netStrikeInbox.splice(0, netStrikeInbox.length);
 }
+export function requestStrikeSync() {
+  if (!ws || ws.readyState !== 1) return false;
+  try { ws.send(JSON.stringify({ t: "strikeSyncReq" })); return true; } catch { return false; }
+}
 export function sendStrikeClaim(token) {
   if (!ws || ws.readyState !== 1) return false;
   const t = String(token || "").slice(0, 48);

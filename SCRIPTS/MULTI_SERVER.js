@@ -2926,6 +2926,18 @@ wss.on("connection", (ws) => {
       } catch {}
       return;
     }
+    // Box Strike : le client les redemande après chaque chargement de map
+    // (respawn sur la même map, switch interne) qui vide ses box locales.
+    if (msg.t === "strikeSyncReq") {
+      try {
+        if (!authed || state.instance === true) return;
+        const now = Date.now();
+        if (now - Number(state._strikeSyncAt || 0) < 1000) return;
+        state._strikeSyncAt = now;
+        sendStrikeSync(ws, String(id), String(mapId || "").toLowerCase());
+      } catch {}
+      return;
+    }
     if (msg.t === "boxSyncReq") {
       // Resync explicite (le client a perdu la sync initiale : refresh,
       // purge, paquet perdu). Throttle anti-spam par connexion.

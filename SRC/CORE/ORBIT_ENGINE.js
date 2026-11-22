@@ -177,7 +177,7 @@ import { createRadiationSystem } from "./RADIATION_SYSTEM.js";
 import { renderSpeedGuard } from "./SPEED_GUARD_UI.js";
 import { netServerMessageAge, netSimulationStep, netGameTimeMs, netSpeedGuardActive, queueGameLogForServer } from "./NETPLAY.js";
   import { pushNetplayLocal, sendNetplayBackgroundState, netplayLocalUpdateDue, getNetplayRemotes, tickNetplayRemotes, getNetNpcs, getNetDeaths, drainNetGone, getNetBoxes, drainNetBoxInbox, drainNetDmgInbox, drainNetHealInbox, drainNetShotEvents, drainNetSkillInbox, drainNetSkillDenied, clearNetShots, clearNetplayGameplay, sendShotEvent, sendSkillUse, sendHealAlly, sendPvpHit, sendPvpPetHit, getNetSelf, setNetInstanceMode, clearNetBoxes, claimNetBox, requestBoxSync, netBoxSyncAgeMs, netBoxSnapshotReady, netInInstance, sendNetHit, netMyId, netplayStatus, sendPing, netLatencyMs, netPongAge, netHelloAckAge, netServerVersion, netConnected, forceNetReconnect, ensureNetplayConnection, drainNetPvpKillInbox, drainNetPvpPetKillInbox, takeNetNpcReward, sendPvpLoot, sendPvpLootTake, drainNetPvpLootInbox,
-  drainNetPvpLootTakeInbox, drainNetAdminKickInbox, drainNetAdminBoomInbox, drainNetBannedInbox, drainNetCheatInbox, netDisconnect, drainNetSunInbox, drainNetSundayInbox, drainNetStrikeInbox, sendStrikeClaim, drainNetDecloakInbox, drainNetIemHitInbox, drainNetStationDmgInbox, getNetClanBases, getNetStationOwners,
+  drainNetPvpLootTakeInbox, drainNetAdminKickInbox, drainNetAdminBoomInbox, drainNetBannedInbox, drainNetCheatInbox, netDisconnect, drainNetSunInbox, drainNetSundayInbox, drainNetStrikeInbox, sendStrikeClaim, requestStrikeSync, drainNetDecloakInbox, drainNetIemHitInbox, drainNetStationDmgInbox, getNetClanBases, getNetStationOwners,
   getNetGroup, getNetLowRaid, takeNetLowRaidReward, getNetWinterGate, takeNetWinterGateReward, setNetNpcRewardHandler, getNetServerRestartAt, consumeNetServerRestart, getMyClanTag, getClanRelation, setMyClanTag, setNetDiplo, netIsAuthed, sendStationInstall, sendStationUninstall, sendStationBuild, sendStationReplace, sendStationCancelReplace, sendStationRepair, sendStationDeflectToggle, requestStationSync, sendStationHit, requestStarJumpArrival, requestHangarArrival, finishHangarArrival } from "./NETPLAY.js";
 import {
   createGatePortalState,
@@ -33531,8 +33531,16 @@ function updateBossEncounters() {
   }
 }
 
+// Box Strike : redemande au serveur après un chargement de map (respawn,
+// switch interne), une fois connecté et vivant.
+var strikeSyncPending = true;
 function processDeaths() {
   try { drainPendingPersonalSuns(); } catch {}
+  try {
+    if (strikeSyncPending && started && !player.dead && netConnected() && !netInInstance()) {
+      if (requestStrikeSync()) strikeSyncPending = false;
+    }
+  } catch {}
   // Box Strike (Hitac enneigée) : box perso au point de mort de chaque
   // Hitac / Minion Givré ; le gain (module ou rien) est tiré au ramassage.
   try {
@@ -37591,6 +37599,8 @@ try { ensureJpcTypes(); } catch {}
 escortShips.length = 0;
 pickups.length = 0;
 collectables.length = 0;
+// Box Strike vidées avec la map : redemandées au serveur (voir processDeaths).
+strikeSyncPending = true;
 collectablesWorldMap = null;
 npcSpatialFrame = -1;
 collectableSpatialLength = -1;
