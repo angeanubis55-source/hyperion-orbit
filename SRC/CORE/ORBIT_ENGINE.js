@@ -32917,17 +32917,14 @@ function updateBossEncounters() {
 
 function processDeaths() {
   try { drainPendingPersonalSuns(); } catch {}
-  // Box Strike (Hitac enneigée) : tirage personnel à la mort d'un Hitac /
-  // Minion Givré. Gagné : box perso au point de mort ; perdu : message.
+  // Box Strike (Hitac enneigée) : box perso au point de mort de chaque
+  // Hitac / Minion Givré ; le gain (module ou rien) est tiré au ramassage.
   try {
     let strikeEvs = null;
     try { strikeEvs = drainNetStrikeInbox(); } catch { strikeEvs = null; }
     for (const ev of strikeEvs || []) {
       if (!ev || typeof ev !== "object") continue;
-      if (ev.win !== true) {
-        try { showNotification("Vous n'avez rien reçu, à la prochaine fois. [ Box Strike ]", 3, "info"); } catch {}
-        continue;
-      }
+      if (ev.win !== true) continue;
       if (String(ev.map || "") !== String(currentMapId() || "").toLowerCase()) continue;
       try {
         spawnCollectableAt(ev.type, ev.x + rand(-70, 70), ev.y + rand(-70, 70), {
@@ -33005,7 +33002,9 @@ function processDeaths() {
             try { updateAmmoUI(); } catch {}
           } catch {}
           try { showNotification(`Vous avez reçu ${qty} munitions X4 ! [ UFONIT ]`, 4, "info", { goldTerms: ["X4"] }); } catch {}
-        } else if (ev.src !== "strike") {
+        } else if (ev.src === "strike") {
+          try { showNotification("Vous n'avez rien reçu, à la prochaine fois. [ Box Strike ]", 3, "info"); } catch {}
+        } else {
           try { showNotification("Vous n'avez rien reçu, à la prochaine fois. [ UFONIT ]", 3, "info"); } catch {}
         }
       }

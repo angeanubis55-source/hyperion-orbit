@@ -2360,9 +2360,9 @@ function npcRewardShares(killerId, mapId, death) {
 // sans file, budget de temps, minuterie ni plafond de kills.
 const announcedNpcSuns = new Map();
 // Box Strike (micro-event Hitac enneigée) : à chaque mort d'un Hitac /
-// Minion Givré, CHAQUE tapeur présent tente sa chance. Gagné : une Box Strike
-// personnelle apparaît chez lui (jeton serveur, réclamé au ramassage) ;
-// perdu : message « rien reçu ». Jeton valable 10 min.
+// Minion Givré, CHAQUE tapeur présent reçoit une Box Strike personnelle
+// (normale / medium / big, jeton serveur valable 10 min). C'est au
+// ramassage que la (très petite) chance est tirée : module ou rien.
 const STRIKE_BOX_DROP_CHANCE = Object.freeze({ npc_Hitac_Frost: 0.03, npc_Hitac_Minion_Frost: 0.01 });
 const STRIKE_BOX_WEIGHTS = Object.freeze([["Strike_Box", 70], ["Strike_Box_Medium", 25], ["Strike_Box_Big", 5]]);
 const STRIKE_BOX_TTL_MS = 10 * 60_000;
@@ -2393,14 +2393,10 @@ function rollStrikeDrops(mapId, death) {
   const x = Math.round(Number(death.x) || 0), y = Math.round(Number(death.y) || 0);
   for (const pid of hitters) {
     try { if (!room || !room.has(pid)) continue; } catch { continue; }
-    if (Math.random() < chance) {
-      const type = rollStrikeBoxType();
-      const token = `strk_${randomBytes(9).toString("hex")}`;
-      pendingStrikes.set(token, { pid, type, map, x, y, exp: Date.now() + STRIKE_BOX_TTL_MS });
-      sendToPeer(pid, { t: "strikeDrop", win: true, token, type, map, x, y });
-    } else {
-      sendToPeer(pid, { t: "strikeDrop", win: false, map });
-    }
+    const type = rollStrikeBoxType();
+    const token = `strk_${randomBytes(9).toString("hex")}`;
+    pendingStrikes.set(token, { pid, type, chance, map, x, y, exp: Date.now() + STRIKE_BOX_TTL_MS });
+    sendToPeer(pid, { t: "strikeDrop", win: true, token, type, map, x, y });
   }
 }
 setInterval(() => {
@@ -2838,8 +2834,10 @@ wss.on("connection", (ws) => {
         pendingStrikes.delete(token);
         let mod = null;
         try {
-          const res = grantSundayModule(String(accountId), rollStrikeBoxRarity(p.type));
-          if (res && res.ok && res.module) mod = res.module;
+          if (Math.random() < Number(p.chance || 0)) {
+            const res = grantSundayModule(String(accountId), rollStrikeBoxRarity(p.type));
+            if (res && res.ok && res.module) mod = res.module;
+          }
         } catch {}
         try {
           ws.send(JSON.stringify({ t: "sundayModule", src: "strike", map: p.map, uid: token, seq: 0,
