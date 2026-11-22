@@ -4063,10 +4063,10 @@ export default {
     "Box Strike": "Ящик Strike",
     "Box Strike Medium": "Средний ящик Strike",
     "Box Strike Big": "Большой ящик Strike",
-    "Vous n'avez rien reçu, à la prochaine fois. [ Box Strike ]": "Вы ничего не получили, повезёт в следующий раз. [ Ящик Strike ]",
+    "Vous n'avez rien reçu, à la prochaine fois.": "Вы ничего не получили, повезёт в следующий раз.",
   },
   patterns: {
-    "Vous avez reçu un module {0} ! [ Box Strike ]": "Вы получили модуль: {0}! [ Ящик Strike ]",
+    "Vous avez reçu un module {0} !": "Вы получили модуль: {0}!",
     "Prochain contrat possible dans {0} h {1} min": "Следующий контракт через {0} ч {1} мин",
     "Contrat fabriqué au terminal. Mise engagée : {0} crédits.": "Контракт, созданный в терминале. Ставка: {0} кредитов.",
     "Maximum {0} · rendue {1} si réussite, perdue si abandon": "Максимум {0} · при успехе возврат {1}, при отказе теряется",

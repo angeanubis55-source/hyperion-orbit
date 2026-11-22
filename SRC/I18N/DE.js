@@ -4063,10 +4063,10 @@ export default {
     "Box Strike": "Strike-Box",
     "Box Strike Medium": "Mittlere Strike-Box",
     "Box Strike Big": "Große Strike-Box",
-    "Vous n'avez rien reçu, à la prochaine fois. [ Box Strike ]": "Du hast nichts erhalten, viel Glück beim nächsten Mal. [ Strike-Box ]",
+    "Vous n'avez rien reçu, à la prochaine fois.": "Du hast nichts erhalten, viel Glück beim nächsten Mal.",
   },
   patterns: {
-    "Vous avez reçu un module {0} ! [ Box Strike ]": "Du hast ein {0}-Modul erhalten! [ Strike-Box ]",
+    "Vous avez reçu un module {0} !": "Du hast ein {0}-Modul erhalten!",
     "Prochain contrat possible dans {0} h {1} min": "Nächster Vertrag möglich in {0} Std. {1} Min.",
     "Contrat fabriqué au terminal. Mise engagée : {0} crédits.": "Am Terminal geschmiedeter Vertrag. Einsatz: {0} Credits.",
     "Maximum {0} · rendue {1} si réussite, perdue si abandon": "Maximal {0} · bei Erfolg {1} zurück, bei Abbruch verloren",

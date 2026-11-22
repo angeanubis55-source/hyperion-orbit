@@ -32968,7 +32968,7 @@ function processDeaths() {
           const rar = String(ev.rarity || ev.module?.rarity || "").toLowerCase();
           const rarLabel = rar === "legendary" ? "Légendaire" : rar === "epic" ? "Épique" : rar === "rare" ? "Rare" : "Commun";
           if (ev.src === "strike") {
-            try { showNotification(`Vous avez reçu un module ${rarLabel} ! [ Box Strike ]`, 5, "info", { goldTerms: [rarLabel] }); } catch {}
+            try { showNotification(`Vous avez reçu un module ${rarLabel} !`, 5, "info", { goldTerms: [rarLabel] }); } catch {}
           } else {
             try { showNotification(`Vous avez reçu un module ${rarLabel} ! [ UFONIT ]`, 4, "info", { goldTerms: [rarLabel] }); } catch {}
           }
@@ -33003,7 +33003,7 @@ function processDeaths() {
           } catch {}
           try { showNotification(`Vous avez reçu ${qty} munitions X4 ! [ UFONIT ]`, 4, "info", { goldTerms: ["X4"] }); } catch {}
         } else if (ev.src === "strike") {
-          try { showNotification("Vous n'avez rien reçu, à la prochaine fois. [ Box Strike ]", 3, "info"); } catch {}
+          try { showNotification("Vous n'avez rien reçu, à la prochaine fois.", 3, "info"); } catch {}
         } else {
           try { showNotification("Vous n'avez rien reçu, à la prochaine fois. [ UFONIT ]", 3, "info"); } catch {}
         }

@@ -4064,10 +4064,10 @@ export default {
     "Box Strike": "Strike Box",
     "Box Strike Medium": "Medium Strike Box",
     "Box Strike Big": "Big Strike Box",
-    "Vous n'avez rien reçu, à la prochaine fois. [ Box Strike ]": "You received nothing, better luck next time. [ Strike Box ]",
+    "Vous n'avez rien reçu, à la prochaine fois.": "You received nothing, better luck next time.",
   },
   patterns: {
-    "Vous avez reçu un module {0} ! [ Box Strike ]": "You received a {0} module! [ Strike Box ]",
+    "Vous avez reçu un module {0} !": "You received a {0} module!",
     "Prochain contrat possible dans {0} h {1} min": "Next contract available in {0} h {1} min",
     "Contrat fabriqué au terminal. Mise engagée : {0} crédits.": "Contract forged at the terminal. Stake: {0} credits.",
     "Maximum {0} · rendue {1} si réussite, perdue si abandon": "Maximum {0} · returned {1} on success, lost if abandoned",

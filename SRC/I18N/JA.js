@@ -4063,10 +4063,10 @@ export default {
     "Box Strike": "ストライクボックス",
     "Box Strike Medium": "ストライクボックス（中）",
     "Box Strike Big": "ストライクボックス（大）",
-    "Vous n'avez rien reçu, à la prochaine fois. [ Box Strike ]": "何も獲得できませんでした。また次回！［ストライクボックス］",
+    "Vous n'avez rien reçu, à la prochaine fois.": "何も獲得できませんでした。また次回！",
   },
   patterns: {
-    "Vous avez reçu un module {0} ! [ Box Strike ]": "{0}モジュールを獲得しました！［ストライクボックス］",
+    "Vous avez reçu un module {0} !": "{0}モジュールを獲得しました！",
     "Prochain contrat possible dans {0} h {1} min": "次の契約まで {0}時間{1}分",
     "Contrat fabriqué au terminal. Mise engagée : {0} crédits.": "ターミナルで作成した契約。賭け金：{0} クレジット。",
     "Maximum {0} · rendue {1} si réussite, perdue si abandon": "最大 {0} · 成功で{1}返却、放棄で没収",
