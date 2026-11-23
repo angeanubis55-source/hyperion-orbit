@@ -52,6 +52,7 @@ const fit =
       baseDamage += Number(it.module.damage || 0) * lvMult;
       laserMods.push({
         damage: Number(it.module.damage || 0) * lvMult,
+        mult: lvMult,
         vsMatch: it.module.vsMatch, vsMult: it.module.vsMult,
         overdrive: it.module.overdrive, critPct: it.module.critPct,
         unstable: it.module.unstable, mf: it.module.mf,

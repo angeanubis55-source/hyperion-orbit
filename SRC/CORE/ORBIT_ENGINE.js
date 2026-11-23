@@ -20601,7 +20601,8 @@ function getSpeedBreakdown() {
     const it = findCatalogItem(itemId);
     if (it?.module?.type !== "speed") continue;
 
-    const bonus = Number(it.module.bonusSpeed || 0);
+    // Niveau d'amélioration du générateur (+2 %/niv), comme le déplacement.
+    const bonus = Number(it.module.bonusSpeed || 0) * upgradeMult(itemId);
     genSpeed += bonus;
 
     speedItems.push({
@@ -32273,7 +32274,8 @@ function laserFitUnstableDelta(laserMods, droneLaserMods) {
   let delta = 0;
   for (const m of laserMods || []) {
     const d = Number(m?.damage || 0);
-    if (m?.unstable && d > 0) delta += (128 + Math.random() * 92) - d;
+    // Plage 128-220 x niveau d'amélioration du canon.
+    if (m?.unstable && d > 0) delta += (128 + Math.random() * 92) * (Number(m?.mult || 1) || 1) - d;
   }
   for (const m of droneLaserMods || []) {
     const d = Number(m?.damage || 0);
@@ -50117,7 +50119,7 @@ if (ui.spdTxt && shouldRefreshWindow("boxVitals")) {
 
   setHudAttr(ui.spdTxt, "title",
     `Vaisseau: ${spd.base}` +
-    ` | Générateurs: +${spd.genSpeed}` +
+    ` | Générateurs: +${Math.round(spd.genSpeed * 100) / 100}` +
     ` | Modules vitesse: +${spd.speedPct}%` +
     `${spd.designSpeedLabel || ""}` +
     (spd.leonovHome ? ` | Leonov home: x1.2` : ``) +
