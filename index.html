@@ -159,6 +159,7 @@
   <button id="btnHangarHub" class="gameDockIcon hangarDockIcon" data-window-id="hangarWindow" type="button" title="Hangars" aria-label="Hangars" data-docklabel="Hangars">Hangars</button>
   <button id="btnShopHub" class="gameDockIcon shopDockIcon" data-window-id="shopWindow" type="button" title="Boutique" aria-label="Boutique" data-docklabel="Boutique">Boutique</button>
   <button id="btnModuleHub" class="gameDockIcon" data-window-id="moduleWindow" type="button" title="Modules" aria-label="Modules" data-docklabel="Modules">Modules</button>
+  <button id="btnUpgradeHub" class="gameDockIcon" data-window-id="upgradeWindow" type="button" title="Amélioration" aria-label="Amélioration" data-docklabel="Amélioration">Amélioration</button>
   <button id="btnRefineryHub" class="gameDockIcon" data-window-id="refineryWindow" type="button" title="Raffinage" aria-label="Raffinage" data-docklabel="Raffinage">Raffinage</button>
   <button id="btnSkylabHub" class="gameDockIcon" data-window-id="skylabWindow" type="button" title="Skylab" aria-label="Skylab" data-docklabel="Skylab">Skylab</button>
   <button id="btnAuctionHub" class="gameDockIcon" data-window-id="auctionWindow" type="button" title="Enchères" aria-label="Enchères" data-docklabel="Enchères">Enchères</button>
@@ -1684,6 +1685,19 @@
         <div id="moduleWindowPreview" class="shopPreview"></div>
       </div>
     </section>
+  </div>
+</div>
+
+<div id="upgradeWindow" class="panel tdmPanel upgradePanel" style="display:none;">
+  <div class="tdmBody upgBody">
+    <nav class="tdmTabs" aria-label="Catégories d'amélioration">
+      <button class="tdmTab active" data-upg-filter="all" type="button">Tout</button>
+      <button class="tdmTab" data-upg-filter="laser" type="button">Canons lasers</button>
+      <button class="tdmTab" data-upg-filter="gen" type="button">Générateurs</button>
+      <div class="upgBalance"><span>Crédits disponibles</span><strong id="upgCredits">0</strong></div>
+    </nav>
+    <div id="upgList" class="tdmSections"></div>
+    <div id="upgDetail" class="upgDetail"></div>
   </div>
 </div>
 

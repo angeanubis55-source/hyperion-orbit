@@ -5,6 +5,7 @@ import { getDroneDesignBonuses, getDroneFitForHangar } from "../DRONE/DRONE_DESI
 import { getShipDesignBaseId, getShipPackById } from "./SHIP_PACKS.js";
 import { getShipEffectStats } from "./SHIP_BONUSES.js";
 import { FACTIONS, normalizeFactionId } from "../SRC/CORE/FACTIONS.js";
+import { upgradeMult } from "../SRC/DATA/UPGRADES.js";
 
 /**
  * calcule les bonus à partir d'un hangar + user.inventory.shipModules
@@ -46,9 +47,11 @@ const fit =
     if (!itemId) continue;
     const it = findCatalogItem(itemId);
     if (it?.module?.type === "laser" && !it.petOnly) {
-      baseDamage += Number(it.module.damage || 0);
+      // Amélioration : +2 % de dégâts par niveau de l'exemplaire.
+      const lvMult = upgradeMult(itemId);
+      baseDamage += Number(it.module.damage || 0) * lvMult;
       laserMods.push({
-        damage: Number(it.module.damage || 0),
+        damage: Number(it.module.damage || 0) * lvMult,
         vsMatch: it.module.vsMatch, vsMult: it.module.vsMult,
         overdrive: it.module.overdrive, critPct: it.module.critPct,
         unstable: it.module.unstable, mf: it.module.mf,
@@ -64,10 +67,10 @@ const fit =
     if (!itemId) continue;
     const it = findCatalogItem(itemId);
     if (it?.module?.type === "speed") {
-      baseSpeed += Number(it.module.bonusSpeed || 0);
+      baseSpeed += Number(it.module.bonusSpeed || 0) * upgradeMult(itemId);
     }
     if (it?.module?.type === "shield" && !it.petOnly) {
-      baseShield += Number(it.module.bonusShield || 0);
+      baseShield += Number(it.module.bonusShield || 0) * upgradeMult(itemId);
       bonusAbsorb = Math.max(bonusAbsorb, Number(it.module.absorbPct || 0));
     }
   }
@@ -86,7 +89,8 @@ const fit =
       const item = itemId ? findCatalogItem(itemId) : null;
       if (item?.petOnly) continue;
       if (item?.module?.type === "laser") {
-        const mult = levelMultiplier;
+        // Niveau du drone x niveau d'amélioration de l'exemplaire.
+        const mult = levelMultiplier * upgradeMult(itemId);
         baseDamage += Number(item.module.damage || 0) * mult;
         // Bonus par canon des drones (overdrive / vsMatch / instable) :
         // 1 laser = +bonus, 2 lasers = +2x bonus, 35 lasers = 35x bonus.
@@ -103,7 +107,7 @@ const fit =
           blMult: item.module.blMult, ggBonus: item.module.ggBonus,
         });
       }
-      if (item?.module?.type === "shield") baseShield += Number(item.module.bonusShield || 0) * levelMultiplier;
+      if (item?.module?.type === "shield") baseShield += Number(item.module.bonusShield || 0) * levelMultiplier * upgradeMult(itemId);
     }
   }
 

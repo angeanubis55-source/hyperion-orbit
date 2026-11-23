@@ -85,6 +85,7 @@ function slotHtml(b, entry) {
   const selected = selectedKeys.has(key) ? " selected" : "";
   return `<article class="inventorySlot rarity-${escapeHtml(rarity.id)}${selected}${isMod ? " is-module" : ""}" data-key="${escapeHtml(key)}" data-entry-id="${escapeHtml(String(entry.id ?? ""))}" data-quantity="${escapeHtml(String(entry.quantity ?? ""))}" data-rarity="${escapeHtml(rarity.id)}" data-kind="${escapeHtml(entry.kind)}" data-tooltip="${escapeHtml(tip)}"${richTip ? ` data-tooltip-html="${richTip}"` : ""} tabindex="0" aria-label="${escapeHtml(tip.replace(/\n/g, ". "))}">`
     + (isMod && b.inventoryModuleCardHtml ? b.inventoryModuleCardHtml(entry) : `<img src="${escapeHtml(b.inventoryItemIcon(entry))}" alt="" />`)
+    + (entry.upgradeLevel > 1 ? `<span class="upgLvlBadge${entry.upgradeLevel >= 16 ? " isMax" : ""}">LVL.${escapeHtml(String(entry.upgradeLevel))}</span>` : "")
     + `${stacked ? `<span class="inventorySlotQuantity">${escapeHtml(quantity)}</span>` : ""}`
     + `</article>`;
 }

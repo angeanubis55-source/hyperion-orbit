@@ -24,6 +24,7 @@ import { rollNpcAssemblyDirect } from "../NPC/NPC_ASSEMBLY.js";
 import { MODULE_ALL_STATS, MODULE_DAILY_ROLL_LIMIT, MODULE_DMG_STATS, MODULE_PCT_BAN, MODULE_ROLL_COST, MODULE_SELL_PRICES, MODULE_SPC_STATS, MODULE_STAT_FAMILY, MODULE_TIER_MALUS, getModuleRarity, getStatMaxPct } from "../SRC/DATA/MODULE_DROPS.js";
 import { generateShipModule } from "../SRC/DATA/MODULE_GEN.js";
 import { CATALOG, findCatalogItem } from "../SRC/CORE/CATALOG.js";
+import { applyItemUpgrade, parseUpgradeId } from "../SRC/DATA/UPGRADES.js";
 import { createDrone, DRONE_FORMATIONS, DRONE_TYPES, getIrisPrice, SPECIAL_DRONE_PRICE } from "../DRONE/DRONE_TYPES.js";
 import { getFaction, getFactionBaseSpawn } from "../SRC/CORE/FACTIONS.js";
 import { CARGO_CAPACITY, RESOURCE_TYPES, cargoAdd, getRefineryRecipe, ORE_SELL_PRICES, planAutoUpgradeCharges, REFINERY_RECIPES, refineOreOutput, upgradeOreCapacity } from "../SRC/DATA/RESOURCES.js";
@@ -4841,7 +4842,8 @@ export function handleAccountApi(req, res) {
       const me = authUser(req);
       if (!me) return json(res, 401, { ok: false, error: "Session invalide." });
       const item = findCatalogItem(String(body?.itemId || ""));
-      if (!item || item.shopHidden === true) return json(res, 400, { ok: false, error: "Article non vendu en boutique." });
+      // Exemplaire amélioré ("id@niveau") : jamais en vente directe.
+      if (!item || item.shopHidden === true || parseUpgradeId(body?.itemId).suffixed) return json(res, 400, { ok: false, error: "Article non vendu en boutique." });
       const rawQuantity = Number(body?.quantity ?? 1);
       if (!Number.isSafeInteger(rawQuantity) || rawQuantity < 1 || rawQuantity > 1_000_000) {
         return json(res, 400, { ok: false, error: "Quantite invalide." });
@@ -4864,6 +4866,39 @@ export function handleAccountApi(req, res) {
           .run(accountDataJson(data, row.id), revision, now, row.id);
         db.exec("COMMIT"); inTx = false;
         return json(res, 200, { ok: true, user: data, ...purchase });
+      } catch {
+        if (inTx) { try { db.exec("ROLLBACK"); } catch {} }
+        return json(res, 500, { ok: false, error: "Erreur serveur." });
+      }
+    });
+    return true;
+  }
+  if (pathname === "/api/upgrade" && req.method === "POST") {
+    if (rateLimited(`${ip}:/api/upgrade`, 180)) return json(res, 429, { ok: false, error: "Trop d'operations, reessaie dans un instant." });
+    readBody(req, res, (body) => {
+      const me = authUser(req);
+      if (!me) return json(res, 401, { ok: false, error: "Session invalide." });
+      const itemId = String(body?.itemId || "").slice(0, 128);
+      const quantity = Math.floor(Number(body?.quantity ?? 1));
+      if (!itemId || !Number.isSafeInteger(quantity) || quantity < 1 || quantity > 10_000) return json(res, 400, { ok: false, error: "Operation invalide." });
+      let inTx = false;
+      try {
+        db.exec("BEGIN IMMEDIATE"); inTx = true;
+        const row = db.prepare("SELECT * FROM users WHERE id = ?").get(me.id);
+        if (!row) throw new Error("Compte introuvable");
+        const data = rowToPublic(row);
+        const result = applyItemUpgrade(data, itemId, quantity, findCatalogItem, { equipped: body?.equipped === true });
+        if (result.error) {
+          db.exec("ROLLBACK"); inTx = false;
+          return json(res, 409, { ok: false, error: result.error, user: rowToPublic(row) });
+        }
+        const now = Date.now();
+        const revision = Math.max(Math.floor(Number(data.revision) || 0), Number(row.revision) || 0) + 1;
+        data.revision = revision; data.updatedAt = now;
+        db.prepare("UPDATE users SET data = ?, revision = ?, updated_at = ? WHERE id = ?")
+          .run(accountDataJson(data, row.id), revision, now, row.id);
+        db.exec("COMMIT"); inTx = false;
+        return json(res, 200, { ok: true, user: data, ...result });
       } catch {
         if (inTx) { try { db.exec("ROLLBACK"); } catch {} }
         return json(res, 500, { ok: false, error: "Erreur serveur." });

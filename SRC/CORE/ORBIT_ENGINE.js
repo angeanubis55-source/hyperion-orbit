@@ -130,6 +130,7 @@ import {
   galaxyGateEquipmentRewardMessage,
 } from "./GALAXY_GATES.js";
 import { computeHangarStats } from "../../SHIP/SHIP_HANGARS.js";
+import { upgradeMult } from "../DATA/UPGRADES.js";
 import { resizeShield } from "./EQUIPMENT_SYNC.js";
 import { CATALOG, findCatalogItem } from "./CATALOG.js";
 import { activeBoosterMults, boosterTimeLeftMs, formatBoosterCountdown, formatBoosterDuration, BOOSTERS, getBooster, normalizeBoostersState, GROUP_BOOSTER_IDS, GROUP_BOOSTER_BONUS } from "../DATA/BOOSTERS.js";
@@ -213,6 +214,7 @@ import { escapeHtml } from "../../UI/UI_DOM.js";
 import { wireWikiWindow } from "../../UI/UI_WIKI.js";
 import { initSkylabUI, tickSkylabProduction } from "../../UI/UI_SKYLAB.js";
 import { initAuctionUI, renderAuctionWindow, tickAuctionDisplay } from "../../UI/UI_AUCTION.js";
+import { initUpgradeUI } from "../../UI/UI_UPGRADE.js";
 import { initChatUI } from "../../UI/UI_CHAT.js";
 import { initGroupUI } from "../../UI/UI_GROUP.js";
 import { initFriendsUI } from "../../UI/UI_FRIENDS.js";
@@ -11500,6 +11502,7 @@ function registerHudWindows() {
   reg("skylabWindow", "Skylab", menuIcon("skylab_hover"), false);
   reg("auctionWindow", "Enchères", menuIcon("auction_hover"), false);
   reg("moduleWindow", "Modules", menuIcon("modules_hover"), false);
+  reg("upgradeWindow", "Amélioration", menuIcon("upgrade_hover"), false);
   reg("pilotWindow", "Arbre des compétences", menuIcon("skilltree_hover"), false);
   reg("boosterWindow", "Boosters", menuIcon("gauge_hover"), false);
   reg("botWindow", "BOT", menuIcon("bot_hover"), false);
@@ -11556,6 +11559,17 @@ function flushPilotProgressBeforeAction(action) {
   // échange ou reset relise le compte et en adopte le solde.
   if (started && account.user && account.dirty) saveProgressNow();
 }
+// Fenêtre Amélioration (lasers / boucliers / vitesse, lvl.1 -> lvl.16).
+initUpgradeUI({
+  getUser: () => account.user,
+  getCredits: () => player.credits,
+  beforeAction: () => flushPilotProgressBeforeAction("upgrade"),
+  afterAction: () => {
+    syncPlayerFromAccount();
+    window.dispatchEvent(new CustomEvent("orbit:profile-progress"));
+  },
+  notify: (text, dur = 2.5, type = "info") => showNotification(text, dur, type),
+});
 initPilotSkillsUI({
   getUser: () => account.user,
   getCredits: () => player.credits,
@@ -26776,7 +26790,7 @@ function petVolleyDamage(pet, user, target) {
   for (const itemId of fit?.lasers || []) {
     const item = itemId ? findCatalogItem(itemId) : null;
     if (item?.module?.type === "laser") {
-      const d = Number(item.module.damage || 0);
+      const d = Number(item.module.damage || 0) * upgradeMult(itemId);
       // Bonus conditionnels P.E.T (AAP-1 vs Mimesis...).
       let mult = 1;
       if (Array.isArray(item.module.vsMatch) && item.module.vsMatch.some((re) => re?.test?.(targetType))) mult = Number(item.module.vsMult || 1);

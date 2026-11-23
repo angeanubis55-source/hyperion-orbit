@@ -945,6 +945,39 @@ export async function apiShopBuyItem(itemId, quantity = 1, options = {}) {
   }
 }
 
+// Amélioration d'équipement (fenêtre Amélioration) : calcul et coût côté serveur.
+export async function apiItemUpgrade(itemId, quantity = 1, options = {}) {
+  if (!netActive()) return { ok: false, error: "Session serveur inactive." };
+  const busy = accountWriteNotice();
+  const operationKey = `upgrade:${String(itemId)}:${Math.max(1, Math.floor(Number(quantity) || 1))}`;
+  if (!beginAuthoritativeOperation(operationKey)) return busy;
+  const token = memToken;
+  const userId = memUser.id;
+  let writer = null;
+  try {
+    if (saveInFlight) await saveInFlight;
+    if (netHasPendingSave()) {
+      await flushNetUser();
+      if (retrySave) return busy;
+    }
+    if (!netActive() || memToken !== token || memUser.id !== userId) return { ok: false, ignored: true };
+    writer = authoritativeWriter ? await waitForAuthoritativeWriter() : createAuthoritativeWriter();
+    if (!netActive() || memToken !== token || memUser.id !== userId) return { ok: false, ignored: true };
+    clearTimeout(saveTimer); saveTimer = null;
+    const out = await api("/api/upgrade", { method: "POST", body: { itemId, quantity, equipped: options?.equipped === true }, token });
+    if (!netActive() || memToken !== token || memUser.id !== userId) return { ok: false, ignored: true };
+    if (out?.ok && out.user) {
+      adoptServerUser(out.user, { reason: "upgrade" });
+      try { window.dispatchEvent(new CustomEvent("orbit:user-updated", { detail: { userId: memUser.id, revision: memUser.revision, source: "upgrade" } })); } catch {}
+    }
+    return out || { ok: false, error: "Réponse serveur invalide." };
+  } catch {
+    return { ok: false, error: "Réseau." };
+  } finally {
+    finishAuthoritativeOperation(writer, operationKey);
+  }
+}
+
 export async function apiShopSell(kind, id, quantity = 1, options = {}) {
   if (!netActive()) return { ok: false, error: "Session serveur inactive." };
   const busy = accountWriteNotice();

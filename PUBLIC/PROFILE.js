@@ -34,6 +34,7 @@ import { measureGameTask } from "../SRC/CORE/PERFORMANCE_TIMINGS.js";
 import { apiAccountIdentity, apiAccountStatus, apiPseudoFree, flushNetUser, netActive, netList, noteServerModuleQuota } from "../SRC/CORE/ACCOUNT_NET.js";
 
 import { CATALOG, findCatalogItem } from "../SRC/CORE/CATALOG.js";
+import { UPGRADE_MAX_LEVEL, isUpgradableItem, itemUpgradeLevel, upgradeBonusPct } from "../SRC/DATA/UPGRADES.js";
 import { extrasCapacity, getShipExtraDef, shipExtraDuplicateError, PARTICLE_SLOTS } from "../SRC/DATA/SHIP_EXTRAS.js";
 import { getPetDesign } from "../PET/PET_DESIGNS.js";
 import { SHIP_PACKS, getShipFamilyId, getShipFamilyIds, getShipFamilyMembers, getShipFamilyName, getShipDesignBaseId, getShipDesignIds, getShipPackById } from "../SHIP/SHIP_PACKS.js";
@@ -1441,9 +1442,28 @@ function inventoryQuantityLabel(value) {
   return value === Infinity ? "∞" : formatNumber(value);
 }
 
+// Petite carte "LVL.n" sur les lasers / boucliers / générateurs de vitesse.
+function upgradeBadgeHtml(itemId, item = null) {
+  const it = item || findCatalogItem(itemId);
+  if (!isUpgradableItem(it)) return "";
+  const lv = itemUpgradeLevel(itemId);
+  // Équipement : pas de carte tant que l'objet n'a jamais été amélioré.
+  if (lv <= 1) return "";
+  // Niveau max : carte en vert (comme la fenêtre Amélioration).
+  return `<span class="upgLvlBadge${lv >= UPGRADE_MAX_LEVEL ? " isMax" : ""}">LVL.${lv}</span>`;
+}
+
+function upgradeTitleSuffix(itemId, item = null) {
+  const it = item || findCatalogItem(itemId);
+  if (!isUpgradableItem(it)) return "";
+  const lv = itemUpgradeLevel(itemId);
+  return ` · lvl.${lv}${lv > 1 ? ` (+${upgradeBonusPct(lv)} %)` : ""}`;
+}
+
 function catalogEntry(itemId) {
+  const baseId = findCatalogItem(itemId)?.id ?? itemId;
   for (const [category, entries] of Object.entries(CATALOG || {})) {
-    const item = Array.isArray(entries) ? entries.find((entry) => entry?.id === itemId) : null;
+    const item = Array.isArray(entries) ? entries.find((entry) => entry?.id === baseId) : null;
     if (item) return { item, category };
   }
   return null;
@@ -1482,10 +1502,11 @@ function buildInventorySections(u) {
       let detail = ({ lasers: "Laser", speedGen: "Générateur de vitesse", shieldGen: "Générateur de bouclier", generators: "Générateur", extras: "Extra", rockets: "Roquettes", launchers: "Lance-roquettes", petGears: "Gear P.E.T", petProtocols: "Protocole P.E.T" })[found.category] || "Équipement";
       if (found.item.petProtocol) detail = `Protocole P.E.T · +${Number(found.item.petProtocol.pct) || 0} % ${petProtocolStatLabel(found.item.petProtocol.key)}`;
       if (found.item.petGear) detail = `Gear P.E.T · ${found.item.desc || found.item.name}`;
+      const upgradeLevel = isUpgradableItem(found.item) ? itemUpgradeLevel(itemId) : 0;
       equipment.push({
         id: itemId, kind: "equipment", category: found.category, item: found.item,
         name: found.item.name || humanizeInventoryId(itemId), quantity,
-        detail,
+        detail, upgradeLevel,
       });
     } else if (!found) {
       resources.set(itemId, { id: itemId, kind: "resource", name: getResourceName(itemId), quantity, detail: "Ressource" });
@@ -1671,14 +1692,18 @@ function inventoryTooltipText(entry) {
     lines.push(`Quantité possédée : ${inventoryQuantityLabel(entry.quantity)}`);
   } else if (entry.kind === "equipment") {
     const module = entry.item?.module || {};
-    if (Number.isFinite(Number(module.damage))) lines.push(`Dégâts : ${formatNumber(module.damage)}`);
-    if (Number.isFinite(Number(module.bonusSpeed))) lines.push(`Vitesse : +${formatNumber(module.bonusSpeed)}`);
-    if (Number.isFinite(Number(module.bonusShield))) lines.push(`Bouclier : +${formatNumber(module.bonusShield)}`);
+    // Stats de l'exemplaire (niveau d'amélioration inclus).
+    const lvMult = 1 + upgradeBonusPct(entry.upgradeLevel || 1) / 100;
+    const statNum = (v) => formatNumber(Math.round(Number(v) * lvMult * 100) / 100);
+    if (Number.isFinite(Number(module.damage))) lines.push(`Dégâts : ${statNum(module.damage)}`);
+    if (Number.isFinite(Number(module.bonusSpeed))) lines.push(`Vitesse : +${statNum(module.bonusSpeed)}`);
+    if (Number.isFinite(Number(module.bonusShield))) lines.push(`Bouclier : +${statNum(module.bonusShield)}`);
     if (module.key) lines.push(`Effet : ${humanizeInventoryId(module.key)}`);
     if (entry.item?.desc && !entry.item?.petGear) lines.push(entry.item.desc);
     if (entry.item?.petProtocol) lines.push(`Bonus : +${Number(entry.item.petProtocol.pct) || 0} % ${petProtocolStatLabel(entry.item.petProtocol.key)} (équipé sur le P.E.T)`);
     if (entry.item?.petGear && entry.item.desc) lines.push(entry.item.desc);
     lines.push(entry.detail);
+    if (entry.upgradeLevel > 0) lines.push(`lvl.${entry.upgradeLevel}${entry.upgradeLevel > 1 ? ` (+${upgradeBonusPct(entry.upgradeLevel)} %)` : ""}`);
   } else if (entry.kind === "ship") {
     const pack = getShipPack(entry.id);
     if (pack) {
@@ -1855,6 +1880,7 @@ function renderInventoryMeasured(u) {
         : isAmmo ? htmlForDataAttr(inventoryAmmoTooltipHtml(entry)) : "";
       return `<article class="inventorySlot rarity-${escapeHtml(rarity.id)}${isMod ? " is-module" : ""}" data-rarity="${escapeHtml(rarity.id)}" data-kind="${escapeHtml(entry.kind)}" data-tooltip="${escapeHtml(inventoryTooltipText(entry))}"${richTip ? ` data-tooltip-html="${richTip}"` : ""} tabindex="0" aria-label="${escapeHtml(inventoryTooltipText(entry).replace(/\n/g, ". "))}">
         ${isMod ? inventoryModuleCardHtml(entry) : `<img src="${escapeHtml(inventoryItemIcon(entry))}" alt="" />`}
+        ${entry.upgradeLevel > 1 ? `<span class="upgLvlBadge${entry.upgradeLevel >= UPGRADE_MAX_LEVEL ? " isMax" : ""}">LVL.${entry.upgradeLevel}</span>` : ""}
         ${stacked ? `<span class="inventorySlotQuantity">${escapeHtml(quantity)}</span>` : ""}
       </article>`;
     }).join("") : `<div class="inventoryEmpty">${query ? "Aucun résultat." : "Aucun élément possédé."}</div>`;
@@ -4039,7 +4065,10 @@ function renderShopPreview(user, it, cat) {
   const owned = isShipLike ? (isDesign ? alreadyOwnsDesign(user, shipId) : alreadyOwnsShip(user, shipId)) : isDrone ? droneCount >= droneLimit : isPet ? petOwned : isHull ? hullOwned : Boolean(formationOwned);
   const isUnique = isShipLike || isDrone || isFormation || isPet;
 const counts = user?.inventory?.counts || {};
-const countOwned = Number(counts[it?.id] || 0);
+// Lasers / boucliers / vitesse : tous niveaux d'amélioration confondus.
+const countOwned = isUpgradableItem(it)
+  ? Object.entries(counts).reduce((sum, [key, n]) => sum + (findCatalogItem(key)?.id === it.id ? Math.max(0, Number(n) || 0) : 0), 0)
+  : Number(counts[it?.id] || 0);
 
 const ammoQty = getAmmoQtyForShopItem(user, it);
 const isAmmo = !!ammoQty;
@@ -5293,7 +5322,7 @@ function renderDroneEquipment(userOverride) {
     const slots=(fitForHangar?.equipment || []).map((id,slotIndex)=>{
       const item=id?findCatalogItem(id):null;
       const selKey=`${drone.id}#${slotIndex}`;
-      return `<button class="slotCell droneFitSlot${item ? ` filled rarity-${fitItemRarity(id, item).id}` : ""}${fitState.selectedDroneSlots.has(selKey)?" selected":""}" data-drone-id="${drone.id}" data-drone-slot="${slotIndex}" data-item-id="${item?.id ?? ""}" title="${escapeHtml(item?.name||"Dépose un laser ou un bouclier")}">${item?`<img src="${iconForItem(item)}" alt="">`:""}</button>`;
+      return `<button class="slotCell droneFitSlot${item ? ` filled rarity-${fitItemRarity(id, item).id}` : ""}${fitState.selectedDroneSlots.has(selKey)?" selected":""}" data-drone-id="${drone.id}" data-drone-slot="${slotIndex}" data-item-id="${item ? escapeHtml(String(id)) : ""}" title="${escapeHtml(item ? item.name + upgradeTitleSuffix(id, item) : "Dépose un laser ou un bouclier")}">${item?`<img src="${iconForItem(item)}" alt="">${upgradeBadgeHtml(id, item)}`:""}</button>`;
     }).join("");
     const xpText=drone.level>=DRONE_MAX_LEVEL?"Niveau maximal":`${formatNumber(Math.floor(drone.exp))} XP / ${formatNumber(next)} XP`;
     return `<article class="droneEquipmentCard"><img class="droneCardSprite" src="${getDroneShopStillPath(drone.type, selectedDesign)}" alt="${escapeHtml(selectedDesign?.name || type.name)}"><div class="droneCardIdentity"><strong>${type.name} ${index+1}</strong><span>Niveau ${drone.level} · ${xpText}</span></div><div class="droneCardDesignBonus">${escapeHtml(droneDesignBonusLabel(selectedDesign, designBonuses))}</div><div class="droneCardAbility"><label>DESIGN</label><button class="droneDesignSlot${selectedDesign ? ` filled rarity-${fitItemRarity(selectedDesign.itemId, findCatalogItem(selectedDesign.itemId)).id}` : ''}${fitState.selectedDroneDesigns.has(drone.id) ? ' selected' : ''}" data-drone-design="${drone.id}" title="${selectedDesign ? escapeHtml(selectedDesign.name + ' · Maj : sélectionner tous · Ctrl : sélection multiple · Ctrl + double-clic : retirer la sélection') : 'Dépose un design de drone'}">${selectedDesign ? `<img src="${selectedDesign.icon}" alt="${escapeHtml(selectedDesign.name)}">` : ''}</button></div><div class="droneCardSlots"><label>ÉQUIPEMENT</label><div>${slots}</div></div>${drone.level>=DRONE_MAX_LEVEL?"":`<div class="droneXp"><i style="width:${pct}%"></i></div>`}</article>`;
@@ -5568,7 +5597,7 @@ function renderPetEquipment(userOverride) {
     const buttons = arr.map((id, slotIndex) => {
       const item = id ? findCatalogItem(id) : null;
       const selKey = `pet#${group.key}#${slotIndex}`;
-      return `<button class="slotCell droneFitSlot petFitSlot${item ? ` filled rarity-${fitItemRarity(id, item).id}` : ""}${fitState.selectedPetSlots.has(selKey) ? " selected" : ""}" data-pet-group="${group.key}" data-pet-slot="${slotIndex}" data-item-id="${item?.id ?? ""}" title="${escapeHtml(item?.name || groupPlaceholder[group.key])}">${item ? `<img src="${iconForItem(item)}" alt="">` : ""}</button>`;
+      return `<button class="slotCell droneFitSlot petFitSlot${item ? ` filled rarity-${fitItemRarity(id, item).id}` : ""}${fitState.selectedPetSlots.has(selKey) ? " selected" : ""}" data-pet-group="${group.key}" data-pet-slot="${slotIndex}" data-item-id="${item ? escapeHtml(String(id)) : ""}" title="${escapeHtml(item ? item.name + upgradeTitleSuffix(id, item) : groupPlaceholder[group.key])}">${item ? `<img src="${iconForItem(item)}" alt="">${upgradeBadgeHtml(id, item)}` : ""}</button>`;
     }).join("");
     return `<div class="petGroup"><label>${group.label} · ${filled}/${size}</label><div class="petGroupSlots">${buttons}</div></div>`;
   }).join("");
@@ -6326,7 +6355,8 @@ function renderInventoryPalette() {
   filtered.sort(
     (a, b) =>
       (a.it?.module?.type || "").localeCompare(b.it?.module?.type || "") ||
-      (a.it?.name || a.itemId).localeCompare(b.it?.name || b.itemId)
+      (a.it?.name || a.itemId).localeCompare(b.it?.name || b.itemId) ||
+      itemUpgradeLevel(a.itemId) - itemUpgradeLevel(b.itemId)
   );
 
   // Les quantites/types ne changent pas pendant un simple placement dans le
@@ -6393,7 +6423,9 @@ function renderInventoryPalette() {
         cell.appendChild(badge);
       }
 
-      cell.title = `${e.it?.name || e.itemId} · ${rarity.name} (${i + 1}/${e.cnt})${isPetOnlyItem(e.it) ? " · P.E.T uniquement" : ""}${e.it?.noPet ? " · Non montable sur le P.E.T" : ""}`;
+      if (isUpgradableItem(e.it)) cell.insertAdjacentHTML("beforeend", upgradeBadgeHtml(e.itemId, e.it));
+
+      cell.title = `${e.it?.name || e.itemId}${upgradeTitleSuffix(e.itemId, e.it)} · ${rarity.name} (${i + 1}/${e.cnt})${isPetOnlyItem(e.it) ? " · P.E.T uniquement" : ""}${e.it?.noPet ? " · Non montable sur le P.E.T" : ""}`;
 
       cell.addEventListener("click", (event) => {
         if (cell.classList.contains("disabled")) {
@@ -6479,7 +6511,7 @@ function slotCell(label, filled, itemId = null) {
   if (filled && itemId) {
     const rarity = fitItemRarity(itemId);
     d.classList.add(`rarity-${rarity.id}`);
-    d.title = `${label || itemId} · ${rarity.name}`;
+    d.title = `${label || itemId}${upgradeTitleSuffix(itemId)} · ${rarity.name}`;
     const img = document.createElement("img");
     // Icône du catalogue en priorité (extras CPU : /ASSETS/ITEMS/EXTRAS/).
     img.src = iconForItem(findCatalogItem(itemId) || { id: itemId }, "modules");
@@ -6490,6 +6522,8 @@ function slotCell(label, filled, itemId = null) {
       img.src = FALLBACK_ICON;
     };
     d.appendChild(img);
+    const badge = upgradeBadgeHtml(itemId);
+    if (badge) d.insertAdjacentHTML("beforeend", badge);
   }
   return d;
 }

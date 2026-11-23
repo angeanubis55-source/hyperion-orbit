@@ -1,6 +1,7 @@
 import { getPetHullBonusHp, getPetLevel, getPetMaxHp, getPetShieldBonus, getPetStage } from "./PET_TYPES.js";
 import { findCatalogItem } from "../SRC/CORE/CATALOG.js";
 import { getShipDesignBaseId } from "../SHIP/SHIP_PACKS.js";
+import { upgradeMult } from "../SRC/DATA/UPGRADES.js";
 
 // Même plafond pour la réparation, la persistance et les pools serveur.
 // Les bonus viennent du fit du hangar actif, jamais des maxima déclarés en réseau.
@@ -19,7 +20,7 @@ export function getPetVitalLimits(pet, user, selectedHangar = null) {
   }, 0));
   const shields = (fit.generators || []).reduce((sum, id) => {
     const mod = findCatalogItem(id)?.module;
-    return sum + (mod?.type === "shield" ? Number(mod.bonusShield) || 0 : 0);
+    return sum + (mod?.type === "shield" ? (Number(mod.bonusShield) || 0) * upgradeMult(id) : 0);
   }, 0);
   return {
     hpMax: Math.max(1, Math.floor((getPetMaxHp(level) + getPetHullBonusHp(pet)) * (1 + protocol("hp") / 100) * heat)),

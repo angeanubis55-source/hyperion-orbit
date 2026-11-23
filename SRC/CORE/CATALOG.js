@@ -8,6 +8,7 @@ import { PET_DESIGNS, PET_DESIGN_PRICE } from "../../PET/PET_DESIGNS.js";
 import { ammoDescription } from "../../COMBAT/AMMO_TYPES.js";
 import { ROCKET_TYPES, rocketDescription, rocketShopIcon } from "../../COMBAT/ROCKET_TYPES.js";
 import { BOOSTERS } from "../DATA/BOOSTERS.js";
+import { isUpgradableItem, parseUpgradeId } from "../DATA/UPGRADES.js";
 import { designHasOwnAbility, designHasOwnEffect, getShipEffectStats } from "../../SHIP/SHIP_BONUSES.js";
 
 /**
@@ -424,6 +425,13 @@ for (const category of Object.values(CATALOG)) {
 
 export function findCatalogItem(itemId) {
   if (itemId == null) return null;
-  return catalogItemsById.get(itemId) || null;
+  const direct = catalogItemsById.get(itemId);
+  if (direct) return direct;
+  // Exemplaire amélioré ("laser_lf4@5") : même objet que le niveau 1.
+  // Seuls lasers / boucliers / vitesse portent un niveau.
+  const parsed = parseUpgradeId(itemId);
+  if (!parsed.suffixed) return null;
+  const base = catalogItemsById.get(parsed.base);
+  return isUpgradableItem(base) ? base : null;
 }
 

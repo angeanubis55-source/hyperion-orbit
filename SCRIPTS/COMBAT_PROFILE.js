@@ -7,6 +7,7 @@ import { activeBoosterMults, GROUP_BOOSTER_BONUS } from "../SRC/DATA/BOOSTERS.js
 import { pilotSkillMults } from "../SRC/DATA/PILOT_SKILLS.js";
 import { UPGRADE_ORE_BONUS } from "../SRC/DATA/RESOURCES.js";
 import { findCatalogItem } from "../SRC/CORE/CATALOG.js";
+import { upgradeMult } from "../SRC/DATA/UPGRADES.js";
 import { getPetVitalLimits } from "../PET/PET_VITALS.js";
 import { ROCKET_TYPES } from "../COMBAT/ROCKET_TYPES.js";
 import { abilityShipKeyFor, getAbilitiesForShip, HYPERION_QA_DAMAGE, HYPERION_QA_BURST_SEC, HYPERION_QA_SALVOS } from "../SHIP/SHIP_ABILITIES.js";
@@ -79,7 +80,7 @@ export function combatProfile(user, mapId, configNo = null, groupBoosters = {}) 
   const pet = user.pet;
   const petFit = pet?.fitsByHangar?.[hangar.id]?.[cfg] || pet?.fits?.[cfg] || pet?.fit || {};
   const petLimits = getPetVitalLimits(pet, user, hangar);
-  const petDamage = (petFit.lasers || []).reduce((sum, id) => sum + (Number(findCatalogItem(id)?.module?.damage) || 0), 0);
+  const petDamage = (petFit.lasers || []).reduce((sum, id) => sum + (Number(findCatalogItem(id)?.module?.damage) || 0) * upgradeMult(id), 0);
   const fit = hangar.fits?.[cfg] || hangar.fit || {};
   const abilities = getAbilitiesForShip(abilityShipKeyFor(ship.id));
   return {

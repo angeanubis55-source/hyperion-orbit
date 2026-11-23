@@ -1,11 +1,12 @@
 // SRC/CORE/ACCOUNT.js
 "use strict";
 
-import { apiGalaxyGateOperation, apiModuleOperation, apiProduction, apiRefineChain, apiShopBuyItem, apiShopSell, apiSkylabOperation, bootNetFromCache, flushNetUser, netActive, netCurrent, netHasPendingSave, netList, netModuleQuota, netSetCurrent, netStore, noteNetConsumption, noteNetCreditGain, noteNetEquipmentSold, noteNetGateEnergy, noteNetPurchase, noteNetResourceGain, noteNetSelection, noteNetSkylabMoved, noteNetUpgradeCharge } from "./ACCOUNT_NET.js";
+import { apiItemUpgrade, apiGalaxyGateOperation, apiModuleOperation, apiProduction, apiRefineChain, apiShopBuyItem, apiShopSell, apiSkylabOperation, bootNetFromCache, flushNetUser, netActive, netCurrent, netHasPendingSave, netList, netModuleQuota, netSetCurrent, netStore, noteNetConsumption, noteNetCreditGain, noteNetEquipmentSold, noteNetGateEnergy, noteNetPurchase, noteNetResourceGain, noteNetSelection, noteNetSkylabMoved, noteNetUpgradeCharge } from "./ACCOUNT_NET.js";
 // Multi : session serveur restauree au chargement (token + cache local),
 // puis refresh async via /api/me (revision canonique).
 try { bootNetFromCache(); } catch {}
 import { findCatalogItem } from "./CATALOG.js";
+import { applyItemUpgrade, parseUpgradeId, upgradeMult } from "../DATA/UPGRADES.js";
 import { SHIP_PACKS, getShipDesignBaseId, getShipPackById, getShipFamilyId } from "../../SHIP/SHIP_PACKS.js";
 import { normalizeQuestState, QUEST_DEFINITIONS } from "../../QUEST/QUEST_TYPES.js";
 import { getBattlepassObjective, isBattlepassComplete, normalizeBattlepassState, mergeBattlepassProgress } from "../../QUEST/BATTLEPASS.js";
@@ -1246,10 +1247,11 @@ function computeCombatFromFit(fit) {
     if (it.petOnly) return;
 
     const t = it.module.type;
-    if (t === "laser") dmg += Number(it.module.damage || 0);
-    if (t === "speed") bonusSpeed += Number(it.module.bonusSpeed || 0);
+    const lvMult = upgradeMult(itemId);
+    if (t === "laser") dmg += Number(it.module.damage || 0) * lvMult;
+    if (t === "speed") bonusSpeed += Number(it.module.bonusSpeed || 0) * lvMult;
     if (t === "shield") {
-      bonusShield += Number(it.module.bonusShield || 0);
+      bonusShield += Number(it.module.bonusShield || 0) * lvMult;
       bonusAbsorb = Math.max(bonusAbsorb, Number(it.module.absorbPct || 0));
     }
   };
@@ -1849,6 +1851,7 @@ export function buyItem(itemId, requestedQuantity = 1, options = {}) {
 
   const item = findCatalogItem(itemId);
   if (!item) return { ok: false, error: "Item introuvable." };
+  if (parseUpgradeId(itemId).suffixed) return { ok: false, error: "Article non vendu en boutique." };
   // Articles retirés de la vente : leurs récompenses restent disponibles.
   // Les gains gratuits (quêtes, enchères, Galaxy Gates) restent possibles.
   if (item.shopHidden === true && options.free !== true) {
@@ -3234,6 +3237,20 @@ export async function buyShopItem(itemId, requestedQuantity = 1, options = {}) {
     return apiShopBuyItem(itemId, requestedQuantity, options);
   }
   return buyItem(itemId, requestedQuantity, options);
+}
+
+// Fenêtre Amélioration : +1 niveau sur `quantity` exemplaires libres.
+// En multi le serveur fait foi ; hors ligne, même règle sur le compte local.
+export async function upgradeEquipmentItem(itemId, quantity = 1, options = {}) {
+  if (netActive()) return apiItemUpgrade(String(itemId || ""), quantity, options);
+  const u = getCurrentUserForMutation();
+  if (!u) return { ok: false, error: "Non connecté." };
+  const result = applyItemUpgrade(u, String(itemId || ""), quantity, findCatalogItem, options);
+  if (result.error) return { ok: false, error: result.error };
+  ensureUserShape(u);
+  saveUser(u);
+  try { window.dispatchEvent(new CustomEvent("orbit:user-updated", { detail: { userId: u.id, revision: u.revision, source: "upgrade" } })); } catch {}
+  return { ...result, ok: true, user: u };
 }
 
 export function sellItem(itemId, qty = 1, options = {}) {

@@ -22342,7 +22342,7 @@ body #hangarOverlay .hangarListItem .tileActions button:disabled {
   font-size:10px !important;
   font-weight:700 !important;
 }
-#tdmWindow .tdmSections {
+#tdmWindow .tdmSections, #upgradeWindow .tdmSections {
   min-height:120px !important;
   max-height:min(560px, calc(100vh - 200px)) !important;
   padding:4px !important;
@@ -22357,7 +22357,7 @@ body #hangarOverlay .hangarListItem .tileActions button:disabled {
   border-radius:0 !important;
   background:transparent !important;
 }
-#tdmWindow .inventorySlot {
+#tdmWindow .inventorySlot, #upgradeWindow .inventorySlot {
   position:relative !important;
   width:72px !important;
   height:72px !important;
@@ -22371,23 +22371,23 @@ body #hangarOverlay .hangarListItem .tileActions button:disabled {
   background:radial-gradient(circle at 50% 42%, rgba(0,217,255,.12), rgba(2,12,20,.84) 72%) !important;
   box-shadow:inset 0 0 0 1px rgba(255,255,255,.025) !important;
 }
-#tdmWindow .inventorySlot:hover, #tdmWindow .inventorySlot:focus-visible {
+#tdmWindow .inventorySlot:hover, #tdmWindow .inventorySlot:focus-visible, #upgradeWindow .inventorySlot:hover, #upgradeWindow .inventorySlot:focus-visible {
   border-color:rgba(124,240,255,.65) !important;
   background:radial-gradient(circle at 50% 42%, rgba(0,217,255,.22), rgba(2,12,20,.84) 74%) !important;
   box-shadow:0 0 14px rgba(0,217,255,.13), inset 0 0 0 1px rgba(255,255,255,.05) !important;
 }
-#tdmWindow .inventorySlot img {
+#tdmWindow .inventorySlot img, #upgradeWindow .inventorySlot img {
   width:84% !important;
   height:84% !important;
   object-fit:contain !important;
   pointer-events:none !important;
 }
 #tdmWindow .inventorySlot[data-kind="ship"] img,
-#tdmWindow .inventorySlot[data-kind="shipDesign"] img {
+#tdmWindow .inventorySlot[data-kind="shipDesign"] img, #upgradeWindow .inventorySlot[data-kind="ship"] img, #upgradeWindow .inventorySlot[data-kind="shipDesign"] img {
   width:96% !important;
   height:96% !important;
 }
-#tdmWindow .inventorySlotQuantity {
+#tdmWindow .inventorySlotQuantity, #upgradeWindow .inventorySlotQuantity {
   position:absolute !important;
   right:5px !important;
   bottom:4px !important;
@@ -22401,30 +22401,30 @@ body #hangarOverlay .hangarListItem .tileActions button:disabled {
   text-shadow:0 1px 3px #000, 0 0 5px #000 !important;
   white-space:nowrap !important;
 }
-#tdmWindow .inventorySlot {
+#tdmWindow .inventorySlot, #upgradeWindow .inventorySlot {
   cursor:pointer !important;
 }
-#tdmWindow .inventorySlot.rarity-common {
+#tdmWindow .inventorySlot.rarity-common, #upgradeWindow .inventorySlot.rarity-common {
   border-color:#a9bcc7 !important;
   background:linear-gradient(135deg,rgba(169,188,199,.38),rgba(169,188,199,.15)) !important;
 }
-#tdmWindow .inventorySlot.rarity-rare {
+#tdmWindow .inventorySlot.rarity-rare, #upgradeWindow .inventorySlot.rarity-rare {
   border-color:#45bfff !important;
   background:linear-gradient(135deg,rgba(69,191,255,.38),rgba(69,191,255,.15)) !important;
 }
-#tdmWindow .inventorySlot.rarity-epic {
+#tdmWindow .inventorySlot.rarity-epic, #upgradeWindow .inventorySlot.rarity-epic {
   border-color:#ba72ff !important;
   background:linear-gradient(135deg,rgba(186,114,255,.38),rgba(186,114,255,.15)) !important;
 }
-#tdmWindow .inventorySlot.rarity-legendary {
+#tdmWindow .inventorySlot.rarity-legendary, #upgradeWindow .inventorySlot.rarity-legendary {
   border-color:#ffd15c !important;
   background:linear-gradient(135deg,rgba(255,209,92,.38),rgba(255,209,92,.15)) !important;
 }
-#tdmWindow .inventorySlot.selected {
+#tdmWindow .inventorySlot.selected, #upgradeWindow .inventorySlot.selected {
   border-color:#69e9ff !important;
   box-shadow:0 0 14px rgba(0,217,255,.25), inset 0 0 0 1px rgba(105,233,255,.35) !important;
 }
-#tdmWindow .inventorySlot.selected::after {
+#tdmWindow .inventorySlot.selected::after, #upgradeWindow .inventorySlot.selected::after {
   content:"" !important;
   position:absolute !important;
   top:4px !important;
@@ -22435,7 +22435,7 @@ body #hangarOverlay .hangarListItem .tileActions button:disabled {
   background:#69e9ff !important;
   box-shadow:0 0 7px #69e9ff !important;
 }
-#tdmWindow .inventorySlot.is-module {
+#tdmWindow .inventorySlot.is-module, #upgradeWindow .inventorySlot.is-module {
   width:232px !important;
   height:72px !important;
   grid-column:span 3 !important;
@@ -22445,14 +22445,14 @@ body #hangarOverlay .hangarListItem .tileActions button:disabled {
   padding:4px 6px !important;
   text-align:left !important;
 }
-#tdmWindow .inventorySlot.is-module img.invModIcon {
+#tdmWindow .inventorySlot.is-module img.invModIcon, #upgradeWindow .inventorySlot.is-module img.invModIcon {
   width:40px !important;
   height:40px !important;
   flex:0 0 auto !important;
   object-fit:contain !important;
   pointer-events:none !important;
 }
-#tdmWindow .inventorySlot.is-module img.invModShip {
+#tdmWindow .inventorySlot.is-module img.invModShip, #upgradeWindow .inventorySlot.is-module img.invModShip {
   width:88px !important;
   height:60px !important;
   flex:0 0 auto !important;
@@ -22460,7 +22460,7 @@ body #hangarOverlay .hangarListItem .tileActions button:disabled {
   pointer-events:none !important;
   transform:scale(1.18) !important;
 }
-#tdmWindow .invModStats {
+#tdmWindow .invModStats, #upgradeWindow .invModStats {
   display:flex !important;
   flex-direction:column !important;
   justify-content:center !important;
@@ -22472,18 +22472,18 @@ body #hangarOverlay .hangarListItem .tileActions button:disabled {
   font-weight:800 !important;
   line-height:1.3 !important;
 }
-#tdmWindow .invModStats > span {
+#tdmWindow .invModStats > span, #upgradeWindow .invModStats > span {
   white-space:nowrap !important;
   overflow:hidden !important;
   text-overflow:ellipsis !important;
 }
-#tdmWindow .invModLine {
+#tdmWindow .invModLine, #upgradeWindow .invModLine {
   color:rgba(221,241,250,.78) !important;
 }
-#tdmWindow .invModPos {
+#tdmWindow .invModPos, #upgradeWindow .invModPos {
   color:#00ff88 !important;
 }
-#tdmWindow .invModNeg {
+#tdmWindow .invModNeg, #upgradeWindow .invModNeg {
   color:#ff5566 !important;
 }
 .tdmTabsSep {
@@ -22492,7 +22492,7 @@ body #hangarOverlay .hangarListItem .tileActions button:disabled {
   margin:2px 4px !important;
   background:rgba(124,240,255,.25) !important;
 }
-#tdmWindow {
+#tdmWindow, #upgradeWindow {
   position:relative;
 }
 .tdmSellDialog {
@@ -22563,14 +22563,14 @@ body #hangarOverlay .hangarListItem .tileActions button:disabled {
   justify-content:flex-end !important;
   gap:8px !important;
 }
-#tdmWindow .inventoryEmpty {
+#tdmWindow .inventoryEmpty, #upgradeWindow .inventoryEmpty {
   grid-column:1 / -1 !important;
   padding:18px 12px !important;
   color:rgba(177,207,224,.48) !important;
   font-size:10px !important;
   text-align:center !important;
 }
-#tdmWindow .tdmTooltip {
+#tdmWindow .tdmTooltip, #upgradeWindow .tdmTooltip {
   position:fixed !important;
   z-index:999999 !important;
   width:max-content !important;
@@ -22589,43 +22589,43 @@ body #hangarOverlay .hangarListItem .tileActions button:disabled {
   white-space:pre-line !important;
   transition:opacity .12s ease !important;
 }
-#tdmWindow .tdmTooltip.visible {
+#tdmWindow .tdmTooltip.visible, #upgradeWindow .tdmTooltip.visible {
   opacity:1 !important;
   visibility:visible !important;
 }
-#tdmWindow .tdmTooltip .ttModName {
+#tdmWindow .tdmTooltip .ttModName, #upgradeWindow .tdmTooltip .ttModName {
   color:#eaffff !important;
   font-size:14px !important;
   font-weight:900 !important;
   margin-bottom:2px !important;
 }
-#tdmWindow .tdmTooltip .ttModLine {
+#tdmWindow .tdmTooltip .ttModLine, #upgradeWindow .tdmTooltip .ttModLine {
   color:rgba(221,241,250,.78) !important;
   font-size:12px !important;
   font-weight:700 !important;
 }
-#tdmWindow .tdmTooltip .ttModPos {
+#tdmWindow .tdmTooltip .ttModPos, #upgradeWindow .tdmTooltip .ttModPos {
   color:#00ff88 !important;
   font-size:12px !important;
   font-weight:800 !important;
 }
-#tdmWindow .tdmTooltip .ttModNeg {
+#tdmWindow .tdmTooltip .ttModNeg, #upgradeWindow .tdmTooltip .ttModNeg {
   color:#ff5566 !important;
   font-size:12px !important;
   font-weight:800 !important;
 }
-#tdmWindow .tdmTooltip .ttAmmoDesc {
+#tdmWindow .tdmTooltip .ttAmmoDesc, #upgradeWindow .tdmTooltip .ttAmmoDesc {
   color:#f4fbff !important;
   font-size:12px !important;
   font-weight:600 !important;
 }
-#tdmWindow .tdmTooltip .ttAmmoName {
+#tdmWindow .tdmTooltip .ttAmmoName, #upgradeWindow .tdmTooltip .ttAmmoName {
   color:#eaffff !important;
   font-size:14px !important;
   font-weight:900 !important;
   text-align:center !important;
 }
-#tdmWindow .tdmTooltip .ttAmmoQty {
+#tdmWindow .tdmTooltip .ttAmmoQty, #upgradeWindow .tdmTooltip .ttAmmoQty {
   color:#ffd56a !important;
   font-size:12px !important;
   font-weight:800 !important;
@@ -28416,3 +28416,303 @@ display: flex;
 }
 /* Samedi Kronos : ligne de récompense en doré. */
 #ggRewards .ggKronosEvent { color:#ffd36b; }
+
+/* ===== Amélioration : icône du dock ===== */
+#gameWindowDock #btnUpgradeHub.gameDockIcon {
+  width:46px !important; min-width:46px !important; max-width:46px !important;
+  height:44px !important; min-height:44px !important; max-height:44px !important;
+  flex:0 0 46px !important; padding:0 !important; border-radius:8px !important;
+  font-size:0 !important; color:transparent !important;
+  border:1px solid rgba(124,240,255,.38) !important;
+  background:url("ASSETS/UI/MENU/upgrade.png") center / 34px 34px no-repeat, linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34)) !important;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.03) !important;
+}
+#gameWindowDock #btnUpgradeHub.gameDockIcon:hover:not(.dockIconActive):not(.active):not(:disabled) {
+  border-color:rgba(124,240,255,.62) !important;
+  background:url("ASSETS/UI/MENU/upgrade_hover.png") center / 34px no-repeat, rgba(0,140,185,.3) !important;
+  box-shadow:0 0 16px rgba(0,217,255,.12) !important;
+}
+#gameWindowDock #btnUpgradeHub.gameDockIcon.dockIconActive,
+#gameWindowDock #btnUpgradeHub.gameDockIcon.active {
+  border-color:rgba(255,209,102,.9) !important;
+  background:url("ASSETS/UI/MENU/upgrade_select.png") center / 34px no-repeat, rgba(0,140,185,.3) !important;
+  box-shadow:0 0 16px rgba(255,209,102,.35) !important;
+}
+#gameWindowDock #btnUpgradeHub.gameDockIcon span,
+#gameWindowDock #btnUpgradeHub.gameDockIcon img {
+  display:none !important;
+}
+
+/* ===== Petite carte LVL.n (hangar, drones, P.E.T, inventaire, Amélioration) ===== */
+.slotCell, .invCell, .inventorySlot, .upgCell, .upgItemIcon {
+  position:relative;
+}
+.upgLvlBadge {
+  position:absolute !important;
+  left:2px !important;
+  top:2px !important;
+  z-index:3 !important;
+  padding:0 3px !important;
+  border:1px solid rgba(255,209,102,.7) !important;
+  border-radius:3px !important;
+  color:#ffd166 !important;
+  background:rgba(20,14,2,.88) !important;
+  font-size:7px !important;
+  font-weight:900 !important;
+  letter-spacing:.5px !important;
+  line-height:1.45 !important;
+  white-space:nowrap !important;
+  pointer-events:none !important;
+  text-shadow:none !important;
+}
+#tdmWindow .inventorySlot .upgLvlBadge,
+#profileOverlay .inventorySlot .upgLvlBadge, #upgradeWindow .inventorySlot .upgLvlBadge {
+  font-size:8px !important;
+  left:4px !important;
+  top:4px !important;
+}
+
+/* ===== Fenêtre Amélioration (cases = styles Inventaire, voir #tdmWindow) ===== */
+.upgLvlBadge.isMax {
+  color:#7dffb0 !important;
+  border-color:rgba(125,255,176,.7) !important;
+}
+#upgradeWindow .tdmSections {
+  grid-template-columns:repeat(auto-fill, 72px) !important;
+  max-height:min(420px, calc(100vh - 320px)) !important;
+}
+#upgradeWindow .inventorySlot {
+  cursor:pointer !important;
+}
+#upgradeWindow .inventorySlot .upgLvlBadge {
+  font-size:8px !important;
+  left:4px !important;
+  top:4px !important;
+}
+#upgradeWindow .inventorySlot.selected {
+  border-color:#ffd166 !important;
+  box-shadow:0 0 14px rgba(255,209,102,.3), inset 0 0 0 1px rgba(255,209,102,.25) !important;
+}
+#upgradeWindow .upgEquipBadge {
+  position:absolute !important;
+  left:4px !important;
+  bottom:4px !important;
+  padding:0 3px !important;
+  border:1px solid rgba(125,255,176,.6) !important;
+  border-radius:3px !important;
+  color:#7dffb0 !important;
+  background:rgba(2,20,10,.85) !important;
+  font-size:8px !important;
+  font-weight:900 !important;
+  line-height:1.45 !important;
+  pointer-events:none !important;
+}
+#upgradeWindow .upgCreditsBox {
+  display:inline-flex !important;
+  align-items:center !important;
+  gap:6px !important;
+  padding:5px 10px !important;
+  color:rgba(204,228,241,.7) !important;
+  font:800 11px/1.2 ui-sans-serif,system-ui !important;
+}
+#upgradeWindow .upgCreditsBox b {
+  color:#ffd56a !important;
+  font-variant-numeric:tabular-nums !important;
+}
+#upgradeWindow .upgDetail {
+  display:flex !important;
+  align-items:center !important;
+  flex-wrap:wrap !important;
+  gap:14px !important;
+  min-height:88px !important;
+  padding:10px 8px 2px !important;
+  border-top:1px solid rgba(124,240,255,.16) !important;
+}
+#upgradeWindow .upgDetailEmpty {
+  flex:1 !important;
+  color:rgba(177,207,224,.55) !important;
+  font-size:11px !important;
+  font-weight:700 !important;
+  text-align:center !important;
+}
+#upgradeWindow .upgDetailIcon {
+  flex:0 0 72px !important;
+  cursor:default !important;
+}
+#upgradeWindow .upgDetailInfo {
+  flex:1 1 260px !important;
+  min-width:0 !important;
+  display:flex !important;
+  flex-direction:column !important;
+  gap:4px !important;
+  color:rgba(204,228,241,.75) !important;
+  font-size:11px !important;
+  font-weight:700 !important;
+}
+#upgradeWindow .upgDetailInfo strong {
+  color:#eaffff !important;
+  font-size:14px !important;
+  font-weight:900 !important;
+}
+#upgradeWindow .upgDetailInfo b {
+  color:#eaffff !important;
+  font-variant-numeric:tabular-nums !important;
+}
+#upgradeWindow .upgDetailInfo b.upgLvCur {
+  color:#ffd166 !important;
+}
+#upgradeWindow .upgDetailInfo b.upgUp {
+  color:#7dffb0 !important;
+}
+#upgradeWindow .upgOwned b {
+  color:#ffd56a !important;
+}
+#upgradeWindow .upgDetailQty {
+  display:flex !important;
+  flex-direction:column !important;
+  gap:4px !important;
+  color:rgba(204,228,241,.7) !important;
+  font-size:10px !important;
+  font-weight:800 !important;
+}
+#upgradeWindow .upgQtyRow {
+  display:flex !important;
+  gap:6px !important;
+}
+#upgradeWindow .upgQtyRow input {
+  width:80px !important;
+  min-height:28px !important;
+  padding:4px 8px !important;
+  border:1px solid rgba(124,240,255,.3) !important;
+  border-radius:6px !important;
+  color:#eaffff !important;
+  background:rgba(0,20,35,.8) !important;
+  font:700 12px/1.2 ui-sans-serif,system-ui !important;
+  outline:0 !important;
+}
+#upgradeWindow .upgDetailCost {
+  display:flex !important;
+  flex-direction:column !important;
+  align-items:flex-end !important;
+  gap:2px !important;
+  min-width:120px !important;
+  color:rgba(204,228,241,.7) !important;
+  font-size:10px !important;
+  font-weight:800 !important;
+}
+#upgradeWindow .upgDetailCost b {
+  color:#ffd56a !important;
+  font-size:15px !important;
+  font-weight:900 !important;
+  font-variant-numeric:tabular-nums !important;
+}
+#upgradeWindow .upgDetailCost.short b {
+  color:#ff6b7a !important;
+}
+#upgradeWindow .upgGoBtn {
+  min-width:140px !important;
+  min-height:38px !important;
+  font-size:12px !important;
+  letter-spacing:.04em !important;
+}
+#upgradeWindow .upgDetailMax {
+  color:#7dffb0 !important;
+  font-size:12px !important;
+  font-weight:900 !important;
+  padding:0 12px !important;
+}
+
+/* Amélioration : crédits (haut) et coût (bas) comme la boutique. */
+#upgradeWindow .tdmTabs {
+  position:relative !important;
+  min-height:44px !important;
+  align-items:center !important;
+}
+#upgradeWindow .upgBalance {
+  position:absolute !important;
+  right:6px !important;
+  top:50% !important;
+  transform:translateY(-50%) !important;
+  text-align:right !important;
+}
+#upgradeWindow .upgBalance span {
+  display:block !important;
+  color:#ffffff !important;
+  font-size:9px !important;
+  font-weight:800 !important;
+  text-transform:uppercase !important;
+}
+#upgradeWindow .upgBalance strong {
+  display:block !important;
+  margin-top:2px !important;
+  color:#75e8ff !important;
+  font-size:18px !important;
+  font-weight:900 !important;
+  font-variant-numeric:tabular-nums !important;
+}
+#upgradeWindow .upgCostLine {
+  margin:0 !important;
+  color:#f4fbff !important;
+  font-size:16px !important;
+  font-weight:600 !important;
+  text-align:center !important;
+}
+#upgradeWindow .upgCostLine .upgCostWord {
+  color:#f4fbff !important;
+}
+#upgradeWindow .upgCostLine .upgCostGold,
+#upgradeWindow .upgCostLine .upgCostTotal {
+  color:#ffd56a !important;
+  font-size:16px !important;
+}
+#upgradeWindow .upgCostLine.short .upgCostTotal {
+  color:#ff6b7a !important;
+}
+
+/* Amélioration : barre du haut = .shopToolbar de la boutique (onglets à
+   gauche, crédits à droite), coût = .shopAmmoCost (mots 11 px). */
+#upgradeWindow .tdmTabs {
+  min-height:54px !important;
+  margin:0 0 8px !important;
+  padding:2px 4px 12px !important;
+  justify-content:flex-start !important;
+  align-items:center !important;
+  gap:8px !important;
+  border-bottom:1px solid rgba(124,240,255,.14) !important;
+  box-sizing:border-box !important;
+}
+#upgradeWindow .upgBalance {
+  position:static !important;
+  transform:none !important;
+  flex:0 0 auto !important;
+  margin-left:auto !important;
+  text-align:right !important;
+}
+#upgradeWindow .upgBalance strong {
+  font-weight:700 !important;
+}
+#upgradeWindow .upgCostLine .upgCostWord {
+  font-size:11px !important;
+}
+
+/* Amélioration : case choisie = contour bleu qui clignote au rythme de la
+   pastille (même cadence que shopTabDotBlink de la boutique). Le contour
+   clignotant est un calque ::before (une animation ne passe pas les
+   !important des règles de sélection). */
+#upgradeWindow .tdmSections .inventorySlot.selected {
+  border-color:rgba(105,233,255,.3) !important;
+  box-shadow:none !important;
+}
+#upgradeWindow .tdmSections .inventorySlot.selected::before {
+  content:"" !important;
+  position:absolute !important;
+  inset:-1px !important;
+  border:2px solid #69e9ff !important;
+  border-radius:9px !important;
+  box-shadow:0 0 14px rgba(0,217,255,.45), inset 0 0 8px rgba(105,233,255,.25) !important;
+  pointer-events:none !important;
+  animation:shopTabDotBlink 1s ease-in-out infinite !important;
+}
+#upgradeWindow .tdmSections .inventorySlot.selected::after {
+  animation:shopTabDotBlink 1s ease-in-out infinite !important;
+}
