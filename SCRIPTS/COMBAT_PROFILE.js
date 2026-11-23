@@ -12,7 +12,7 @@ import { ROCKET_TYPES } from "../COMBAT/ROCKET_TYPES.js";
 import { abilityShipKeyFor, getAbilitiesForShip, HYPERION_QA_DAMAGE, HYPERION_QA_BURST_SEC, HYPERION_QA_SALVOS } from "../SHIP/SHIP_ABILITIES.js";
 import { acBucket } from "./ANTICHEAT.js";
 import { isAbilityDamage, validateAbilityDamage } from "../SRC/CORE/ABILITY_COMBAT_RULES.js";
-import { getShipExtraDef, RAYGUN_ABILITY, RAYGUN_DAMAGE, RAYGUN_SERVER_CAP, RAYGUN_SERVER_PER_SEC } from "../SRC/DATA/SHIP_EXTRAS.js";
+import { getShipExtraDef, RAYGUN_ABILITY, RAYGUN_DAMAGE, RAYGUN_VARIANCE, RAYGUN_SERVER_CAP, RAYGUN_SERVER_PER_SEC } from "../SRC/DATA/SHIP_EXTRAS.js";
 
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, Number(v) || 0));
 const pct = (v) => 1 + Math.max(0, Number(v) || 0) / 100;
@@ -137,7 +137,7 @@ export function validateCombatHit(profile, message, state = null, now = Date.now
   // à portée, sans critique.
   if (message.ability === RAYGUN_ABILITY) {
     if (!Array.isArray(profile.extras) || !profile.extras.includes("particle")) return null;
-    if (!Number.isFinite(dmg) || !(dmg > 0) || dmg > RAYGUN_DAMAGE) return null;
+    if (!Number.isFinite(dmg) || !(dmg > 0) || dmg > Math.ceil(RAYGUN_DAMAGE * (1 + RAYGUN_VARIANCE))) return null;
     if (target && state && Math.hypot(Number(target.x) - Number(state.x), Number(target.y) - Number(state.y)) > profile.range) return null;
     if (state && !acBucket(state, "Raygun", now, RAYGUN_SERVER_CAP, RAYGUN_SERVER_PER_SEC, 1)) return null;
     return { uid: message.uid, target: message.target, dmg, kind: "direct", pen: profile.penetration,

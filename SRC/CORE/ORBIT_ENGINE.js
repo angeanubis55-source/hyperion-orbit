@@ -106,7 +106,7 @@ import {
   unlockCurrentUserTitle,
   refreshCurrentUserTitles,
 } from "./ACCOUNT.js";
-import { extrasCapacity, shipExtraKeys, EXTRA_RADAR_BONUS, EXTRA_PET_FUEL_THRESHOLD, EXTRA_PET_FUEL_BUY, EXTRA_REPAIR_SEC, EXTRA_AIM_MISS_CUT, EXTRA_SHIELD_REGEN_PCT, RAYGUN_DAMAGE, RAYGUN_PROC_CHANCE, RAYGUN_ABILITY } from "../DATA/SHIP_EXTRAS.js";
+import { extrasCapacity, shipExtraKeys, EXTRA_RADAR_BONUS, EXTRA_PET_FUEL_THRESHOLD, EXTRA_PET_FUEL_BUY, EXTRA_REPAIR_SEC, EXTRA_AIM_MISS_CUT, EXTRA_SHIELD_REGEN_PCT, RAYGUN_DAMAGE, RAYGUN_VARIANCE, RAYGUN_PROC_CHANCE, RAYGUN_ABILITY } from "../DATA/SHIP_EXTRAS.js";
 import { pumpSharedAuction } from "./AUCTION_NET.js";
 import { apiWinterRankingClaim, flushNetUser, netActive, netList, noteNetConsumption, noteNetCreditGain, noteNetPetFuelConsumed, noteNetPurchase, noteNetResourceGain, noteNetServerReward, noteNetUpgradeConsumed } from "./ACCOUNT_NET.js";
 import {
@@ -33646,7 +33646,9 @@ function raygunOnLaserShot(t) {
   player.combatT = 5.0;
   try { breakPoliceCloak(); } catch {}
   let out = null;
-  try { out = damageEnemy(t, RAYGUN_DAMAGE, undefined, { chance: 0, mult: 1 }, { ability: RAYGUN_ABILITY, fixedDamage: true }); } catch {}
+  // 50 000 ±5 % (pas pile la même valeur à chaque tir).
+  const rayDmg = Math.round(RAYGUN_DAMAGE * (1 - RAYGUN_VARIANCE + Math.random() * 2 * RAYGUN_VARIANCE));
+  try { out = damageEnemy(t, rayDmg, undefined, { chance: 0, mult: 1 }, { ability: RAYGUN_ABILITY, fixedDamage: true }); } catch {}
   if (out && (out.total || 0) > 0) { try { queueVolleyFloat(t, out, volleySeq++, 1); } catch {} }
 }
 // Rayon : image à sa vraie taille, son CENTRE joué sur le centre de la

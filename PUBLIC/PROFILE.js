@@ -34,7 +34,7 @@ import { measureGameTask } from "../SRC/CORE/PERFORMANCE_TIMINGS.js";
 import { apiAccountIdentity, apiAccountStatus, apiPseudoFree, flushNetUser, netActive, netList, noteServerModuleQuota } from "../SRC/CORE/ACCOUNT_NET.js";
 
 import { CATALOG, findCatalogItem } from "../SRC/CORE/CATALOG.js";
-import { extrasCapacity } from "../SRC/DATA/SHIP_EXTRAS.js";
+import { extrasCapacity, getShipExtraDef, shipExtraDuplicateError } from "../SRC/DATA/SHIP_EXTRAS.js";
 import { getPetDesign } from "../PET/PET_DESIGNS.js";
 import { SHIP_PACKS, getShipFamilyId, getShipFamilyIds, getShipFamilyMembers, getShipFamilyName, getShipDesignBaseId, getShipDesignIds, getShipPackById } from "../SHIP/SHIP_PACKS.js";
 import { getShipBonusInfo } from "../SHIP/SHIP_BONUSES.js";
@@ -5726,7 +5726,38 @@ function applyExtraSlotBonus(extras) {
   if (fitState.slots.extrasBase == null) fitState.slots.extrasBase = Number(fitState.slots.extras) || 0;
   fitState.slots.extras = extrasCapacity(fitState.slots.extrasBase, extras);
 }
+// Extras CPU : un seul de chaque (un seul par famille : réparation, visée,
+// emplacement). Retire des ids à poser ceux dont la famille est déjà là.
+function filterExtraDuplicates(current, ids) {
+  const groups = new Set((Array.isArray(current) ? current : []).map((id) => getShipExtraDef(id)?.group).filter(Boolean));
+  const out = [];
+  let error = "";
+  for (const id of ids) {
+    const group = getShipExtraDef(id)?.group;
+    if (group && groups.has(group)) {
+      if (!error) error = shipExtraDuplicateError([id, id], (x) => findCatalogItem(x)?.name || x) || "";
+      continue;
+    }
+    if (group) groups.add(group);
+    out.push(id);
+  }
+  return { ids: out, error };
+}
+// Filet de sécurité (presets, anciens brouillons) : garde le 1er de chaque famille.
+function dedupeDraftExtras() {
+  const list = fitState.draft?.extras;
+  if (!Array.isArray(list)) return;
+  const seen = new Set();
+  fitState.draft.extras = list.map((id) => {
+    const group = getShipExtraDef(id)?.group;
+    if (!group) return id;
+    if (seen.has(group)) return null;
+    seen.add(group);
+    return id;
+  });
+}
 function compactCurrentFit() {
+  dedupeDraftExtras();
   if (fitState.draft) applyExtraSlotBonus(fitState.draft.extras);
   if (fitState.draft) fitState.draft = compactFitDraft(fitState.draft, fitState.slots);
 }
@@ -5946,9 +5977,15 @@ function equipSelectedInventoryItems(preferredSlotType = null) {
   if (shipEditLocked()) return showFitError("Hors base : le vaisseau ne peut pas être modifié."), 0;
   compactCurrentFit();
   let added = 0;
+  let extraDupError = "";
   for (const slotType of ["lasers", "gens", "extras"]) {
     if (preferredSlotType && preferredSlotType !== slotType) continue;
-    const itemIds = selected.filter((itemId) => slotTypeForItem(itemId) === slotType);
+    let itemIds = selected.filter((itemId) => slotTypeForItem(itemId) === slotType);
+    if (slotType === "extras") {
+      const filtered = filterExtraDuplicates(fitState.draft.extras, itemIds);
+      itemIds = filtered.ids;
+      extraDupError = filtered.error;
+    }
     const result = appendToFitSlots(fitState.draft[slotType], itemIds, fitState.slots[slotType]);
     fitState.draft[slotType] = result.values;
     added += result.added;
@@ -5999,7 +6036,7 @@ function equipSelectedInventoryItems(preferredSlotType = null) {
   clearFitSelection();
   fitState.draggedItemIds = [];
   clearFitDropHighlights();
-  showFitError(added ? "" : "Aucun emplacement compatible disponible");
+  showFitError(extraDupError || (added ? "" : "Aucun emplacement compatible disponible"));
   renderSlots();
   renderInventoryPalette();
   if (typeof renderShipModulesList === "function") renderShipModulesList();
@@ -6400,7 +6437,8 @@ function slotCell(label, filled, itemId = null) {
     d.classList.add(`rarity-${rarity.id}`);
     d.title = `${label || itemId} · ${rarity.name}`;
     const img = document.createElement("img");
-    img.src = iconForItem({ id: itemId }, "modules");
+    // Icône du catalogue en priorité (extras CPU : /ASSETS/ITEMS/EXTRAS/).
+    img.src = iconForItem(findCatalogItem(itemId) || { id: itemId }, "modules");
     img.alt = label || itemId;
     img.draggable = false;
     img.onerror = () => {

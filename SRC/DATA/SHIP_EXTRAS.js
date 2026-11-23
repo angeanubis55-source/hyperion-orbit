@@ -34,6 +34,8 @@ export const EXTRA_SHIELD_REGEN_PCT = 0.2;
 // Canon à particules : dégâts par tir, chance de se déclencher à chaque tir
 // laser, cadence maximale acceptée par le serveur (réserve + recharge/s).
 export const RAYGUN_DAMAGE = 50000;
+// Variance des dégâts : ±5 % (comme les lasers).
+export const RAYGUN_VARIANCE = 0.05;
 export const RAYGUN_PROC_CHANCE = 0.35;
 export const RAYGUN_SERVER_CAP = 3;
 export const RAYGUN_SERVER_PER_SEC = 1.5;
