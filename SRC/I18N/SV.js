@@ -4206,6 +4206,7 @@ export default {
     "Canon à particules": "Partikelkanon",
     "Régénère 0,2 % du bouclier par seconde, en toutes circonstances (même sous le feu).\nUn seul peut être équipé.": "Återställer 0,2 % av skölden per sekund, under alla omständigheter (även under beskjutning).\nEndast en kan utrustas.",
     "Tire aléatoirement avec un canon à particules.\nUn seul peut être équipé.": "Skjuter slumpmässigt med ett partikelkanon.\nEndast en kan utrustas.",
+    "En attaque, tire de temps en temps un rayon à particules (thermique, électrique ou corrosif) : 50 000 dégâts à la cible.\nUn seul peut être équipé.": "Vid attack skjuter den då och då en partikelstråle (termisk, elektrisk eller frätande): 50 000 skada på målet.\nEndast en kan utrustas.",
   },
   patterns: {
     "{0} : un seul peut être équipé.": "{0}: endast en kan utrustas.",

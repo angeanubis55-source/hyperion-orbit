@@ -106,7 +106,7 @@ import {
   unlockCurrentUserTitle,
   refreshCurrentUserTitles,
 } from "./ACCOUNT.js";
-import { extrasCapacity, shipExtraKeys, EXTRA_RADAR_BONUS, EXTRA_PET_FUEL_THRESHOLD, EXTRA_PET_FUEL_BUY, EXTRA_REPAIR_SEC, EXTRA_AIM_MISS_CUT, EXTRA_SHIELD_REGEN_PCT } from "../DATA/SHIP_EXTRAS.js";
+import { extrasCapacity, shipExtraKeys, EXTRA_RADAR_BONUS, EXTRA_PET_FUEL_THRESHOLD, EXTRA_PET_FUEL_BUY, EXTRA_REPAIR_SEC, EXTRA_AIM_MISS_CUT, EXTRA_SHIELD_REGEN_PCT, RAYGUN_DAMAGE, RAYGUN_PROC_CHANCE, RAYGUN_ABILITY } from "../DATA/SHIP_EXTRAS.js";
 import { pumpSharedAuction } from "./AUCTION_NET.js";
 import { apiWinterRankingClaim, flushNetUser, netActive, netList, noteNetConsumption, noteNetCreditGain, noteNetPetFuelConsumed, noteNetPurchase, noteNetResourceGain, noteNetServerReward, noteNetUpgradeConsumed } from "./ACCOUNT_NET.js";
 import {
@@ -178,7 +178,7 @@ import { createRadiationSystem } from "./RADIATION_SYSTEM.js";
 import { renderSpeedGuard } from "./SPEED_GUARD_UI.js";
 import { netServerMessageAge, netSimulationStep, netGameTimeMs, netSpeedGuardActive, queueGameLogForServer } from "./NETPLAY.js";
   import { pushNetplayLocal, sendNetplayBackgroundState, netplayLocalUpdateDue, getNetplayRemotes, tickNetplayRemotes, getNetNpcs, getNetDeaths, drainNetGone, getNetBoxes, drainNetBoxInbox, drainNetDmgInbox, drainNetHealInbox, drainNetShotEvents, drainNetSkillInbox, drainNetSkillDenied, clearNetShots, clearNetplayGameplay, sendShotEvent, sendSkillUse, sendHealAlly, sendPvpHit, sendPvpPetHit, getNetSelf, setNetInstanceMode, clearNetBoxes, claimNetBox, requestBoxSync, netBoxSyncAgeMs, netBoxSnapshotReady, netInInstance, sendNetHit, netMyId, netplayStatus, sendPing, netLatencyMs, netPongAge, netHelloAckAge, netServerVersion, netConnected, forceNetReconnect, ensureNetplayConnection, drainNetPvpKillInbox, drainNetPvpPetKillInbox, takeNetNpcReward, sendPvpLoot, sendPvpLootTake, drainNetPvpLootInbox,
-  drainNetPvpLootTakeInbox, drainNetAdminKickInbox, drainNetAdminBoomInbox, drainNetBannedInbox, drainNetCheatInbox, netDisconnect, drainNetSunInbox, drainNetSundayInbox, drainNetStrikeInbox, sendStrikeClaim, requestStrikeSync, drainNetDecloakInbox, drainNetIemHitInbox, drainNetStationDmgInbox, getNetClanBases, getNetStationOwners,
+  drainNetPvpLootTakeInbox, drainNetAdminKickInbox, drainNetAdminBoomInbox, drainNetBannedInbox, drainNetCheatInbox, netDisconnect, drainNetSunInbox, drainNetSundayInbox, drainNetStrikeInbox, sendStrikeClaim, requestStrikeSync, drainNetPcannonInbox, sendPcannonFx, drainNetDecloakInbox, drainNetIemHitInbox, drainNetStationDmgInbox, getNetClanBases, getNetStationOwners,
   getNetGroup, getNetLowRaid, takeNetLowRaidReward, getNetWinterGate, takeNetWinterGateReward, setNetNpcRewardHandler, getNetServerRestartAt, consumeNetServerRestart, getMyClanTag, getClanRelation, setMyClanTag, setNetDiplo, netIsAuthed, sendStationInstall, sendStationUninstall, sendStationBuild, sendStationReplace, sendStationCancelReplace, sendStationRepair, sendStationDeflectToggle, requestStationSync, sendStationHit, requestStarJumpArrival, requestHangarArrival, finishHangarArrival } from "./NETPLAY.js";
 import {
   createGatePortalState,
@@ -33595,6 +33595,101 @@ function repairCooldownSec() {
 function playerMissMult() {
   try { return hasShipExtra("aim2") ? 1 - EXTRA_AIM_MISS_CUT.aim2 : hasShipExtra("aim1") ? 1 - EXTRA_AIM_MISS_CUT.aim1 : 1; } catch { return 1; }
 }
+// Canon à particules : en attaque, un rayon au hasard parmi les 3 de
+// COMBAT/RAYGUN, à la vraie taille, du centre du vaisseau vers la cible
+// (50 000 dégâts, validés par le serveur).
+const PCANNON_SHOTS = Object.freeze([
+  // x0 / x1 : début et pointe du faisceau dans l'image 512x256 (mesurés).
+  Object.freeze({ dir: "COMBAT/RAYGUN/cannon_shot_thermal", frames: 36, x0: 105, x1: 448 }),
+  Object.freeze({ dir: "COMBAT/RAYGUN/cannon_shot_electro", frames: 35, x0: 105, x1: 449 }),
+  Object.freeze({ dir: "COMBAT/RAYGUN/cannon_shot_corrosive", frames: 36, x0: 105, x1: 400 }),
+]);
+const PCANNON_FPS = 30;
+// Bouche du canon dans l'image 512x256 (point posé sur le centre du vaisseau).
+const PCANNON_ORIGIN_X = 235;
+const PCANNON_ORIGIN_Y = 128;
+const raygunFx = [];
+var raygunPreloaded = false;
+function preloadRaygun() {
+  if (raygunPreloaded) return;
+  raygunPreloaded = true;
+  for (const shot of PCANNON_SHOTS) {
+    for (let i = 1; i <= shot.frames; i++) { try { loadImage(`${shot.dir}/${i}.png`); } catch {} }
+  }
+}
+function tickRaygun() {
+  if (hasShipExtra("particle")) preloadRaygun();
+  // Canon à particules des autres joueurs : même animation, même endroit.
+  let list = [];
+  try { list = drainNetPcannonInbox(); } catch {}
+  for (const m of list) {
+    const shot = PCANNON_SHOTS[Math.max(0, Math.min(PCANNON_SHOTS.length - 1, Math.floor(Number(m.s) || 0)))];
+    if (!shot || ![m.ax, m.ay, m.tx, m.ty].every((v) => Number.isFinite(Number(v)))) continue;
+    preloadRaygun();
+    raygunFx.push({ shot, t0: performance.now(), ax: Number(m.ax), ay: Number(m.ay), ar: 18, tx: Number(m.tx), ty: Number(m.ty) });
+    if (raygunFx.length > 6) raygunFx.shift();
+  }
+}
+// Appelé à chaque tir laser du vaisseau : 35 % de chance de déclencher le canon.
+function raygunOnLaserShot(t) {
+  if (!hasShipExtra("particle") || player.dead) return;
+  // NPC uniquement (ni joueur, ni station, ni REX).
+  if (!t || !(t.hp > 0) || t._netPlayer || t._stationTarget || t.isPetTarget === true) return;
+  if (dist2(player.x, player.y, t.x, t.y) > playerRange * playerRange) return;
+  if (Math.random() >= RAYGUN_PROC_CHANCE) return;
+  const shotIdx = Math.floor(Math.random() * PCANNON_SHOTS.length);
+  const shot = PCANNON_SHOTS[shotIdx];
+  // Direction figée au tir : du vaisseau vers la position du NPC à cet instant.
+  raygunFx.push({ shot, t0: performance.now(), ax: player.x, ay: player.y, ar: player.r, tx: t.x, ty: t.y });
+  try { sendPcannonFx({ s: shotIdx, ax: player.x, ay: player.y, tx: t.x, ty: t.y }); } catch {}
+  if (raygunFx.length > 6) raygunFx.shift();
+  player.combatT = 5.0;
+  try { breakPoliceCloak(); } catch {}
+  let out = null;
+  try { out = damageEnemy(t, RAYGUN_DAMAGE, undefined, { chance: 0, mult: 1 }, { ability: RAYGUN_ABILITY, fixedDamage: true }); } catch {}
+  if (out && (out.total || 0) > 0) { try { queueVolleyFloat(t, out, volleySeq++, 1); } catch {} }
+}
+// Rayon : image à sa vraie taille, son CENTRE joué sur le centre de la
+// cible (position au moment du tir), orientée du vaisseau vers la cible.
+// Direction figée pendant l'animation ; double passe pour bien ressortir.
+// Agrandissement de l'animation (1 = taille réelle).
+const PCANNON_SCALE = 1.25;
+function drawRaygunFx(ox, oy) {
+  if (!raygunFx.length) return;
+  const now = performance.now();
+  for (let i = raygunFx.length - 1; i >= 0; i--) {
+    const fx = raygunFx[i];
+    const frame = Math.floor((now - fx.t0) * PCANNON_FPS / 1000);
+    if (frame >= fx.shot.frames || player.dead) { raygunFx.splice(i, 1); continue; }
+    if (!Number.isFinite(fx.tx) || !Number.isFinite(fx.ax)) continue;
+    const img = getCachedImage(`${fx.shot.dir}/${frame + 1}.png`);
+    if (!img || !(img.naturalWidth > 0)) { try { loadImage(`${fx.shot.dir}/${frame + 1}.png`, { priority: true }); } catch {} continue; }
+    // Du nez du vaisseau (au moment du tir) jusqu'au centre de la cible :
+    // le début du faisceau (x0) est posé sur le nez, la pointe (x1) sur le
+    // centre de la cible ; étiré en longueur si la cible est loin, jamais
+    // comprimé (cible proche : taille normale x1,25), hauteur x1,25.
+    const ang = Math.atan2(fx.ty - fx.ay, fx.tx - fx.ax);
+    const nose = (Number(fx.ar) || 18) + 10;
+    const nx = fx.ax + Math.cos(ang) * nose, ny = fx.ay + Math.sin(ang) * nose;
+    const len = Math.max(40, Math.hypot(fx.tx - nx, fx.ty - ny));
+    const sx = Math.max(PCANNON_SCALE, len / Math.max(1, fx.shot.x1 - fx.shot.x0)), sy = PCANNON_SCALE;
+    const iw = img.naturalWidth * sx, ih = img.naturalHeight * sy;
+    const dx = -fx.shot.x0 * sx, dy = -PCANNON_ORIGIN_Y * sy;
+    try {
+      ctx.save();
+      // Lissage haute qualité (agrandi + rotation).
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = "high";
+      ctx.translate(nx + ox, ny + oy);
+      ctx.rotate(ang);
+      ctx.drawImage(img, dx, dy, iw, ih);
+      ctx.globalCompositeOperation = "lighter";
+      ctx.globalAlpha = 0.6;
+      ctx.drawImage(img, dx, dy, iw, ih);
+      ctx.restore();
+    } catch { try { ctx.restore(); } catch {} }
+  }
+}
 var shipExtrasTickAt = 0;
 var shipExtrasRadarOn = false;
 function tickShipExtras() {
@@ -33611,6 +33706,7 @@ function tickShipExtras() {
 
 function processDeaths() {
   try { tickShipExtras(); } catch {}
+  try { tickRaygun(); } catch {}
   try { drainPendingPersonalSuns(); } catch {}
   try {
     if (strikeSyncPending && started && !player.dead && netConnected() && !netInInstance()) {
@@ -36165,6 +36261,7 @@ function tryFireOnce(ammoOverride = null, silent = false) {
   // Tir réel : toute attaque casse le camouflage ultime.
   breakPoliceCloak();
   playPlayerShot(ammoKey);
+  try { raygunOnLaserShot(t); } catch {}
 
   const activeKey = player.ammo.active || "x1";
   if (ammoKey === activeKey) consumeAmmo(countPlayerLasers());
@@ -49320,11 +49417,15 @@ function draw() {
   }
   ctx.restore();
 
-  drawCombatFloatTexts(ctx, floatTexts, {
+  // Canon à particules en cours : les chiffres sont dessinés après le
+  // rayon (sinon il les recouvre).
+  const floatsAfterRaygun = raygunFx.length > 0;
+  const drawFloatsNow = () => drawCombatFloatTexts(ctx, floatTexts, {
     ox, oy, width: viewW, height: viewH,
     simple: gfxQualityOff() || fxDensityMult() <= 0.35 || GAME_SETTINGS.npcExplosions === false,
     isBeyondSensorRadius,
   });
+  if (!floatsAfterRaygun) drawFloatsNow();
 
   const px = player.x + ox, py = player.y + oy;
   // Smartbomb SMB-01 posée : SOUS les vaisseaux (joueur + distants),
@@ -49840,6 +49941,9 @@ function draw() {
 
   // L'IEM reste centrée sur le joueur et se dessine au-dessus du vaisseau.
   if (displayHalosOn()) drawPulseFx(ox, oy);
+  // Canon à particules : par-dessus tout (vaisseaux, NPC, explosions).
+  try { drawRaygunFx(ox, oy); } catch {}
+  if (floatsAfterRaygun) { try { drawFloatsNow(); } catch {} }
 
   const t = Target.get();
   if (t) {

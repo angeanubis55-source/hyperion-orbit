@@ -3903,6 +3903,29 @@ wss.on("connection", (ws) => {
       } catch {}
       return;
     }
+    if (msg.t === "pcannon") {
+      // Canon à particules : animation relayée à la room (CPU équipé requis,
+      // cadence bornée, coordonnées proches du tireur).
+      if (state.instance === true || !authed) return;
+      try {
+        const room = rooms.get(mapId);
+        if (!room || !room.has(id)) return;
+        const profile = refreshCombatProfile(state, accountId, mapId);
+        if (!Array.isArray(profile?.extras) || !profile.extras.includes("particle")) return;
+        if (!acBucket(state, "PcannonFx", Date.now(), 3, 1.5, 1)) return;
+        const out = { t: "pcannon", by: id, map: mapId, s: Math.max(0, Math.min(2, Math.floor(Number(msg.s) || 0))) };
+        for (const k of ["ax", "ay", "tx", "ty"]) {
+          const v = Number(msg[k]);
+          if (!Number.isFinite(v)) return;
+          out[k] = Math.round(v);
+        }
+        const range = Math.max(800, Number(profile.range) || 0) + 400;
+        if (Number.isFinite(Number(state.x)) && Math.hypot(out.ax - Number(state.x), out.ay - Number(state.y)) > 600) return;
+        if (Math.hypot(out.tx - out.ax, out.ty - out.ay) > range) return;
+        broadcastRoom(room, JSON.stringify(out), id);
+      } catch {}
+      return;
+    }
     if (msg.t === "shot" || msg.t === "rshot") {      // Tirs allies : retransmis tels quels a la room (aucun etat).
       if (state.instance === true) return; // gate : tirs 100 % locaux.
       try {

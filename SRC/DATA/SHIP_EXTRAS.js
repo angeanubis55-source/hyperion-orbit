@@ -19,7 +19,8 @@ export const SHIP_EXTRA_DEFS = Object.freeze({
   extra_slot_cpu_03: Object.freeze({ key: "slot3", group: "slot", slots: 3 }),
   extra_slot_cpu_04: Object.freeze({ key: "slot4", group: "slot", slots: 4 }),
   extra_shield_cpu: Object.freeze({ key: "shieldregen", group: "shieldregen" }),
-  // Canon à particules : effet à définir.
+  // Canon à particules : tir aléatoire (rayon thermique / électrique /
+  // corrosif au hasard), 50 000 dégâts à la cible.
   extra_particle_cannon: Object.freeze({ key: "particle", group: "particle" }),
 });
 
@@ -30,6 +31,13 @@ export const EXTRA_PET_FUEL_BUY = 1000;        // quantité achetée
 export const EXTRA_REPAIR_SEC = Object.freeze({ repair2: 2, repair1: 1 });
 // CPU Bouclier : régénération du bouclier max par seconde, en toutes circonstances.
 export const EXTRA_SHIELD_REGEN_PCT = 0.2;
+// Canon à particules : dégâts par tir, chance de se déclencher à chaque tir
+// laser, cadence maximale acceptée par le serveur (réserve + recharge/s).
+export const RAYGUN_DAMAGE = 50000;
+export const RAYGUN_PROC_CHANCE = 0.35;
+export const RAYGUN_SERVER_CAP = 3;
+export const RAYGUN_SERVER_PER_SEC = 1.5;
+export const RAYGUN_ABILITY = "ability_extra_raygun";
 // CPU Visée : part des MISS évités (lasers + roquettes du vaisseau).
 export const EXTRA_AIM_MISS_CUT = Object.freeze({ aim1: 0.25, aim2: 0.5 });
 

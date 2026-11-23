@@ -4206,6 +4206,7 @@ export default {
     "Canon à particules": "Teilchenkanone",
     "Régénère 0,2 % du bouclier par seconde, en toutes circonstances (même sous le feu).\nUn seul peut être équipé.": "Regeneriert 0,2 % des Schilds pro Sekunde, unter allen Umständen (auch unter Beschuss).\nNur eins kann ausgerüstet werden.",
     "Tire aléatoirement avec un canon à particules.\nUn seul peut être équipé.": "Feuert zufällig mit einer Teilchenkanone.\nNur eins kann ausgerüstet werden.",
+    "En attaque, tire de temps en temps un rayon à particules (thermique, électrique ou corrosif) : 50 000 dégâts à la cible.\nUn seul peut être équipé.": "Feuert im Angriff ab und zu einen Teilchenstrahl (thermisch, elektrisch oder korrosiv): 50.000 Schaden am Ziel.\nNur eins kann ausgerüstet werden.",
   },
   patterns: {
     "{0} : un seul peut être équipé.": "{0}: nur eins kann ausgerüstet werden.",

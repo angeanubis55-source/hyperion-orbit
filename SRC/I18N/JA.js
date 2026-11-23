@@ -4206,6 +4206,7 @@ export default {
     "Canon à particules": "粒子砲",
     "Régénère 0,2 % du bouclier par seconde, en toutes circonstances (même sous le feu).\nUn seul peut être équipé.": "どんな状況でも（被弾中でも）毎秒シールドの0.2%を回復。\n1つのみ装備可能。",
     "Tire aléatoirement avec un canon à particules.\nUn seul peut être équipé.": "ランダムに粒子砲を発射します。\n1つのみ装備可能。",
+    "En attaque, tire de temps en temps un rayon à particules (thermique, électrique ou corrosif) : 50 000 dégâts à la cible.\nUn seul peut être équipé.": "攻撃中、ときどき粒子ビーム（熱・電撃・腐食）を発射：対象に50,000ダメージ。\n1つのみ装備可能。",
   },
   patterns: {
     "{0} : un seul peut être équipé.": "{0}：1つのみ装備可能です。",

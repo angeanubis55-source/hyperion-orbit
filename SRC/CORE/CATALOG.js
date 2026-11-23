@@ -223,7 +223,7 @@ export const CATALOG = {
     { id: "extra_slot_cpu_03", name: "CPU Emplacement 03", price: 7000000000, icon: "/ASSETS/ITEMS/EXTRAS/CPU_EMPLACEMENT_03.png", module: { type: "extra", key: "slot3" }, desc: "+3 emplacements d'extras en plus (son propre emplacement est rendu).\nUn seul CPU d'emplacement peut être équipé." },
     { id: "extra_slot_cpu_04", name: "CPU Emplacement 04", price: 10000000000, icon: "/ASSETS/ITEMS/EXTRAS/CPU_EMPLACEMENT_04.png", module: { type: "extra", key: "slot4" }, desc: "+4 emplacements d'extras en plus (son propre emplacement est rendu).\nUn seul CPU d'emplacement peut être équipé." },
     { id: "extra_shield_cpu", name: "CPU Bouclier", price: 4000000000, icon: "/ASSETS/ITEMS/EXTRAS/CPU_BOUCLIER.png", module: { type: "extra", key: "shieldregen" }, desc: "Régénère 0,2 % du bouclier par seconde, en toutes circonstances (même sous le feu).\nUn seul peut être équipé." },
-    { id: "extra_particle_cannon", name: "Canon à particules", price: 5000000000, icon: "/ASSETS/ITEMS/EXTRAS/CANON_PARTICULES.png", module: { type: "extra", key: "particle" }, desc: "Tire aléatoirement avec un canon à particules.\nUn seul peut être équipé." },
+    { id: "extra_particle_cannon", name: "Canon à particules", price: 5000000000, icon: "/ASSETS/ITEMS/EXTRAS/CANON_PARTICULES.png", module: { type: "extra", key: "particle" }, desc: "En attaque, tire de temps en temps un rayon à particules (thermique, électrique ou corrosif) : 50 000 dégâts à la cible.\nUn seul peut être équipé." },
   ],
 
   // Base de Combat : pièces achetées en ressources (mêmes prix qu'aux enchères).

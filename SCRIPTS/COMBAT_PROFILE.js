@@ -12,6 +12,7 @@ import { ROCKET_TYPES } from "../COMBAT/ROCKET_TYPES.js";
 import { abilityShipKeyFor, getAbilitiesForShip, HYPERION_QA_DAMAGE, HYPERION_QA_BURST_SEC, HYPERION_QA_SALVOS } from "../SHIP/SHIP_ABILITIES.js";
 import { acBucket } from "./ANTICHEAT.js";
 import { isAbilityDamage, validateAbilityDamage } from "../SRC/CORE/ABILITY_COMBAT_RULES.js";
+import { getShipExtraDef, RAYGUN_ABILITY, RAYGUN_DAMAGE, RAYGUN_SERVER_CAP, RAYGUN_SERVER_PER_SEC } from "../SRC/DATA/SHIP_EXTRAS.js";
 
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, Number(v) || 0));
 const pct = (v) => 1 + Math.max(0, Number(v) || 0) / 100;
@@ -101,6 +102,8 @@ export function combatProfile(user, mapId, configNo = null, groupBoosters = {}) 
       // SMB + impacts des aptitudes : enveloppe compatible avec les coques.
       50000, hpMax * 0.25), 1, 1e8),
     rocketIds,
+    // Extras CPU équipés (clés d'effet).
+    extras: (Array.isArray(fit.extras) ? fit.extras : []).map((id) => getShipExtraDef(id)?.key).filter(Boolean),
     cloakSkill: abilities.find(a => /cloak/.test(a.id)) || null,
     petOwned: !!pet?.owned,
     // Le PET et les deux clones de Triple barrage peuvent recolter ensemble.
@@ -129,6 +132,16 @@ export function validateCombatHit(profile, message, state = null, now = Date.now
     window.remaining = Math.max(0, window.remaining - dmg);
     return { uid: message.uid, target: message.target, dmg, kind: "direct", pen: profile.penetration,
       critChance: 1, critMult: 1, variance: 0, ability: "ability_hyperion_qa" };
+  }
+  // Canon à particules (extra) : CPU équipé, 50 000 max, cadence bornée,
+  // à portée, sans critique.
+  if (message.ability === RAYGUN_ABILITY) {
+    if (!Array.isArray(profile.extras) || !profile.extras.includes("particle")) return null;
+    if (!Number.isFinite(dmg) || !(dmg > 0) || dmg > RAYGUN_DAMAGE) return null;
+    if (target && state && Math.hypot(Number(target.x) - Number(state.x), Number(target.y) - Number(state.y)) > profile.range) return null;
+    if (state && !acBucket(state, "Raygun", now, RAYGUN_SERVER_CAP, RAYGUN_SERVER_PER_SEC, 1)) return null;
+    return { uid: message.uid, target: message.target, dmg, kind: "direct", pen: profile.penetration,
+      critChance: 0, critMult: 1, variance: 0, ability: RAYGUN_ABILITY };
   }
   if (isAbilityDamage(message.ability)) return validateAbilityDamage(profile, message, state, target, now);
   if (!Number.isFinite(dmg) || dmg < 0 || dmg > profile.maxDamage) return null;

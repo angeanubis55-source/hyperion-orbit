@@ -4206,6 +4206,7 @@ export default {
     "Canon à particules": "Cañón de partículas",
     "Régénère 0,2 % du bouclier par seconde, en toutes circonstances (même sous le feu).\nUn seul peut être équipé.": "Regenera el 0,2 % del escudo por segundo, en cualquier circunstancia (incluso bajo fuego).\nSolo se puede equipar uno.",
     "Tire aléatoirement avec un canon à particules.\nUn seul peut être équipé.": "Dispara aleatoriamente con un cañón de partículas.\nSolo se puede equipar uno.",
+    "En attaque, tire de temps en temps un rayon à particules (thermique, électrique ou corrosif) : 50 000 dégâts à la cible.\nUn seul peut être équipé.": "Al atacar, dispara de vez en cuando un rayo de partículas (térmico, eléctrico o corrosivo): 50 000 de daño al objetivo.\nSolo se puede equipar uno.",
   },
   patterns: {
     "{0} : un seul peut être équipé.": "{0}: solo se puede equipar uno.",

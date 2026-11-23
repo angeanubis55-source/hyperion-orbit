@@ -633,6 +633,8 @@ export function drainNetIemHitInbox() {
 }
 // Tirs allies exacts (vrais + faux) : { t:shot/rshot, ... } a jouer aussitot.
 const netShotInbox = [];
+// Canon à particules des autres joueurs (animation seulement).
+const netPcannonInbox = [];
 // IEM / ISH synchronises : evenement immediat pour casser les locks et
 // demarrer les animations sans attendre le prochain snapshot.
 const netSkillInbox = [];
@@ -1427,6 +1429,15 @@ export function ensureNetplayConnection() {
     }
     if (msg.t === "chatHistory" && Array.isArray(msg.list)) {
       for (const m of msg.list.slice(-30)) pushChatMessage(m);
+      return;
+    }
+    if (msg.t === "pcannon") {
+      try {
+        const m = String(msg.map || "").toLowerCase();
+        if (m && m !== currentMapId()) return;
+      } catch {}
+      if (netPcannonInbox.length > 32) netPcannonInbox.shift();
+      netPcannonInbox.push(msg);
       return;
     }
     if (msg.t === "shot" || msg.t === "rshot") {
@@ -2416,6 +2427,26 @@ export function drainNetShotEvents() {
 
 export function clearNetShots() {
   netShotInbox.length = 0;
+  netPcannonInbox.length = 0;
+}
+
+export function drainNetPcannonInbox() {
+  if (!netPcannonInbox.length) return [];
+  return netPcannonInbox.splice(0, netPcannonInbox.length);
+}
+
+// Canon à particules : annonce l'animation aux joueurs de la map.
+export function sendPcannonFx(ev) {
+  if (suspended || instanceMode === true) return;
+  if (!ws || ws.readyState !== 1 || !ev || typeof ev !== "object") return;
+  try {
+    const o = { t: "pcannon", s: Math.max(0, Math.min(2, Math.floor(Number(ev.s) || 0))) };
+    for (const k of ["ax", "ay", "tx", "ty"]) {
+      if (!Number.isFinite(Number(ev[k]))) return;
+      o[k] = Math.round(Number(ev[k]));
+    }
+    ws.send(JSON.stringify(o));
+  } catch {}
 }
 
 // Evenement de tir exact vers le serveur (retransmis a la room, sans etat).

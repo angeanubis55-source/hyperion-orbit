@@ -4206,6 +4206,7 @@ export default {
     "Canon à particules": "Пушка частиц",
     "Régénère 0,2 % du bouclier par seconde, en toutes circonstances (même sous le feu).\nUn seul peut être équipé.": "Восстанавливает 0,2 % щита в секунду при любых условиях (даже под огнём).\nМожно установить только один.",
     "Tire aléatoirement avec un canon à particules.\nUn seul peut être équipé.": "Случайно стреляет из пушки частиц.\nМожно установить только один.",
+    "En attaque, tire de temps en temps un rayon à particules (thermique, électrique ou corrosif) : 50 000 dégâts à la cible.\nUn seul peut être équipé.": "В атаке время от времени выпускает луч частиц (термический, электрический или коррозийный): 50 000 урона по цели.\nМожно установить только один.",
   },
   patterns: {
     "{0} : un seul peut être équipé.": "{0}: можно установить только один.",

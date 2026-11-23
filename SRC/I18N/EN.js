@@ -4207,6 +4207,7 @@ export default {
     "Canon à particules": "Particle cannon",
     "Régénère 0,2 % du bouclier par seconde, en toutes circonstances (même sous le feu).\nUn seul peut être équipé.": "Regenerates 0.2% of the shield per second, in all circumstances (even under fire).\nOnly one can be equipped.",
     "Tire aléatoirement avec un canon à particules.\nUn seul peut être équipé.": "Randomly fires a particle cannon.\nOnly one can be equipped.",
+    "En attaque, tire de temps en temps un rayon à particules (thermique, électrique ou corrosif) : 50 000 dégâts à la cible.\nUn seul peut être équipé.": "While attacking, fires a particle beam from time to time (thermal, electric or corrosive): 50,000 damage to the target.\nOnly one can be equipped.",
   },
   patterns: {
     "{0} : un seul peut être équipé.": "{0}: only one can be equipped.",
