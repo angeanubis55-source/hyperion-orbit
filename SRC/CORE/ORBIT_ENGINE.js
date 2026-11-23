@@ -11846,7 +11846,10 @@ function refreshBoosterCountdowns() {
 }
 
 window.addEventListener("orbit:window-restoring", (event) => {
-  if (event.detail?.id === "boosterWindow") renderBoosterWindow();
+  if (event.detail?.id !== "boosterWindow") return;
+  // Fenêtre restaurée pendant le démarrage (enregistrement des fenêtres) :
+  // le compte n'est pas encore déclaré -> rendu différé d'un tour.
+  try { renderBoosterWindow(); } catch { setTimeout(() => { try { renderBoosterWindow(); } catch {} }, 0); }
 });
 
 function wireBoosterWindow() {
@@ -18091,7 +18094,7 @@ function renderEternalGatePanel(user, state) {
   if (ui.ggDiscountBadge) ui.ggDiscountBadge.hidden = true;
   ui.ggEnergy.textContent = formatInteger(state.energy);
   ui.ggCredits.textContent = formatInteger(user.credits);
-  ui.ggPortalImage.src = ETERNAL_GATE_INFO.image;
+  setGalaxyGatePreviewPortal("eternal", ETERNAL_GATE_INFO.image);
   ui.ggPortalImage.dataset.gate = "eternal";
   ui.ggPortalImage.alt = `Portail ${ETERNAL_GATE_INFO.name}`;
   const owned = Math.max(0, Math.floor(Number(user?.inventory?.resources?.[ETERNAL_GATE_INFO.entryResource]) || 0));
@@ -18183,7 +18186,7 @@ function renderGalaxyGateWindow(message = "") {
   ui.ggCredits.textContent = formatInteger(user.credits);
   const displayedParts = state.built[gate.id] >= GALAXY_GATE_BUILD_LIMIT ? gate.requiredParts : state.parts[gate.id];
   ui.ggParts.textContent = `${formatInteger(displayedParts)} / ${formatInteger(gate.requiredParts)}`;
-  ui.ggPortalImage.src = gate.image;
+  setGalaxyGatePreviewPortal(gate.id, gate.image);
   ui.ggPortalImage.alt = `Portail ${gate.name}`;
   ui.ggPortalImage.dataset.gate = gate.id;
   // Promo du samedi et du dimanche (sauf Kronos) : badge et ancien prix barré.
@@ -18894,6 +18897,16 @@ function getPortalSpriteSet(ptl = null) {
       seasonalOverlay: ptl?.sprites?.idle ? null : (skin?.seasonalOverlay || null),
     };
   }
+
+// Fenêtre Galaxy Gates : portail au centre = image JUMP du skin (fixe).
+function setGalaxyGatePreviewPortal(gateId, fallbackSrc) {
+  const imgEl = ui.ggPortalImage;
+  if (!imgEl) return;
+  let skin = null;
+  try { skin = getPortalSkinForMap(gateId); } catch { skin = null; }
+  const jumpSrc = skin?.jump?.src || fallbackSrc;
+  if (jumpSrc && imgEl.getAttribute("src") !== jumpSrc) imgEl.src = jumpSrc;
+}
 
 function getPortalFrameSrc(pack, index) {
   if (!pack) return null;

@@ -28718,7 +28718,11 @@ display: flex;
   animation:shopTabDotBlink 1s ease-in-out infinite !important;
 }
 
-/* Spinner GG : l'image Omicron a une grande marge transparente -> plus grande. */
+
+/* Fenêtre Galaxy Gates : portails agrandis (Omicron : marge transparente -> plus grand). */
+.ggPortalPreview img#ggPortalImage {
+  width:min(350px,88%);
+}
 .ggPortalPreview img#ggPortalImage[data-gate="omicron"] {
-  width:min(360px,90%);
+  width:min(440px,100%);
 }
