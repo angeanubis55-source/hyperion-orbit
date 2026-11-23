@@ -18,9 +18,9 @@ export const DRONE_FORMATIONS=Object.freeze([
   makeFormation("double_arrow","Formation Double Flèche",75000000,{rocketDamagePct:30,penetrationPct:10,shieldPct:-20},"+30 % dégâts roquettes · +10 % pénétration · -20 % bouclier"),
   makeFormation("diamond","Formation Diamant",100000000,{shieldRegenPct:1,shieldRegenCap:5000,hpPct:-30},"+1 % à +5 % boucliers / seconde en fonction du max (500.000 -> 5.000 -> 5 %) · -30 % HP"),
   makeFormation("chevron","Formation Chevron",75000000,{rocketDamagePct:65,hpPct:-20},"+65 % dégâts roquettes · -20 % HP"),
-  makeFormation("butterfly","Formation Papillon",100000000,{penetrationPct:20,hpPct:20,shieldDrainPct:5},"+20 % pénétration · -5 % de bouclier par seconde jusqu'à 0"),
+  makeFormation("butterfly","Formation Papillon",100000000,{penetrationPct:20,hpPct:20,shieldDrainPct:5},"+20 % pénétration · +20 % HP · -5 % de bouclier par seconde jusqu'à 0"),
   makeFormation("crab","Formation Crabe",100000000,{shieldAbsorptionPct:100,speedPct:-15},"+100 % absorption de bouclier · -15 % vitesse"),
-  makeFormation("heart","Formation Cœur",100000000,{shieldPct:20,hpPct:20,laserDamagePct:-5},"+20 % bouclier · -5 % dégâts laser"),
+  makeFormation("heart","Formation Cœur",100000000,{shieldPct:20,hpPct:20,laserDamagePct:-5},"+20 % bouclier · +20 % HP · -5 % dégâts laser"),
   makeFormation("barrier","Formation Barrière",100000000,{npcDamagePct:5,npcXpPct:5,shieldAbsorptionPct:-15},"+5 % dégâts NPC · +5 % expérience · -15 % absorption de bouclier"),
   // Retirée de la boutique (price 0) : assemblage event Halloween uniquement.
   makeFormation("bat","Formation Chauve-Souris",0,{npcDamagePct:8,npcXpPct:8,speedPct:-15},"+8 % dégâts NPC · +8 % expérience uniquement sur la cible détruite · -15 % vitesse"),
