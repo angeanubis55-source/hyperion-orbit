@@ -10,7 +10,14 @@ import { SHIP_PACKS, getShipDesignBaseId, getShipDesignIds, isRemovedShipPack } 
 import { SHIP_THUMB_IDS, SHIP_THUMB_DIR } from "../SHIP/SHIP_THUMBS.js";
 import { NPC_TYPES } from "../NPC/NPC_TYPES.js";
 import { resolveNpcReward } from "../NPC/NPC_BALANCE.js";
-import { halloweenRoleOf } from "../NPC/NPC_HALLOWEEN.js";
+import { halloweenRoleOf, HALLOWEEN_START, HALLOWEEN_END } from "../NPC/NPC_HALLOWEEN.js";
+import { HITAC_SNOW_START_AT, HITAC_SNOW_END_AT, HITAC_SNOW_MAPS, HITAC_SNOW_TYPE, HITAC_SNOW_MINION_TYPE } from "../NPC/NPC_HITAC_SNOW.js";
+import { SUNDAY_START_MINUTES, SUNDAY_END_MINUTES, SUNDAY_MAPS, SUNDAY_DMG_MULT, SUNDAY_MODULE_CHANCE, SUNDAY_TICKET_CHANCE, SUNDAY_AMMO_CHANCE, SUNDAY_AMMO_QTY } from "../NPC/NPC_SUNDAY.js";
+import { WINTER_START, WINTER_END, WINTER_SPAWN_GROUPS } from "../NPC/NPC_WINTER.js";
+import { WINTER_CONVOY_DURATION, WINTER_CONVOY_REWARD, WINTER_RANKING_ENDS, WINTER_RANKING_TOP } from "../SRC/CORE/WINTER_CONVOY.js";
+import { PARTICLE_CANNON_DEFS, PARTICLE_SLOTS, RAYGUN_PROC_CHANCE, RAYGUN_VARIANCE } from "../SRC/DATA/SHIP_EXTRAS.js";
+import { UPGRADE_MAX_LEVEL, UPGRADE_PCT_PER_LEVEL, upgradeCost } from "../SRC/DATA/UPGRADES.js";
+import { PET_DESIGNS, PET_DESIGN_PRICE } from "../PET/PET_DESIGNS.js";
 import { AMMO } from "../COMBAT/AMMO_TYPES.js";
 import { ROCKET_TYPES, rocketEffectLabel } from "../COMBAT/ROCKET_TYPES.js";
 import {
@@ -20,9 +27,11 @@ import {
 import { BOOSTERS, GROUP_BOOSTER_IDS, formatBoosterDuration } from "../SRC/DATA/BOOSTERS.js";
 import {
   GALAXY_GATE_DEFINITIONS, GALAXY_SPIN_CREDIT_COST, KRONOS_PARTS_BY_GATE, PALLADIUM_PER_GALAXY_ENERGY,
+  GALAXY_SPIN_DISCOUNT, KRONOS_PARTS_EVENT_MULTIPLIER, GALAXY_GATE_EVENT_REWARD_MULTIPLIER,
+  GALAXY_EVENT_START_MINUTES, GALAXY_EVENT_END_MINUTES,
 } from "../SRC/CORE/GALAXY_GATES.js";
 import { PILOT_RANKS } from "../SRC/CORE/PROGRESSION.js";
-import { PILOT_SKILLS, PILOT_MAX_POINTS, LOGDISK_PRICE, PILOT_RESET_BASE, formatPilotEffect } from "../SRC/DATA/PILOT_SKILLS.js";
+import { PILOT_SKILLS, PILOT_MAX_POINTS, LOGDISK_PRICE, LOGDISK_ROWS, PILOT_RESET_BASE, formatPilotEffect } from "../SRC/DATA/PILOT_SKILLS.js";
 import { TITLE_DEFINITIONS, TITLE_RARITIES } from "../SRC/DATA/TITLES.js";
 import { COLLECTABLE_TYPES } from "../SRC/DATA/COLLECTABLES.js";
 import { SKYLAB_MODULES, SKYLAB_MAX_LEVEL } from "../SRC/DATA/SKYLAB.js";
@@ -56,6 +65,10 @@ const img = (src, cls = "wikiIco", fallback = "") => (src
 const npcName = (type) => String(NPC_TYPES[type]?.name || type)
   .replace(/-=\[|\]=-|<=<|>=>|\.\.::\{|\}::\.\.|[[\]{}]/g, " ").replace(/\s+/g, " ").trim();
 const lines = (text) => esc(text).replace(/\n/g, "<br />");
+const pad2 = (v) => String(v).padStart(2, "0");
+// { month (0-11), day, hour, minute } -> "23/11 00h01" (heure de Paris).
+const dayAt = (at) => `${pad2(at.day)}/${pad2(at.month + 1)}${at.hour != null ? ` ${pad2(at.hour)}h${pad2(at.minute || 0)}` : ""}`;
+const hm = (minutes) => `${pad2(Math.floor(minutes / 60))}h${pad2(minutes % 60)}`;
 
 // Carte : titre cyan + contenu. span = pleine largeur.
 function card(title, body, { span = false, note = "" } = {}) {
@@ -116,6 +129,8 @@ function pageDemarrage() {
         ["Inventaire", "Tout ce que tu possèdes, avec recherche et catégories."],
         ["Raffinage / Commerce", "Recettes de minerais, upgrades d'équipement, vente au comptoir."],
         ["Modules", "Roulette, modules équipés et comparateur."],
+        ["Amélioration", `Monte chaque laser et générateur de lvl.1 à lvl.${UPGRADE_MAX_LEVEL} (+${UPGRADE_PCT_PER_LEVEL} % par niveau), même équipé.`],
+        ["Hangars", "Équipement du vaisseau, des drones et du P.E.T, configurations 1 / 2."],
         ["Arbre des compétences", "Points de pilote et compétences passives."],
         ["Boosters", "Activation des boosters achetés."],
         ["P.E.T", "Ton P.E.T : activation, mode, carburant, gears, protocoles."],
@@ -124,7 +139,7 @@ function pageDemarrage() {
         ["Groupe / Amis / Clan / Chat", "Jeu à plusieurs."],
         ["Classement / Titres / Passe de combat", "Classements, titres débloqués et passe d'événement."],
         ["LOG / DPS", "Historique des événements et mesure de tes dégâts."],
-        ["Paramètres", "Graphismes, son, commandes, compte."],
+        ["Paramètres", "Graphismes, son, commandes, zoom du jeu, langue, compte."],
       ]), { span: true }),
   ];
 }
@@ -146,6 +161,11 @@ function pageCommandes(ctx) {
       "<b>Clic sur une box :</b> voler vers elle et la ramasser.",
       "<b>Mini-carte :</b> boutons + / − pour zoomer.",
       "<b>Fenêtres :</b> déplace-les par leur barre de titre.",
+    ])),
+    card("Zoom du jeu et langue", list([
+      "<b>Zoom du jeu :</b> Paramètres → Disposition, boutons − / +. De 60 % à 100 % par paliers de 10 %.",
+      "Le zoom ne réduit que le monde (vaisseaux, NPC, box, tirs) : l'interface, les fenêtres et les noms restent à taille normale.",
+      "<b>Langue :</b> Paramètres → Langue. Français, English, Deutsch, Español, Svenska, 日本語, Русский.",
     ])),
     card("Barre rapide et munitions", list([
       "Les slots contiennent munitions, roquettes, compétences, formations, IEM / ISH.",
@@ -198,7 +218,7 @@ function pageVaisseaux() {
 
 function pageDrones() {
   const formations = DRONE_FORMATIONS.map((f) => [
-    img(f.icon), `<b>${esc(f.name)}</b>`, esc(f.desc || "Aucun bonus ni malus."),
+    img(f.icon), `<b>${esc(f.name)}</b>`, esc(f.description || f.desc || "Aucun bonus ni malus."),
     num(f.minDrones || 0), f.price > 0 ? gold(money(f.price)) : (f.id === "standard" ? "Offerte" : "Assemblage"),
   ]);
   const irisPrices = Array.from({ length: MAX_IRIS_DRONES }, (_, i) => `${i + 1}<sup>e</sup> : ${gold(money(IRIS_BASE_PRICE * 2 ** i))}`);
@@ -227,6 +247,22 @@ function pageEquipement() {
     l.petOnly ? "P.E.T" : (l.noPet ? "Vaisseau" : "Tous"), l.shopHidden ? "Assemblage" : gold(money(l.price))]);
   const shields = CATALOG.shieldGen.map((g) => [img(g.icon), `<b>${esc(g.name)}</b>`, gold(num(g.module?.bonusShield)), g.module?.absorbPct ? pct(g.module.absorbPct) : "—", g.petOnly ? "P.E.T" : "Tous", gold(money(g.price))]);
   const speeds = CATALOG.speedGen.map((g) => [img(g.icon), `<b>${esc(g.name)}</b>`, gold(`+${num(g.module?.bonusSpeed)}`), gold(money(g.price))]);
+  // Canons à particules : emplacement dédié (1 par vaisseau).
+  const particles = CATALOG.lasers.filter((l) => l?.module?.type === "particle").map((l) => [img(l.icon), `<b>${esc(l.name)}</b>`,
+    gold(num(PARTICLE_CANNON_DEFS[l.id]?.damage)), gold(money(l.price))]);
+  // Extras CPU (hors Logfiles et objets retirés).
+  const extras = CATALOG.extras.filter((e) => !e.shopHidden && !e.give?.logDisks).map((e) => [img(e.icon), `<b>${esc(e.name.replace(/^Extra:\s*/, ""))}</b>`,
+    e.desc ? lines(e.desc) : "—", gold(money(e.price))]);
+  // Amélioration : coût par niveau (exemple LF-4).
+  const lf4 = CATALOG.lasers.find((l) => l.id === "laser_lf4");
+  let upgradeTotal = 0;
+  const upgradeRows = [];
+  for (let lv = 1; lv < UPGRADE_MAX_LEVEL; lv++) {
+    const cost = upgradeCost(lf4, lv).credits;
+    upgradeTotal += cost;
+    upgradeRows.push([`lvl.${lv} → lvl.${lv + 1}`, gold(`+${num(lv * UPGRADE_PCT_PER_LEVEL)} %`), pct(5 * 2 ** (lv - 1)), gold(money(cost))]);
+  }
+  upgradeRows.push(["<b>Total lvl.1 → lvl.16</b>", gold(`+${num((UPGRADE_MAX_LEVEL - 1) * UPGRADE_PCT_PER_LEVEL)} %`), "", gold(money(upgradeTotal))]);
   const oreCols = ["prometid", "duranium", "promerium", "seprom", "osmium"];
   const upgrades = UPGRADE_SLOTS.map((s) => [img(s.icon), `<b>${esc(s.name)}</b>`,
     ...oreCols.map((o) => (UPGRADE_ORE_BONUS[o]?.[s.id] ? gold(`+${pct(UPGRADE_ORE_BONUS[o][s.id] * 100)}`) : "—")),
@@ -238,7 +274,20 @@ function pageEquipement() {
     card("Générateurs de vitesse", table(["", "Générateur", "Vitesse", "Prix"], speeds)),
     card("Charger son équipement (Upgrade)", table(["", "Emplacement", ...oreCols.map((o) => esc(getResourceName(o))), "Durée"], upgrades),
       { span: true, note: `Chaque chargement coûte ${num(UPGRADE_CHARGE_COST)} unités du minerai choisi. Changer de minerai remplace le stock en cours. Le chargement se fait dans la fenêtre Raffinage (onglet Upgrade) ou automatiquement (Soute du BOT).` }),
-    card("Extras", table(["Extra", "Prix"], CATALOG.extras.map((e) => [`<b>${esc(e.name.replace(/^Extra:\s*/, ""))}</b>`, gold(money(e.price))]))),
+    card(`Canons à particules (${particles.length})`, list([
+      `Emplacement dédié <b>Canon à particules</b> : ${gold(PARTICLE_SLOTS)} par vaisseau.`,
+      `À chaque tir laser, ${gold(pct(RAYGUN_PROC_CHANCE * 100))} de chance de tirer aussi un rayon (dégâts ±${pct(RAYGUN_VARIANCE * 100)}).`,
+      "Touche toutes les cibles : NPC, joueurs, P.E.T, stations. Le rayon est visible par tous les joueurs de la map.",
+    ]) + table(["", "Canon", "Dégâts du rayon", "Prix"], particles), { note: "En boutique : onglet Canons lasers, sous le Xénocide." }),
+    card(`Amélioration (lvl.1 → lvl.${UPGRADE_MAX_LEVEL})`, list([
+      `Fenêtre <b>Amélioration</b> (dock) : lasers, générateurs de bouclier et de vitesse, ${gold(`+${UPGRADE_PCT_PER_LEVEL} %`)} de la stat de l'objet par niveau.`,
+      "Une case par exemplaire : tu choisis lequel améliorer, un par un (double-clic = amélioration directe).",
+      "Les exemplaires équipés s'améliorent aussi, directement là où ils sont montés (vaisseau, drones, P.E.T).",
+      "Coût en crédits uniquement : 5 % du prix boutique pour le 1er niveau, puis ×2 à chaque niveau.",
+      "Le niveau s'affiche sur l'objet (carte LVL, verte au niveau max) dans le hangar et l'inventaire à partir de lvl.2.",
+    ]) + table(["Niveau", "Bonus", "Coût (% du prix)", "Exemple LF-4"], upgradeRows), { span: true }),
+    card(`Extras CPU (${extras.length})`, table(["", "Extra", "Effet", "Prix"], extras),
+      { span: true, note: "Un seul exemplaire de chaque extra par vaisseau. Réparation 01/02, Visée 01/02 et Emplacement 01 à 04 : un seul de chaque famille. Les Logfiles (arbre pilote) sont aussi dans l'onglet Extras de la boutique." }),
     card("Modules", list([
       `Roulette : ${gold(money(MODULE_ROLL_COST))} le tirage, ${gold(MODULE_DAILY_ROLL_LIMIT)} tirages par jour.`,
       "Chaque module a une couleur (rareté), un type et 1 à plusieurs statistiques.",
@@ -326,6 +375,7 @@ function pageNpc() {
     card("Butin", list([
       "Chaque NPC laisse une cargo-box (minerais) réservée au tueur.",
       "Les NPC d'assemblage lâchent des ressources d'atelier (Scrap, Mucosum, Plasmide...).",
+      "GG Omicron : aucun cargo, les ressources d'atelier arrivent directement dans l'inventaire.",
       "Les objectifs de quête et les titres comptent tes kills personnels.",
     ])),
   ];
@@ -503,8 +553,9 @@ function pageProgression() {
     card("Niveaux (XP totale)", table(["Niv.", "XP", "Niv.", "XP"], levelRows)),
     card("Grades", table(["", "Grade", "Points"], ranks)),
     card("Arbre des compétences", list([
-      `${gold(PILOT_MAX_POINTS)} points de pilote au maximum, 1 par niveau.`,
-      `Disque de log : ${gold(money(LOGDISK_PRICE))} l'unité.`,
+      `${gold(PILOT_MAX_POINTS)} points de pilote au maximum : de quoi monter tout l'arbre à fond.`,
+      `Chaque point s'échange contre des <b>Logfiles</b> (bouton Échanger) : ${gold(num(LOGDISK_ROWS[0]))} pour le 1er point, puis le coût monte jusqu'à ${gold(num(LOGDISK_ROWS[PILOT_MAX_POINTS - 1]))} pour le ${PILOT_MAX_POINTS}<sup>e</sup>.`,
+      `Logfiles : boutique, onglet Extras, ${gold(money(LOGDISK_PRICE))} l'unité. Visibles dans l'inventaire, non vendables.`,
       `Réinitialisation : ${gold(money(PILOT_RESET_BASE))} la première fois, puis le prix double.`,
       "Chaque compétence a des prérequis (points investis dans d'autres compétences).",
     ]) + table(["Compétence", "Effet", "Niv. max", "Au max", "Coût total"], skills), { span: true }),
@@ -512,13 +563,25 @@ function pageProgression() {
   ];
 }
 
+// Récompense finale d'une gate (lignes à 0 masquées, ressources comprises).
+function gateRewardText(c = {}) {
+  const parts = [];
+  if (c.credits) parts.push(`${money(c.credits)} cr`);
+  if (c.exp) parts.push(`${money(c.exp)} XP`);
+  if (c.honor) parts.push(`${num(c.honor)} hon.`);
+  if (c.x4) parts.push(`${num(c.x4)} X4`);
+  if (c.xenomit) parts.push(`${num(c.xenomit)} Xenomit`);
+  if (c.energy) parts.push(`${num(c.energy)} énergie`);
+  for (const [id, v] of Object.entries(c.resources || {})) if (Number(v) > 0) parts.push(`${num(v)} ${esc(getResourceName(id, v))}`);
+  return parts.join(" · ");
+}
 function pageGates() {
   const gates = Object.values(GALAXY_GATE_DEFINITIONS);
   const groupLabel = (g) => (g.group === "ensemble" ? "Ensemble ABG" : g.group ? "Roue isolée" : "Pièces Kronos");
   const rows = gates.map((g) => {
     const c = g.completion || {};
     return [img(g.image), `<b>${esc(g.name)}</b>`, gold(num(g.requiredParts)), num(g.maxWaves), num(g.maxLives), esc(groupLabel(g)),
-      `${money(c.credits)} cr · ${money(c.exp)} XP · ${num(c.honor)} hon. · ${num(c.x4)} X4${c.xenomit ? ` · ${num(c.xenomit)} Xenomit` : ""}`];
+      gateRewardText(c)];
   });
   const kronos = Object.entries(KRONOS_PARTS_BY_GATE).map(([id, n]) => [`<b>${esc(GALAXY_GATE_DEFINITIONS[id]?.name || id)}</b>`, gold(n)]);
   return [
@@ -533,14 +596,74 @@ function pageGates() {
     card("Jouer une gate", list([
       "Entre avec la touche Portail quand le portail de la gate est prêt.",
       "Les vies sont limitées (colonne Vies) et les vagues deviennent de plus en plus dures.",
-      "Les NPC donnent leurs gains normaux pendant les vagues.",
+      "Les NPC donnent leurs gains normaux pendant les vagues (sauf Omicron : ressources d'atelier à la place).",
       "La récompense finale est personnelle, jamais partagée au groupe.",
       "Attends le message de fin avant le retour en X-1.",
     ])),
     card("Toutes les gates", table(["", "Gate", "Pièces", "Vagues", "Vies", "Roue", "Récompense finale"], rows), { span: true }),
+    card("Mode Frénésie", list([
+      "Bouton en haut de la fenêtre Galaxy Gates (préférence du pilote).",
+      "Tous les NPC de la gate sont 2× plus rapides.",
+      "Les vagues s'enchaînent toutes seules, sans repasser par les portails du milieu.",
+      "Pas de portail de retour entre deux vagues : désactive-le avant la fin d'une vague pour sortir.",
+      "Récompenses inchangées. Indisponible pour Kronos, Eternal et Awakened.",
+    ])),
+    card("GG Omicron (ressources)", list([
+      "Roue isolée, 60 pièces, 8 vagues de NPC standard (deux familles par vague, Emperor Kristallon en finale).",
+      "Aucun crédit, XP ni honneur au kill : chaque NPC donne directement 1 à 3 lots de ressources d'atelier.",
+      "Lordakia / Sibelonit / Lordakium : Mucosum · Saimon / Mordon : Scrap · Devolarium / Sibelon : Plasmide · Kristallin / Kristallon : Prismatium.",
+      "15 % de chance par lot d'Aurus, Bifenon ou Tetrathrin à la place. Boss : 2 à 3 lots. Emperor : 10 à 15 lots + 1 de chaque rare.",
+      "Récompense finale : uniquement des ressources (voir tableau).",
+    ])),
+    card("Samedi Kronos et Dimanche GG", list([
+      `<b>Samedi</b> (${hm(GALAXY_EVENT_START_MINUTES)} → ${hm(GALAXY_EVENT_END_MINUTES)}) : spins ${gold(`−${pct(GALAXY_SPIN_DISCOUNT * 100)}`)} et chaque gate terminée donne ${gold(`${KRONOS_PARTS_EVENT_MULTIPLIER} pièces Kronos`)} au lieu d'1.`,
+      `<b>Dimanche</b> (${hm(GALAXY_EVENT_START_MINUTES)} → ${hm(GALAXY_EVENT_END_MINUTES)}) : spins ${gold(`−${pct(GALAXY_SPIN_DISCOUNT * 100)}`)} et récompenses finales ${gold(`×${GALAXY_GATE_EVENT_REWARD_MULTIPLIER}`)} (sauf crédits ; designs et équipements doublés s'ils tombent).`,
+      "C'est l'heure de fin de la gate qui compte. Kronos n'est pas concernée par le ×2 du dimanche.",
+      "Heure de Paris. La fenêtre Galaxy Gates affiche un badge et l'ancien prix barré pendant la promo.",
+    ])),
     card("Pièces Kronos par gate terminée", table(["Gate", "Pièces"], kronos)),
     card("Vagues par gate", `<div class="wikiFilterRow"><label class="wikiField"><span>Gate</span><select id="wikiGateFilter" aria-label="Gate">${
       Object.keys(GATE_WAVE_DIRS).map((id) => `<option value="${id}">${esc(botMapGroupLabel(`gg:${id}`))}</option>`).join("")}</select></label></div><div id="wikiGateWaves"><p class="wikiMuted">Chargement…</p></div>`),
+  ];
+}
+
+function pageEvenements() {
+  const hitac = resolveNpcReward(HITAC_SNOW_TYPE) || {};
+  const minion = resolveNpcReward(HITAC_SNOW_MINION_TYPE) || {};
+  const winterNpc = WINTER_SPAWN_GROUPS.map((g) => `${esc(npcName(g.type))} (${g.maps.join(" / ")})`).join(", ");
+  return [
+    card("Hitac enneigée", list([
+      `Du ${gold(dayAt(HITAC_SNOW_START_AT))} au ${gold(dayAt(HITAC_SNOW_END_AT))} (heure de Paris).`,
+      `Un <b>Hitac Givré</b> et ses <b>6 Minions Givrés</b> sur ${HITAC_SNOW_MAPS.join(", ")} (une map au hasard, un seul groupe à la fois).`,
+      "Le Hitac est invulnérable tant que ses Minions le protègent : détruis-les d'abord (chaque Minion revient 2 fois).",
+      "JAMX Creed, Creed et roquettes de ralentissement à 1 000 px. À sa mort, il réapparaît aussitôt sur une autre map.",
+      `<b>Hitac :</b> ${gold(money(hitac.credits))} crédits, ${gold(money(hitac.exp))} XP, ${gold(money(hitac.honor))} honneur.`,
+      `<b>Chaque Minion :</b> ${gold(money(minion.credits))} crédits, ${gold(money(minion.exp))} XP, ${gold(num(minion.honor))} honneur.`,
+      "Gains partagés entre tous les joueurs qui ont tapé, au prorata des dégâts (présents sur la map).",
+      "<b>Box Strike</b> personnelle pour chaque tapeur : 20 % de module (commun à légendaire), sinon énergie GG, ICE-100, R-IC3 ou ticket module. Reste 24 h.",
+    ]), { span: true }),
+    card("UFONIT du dimanche", list([
+      `Tous les dimanches de ${gold(hm(SUNDAY_START_MINUTES))} à ${gold(hm(SUNDAY_END_MINUTES))} (heure de Paris), sur ${SUNDAY_MAPS.join(", ")}.`,
+      `Il n'attaque pas ; tes dégâts sur lui sont ×${SUNDAY_DMG_MULT}. Détruit, il réapparaît aussitôt ailleurs.`,
+      `Loterie pour les 10 meilleurs en dégâts : ${pct(SUNDAY_MODULE_CHANCE * 100)} module, ${pct(SUNDAY_TICKET_CHANCE * 100)} ticket de relance, ${pct(SUNDAY_AMMO_CHANCE * 100)} ${num(SUNDAY_AMMO_QTY)} munitions X4.`,
+    ])),
+    card("Galaxy Gates du week-end", list([
+      `<b>Samedi Kronos :</b> spins −${pct(GALAXY_SPIN_DISCOUNT * 100)}, pièces Kronos ×${KRONOS_PARTS_EVENT_MULTIPLIER}.`,
+      `<b>Dimanche GG :</b> spins −${pct(GALAXY_SPIN_DISCOUNT * 100)}, récompenses finales ×${GALAXY_GATE_EVENT_REWARD_MULTIPLIER} (hors crédits).`,
+      "Détails dans l'onglet Galaxy Gates.",
+    ])),
+    card("Saison d'hiver", list([
+      `Du ${gold(dayAt(WINTER_START))} au ${gold(dayAt(WINTER_END))} chaque année : neige sur les portails.`,
+      `NPC d'hiver (un seul à la fois par paire de maps) : ${winterNpc}.`,
+      `<b>GG d'hiver (convoi du Père Noël) :</b> portail au centre des X-3, sessions communes toutes les 30 min (entrée à :00 et :30, départ 5 min plus tard), ${Math.round(WINTER_CONVOY_DURATION / 60)} min de survie.`,
+      `Protège le convoi : la récompense dépend de la vague atteinte (base ${money(WINTER_CONVOY_REWARD.credits)} crédits, ${money(WINTER_CONVOY_REWARD.exp)} XP, ${num(WINTER_CONVOY_REWARD.honor)} honneur, ${num(WINTER_CONVOY_REWARD.ice)} ICE-100 × la vague).`,
+      `Les box de Noël donnent des points givrés : classement Winter (${WINTER_RANKING_ENDS.length} classements, top ${WINTER_RANKING_TOP} récompensé).`,
+    ]), { span: true }),
+    card("Halloween", list([
+      `Du ${gold(dayAt(HALLOWEEN_START))} au ${gold(dayAt(HALLOWEEN_END))} chaque année.`,
+      "Curcubitors sur les maps, Boss Curcubitors, Pumpkin Box, bonbons pour l'assemblage et passe de combat.",
+      "Les bonbons restants sont conservés d'une année sur l'autre.",
+    ])),
   ];
 }
 
@@ -563,6 +686,11 @@ function pagePet() {
       "Les gears (Auto-Loot, Collecteur, Localisateur, Réparateur, Kamikaze...) remplacent le comportement de base.",
       "Les gears à recharge (Flamme, Lien HP, balises) se lancent puis le P.E.T reprend ton comportement secondaire.",
       "Le BOT pilote le P.E.T : comportement principal / secondaire, carburant et réparation automatiques, kamikaze auto.",
+    ])),
+    card("Designs P.E.T", list([
+      `${gold(num(Object.keys(PET_DESIGNS).length))} designs en boutique (onglet Designs P.E.T), ${gold(money(PET_DESIGN_PRICE))} chacun.`,
+      "Purement esthétiques : ils changent l'apparence du P.E.T, pas ses statistiques.",
+      "Il faut posséder un P.E.T pour en profiter.",
     ])),
     card("Gears", table(["", "Gear", "Effet", "P.E.T requis", "Prix"], gears), { span: true }),
     card("Protocoles", table(["", "Protocole", "Effet", "P.E.T requis", "Prix"], protos), { span: true }),
@@ -677,6 +805,7 @@ function pageSocial() {
     ])),
     card("Compte et firme", list([
       "Paramètres → Compte : pseudo, email, mot de passe, nom du P.E.T.",
+      "Les changements de pseudo, d'email et de mot de passe sont protégés (confirmation par email, délai de sécurité).",
       `Changer de firme coûte ${gold("50 M")} de crédits + ${gold("50 %")} de l'honneur et annule tes quêtes.`,
       "Déconnexion et redémarrage depuis l'icône Session du dock.",
     ]), { span: true }),
@@ -694,6 +823,9 @@ function pageFaq() {
     qa("Le BOT ne fait rien", list(["Au moins un NPC coché (mode Kill) ?", "La map de travail est-elle accessible ?", "La soute est-elle pleine sans vente auto ?", "Le P.E.T a-t-il du carburant ?"])),
     qa("Le jeu rame", list(["Paramètres : baisse la qualité graphique ou désactive des effets.", "Ferme les fenêtres inutiles."])),
     qa("Le son est trop fort", list(["Paramètres → Son : volume général + volume par effet."])),
+    qa("Comment rendre mes lasers plus forts ?", list([`Fenêtre Amélioration : +${UPGRADE_PCT_PER_LEVEL} % par niveau jusqu'à lvl.${UPGRADE_MAX_LEVEL}.`, "Modules de vaisseau (fenêtre Modules), formations, boosters DMG et arbre pilote.", "Canon à particules : un rayon en plus sur 25 % de tes tirs."])),
+    qa("Je vois trop peu de la map", list(["Paramètres → Disposition → Zoom du jeu : descends jusqu'à 60 %.", "L'extra Radar + / CPU Radar agrandit la portée de détection."])),
+    qa("Le jeu n'est pas dans ma langue", list(["Paramètres → Langue : 7 langues disponibles."])),
   ];
 }
 
@@ -712,6 +844,7 @@ const PAGES = [
   { id: "quetes", label: "Quêtes & passe", build: pageQuetes },
   { id: "progression", label: "Progression", build: pageProgression },
   { id: "galaxy", label: "Galaxy Gates", build: pageGates },
+  { id: "evenements", label: "Événements", build: pageEvenements },
   { id: "pet", label: "P.E.T", build: pagePet },
   { id: "boosters", label: "Boosters", build: pageBoosters },
   { id: "economie", label: "Économie", build: pageEconomie },

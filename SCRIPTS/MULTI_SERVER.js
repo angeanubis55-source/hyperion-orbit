@@ -61,7 +61,7 @@ const ABILITY_CLOAK_SILENT = new Set([
 // Camouflage interdit par carte : GG + QZ + Low + Maudite. Le client grise
 // les boutons, le serveur tranche en autorité (anti-contournement).
 const NO_CLOAK_MAPS = new Set(["alpha", "beta", "gamma", "delta", "epsilon",
-  "zeta", "kappa", "lambda", "kronos", "awakened", "eternal", "winter", "qz", "low", "maudite"]);
+  "zeta", "kappa", "lambda", "omicron", "kronos", "awakened", "eternal", "winter", "qz", "low", "maudite"]);
 function ownsAbility(profile, skill) {
   // Source unique : MOVEMENT_RULES.shipOwnsAbility (Police + designs).
   try { return shipOwnsAbility(profile?.shipId, skill); } catch { return false; }
@@ -1969,7 +1969,7 @@ function sendBoxSync(ws, mapId) {
 // suivant est alors un no-op (déjà sur place côté serveur).
 // Refusé : instances, gates, raid Low, même map, cooldowns.
 // Refusé : instances, gates, raid Low, Maudite, 5-2, Blacklight, même map, cooldowns.
-const STAR_JUMP_BLOCKED_MAPS = new Set(["alpha", "beta", "gamma", "delta", "epsilon", "zeta", "kappa", "lambda", "kronos", "awakened", "qz", "low", "maudite", "winter", "5-2", "1-bl", "2-bl", "3-bl"]);
+const STAR_JUMP_BLOCKED_MAPS = new Set(["alpha", "beta", "gamma", "delta", "epsilon", "zeta", "kappa", "lambda", "omicron", "kronos", "awakened", "qz", "low", "maudite", "winter", "5-2", "1-bl", "2-bl", "3-bl"]);
 const STAR_JUMP_REUSE_MS = STARMAP_JUMP_REUSE_SEC * 1000;
 const STAR_JUMP_MAP_ALIASES = { low: "LOW_MAP", maudite: "MAUDITE", "1-bl": "1-BL", "2-bl": "2-BL", "3-bl": "3-BL" };
 
@@ -2859,7 +2859,7 @@ wss.on("connection", (ws) => {
         && state._account?.eternalGate?.inRun === true;
       if (!arrival && !state._joined && instance
         && ((String(savedMap).toLowerCase() === nextMap
-          && ["alpha", "beta", "gamma", "delta", "epsilon", "zeta", "kappa", "lambda", "kronos", "awakened", "qz"].includes(nextMap))
+          && ["alpha", "beta", "gamma", "delta", "epsilon", "zeta", "kappa", "lambda", "omicron", "kronos", "awakened", "qz"].includes(nextMap))
           || eternalRun)) arrival = { instance: true };
     }
     if (!arrival || instance !== (arrival.instance === true)) return false;

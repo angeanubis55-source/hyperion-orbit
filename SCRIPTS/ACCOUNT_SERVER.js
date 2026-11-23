@@ -1768,7 +1768,7 @@ export function adminDebugAccount(target) {
 // sa prochaine synchro (révision bumpée). Reset retire aussi les pièces
 // Kronos issues de cette gate. Give incrémente (+1 par clic) ET ajoute
 // +1 pièce Kronos (plafonnée au quota de la gate, comme une vraie complétion).
-const ADMIN_GG_IDS = Object.freeze(["alpha", "beta", "gamma", "delta", "epsilon", "zeta", "kappa", "lambda", "kronos", "awakened"]);
+const ADMIN_GG_IDS = Object.freeze(["alpha", "beta", "gamma", "delta", "epsilon", "zeta", "kappa", "lambda", "omicron", "kronos", "awakened"]);
 // Quotas fidèles (miroir de KRONOS_PARTS_BY_GATE dans SRC/CORE/GALAXY_GATES.js) :
 // chaque complétion d'une gate source donne +1 pièce Kronos jusqu'au quota.
 const ADMIN_KRONOS_QUOTA = Object.freeze({ alpha: 4, beta: 3, gamma: 1, delta: 1, epsilon: 4, zeta: 1, kappa: 2, lambda: 5 });

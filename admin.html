@@ -403,7 +403,7 @@
   const fmtDuration = (sec) => { const s = Math.max(0, Number(sec) || 0); if (s < 60) return `${s} s`; if (s < 3600) return `${Math.floor(s / 60)} min`; return `${Math.floor(s / 3600)} h ${String(Math.floor(s % 3600 / 60)).padStart(2, "0")}`; };
   const fmtDmgShort = (v) => { const n = Math.max(0, Math.floor(Number(v) || 0)); return n >= 1e9 ? `${(n / 1e9).toFixed(1)} Md` : n >= 1e6 ? `${Math.round(n / 1e6)} M` : fmtN(n); };
   const FACTIONS = { mmo: "MMO", eic: "EIC", vru: "VRU" };
-  const GG_NAMES = { alpha: "Alpha", beta: "Beta", gamma: "Gamma", delta: "Delta", epsilon: "Epsilon", zeta: "Zeta", kappa: "Kappa", lambda: "Lambda", kronos: "Kronos", awakened: "Awakened" };
+  const GG_NAMES = { alpha: "Alpha", beta: "Beta", gamma: "Gamma", delta: "Delta", epsilon: "Epsilon", zeta: "Zeta", kappa: "Kappa", lambda: "Lambda", omicron: "Omicron", kronos: "Kronos", awakened: "Awakened" };
   const MODULE_STATS = [["damage", "Dégâts"], ["hp", "PV"], ["shield", "Bouclier"], ["speed", "Vitesse"], ["penetration", "Pénétration"], ["laser_hit", "Précision laser"], ["rocket_hit", "Précision roquette"], ["evasion", "Évasion"], ["exp", "EXP"], ["honor", "Honneur"]];
 
   /* ---------- Session ---------- */

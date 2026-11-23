@@ -89,7 +89,7 @@ function isEventType(type) {
 const SECTOR_RE = /^[123]-([1-8]|bl)$/;
 
 // Ordre officiel des Galaxy Gates (filtre "Galaxy Gates Alpha"...).
-const GATE_ORDER = ["alpha", "beta", "gamma", "delta", "epsilon", "zeta", "kappa", "lambda", "kronos", "awakened", "eternal", "qz"];
+const GATE_ORDER = ["alpha", "beta", "gamma", "delta", "epsilon", "zeta", "kappa", "lambda", "omicron", "kronos", "awakened", "eternal", "qz"];
 const GATE_NAMES = { qz: "QZ" };
 
 // Groupe de filtre d'une map : "x-1".."x-8", "x-bl", "gg:<gate>",

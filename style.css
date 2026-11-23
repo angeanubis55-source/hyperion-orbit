@@ -4841,6 +4841,7 @@ html body #profileOverlay .profileHeaderTop .profileTitle, html body #profileOve
 .ggGateNav .ggTabsGroup[data-gg-group="zeta"],
 .ggGateNav .ggTabsGroup[data-gg-group="kappa"],
 .ggGateNav .ggTabsGroup[data-gg-group="lambda"],
+.ggGateNav .ggTabsGroup[data-gg-group="omicron"],
 .ggGateNav .ggTabsGroup[data-gg-group="awakened"],
 .ggGateNav .ggTabsGroup[data-gg-group="kronos"] {
   /* ✅ pas de séparateur : simple espace entre les groupes. */
@@ -28715,4 +28716,9 @@ display: flex;
 }
 #upgradeWindow .tdmSections .inventorySlot.selected::after {
   animation:shopTabDotBlink 1s ease-in-out infinite !important;
+}
+
+/* Spinner GG : l'image Omicron a une grande marge transparente -> plus grande. */
+.ggPortalPreview img#ggPortalImage[data-gate="omicron"] {
+  width:min(360px,90%);
 }

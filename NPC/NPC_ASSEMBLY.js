@@ -117,7 +117,7 @@ function tierOf(npcType) {
 export function assemblyBaseFamily(npcType) {
   let base = String(npcType || "");
   base = base.replace(/^npc_(Boss|Uber)_/i, "npc_");
-  base = base.replace(/_(alpha|beta|gamma|delta|epsilon|zeta|kappa|lambda)$/i, "");
+  base = base.replace(/_(alpha|beta|gamma|delta|epsilon|zeta|kappa|lambda|omicron)$/i, "");
   base = base.replace(/^npc_(Frozen|Blighted|Plagued|Awakened)_/i, "npc_");
   // Finale GG (ex : npc_Awakened_Impulse_Final) : même famille que le régulier.
   base = base.replace(/_Final$/i, "_II");

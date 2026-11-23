@@ -98,6 +98,13 @@ const SPECIAL_SKINS = Object.freeze({
     jump: { src: "ASSETS/LAMBDA_PORTAL/JUMP.png", w: 402, h: 401, yOff: 0, scale: 1, spinSpeed: 0, alpha: 1 },
     jumpFxPath: null,
   }),
+  // GG Omicron : 3 états fournis (560x560).
+  omicron: Object.freeze({
+    idle: { src: "ASSETS/RESSOURCES_PORTAL/PORTAIL_RESSOURCES_DESACTIVE.png", w: 560, h: 560, yOff: 0 },
+    open: { src: "ASSETS/RESSOURCES_PORTAL/PORTAIL_RESSOURCES_ACTIVE.png", w: 560, h: 560, yOff: 0 },
+    jump: { src: "ASSETS/RESSOURCES_PORTAL/PORTAIL_RESSOURCES_JUMP.png", w: 560, h: 560, yOff: 0, scale: 1, spinSpeed: 0, alpha: 1 },
+    jumpFxPath: null,
+  }),
   kronos: Object.freeze({
     idle: { src: "ASSETS/KRONOS_PORTAL/DESACTIVE.png?v=kronos-1", w: 410, h: 353, yOff: 0 },
     // ✅ les 3 états = image de base ; la couche open joue idle_01..06 en boucle.
@@ -226,6 +233,7 @@ export function getPortalSkinForMap(toMap) {
   if (lower === "zeta") return SPECIAL_SKINS.zeta;
   if (lower === "kappa") return SPECIAL_SKINS.kappa;
   if (lower === "lambda") return SPECIAL_SKINS.lambda;
+  if (lower === "omicron") return SPECIAL_SKINS.omicron;
   if (lower === "kronos") return SPECIAL_SKINS.kronos;
   if (lower === "awakened") return SPECIAL_SKINS.awakened;
   if (lower === "eternal") return SPECIAL_SKINS.eternal;

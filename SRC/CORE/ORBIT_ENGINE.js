@@ -7905,7 +7905,7 @@ function breakCpuCloak(reason) {
 // Camouflage interdit par carte : GG + QZ + Low + Maudite. Boutons grisés
 // et activations refusées sur place (le serveur tranche en autorité).
 const NO_CLOAK_MAPS = new Set(["alpha", "beta", "gamma", "delta", "epsilon",
-  "zeta", "kappa", "lambda", "kronos", "awakened", "eternal", "winter", "qz", "low", "maudite"]);
+  "zeta", "kappa", "lambda", "omicron", "kronos", "awakened", "eternal", "winter", "qz", "low", "maudite"]);
 function cloakBlockedOnMap(mapId = null) {
   try {
     const id = String(mapId ?? window.__CURRENT_MAP_ID__ ?? currentMapId() ?? "").toLowerCase();
@@ -18092,6 +18092,7 @@ function renderEternalGatePanel(user, state) {
   ui.ggEnergy.textContent = formatInteger(state.energy);
   ui.ggCredits.textContent = formatInteger(user.credits);
   ui.ggPortalImage.src = ETERNAL_GATE_INFO.image;
+  ui.ggPortalImage.dataset.gate = "eternal";
   ui.ggPortalImage.alt = `Portail ${ETERNAL_GATE_INFO.name}`;
   const owned = Math.max(0, Math.floor(Number(user?.inventory?.resources?.[ETERNAL_GATE_INFO.entryResource]) || 0));
   const eternalStockBtn = document.getElementById("ggEternalStockBtn");
@@ -18184,6 +18185,7 @@ function renderGalaxyGateWindow(message = "") {
   ui.ggParts.textContent = `${formatInteger(displayedParts)} / ${formatInteger(gate.requiredParts)}`;
   ui.ggPortalImage.src = gate.image;
   ui.ggPortalImage.alt = `Portail ${gate.name}`;
+  ui.ggPortalImage.dataset.gate = gate.id;
   // Promo du samedi et du dimanche (sauf Kronos) : badge et ancien prix barré.
   const discount = gate.id !== "kronos" && isGalaxySpinDiscountTime();
   // x2 des récompenses : dimanche seulement. Samedi : pièces Kronos x2.
@@ -18208,7 +18210,10 @@ function renderGalaxyGateWindow(message = "") {
   const designReward = designDrop ? `<span>${Math.round(designDrop.chance * 100)}% ${dropCount}Design de drones ( ${getDroneDesign(designDrop.itemId).name.toLowerCase()} )</span>` : '';
   const equipmentDrop = GALAXY_GATE_EQUIPMENT_DROPS[gate.id];
   const equipmentReward = equipmentDrop ? `<span>${Math.round(equipmentDrop.chance * 100)}% ${dropCount}${findCatalogItem(equipmentDrop.itemId).name.replace(/^laser /i, "")}</span>` : '';
-  ui.ggRewards.innerHTML = `<strong>Récompenses finales</strong><span>${was(base.exp, completion.exp)} XP</span><span>${was(base.honor, completion.honor)} honneur</span><span>${amount(completion.credits)} crédits</span><span>${was(base.x4, completion.x4)} UCB-100</span><span>${was(base.xenomit, completion.xenomit)} Xénomit</span>${Number(completion.energy) > 0 ? `<span>${was(base.energy, completion.energy)} énergies Galaxy</span>` : ""}${materials}${designReward}${equipmentReward}${kronosReward}`;
+  // Lignes à 0 (ex : GG Omicron sans XP / honneur / crédits) masquées.
+  const positive = value => Array.isArray(value) ? Number(value[1]) > 0 : Number(value) > 0;
+  const line = (value, html) => positive(value) ? `<span>${html}</span>` : "";
+  ui.ggRewards.innerHTML = `<strong>Récompenses finales</strong>${line(completion.exp, `${was(base.exp, completion.exp)} XP`)}${line(completion.honor, `${was(base.honor, completion.honor)} honneur`)}${line(completion.credits, `${amount(completion.credits)} crédits`)}${line(completion.x4, `${was(base.x4, completion.x4)} UCB-100`)}${line(completion.xenomit, `${was(base.xenomit, completion.xenomit)} Xénomit`)}${Number(completion.energy) > 0 ? `<span>${was(base.energy, completion.energy)} énergies Galaxy</span>` : ""}${materials}${designReward}${equipmentReward}${kronosReward}`;
   // ✅ multiplicateur affiché/armé par groupe de spin (ABG vs Delta isolés).
   const ggSpinGroup = gate.group || gate.id;
   const ggGroupMultiplier = Math.min(5, Math.max(1, Number(state.multipliers?.[ggSpinGroup]) || 1));
@@ -18297,6 +18302,7 @@ function renderGalaxyGateWindow(message = "") {
   const zetaTabs = Object.values(GALAXY_GATE_DEFINITIONS).filter(item => (item.group || item.id) === "zeta").map(ggTabButton).join("");
   const kappaTabs = Object.values(GALAXY_GATE_DEFINITIONS).filter(item => (item.group || item.id) === "kappa").map(ggTabButton).join("");
   const lambdaTabs = Object.values(GALAXY_GATE_DEFINITIONS).filter(item => (item.group || item.id) === "lambda").map(ggTabButton).join("");
+  const omicronTabs = Object.values(GALAXY_GATE_DEFINITIONS).filter(item => (item.group || item.id) === "omicron").map(ggTabButton).join("");
   const awakenedTabs = Object.values(GALAXY_GATE_DEFINITIONS).filter(item => (item.group || item.id) === "awakened").map(ggTabButton).join("");
   const kronosTabs = Object.values(GALAXY_GATE_DEFINITIONS).filter(item => item.id === "kronos").map(ggTabButton).join("");
   ui.ggTabs.innerHTML = `<div class="ggTabsGroup" data-gg-group="ensemble"><div class="ggTabsButtons">${ensembleTabs}</div></div>`
@@ -18305,6 +18311,7 @@ function renderGalaxyGateWindow(message = "") {
     + `<div class="ggTabsGroup" data-gg-group="zeta"><div class="ggTabsButtons">${zetaTabs}</div></div>`
     + `<div class="ggTabsGroup" data-gg-group="kappa"><div class="ggTabsButtons">${kappaTabs}</div></div>`
     + `<div class="ggTabsGroup" data-gg-group="lambda"><div class="ggTabsButtons">${lambdaTabs}</div></div>`
+    + `<div class="ggTabsGroup" data-gg-group="omicron"><div class="ggTabsButtons">${omicronTabs}</div></div>`
     + `<div class="ggTabsGroup" data-gg-group="awakened"><div class="ggTabsButtons">${awakenedTabs}</div></div>`
     + `<div class="ggTabsGroup" data-gg-group="kronos"><div class="ggTabsButtons">${kronosTabs}</div></div>`;
   document.querySelectorAll("[data-gg-cat]").forEach((button) => {
@@ -18831,7 +18838,7 @@ const CBS_BUTTON = {
 // 4-1..4-4 utilisent BATTLE/4-x, comme chaque map utilise son propre skin.
 function getPortalSpriteSet(ptl = null) {
   const gateId = String(window.__CURRENT_MAP_ID__ || rules?.mapLabel || "").toLowerCase();
-  const isGalaxyGate = ["alpha", "beta", "gamma", "delta", "epsilon", "zeta", "kappa", "lambda", "kronos", "awakened", "eternal"].includes(gateId);
+  const isGalaxyGate = ["alpha", "beta", "gamma", "delta", "epsilon", "zeta", "kappa", "lambda", "omicron", "kronos", "awakened", "eternal"].includes(gateId);
   const destination = isGalaxyGate && ptl === portal ? gateId
     : isGalaxyGate && ptl === gateReturnPortal
       ? getFactionHomeMap((account.user || getCurrentUserFull())?.faction)
@@ -33292,6 +33299,60 @@ function drawRemoteCollectBeams(c, ox, oy) {
   }
 }
 
+// ============================================================
+// GG Omicron : aucun crédit / XP / honneur au kill. Chaque NPC donne
+// directement 1 à 3 lots de ressources d'assemblage dans l'inventaire
+// (pas de box au sol), affichés dans le message du kill.
+// ============================================================
+function isResourceGateNpc(type) {
+  return String(type || "").endsWith("_omicron");
+}
+// Ressource principale par famille (même logique que les drops officiels).
+const RESOURCE_GATE_RESOURCE_BY_FAMILY = Object.freeze({
+  npc_Lordakia: "mucosum", npc_Sibelonit: "mucosum", npc_Lordakium: "mucosum",
+  npc_Saimon: "scrap", npc_Mordon: "scrap",
+  npc_Devolarium: "plasmide", npc_Sibelon: "plasmide",
+  npc_Kristallin: "prismatium", npc_Kristallon: "prismatium", npc_Emperor_Kristallon: "prismatium",
+});
+// 15 % de chance par lot d'une ressource plus rare à la place.
+const RESOURCE_GATE_RARES = Object.freeze(["aurus", "bifenon", "tetrathrin"]);
+const RESOURCE_GATE_RARE_CHANCE = 0.15;
+// Gros NPC : 1 à 2 ressources par lot (sinon 1).
+const RESOURCE_GATE_BIG = new Set(["npc_Devolarium", "npc_Sibelon", "npc_Kristallon", "npc_Lordakium"]);
+
+function grantResourceGateDrops(e) {
+  const raw = String(e?.type || "").replace(/_omicron$/, "");
+  const isBoss = /^npc_Boss_/.test(raw);
+  const family = raw.replace(/^npc_Boss_/, "npc_");
+  const main = RESOURCE_GATE_RESOURCE_BY_FAMILY[family];
+  if (!main) return [];
+  const emperor = family === "npc_Emperor_Kristallon";
+  // Lots : 1-3 standard, 2-3 Boss, 10-15 Emperor (+ 1 de chaque rare garanti).
+  const lots = emperor ? 10 + Math.floor(Math.random() * 6) : isBoss ? 2 + Math.floor(Math.random() * 2) : 1 + Math.floor(Math.random() * 3);
+  const gains = {};
+  const add = (id, qty) => { gains[id] = (gains[id] || 0) + qty; };
+  for (let k = 0; k < lots; k++) {
+    const id = Math.random() < RESOURCE_GATE_RARE_CHANCE
+      ? RESOURCE_GATE_RARES[(Math.random() * RESOURCE_GATE_RARES.length) | 0]
+      : main;
+    add(id, (RESOURCE_GATE_BIG.has(family) || isBoss || emperor) ? 1 + Math.floor(Math.random() * 2) : 1);
+  }
+  if (emperor) for (const id of RESOURCE_GATE_RARES) add(id, 1);
+  if (!account.user) loadAccountUser();
+  if (!account.user) return [];
+  account.user.inventory ||= {};
+  account.user.inventory.resources ||= {};
+  const lines = [];
+  for (const [id, qty] of Object.entries(gains)) {
+    if (!(qty > 0)) continue;
+    account.user.inventory.resources[id] = Math.max(0, Number(account.user.inventory.resources[id]) || 0) + qty;
+    try { trackResourceGain(id, qty); } catch {}
+    lines.push(`Vous avez reçu ${formatInteger(qty)} ${getResourceName(id, qty)}`);
+  }
+  if (lines.length) markProgressDirty();
+  return lines;
+}
+
 function killRewards(e) {
   player.kills++;
   // Cupidité (arbre pilote) : +X % crédits par alien.
@@ -33371,6 +33432,9 @@ function killRewards(e) {
       } catch {}
       account.user.revision = Math.max(Math.floor(Number(account.user.revision) || 0), Math.floor(Number(serverReward.revision) || 0));
     }
+  } else if (isResourceGateNpc(e.type)) {
+    // GG Omicron : ni crédits, ni XP, ni honneur (box de ressources au sol).
+    credits = 0; experience = 0; honor = 0; gainedXp = 0; gainedHonor = 0;
   } else {
     credits = Math.max(0, Math.floor(Number(e.value || 0) * rewardPct / 100
       * npcMapCreditMultiplier(window.__CURRENT_MAP_ID__) * playerPilotMults().credit));
@@ -33447,6 +33511,11 @@ function killRewards(e) {
     }
     if (boosterDropLines.length) markProgressDirty();
   } catch {}
+  if (isResourceGateNpc(e.type)) {
+    // GG Omicron : seulement le kill, les ressources sont au sol.
+    addGameLog([killLabel, ...directLines].join(" · "), "reward");
+    showNotificationGroup([killLabel, ...directLines], "info", { whiteTerms, violetTerms });
+  } else {
   addGameLog([`${killLabel} · +${formatInteger(credits)} crédits · +${xpText} · +${honorText}`, ...directLines, ...boosterDropLines].join(" · "), "reward");
   showNotificationGroup([
     killLabel,
@@ -33456,6 +33525,7 @@ function killRewards(e) {
     ...directLines,
     ...boosterDropLines,
   ], "info", { whiteTerms, violetTerms });
+  }
   // Le groupe partage les recompenses et les objectifs de quete, mais la
   // fiche "NPC & Grades" reste personnelle : seul le tueur est credite.
   const ownsNpcStatKill = !e._netUid || (serverReward ? serverReward.ownsKill === true : e._netLootOwner === true);
@@ -34067,6 +34137,8 @@ if (
   e.type !== HITAC_SNOW_MINION_DRAW_TYPE &&
   // ✅ Gate Eternal : aucun cargo (ni minerais ni box).
   !String(e.type || "").endsWith("_eternal") &&
+  // ✅ GG Omicron : pas de cargo, box de ressources à la place (plus bas).
+  !isResourceGateNpc(e.type) &&
   // Event uniquement (même les retardataires d'après-event ne droppent pas).
   (hwDropRole == null || isHalloweenMapActive(currentMapId())) &&
   // Tous à 100 % (boss comme normaux, voir HALLOWEEN_DROP_*_RATE).
@@ -34094,7 +34166,12 @@ if (
 //   : pas de roll local ici, sinon double attribution ou écrasement par la
 //   version serveur (toast sans rinusk / rinusk perdu).
 // GG d'hiver : seulement la box de Noël (pas de box d'assemblage).
-if (ownsNpcLoot && !e.noRewards && rules?.convoy !== true) {
+// GG Omicron : ressources d'assemblage directement dans l'inventaire,
+// à la place des drops classiques (lignes ajoutées au message du kill).
+if (ownsNpcLoot && !e.noRewards && isResourceGateNpc(e.type)) {
+  try { e._directDropLines = grantResourceGateDrops(e); } catch {}
+}
+if (ownsNpcLoot && !e.noRewards && rules?.convoy !== true && !isResourceGateNpc(e.type)) {
   const asmBox = rollNpcAssemblyBox(e.type);
   if (asmBox && COLLECTABLE_DEFS[asmBox.box]) {
     // Box d'assemblage : reste au sol indéfiniment (comme les bonus box),
@@ -34387,9 +34464,9 @@ function scheduleGalaxyGateCompletion(gateId, completion) {
       flushNetUser().catch(() => {});
     }
     const messages = [
-      `Vous avez gagné ${formatInteger(reward.exp)} XP`,
-      `Vous avez gagné ${formatInteger(reward.honor)} honneur`,
-      `Vous avez reçu ${formatInteger(reward.credits)} crédits`,
+      ...(Number(reward.exp) > 0 ? [`Vous avez gagné ${formatInteger(reward.exp)} XP`] : []),
+      ...(Number(reward.honor) > 0 ? [`Vous avez gagné ${formatInteger(reward.honor)} honneur`] : []),
+      ...(Number(reward.credits) > 0 ? [`Vous avez reçu ${formatInteger(reward.credits)} crédits`] : []),
       ...(Number(reward.x4) > 0 ? [`Vous avez reçu ${formatInteger(reward.x4)} UCB-100`] : []),
       ...(Number(reward.energy) > 0 ? [`Vous avez reçu ${formatInteger(reward.energy)} énergies Galaxy`] : []),
       ...(Number(reward.xenomit) > 0 ? [`Vous avez reçu ${formatInteger(reward.xenomit)} Xénomit`] : []),
@@ -36547,7 +36624,7 @@ function portalProvidesSafety(portal, forJpc = false) {
   const playerSector = getFaction((account.user || getCurrentUserFull())?.faction).sector;
   if (!forJpc && sectorMatch && sectorMatch[1] !== playerSector) return false;
   const destination = String(portal?.toMap || "").trim().toLowerCase();
-  return !["alpha", "beta", "gamma", "delta", "epsilon", "zeta", "kappa", "lambda", "kronos", "awakened", "eternal", "winter"].includes(destination);
+  return !["alpha", "beta", "gamma", "delta", "epsilon", "zeta", "kappa", "lambda", "omicron", "kronos", "awakened", "eternal", "winter"].includes(destination);
 }
 
 function baseProvidesSafety(forJpc = false) {
@@ -38421,7 +38498,7 @@ function die() {
 // ✅ Portails annexes (par destination) : jamais utilisés pour une
 // réapparition au portail — low, QZ, Galaxy Gates (aussi celles des X-1),
 // map maudite et 5-2 (portail central de 4-5).
-const ANNEX_PORTAL_MAPS = new Set(["low", "qz", "alpha", "beta", "gamma", "delta", "epsilon", "zeta", "kappa", "lambda", "kronos", "awakened", "eternal", "winter", "maudite", "5-2"]);
+const ANNEX_PORTAL_MAPS = new Set(["low", "qz", "alpha", "beta", "gamma", "delta", "epsilon", "zeta", "kappa", "lambda", "omicron", "kronos", "awakened", "eternal", "winter", "maudite", "5-2"]);
 
 function isAnnexPortal(portal) {
   // Retour Low : exclu aussi (sinon réapparition sur le portail masqué).

@@ -676,6 +676,70 @@ export function getZonePortals(WORLD) {
 
     {
 
+      id: "p_11_to_omicron",
+
+      x: 5300,
+
+      y: 2400,
+
+      r: 260,
+
+      toMap: "omicron",
+
+ sprites: {
+
+    idle: {
+
+      src: "ASSETS/RESSOURCES_PORTAL/PORTAIL_RESSOURCES_DESACTIVE.png",
+
+      w: 560,
+
+      h: 560,
+
+      yOff: 0,
+
+    },
+
+
+
+    open: {
+
+      src: "ASSETS/RESSOURCES_PORTAL/PORTAIL_RESSOURCES_ACTIVE.png",
+
+      w: 560,
+
+      h: 560,
+
+      yOff: 0,
+
+    },
+
+
+
+    jump: {
+
+      src: "ASSETS/RESSOURCES_PORTAL/PORTAIL_RESSOURCES_JUMP.png",
+
+      w: 560,
+
+      h: 560,
+
+      yOff: 0,
+
+      scale: 1,
+
+      spinSpeed: 0,
+
+      alpha: 1,
+
+    },
+
+  },
+
+    },
+
+    {
+
       id: "p_11_to_kronos",
 
       x: 4710,

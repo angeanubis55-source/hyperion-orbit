@@ -11,6 +11,7 @@ export const MAP_LOADERS = Object.freeze({
   zeta: () => import("../../MAPS/ZETA_MAP/GATE.js"),
   kappa: () => import("../../MAPS/KAPPA_MAP/GATE.js"),
   lambda: () => import("../../MAPS/LAMBDA_MAP/GATE.js"),
+  omicron: () => import("../../MAPS/OMICRON_MAP/GATE.js"),
   kronos: () => import("../../MAPS/KRONOS_MAP/GATE.js"),
   awakened: () => import("../../MAPS/AWAKENED_MAP/GATE.js"),
   eternal: () => import("../../MAPS/ETERNAL_MAP/GATE.js"),

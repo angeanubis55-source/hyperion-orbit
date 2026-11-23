@@ -76,6 +76,19 @@ export const NPC_REWARDS = Object.freeze({
   // Cache de raid Low : récompense fixe versée à chaque membre du groupe
   // présent sur la map à la mort du Century Falcon (100 % chacun).
   npc_Low_Raid_Cache: { credits: 10000000, exp: 10000000, honor: 50000 },
+  // GG Omicron : rien au kill (les NPC lâchent des box de ressources).
+  npc_Lordakia_omicron: { credits: 0, exp: 0, honor: 0 },
+  npc_Saimon_omicron: { credits: 0, exp: 0, honor: 0 },
+  npc_Mordon_omicron: { credits: 0, exp: 0, honor: 0 },
+  npc_Sibelonit_omicron: { credits: 0, exp: 0, honor: 0 },
+  npc_Kristallin_omicron: { credits: 0, exp: 0, honor: 0 },
+  npc_Boss_Kristallin_omicron: { credits: 0, exp: 0, honor: 0 },
+  npc_Devolarium_omicron: { credits: 0, exp: 0, honor: 0 },
+  npc_Sibelon_omicron: { credits: 0, exp: 0, honor: 0 },
+  npc_Kristallon_omicron: { credits: 0, exp: 0, honor: 0 },
+  npc_Lordakium_omicron: { credits: 0, exp: 0, honor: 0 },
+  npc_Boss_Sibelon_omicron: { credits: 0, exp: 0, honor: 0 },
+  npc_Emperor_Kristallon_omicron: { credits: 0, exp: 0, honor: 0 },
   npc_Streuner_alpha: { credits: 1000, exp: 1000, honor: 2 },
   npc_Lordakia_alpha: { credits: 1800, exp: 1800, honor: 4 },
   npc_Mordon_alpha: { credits: 9600, exp: 4800, honor: 16 },

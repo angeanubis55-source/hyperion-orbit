@@ -3,14 +3,14 @@
 import { MAP_LOADERS } from "../SRC/CORE/MAP_REGISTRY.js";
 import { NPC_TYPES } from "../NPC/NPC_TYPES.js";
 
-const GATE_MAPS = new Set(["alpha", "beta", "gamma", "delta", "epsilon", "zeta", "kappa", "lambda", "kronos", "awakened", "eternal", "winter", "qz"]);
+const GATE_MAPS = new Set(["alpha", "beta", "gamma", "delta", "epsilon", "zeta", "kappa", "lambda", "omicron", "kronos", "awakened", "eternal", "winter", "qz"]);
 // Alias mapId -> dossier (la Low partagée vit dans MAPS/LOW_MAP).
 const MAP_DIRS = Object.freeze({ low: "LOW_MAP" });
 // Vagues de chaque Galaxy Gate. Seules QZ et Eternal font aussi apparaître
 // leur DEFAULT_WAVE_TYPE (les autres gates s'arrêtent après la dernière vague).
 export const GATE_WAVE_DIRS = Object.freeze({
   alpha: "ALPHA_MAP", beta: "BETA_MAP", gamma: "GAMMA_MAP", delta: "DELTA_MAP",
-  epsilon: "EPSILON_MAP", zeta: "ZETA_MAP", kappa: "KAPPA_MAP", lambda: "LAMBDA_MAP",
+  epsilon: "EPSILON_MAP", zeta: "ZETA_MAP", kappa: "KAPPA_MAP", lambda: "LAMBDA_MAP", omicron: "OMICRON_MAP",
   kronos: "KRONOS_MAP", awakened: "AWAKENED_MAP", eternal: "ETERNAL_MAP", qz: "BLIGHTED_MAP",
 });
 const GATES_WITH_DEFAULT_WAVE = new Set(["eternal", "qz"]);

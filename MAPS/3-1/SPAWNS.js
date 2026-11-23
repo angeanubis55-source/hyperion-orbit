@@ -360,7 +360,7 @@ export function getZonePortals(WORLD) {
 
       x: 9288,
 
-      y: 5000,
+      y: 2800,
 
       r: 260,
 
@@ -422,9 +422,9 @@ export function getZonePortals(WORLD) {
 
       id: "p_11_to_epsilon",
 
-      x: 8411,
+      x: 7739,
 
-      y: 5046,
+      y: 3104,
 
       r: 260,
 
@@ -486,9 +486,9 @@ export function getZonePortals(WORLD) {
 
       id: "p_11_to_zeta",
 
-      x: 7911,
+      x: 8239,
 
-      y: 5816,
+      y: 2334,
 
       r: 260,
 
@@ -550,9 +550,9 @@ export function getZonePortals(WORLD) {
 
       id: "p_11_to_kappa",
 
-      x: 9000,
+      x: 7150,
 
-      y: 3275,
+      y: 4875,
 
       r: 260,
 
@@ -614,9 +614,9 @@ export function getZonePortals(WORLD) {
 
       id: "p_11_to_lambda",
 
-      x: 9245,
+      x: 6905,
 
-      y: 2081,
+      y: 6069,
 
       r: 260,
 
@@ -676,11 +676,75 @@ export function getZonePortals(WORLD) {
 
     {
 
+      id: "p_11_to_omicron",
+
+      x: 5700,
+
+      y: 4600,
+
+      r: 260,
+
+      toMap: "omicron",
+
+ sprites: {
+
+    idle: {
+
+      src: "ASSETS/RESSOURCES_PORTAL/PORTAIL_RESSOURCES_DESACTIVE.png",
+
+      w: 560,
+
+      h: 560,
+
+      yOff: 0,
+
+    },
+
+
+
+    open: {
+
+      src: "ASSETS/RESSOURCES_PORTAL/PORTAIL_RESSOURCES_ACTIVE.png",
+
+      w: 560,
+
+      h: 560,
+
+      yOff: 0,
+
+    },
+
+
+
+    jump: {
+
+      src: "ASSETS/RESSOURCES_PORTAL/PORTAIL_RESSOURCES_JUMP.png",
+
+      w: 560,
+
+      h: 560,
+
+      yOff: 0,
+
+      scale: 1,
+
+      spinSpeed: 0,
+
+      alpha: 1,
+
+    },
+
+  },
+
+    },
+
+    {
+
       id: "p_11_to_kronos",
 
-      x: 9860,
+      x: 6290,
 
-      y: 4394,
+      y: 3756,
 
       r: 260,
 

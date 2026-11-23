@@ -452,7 +452,8 @@ export const NPC_TYPES = {
     playSprite: true,
     passiveNative: true,
     spriteSpeed: 40,
-    bulletSprite: { src: "COMBAT/MUNITIONS/KRISTALLON.png", w: 97, h: 37, glow: true, invert: true },
+    // Munition à la taille normale du Kristallon (plus de version agrandie).
+    bulletSprite: { src: "COMBAT/MUNITIONS/KRISTALLON.png", w: 40, h: 15, glow: true, invert: true },
     r: 18, hp: 18080000, shield: 14560000, speed: 100, bulletDmg: 144000, bulletSpeed: 4500, shootRange: 700,
     shootRate: 0.25,
     onKill: { spawn: [ { type: "npc_Kristallin", count: 5, radius: 260 } ] },
@@ -3727,6 +3728,19 @@ for (const spec of HALLOWEEN_VARIANT_SPECS) {
   const base = NPC_TYPES[spec.role === "boss" ? "npc_Boss_Curcubitor" : "npc_Curcubitor"];
   if (!base) throw new Error(`Base Halloween manquante pour ${key}`);
   NPC_TYPES[key] = buildHalloweenVariant(base, Number(spec.mapId.split("-")[1]), spec.role);
+}
+
+// GG Omicron : NPC standard des maps (mêmes stats et sprites), suffixe ο.
+// Aucun crédit / XP / honneur (NPC_BALANCE) : les ressources d'assemblage
+// arrivent directement dans l'inventaire au kill (ORBIT_ENGINE).
+export const RESOURCE_GATE_NPC_BASES = Object.freeze(["npc_Lordakia", "npc_Saimon", "npc_Mordon", "npc_Sibelonit", "npc_Kristallin", "npc_Boss_Kristallin", "npc_Devolarium", "npc_Sibelon", "npc_Kristallon", "npc_Lordakium", "npc_Boss_Sibelon", "npc_Emperor_Kristallon"]);
+for (const baseType of RESOURCE_GATE_NPC_BASES) {
+  const base = NPC_TYPES[baseType];
+  if (!base) throw new Error(`Base GG Omicron manquante : ${baseType}`);
+  const variant = { ...base, sprite: { ...base.sprite }, name: `${base.name} ο`, value: 0, exp: 0, honor: 0 };
+  // Pas de renforts (Emperor -> Kristallin) : la vague suit son plan.
+  delete variant.onKill;
+  NPC_TYPES[`${baseType}_omicron`] = variant;
 }
 
 // GG d'hiver : attaquants du convoi du Père Noël. Variantes <=< Nom >=> :

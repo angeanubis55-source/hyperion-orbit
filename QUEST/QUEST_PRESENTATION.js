@@ -189,6 +189,7 @@ const GATE_PORTAL_SPRITES = {
   zeta: { src: "ASSETS/ZETA_PORTAL/ACTIVE.png", w: 498, h: 490 },
   kappa: { src: "ASSETS/KAPPA_PORTAL/ACTIVE.png", w: 407, h: 427 },
   lambda: { src: "ASSETS/LAMBDA_PORTAL/ACTIVE.png", w: 402, h: 401 },
+  omicron: { src: "ASSETS/RESSOURCES_PORTAL/PORTAIL_RESSOURCES_ACTIVE.png", w: 560, h: 560 },
   kronos: { src: "ASSETS/KRONOS_PORTAL/ACTIVE.png", w: 410, h: 353 },
 };
 const VISIT_PORTAL_SPRITE = { src: "ASSETS/STANDARD_PORTAL/ACTIVE.png", w: 320, h: 320 };

@@ -47,6 +47,7 @@ export function getNpcHonorReward(npc, definition = {}) {
   if (type.endsWith("_zeta")) type = type.slice(0, -5);
   if (type.endsWith("_kappa")) type = type.slice(0, -6);
   if (type.endsWith("_lambda")) type = type.slice(0, -7);
+  if (type.endsWith("_omicron")) type = type.slice(0, -8);
   if (type.endsWith("_alpha")) type = type.slice(0, -6);
   const known = BASE_NPC_HONOR[type];
   return Math.max(0, Math.floor(known == null ? credits * 0.1 : known * multiplier));

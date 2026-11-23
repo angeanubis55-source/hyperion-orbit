@@ -88,6 +88,14 @@ export const GALAXY_GATE_DEFINITIONS = Object.freeze({
   kappa: Object.freeze({ id: "kappa", name: "Kappa", group: "kappa", requiredParts: 120, maxWaves: 11, maxLives: 5, image: "ASSETS/KAPPA_PORTAL/DESACTIVE.png", completion: defineCompletionReward({ exp: 13500000, honor: 487500, credits: 60000000, x4: 45000 }), rewardScale: 1 }),
   // ✅ Lambda : roue de spin isolée (groupe "lambda"), 45 pièces / 7 vagues de Boss (officiel).
   lambda: Object.freeze({ id: "lambda", name: "Lambda", group: "lambda", requiredParts: 45, maxWaves: 7, maxLives: 5, image: "ASSETS/LAMBDA_PORTAL/DESACTIVE.png", completion: defineCompletionReward({ exp: 4125000, honor: 150000, credits: 15000000, x4: 15000 }), rewardScale: 1 }),
+  // ✅ Omicron : roue de spin isolée (groupe "omicron"), 60 pièces / 8 vagues
+  // (NPC standard, deux familles par vague, Emperor Kristallon en finale).
+  // Aucun crédit / XP / honneur : ressources d'assemblage directes au kill
+  // + pack de ressources à la fin.
+  omicron: Object.freeze({ id: "omicron", name: "Omicron", group: "omicron", requiredParts: 60, maxWaves: 8, maxLives: 5, image: "ASSETS/RESSOURCES_PORTAL/PORTAIL_RESSOURCES_DESACTIVE.png",
+    completion: Object.freeze({ exp: 0, honor: 0, credits: 0, x4: 0, xenomit: 1000,
+      resources: Object.freeze({ promerium: 5000, seprom: 1250, prometid: 2500, duranium: 2500,
+        kyhalon: 20, tetrathrin: 20, bifenon: 20, schism: 2, diametrion: 10 }) }), rewardScale: 1 }),
   // ✅ Kronos : PAS de roue (construction fidèle via complétions des autres gates), 21 pièces / 13 vagues Saturn.
   kronos: Object.freeze({ id: "kronos", name: "Kronos", group: null, requiredParts: 21, maxWaves: 13, maxLives: 5, image: "ASSETS/KRONOS_PORTAL/DESACTIVE.png", completion: defineCompletionReward({ exp: 75000000, honor: 1000000, credits: 75000000, x4: 100000, energy: 300 }), rewardScale: 1 }),
   // ✅ Awakened : roue de spin isolée (groupe "awakened"), 666 pièces / 17 vagues.
@@ -102,7 +110,7 @@ export const KRONOS_PARTS_BY_GATE = Object.freeze({
   alpha: 4, beta: 3, gamma: 1, delta: 1, epsilon: 4, zeta: 1, kappa: 2, lambda: 5,
 });
 // "epsilon", "zeta", "kappa", "lambda" et "awakened" (roues isolées).
-export const GALAXY_GATE_SPIN_GROUPS = Object.freeze(["ensemble", "delta", "epsilon", "zeta", "kappa", "lambda", "awakened"]);
+export const GALAXY_GATE_SPIN_GROUPS = Object.freeze(["ensemble", "delta", "epsilon", "zeta", "kappa", "lambda", "omicron", "awakened"]);
 
 // Groupe de spin d'une gate (roue utilisée pour les pièces/doublons/multiplicateur).
 export function getGalaxyGateSpinGroup(gateId) {
@@ -196,8 +204,8 @@ export function normalizeGalaxyGateState(raw) {
     kronosParts: {},
     lives: {},
     // ✅ multiplicateurs par groupe de spin : "ensemble" (ABG), "delta", "epsilon", "zeta", "kappa", "lambda" et "awakened" isolés.
-    multipliers: { ensemble: 1, delta: 1, epsilon: 1, zeta: 1, kappa: 1, lambda: 1, awakened: 1 },
-    multiplierArmed: { ensemble: false, delta: false, epsilon: false, zeta: false, kappa: false, lambda: false, awakened: false },
+    multipliers: { ensemble: 1, delta: 1, epsilon: 1, zeta: 1, kappa: 1, lambda: 1, omicron: 1, awakened: 1 },
+    multiplierArmed: { ensemble: false, delta: false, epsilon: false, zeta: false, kappa: false, lambda: false, omicron: false, awakened: false },
     active: GALAXY_GATE_DEFINITIONS[String(source.active || "").toLowerCase()] ? String(source.active).toLowerCase() : null,
     activeWave: Math.max(1, Math.floor(Number(source.activeWave) || 1)),
     // ✅ progression persistée par gate : permet d'alterner librement
@@ -273,8 +281,8 @@ export function normalizeGalaxyGateState(raw) {
   const clampMult = (value) => Math.min(5, Math.max(1, Math.floor(Number(value) || 1)));
   const legacyScalar = clampMult(source.multiplier);
   const legacyScalarArmed = source.multiplierArmed === true && legacyScalar > 1;
-  const groupMax = { ensemble: legacyScalar, delta: 1, epsilon: 1, zeta: 1, kappa: 1, lambda: 1, awakened: 1 };
-  const groupArmed = { ensemble: legacyScalarArmed, delta: false, epsilon: false, zeta: false, kappa: false, lambda: false, awakened: false };
+  const groupMax = { ensemble: legacyScalar, delta: 1, epsilon: 1, zeta: 1, kappa: 1, lambda: 1, omicron: 1, awakened: 1 };
+  const groupArmed = { ensemble: legacyScalarArmed, delta: false, epsilon: false, zeta: false, kappa: false, lambda: false, omicron: false, awakened: false };
   for (const gate of Object.values(GALAXY_GATE_DEFINITIONS)) {
     const group = gate.group || gate.id;
     // Ancien format objet par gate (alpha/beta/gamma) : reporté sur son groupe.

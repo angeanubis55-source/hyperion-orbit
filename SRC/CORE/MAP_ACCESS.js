@@ -47,6 +47,7 @@ const SPECIAL_MAP_LEVELS = Object.freeze({
   zeta: 1,
   kappa: 1,
   lambda: 1,
+  omicron: 1,
   kronos: 1,
   eternal: 1,
 });
