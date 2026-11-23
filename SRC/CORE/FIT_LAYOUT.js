@@ -1,4 +1,4 @@
-const FIT_KEYS = ["lasers", "gens", "extras", "shipMods"];
+const FIT_KEYS = ["lasers", "gens", "extras", "particle", "shipMods"];
 
 export function moveEquipmentSlots(source, target, sourceIndex, targetIndex) {
   if (!Array.isArray(source) || !Array.isArray(target)

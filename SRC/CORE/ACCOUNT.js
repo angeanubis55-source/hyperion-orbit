@@ -20,7 +20,7 @@ import { isHalloweenEventActive } from "../../NPC/NPC_HALLOWEEN.js";
 import { getRefineryRecipe, refineOreOutput, isOreResource, ORE_SELL_PRICES, UPGRADE_SLOT_ORES, upgradeOreCapacity, planAutoUpgradeCharges, cargoAdd, cargoFree, CARGO_CAPACITY } from "../DATA/RESOURCES.js";
 import { getModuleRarity, MODULE_DAILY_ROLL_LIMIT, MODULE_ROLL_COST, MODULE_SELL_PRICES } from "../DATA/MODULE_DROPS.js";
 import { generateShipModule } from "../DATA/MODULE_GEN.js";
-import { extrasCapacity, shipExtraCargoMult, shipExtraDuplicateError } from "../DATA/SHIP_EXTRAS.js";
+import { extrasCapacity, shipExtraCargoMult, shipExtraDuplicateError, PARTICLE_SLOTS } from "../DATA/SHIP_EXTRAS.js";
 import { getPassShopOffer, PASS_MODULE_FORCED } from "../DATA/PASS_SHOP.js";
 export { PASS_MODULE_KEY_COSTS, PASS_SHOP_OFFERS } from "../DATA/PASS_SHOP.js";
 import {
@@ -85,6 +85,7 @@ const FIT_SLOTS = {
   lasers: 15,
   gens: 15, // vitesse OU bouclier dans les mêmes slots
   extras: 15,
+  particle: PARTICLE_SLOTS, // canon à particules : 1 par vaisseau
   shipMods: 4, // tous les vaisseaux équipent 4 modules
 };
 
@@ -334,6 +335,7 @@ function getShipSlots(shipId) {
     lasers: Number(s?.lasers ?? FIT_SLOTS.lasers),
     gens: Number(s?.gens ?? FIT_SLOTS.gens),
     extras: Number(s?.extras ?? FIT_SLOTS.extras),
+    particle: PARTICLE_SLOTS,
     shipMods: Number(s?.shipMods ?? FIT_SLOTS.shipMods),
   };
 }
@@ -345,6 +347,7 @@ function makeEmptyFit(shipId) {
     lasers: Array(slots.lasers).fill(null),
     gens: Array(slots.gens).fill(null),
     extras: Array(slots.extras).fill(null),
+    particle: Array(slots.particle).fill(null),
     shipMods: Array(slots.shipMods).fill(null),
   };
 }
@@ -358,6 +361,7 @@ function normalizeFitForShip(shipId, fit) {
     lasers: normalizeArraySize(fit?.lasers, slots.lasers, null),
     gens: normalizeArraySize(fit?.gens, slots.gens, null),
     extras: normalizeArraySize(fit?.extras, slots.extras, null),
+    particle: normalizeArraySize(fit?.particle, slots.particle, null),
     shipMods: normalizeArraySize(fit?.shipMods, slots.shipMods, null),
   }, slots);
 }
@@ -681,7 +685,7 @@ export function purgeRemovedItemIds(u) {
   }
   const cleanFitArrays = (fit) => {
     if (!fit || typeof fit !== "object") return;
-    for (const key of ["lasers", "gens", "generators", "extras", "equipment", "gears", "protocols", "shipMods"]) {
+    for (const key of ["lasers", "gens", "generators", "extras", "particle", "equipment", "gears", "protocols", "shipMods"]) {
       if (Array.isArray(fit[key])) {
         fit[key] = fit[key].map((id) => (isRemovedItemId(id) ? null : id));
       }
@@ -750,6 +754,7 @@ function normalizeFitPresetDraft(draft) {
     lasers: cleanArr(d.lasers),
     gens: cleanArr(d.gens),
     extras: cleanArr(d.extras),
+    particle: cleanArr(d.particle),
     shipMods: cleanArr(d.shipMods),
   };
 }
@@ -1153,6 +1158,7 @@ function ensureUserShape(u) {
         lasers: Array(slots.lasers).fill(null),
         gens: Array(slots.gens).fill(null),
         extras: Array(slots.extras).fill(null),
+        particle: Array(slots.particle).fill(null),
         shipMods: Array(slots.shipMods).fill(null),
       };
     }
@@ -1161,6 +1167,7 @@ function ensureUserShape(u) {
     h.fit.lasers = normalizeArraySize(h.fit.lasers, slots.lasers, null);
     h.fit.gens = normalizeArraySize(h.fit.gens, slots.gens, null);
     h.fit.extras = normalizeArraySize(h.fit.extras, extrasCapacity(slots.extras, h.fit.extras), null);
+    h.fit.particle = normalizeArraySize(h.fit.particle, slots.particle, null);
     h.fit.shipMods = normalizeArraySize(h.fit.shipMods, slots.shipMods, null);
 
     // migration: lastPos/lastMap
@@ -1220,6 +1227,7 @@ function clampFitToSlots(shipId, fit) {
     lasers: normArr(fit?.lasers, slots.lasers),
     gens: normArr(fit?.gens, slots.gens),
     extras: normArr(fit?.extras, extrasCapacity(slots.extras, fit?.extras)),
+    particle: normArr(fit?.particle, slots.particle),
     shipMods: normArr(fit?.shipMods, slots.shipMods || FIT_SLOTS.shipMods),
   };
 }
@@ -1976,6 +1984,12 @@ export function buyItem(itemId, requestedQuantity = 1, options = {}) {
       u.inventory.resources[k] = Math.max(0, Number(u.inventory.resources[k] || 0) + add);
       if (!isOreResource(k) && add > 0) noteNetResourceGain({ [k]: Math.floor(add) });
     }
+  }
+
+  // Logfiles : disques de log de l'arbre de compétences pilote.
+  if (item.give?.logDisks) {
+    ensurePilotSkills(u);
+    u.pilotSkills.disks += Math.max(0, Math.floor(Number(item.give.logDisks) || 0)) * quantity;
   }
 
   // modules (multi)
@@ -2954,7 +2968,7 @@ export function saveHangarLoadout(hangarId, { ship, drones = {}, pet = null }, c
         }
       } else {
         const item = findCatalogItem(id);
-        const types = { lasers: ["laser"], gens: ["speed", "shield"], extras: ["extra"] };
+        const types = { lasers: ["laser"], gens: ["speed", "shield"], extras: ["extra"], particle: ["particle"] };
         if (!item || item.petOnly || !types[group].includes(item.module?.type)) {
           return { ok: false, error: "Équipement incompatible avec le vaisseau." };
         }
@@ -3334,7 +3348,7 @@ function countReservedCopies(u, itemId) {
   for (const h of u?.hangars || []) {
     for (const cfg of ["1", "2"]) {
       const fit = h?.fits?.[cfg] || {};
-      const equipped = [...(fit.lasers || []), ...(fit.gens || []), ...(fit.extras || [])];
+      const equipped = [...(fit.lasers || []), ...(fit.gens || []), ...(fit.extras || []), ...(fit.particle || [])];
       for (const drone of u?.drones?.items || []) {
         const eq = getDroneFit(drone, h?.id, cfg)?.equipment;
         if (Array.isArray(eq)) equipped.push(...eq);
@@ -3373,7 +3387,7 @@ function stripItemFromStoredFits(u, itemId) {
     for (const cfg of ["1", "2"]) {
       const fit = h?.fits?.[cfg];
       if (!fit || typeof fit !== "object") continue;
-      for (const group of ["lasers", "gens", "extras"]) {
+      for (const group of ["lasers", "gens", "extras", "particle"]) {
         if (!Array.isArray(fit[group])) continue;
         const { next, removed: n } = stripIdFromArrayValues(fit[group], id);
         if (n > 0) {
@@ -3451,7 +3465,7 @@ export function describeItemUsage(itemId) {
     let n = 0;
     for (const cfg of ["1", "2"]) {
       const fit = h?.fits?.[cfg] || {};
-      const c = ["lasers", "gens", "extras"].reduce((s, g) => s + countIn(fit[g]), 0);
+      const c = ["lasers", "gens", "extras", "particle"].reduce((s, g) => s + countIn(fit[g]), 0);
       if (c > 0) {
         cfgs.push(cfg === "2" ? "config 2" : "config 1");
         n += c;
@@ -4112,7 +4126,7 @@ export function craftCurrentUserRecipe(recipeId, requestedQuantity = 1) {
     for (const h of u.hangars || []) {
       for (const cfg of ["1", "2"]) {
         const fit = h.fits?.[cfg] || {};
-        const equipped = [...(fit.lasers || []), ...(fit.gens || []), ...(fit.extras || [])];
+        const equipped = [...(fit.lasers || []), ...(fit.gens || []), ...(fit.extras || []), ...(fit.particle || [])];
         for (const drone of u.drones.items) equipped.push(...getDroneFit(drone, h.id, cfg).equipment);
         if (u.pet?.owned === true) {
           const pet = getPetFit(u.pet, h.id, cfg);

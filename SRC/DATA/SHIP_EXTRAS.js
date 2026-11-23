@@ -36,12 +36,33 @@ export const EXTRA_SHIELD_REGEN_PCT = 0.2;
 export const RAYGUN_DAMAGE = 50000;
 // Variance des dégâts : ±5 % (comme les lasers).
 export const RAYGUN_VARIANCE = 0.05;
-export const RAYGUN_PROC_CHANCE = 0.35;
+export const RAYGUN_PROC_CHANCE = 0.25;
 export const RAYGUN_SERVER_CAP = 3;
 export const RAYGUN_SERVER_PER_SEC = 1.5;
 export const RAYGUN_ABILITY = "ability_extra_raygun";
 // CPU Visée : part des MISS évités (lasers + roquettes du vaisseau).
 export const EXTRA_AIM_MISS_CUT = Object.freeze({ aim1: 0.25, aim2: 0.5 });
+
+// Canons à particules : emplacement dédié « particle » (1 par vaisseau),
+// chacun tire SON rayon (plus de tirage au hasard).
+export const PARTICLE_SLOTS = 1;
+export const PARTICLE_CANNON_DEFS = Object.freeze({
+  particle_cannon_thermal: Object.freeze({ shot: "thermal", damage: 16571 }),
+  particle_cannon_electro: Object.freeze({ shot: "electro", damage: 76514 }),
+  particle_cannon_corrosive: Object.freeze({ shot: "corrosive", damage: 32406 }),
+});
+export function getParticleCannonDef(itemId) {
+  return PARTICLE_CANNON_DEFS[String(itemId || "")] || null;
+}
+// Dégâts de base d'un tir pour une liste d'emplacements « particle »
+// (ancien CPU en extra : RAYGUN_DAMAGE).
+export function particleCannonDamage(particleSlots) {
+  for (const id of Array.isArray(particleSlots) ? particleSlots : []) {
+    const def = getParticleCannonDef(id);
+    if (def) return def.damage;
+  }
+  return RAYGUN_DAMAGE;
+}
 
 export function getShipExtraDef(itemId) {
   return SHIP_EXTRA_DEFS[String(itemId || "")] || null;
@@ -63,6 +84,11 @@ export function shipExtraKeys(user) {
   for (const id of Array.isArray(fit?.extras) ? fit.extras : []) {
     const def = getShipExtraDef(id);
     if (def) keys.add(def.key);
+  }
+  // Canon à particules (emplacement dédié) : « particle » + son rayon.
+  for (const id of Array.isArray(fit?.particle) ? fit.particle : []) {
+    const def = getParticleCannonDef(id);
+    if (def) { keys.add("particle"); keys.add(`particle_${def.shot}`); }
   }
   return keys;
 }

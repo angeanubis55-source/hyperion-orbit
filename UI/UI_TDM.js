@@ -105,6 +105,7 @@ function updateSellBtn() {
     try {
       ok = SELLABLE_KINDS.includes(entry.kind)
         && !entry.item?.ticket
+        && !entry.item?.give?.logDisks
         && Math.floor(Number(entry.quantity) || 0) > 0
         && sellUnitPrice(entry.kind, entry.id, entry.module) > 0;
     } catch { ok = false; }
@@ -185,6 +186,11 @@ function openSellDialog() {
   // Tout se vend sauf vaisseaux, designs, P.E.T, drones et ressources.
   if (!SELLABLE_KINDS.includes(entry.kind)) {
     engineNotify(`${entry.name || "Objet"} : non vendable (vaisseaux, designs, P.E.T, drones et ressources exclus).`, 3, "error");
+    return;
+  }
+  // Logfiles (arbre pilote) : visibles dans l'inventaire, jamais vendables.
+  if (entry.item?.give?.logDisks) {
+    engineNotify(`${entry.name || "Objet"} : les Logfiles ne peuvent pas être vendus.`, 3, "error");
     return;
   }
   // Tickets (ex : relance module) : utilisables mais jamais vendables.

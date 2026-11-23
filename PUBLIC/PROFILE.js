@@ -34,7 +34,7 @@ import { measureGameTask } from "../SRC/CORE/PERFORMANCE_TIMINGS.js";
 import { apiAccountIdentity, apiAccountStatus, apiPseudoFree, flushNetUser, netActive, netList, noteServerModuleQuota } from "../SRC/CORE/ACCOUNT_NET.js";
 
 import { CATALOG, findCatalogItem } from "../SRC/CORE/CATALOG.js";
-import { extrasCapacity, getShipExtraDef, shipExtraDuplicateError } from "../SRC/DATA/SHIP_EXTRAS.js";
+import { extrasCapacity, getShipExtraDef, shipExtraDuplicateError, PARTICLE_SLOTS } from "../SRC/DATA/SHIP_EXTRAS.js";
 import { getPetDesign } from "../PET/PET_DESIGNS.js";
 import { SHIP_PACKS, getShipFamilyId, getShipFamilyIds, getShipFamilyMembers, getShipFamilyName, getShipDesignBaseId, getShipDesignIds, getShipPackById } from "../SHIP/SHIP_PACKS.js";
 import { getShipBonusInfo } from "../SHIP/SHIP_BONUSES.js";
@@ -1281,6 +1281,7 @@ function getShipSlots(shipId) {
     lasers: Number(s?.lasers ?? 15),
     gens: Number(s?.gens ?? 15),
     extras: Number(s?.extras ?? 15),
+    particle: PARTICLE_SLOTS,
     shipMods: Number(s?.shipMods ?? 4),
   };
 }
@@ -1488,6 +1489,20 @@ function buildInventorySections(u) {
       });
     } else if (!found) {
       resources.set(itemId, { id: itemId, kind: "resource", name: getResourceName(itemId), quantity, detail: "Ressource" });
+    }
+  }
+
+  // Logfiles : stock de l'arbre pilote (pilotSkills.disks), affiché ici
+  // seulement. Hors inventory.counts : jamais proposés à la revente.
+  {
+    const disks = Math.max(0, Math.floor(Number(u?.pilotSkills?.disks) || 0));
+    const logItem = findCatalogItem("logdisk");
+    if (disks > 0 && logItem) {
+      equipment.push({
+        id: "logdisk", kind: "equipment", category: "extras", item: logItem,
+        name: logItem.name || "Logfile", quantity: disks,
+        detail: "Arbre de compétences pilote · non vendable",
+      });
     }
   }
 
@@ -4033,6 +4048,10 @@ const ammoKey = ammoQty?.key || "";
 // l'aperçu (bloc Coût d'achat + stock actuel + stock après achat).
 const isGeneratorCat = (cat === "generators" || cat === "speedGen" || cat === "shieldGen");
 const isLaserCat = (cat === "lasers");
+// Canons à particules (onglet canons lasers) : libellés propres.
+const isParticleItem = it?.module?.type === "particle";
+// Extras CPU : même mise en page que les munitions.
+const isCpuExtraCat = (cat === "cpuExtras");
 // Boosters : même mise en page que les munitions (l'achat prolonge le timer).
 const isBoosterPreview = !groupRef && !!it?.booster?.id;
 // Essence P.E.T : même mise en page que les munitions.
@@ -4041,7 +4060,7 @@ const isFuelPreview = !groupRef && !!it?.petFuel;
 const isHullPreview = !groupRef && !!it?.petHull;
 // Base de Combat (give.resources) : même mise en page que les munitions lasers.
 const isStationPreview = !groupRef && !!it?.give?.resources;
-const useAmmoLayout = !isUnique && !groupRef && (isAmmo || isGeneratorCat || isLaserCat || isBoosterPreview || isFuelPreview || isHullPreview || isStationPreview);
+const useAmmoLayout = !isUnique && !groupRef && (isAmmo || isGeneratorCat || isLaserCat || isCpuExtraCat || isBoosterPreview || isFuelPreview || isHullPreview || isStationPreview);
 
 let stockLine = "";
 let statLine = "";
@@ -4124,6 +4143,9 @@ if (isShipLike) {
   } else if (it?.petOnly) {
     statLine += `<p class="shopItemStat ammoDesc">P.E.T uniquement</p>`;
   }
+} else if (it?.module?.type === "extra" || it?.module?.type === "particle" || it?.give?.logDisks) {
+  // Extras CPU : description de l'effet (chiffres en bleu), comme les munitions.
+  statLine = it?.desc ? `<p class="shopItemStat ammoDesc">${highlightShopDescNumbers(escapeHtml(it.desc)).replace(/\n/g, "<br>")}</p>` : "";
 } else if (it?.give?.ammo) {
   const ammoDesc = it?.desc ? `<p class="shopItemStat ammoDesc">${highlightShopDescNumbers(escapeHtml(it.desc)).replace(/\n/g, "<br>")}</p>` : "";
   statLine = `${ammoDesc}`;
@@ -4275,7 +4297,10 @@ if (isDrone) {
       ? (it?.manual === false ? "Roquette de Lance-Roquette(s)" : "Roquette(s)")
       : "Munition(s) Laser")
     : isBoosterPreview ? "boosters"
+    : isParticleItem ? "Canon(s) à particules"
     : isLaserCat ? "Canon(s) Laser"
+    : it?.give?.logDisks ? "Logfile(s)"
+    : isCpuExtraCat ? "Extra(s) CPU"
     : isFuelPreview ? "carburants"
     : isHullPreview ? "Coque+"
     : isStationPreview ? "Pièce(s)"
@@ -4283,7 +4308,7 @@ if (isDrone) {
     : "Générateur(s) de Bouclier";
   const stationResKey = isStationPreview ? Object.keys(it?.give?.resources || {})[0] || "" : "";
   const stationResStock = isStationPreview ? Math.max(0, Math.floor(Number(user?.inventory?.resources?.[stationResKey]) || 0)) : 0;
-  const previewCurrentQty = isAmmo ? (ammoQty?.qty || 0) : isFuelPreview ? fuelNow : isHullPreview ? hullBuys : isStationPreview ? stationResStock : countOwned;
+  const previewCurrentQty = isAmmo ? (ammoQty?.qty || 0) : isFuelPreview ? fuelNow : isHullPreview ? hullBuys : isStationPreview ? stationResStock : it?.give?.logDisks ? Math.max(0, Math.floor(Number(user?.pilotSkills?.disks) || 0)) : countOwned;
   // Coque+ : total géométrique (prix ×2 à chaque achat).
   const hullTotalFor = (start, qty) => {
     let t = 0;
@@ -4311,7 +4336,7 @@ if (isDrone) {
   // Titre preview : préfixe catégorie, sans doublon quand le nom contient
   // déjà le mot ("Roquette Roquette R-310", "Canon Laser laser LF-3").
   const rawTitleName = it?.name || it?.id;
-  let titlePrefix = (useAmmoLayout && !isBoosterPreview && !isFuelPreview && !isHullPreview && !isStationPreview) ? previewUnitWord.replace("(s)", "") : "";
+  let titlePrefix = (useAmmoLayout && !isCpuExtraCat && !isParticleItem && !isBoosterPreview && !isFuelPreview && !isHullPreview && !isStationPreview) ? previewUnitWord.replace("(s)", "") : "";
   let titleName = rawTitleName;
   if (titlePrefix) {
     const lowerName = String(rawTitleName).toLowerCase();
@@ -4343,7 +4368,7 @@ if (isDrone) {
     <div class="tile">
       ${previewCard}
 
-      <h3${(isAmmo || isGeneratorCat || isLaserCat || isBoosterPreview || isFuelPreview || isHullPreview || isStationPreview || isShipLike || isDrone || isFormation || isPet || cat === "petEquipment") ? ` class="ammoTitle"` : ""}>
+      <h3${(isAmmo || isGeneratorCat || isLaserCat || isCpuExtraCat || isBoosterPreview || isFuelPreview || isHullPreview || isStationPreview || isShipLike || isDrone || isFormation || isPet || cat === "petEquipment") ? ` class="ammoTitle"` : ""}>
         ${titlePrefix ? `${escapeHtml(titlePrefix)} ` : ""}${escapeHtml(titleName)}
         ${owned ? ` <span class="previewOwnedWord">Possédé</span> <span class="previewOwnedCheck">✓</span>` : ""}
       </h3>
@@ -4525,7 +4550,12 @@ if (isDrone) {
           ? Math.max(0, Math.floor(Number(user?.pet?.fuel || 0)))
           : isHullPreview
             ? hullStart
-            : Math.max(0, Math.floor(Number(user?.inventory?.counts?.[it?.id] || 0)));
+            : it?.give?.logDisks
+              // Logfiles : stock = disques de l'arbre pilote (pas l'inventaire).
+              ? Math.max(0, Math.floor(Number(user?.pilotSkills?.disks) || 0))
+              : isStationPreview
+                ? Math.max(0, Math.floor(Number(user?.inventory?.resources?.[stationResKey]) || 0))
+                : Math.max(0, Math.floor(Number(user?.inventory?.counts?.[it?.id] || 0)));
       ammoAfterEl.textContent = formatNumber(isHullPreview ? Math.min(PET_HULL_MAX_BUYS, cur + quantity * previewUnitsPerPack) : cur + quantity * previewUnitsPerPack);
     }
     const boosterAfterEl = document.getElementById("shopBoosterAfterVal");
@@ -4637,7 +4667,11 @@ if (isDrone) {
         ? Math.max(0, Math.min(PET_HULL_MAX_BUYS, Math.floor(Number(user?.pet?.hullUpgrades) || 0)))
         : isAmmo
           ? getAmmoQtyForShopItem(user, it)?.qty || 0
-          : user.inventory?.counts?.[it.id] || 0);
+          : it?.give?.logDisks
+            ? Math.max(0, Math.floor(Number(user?.pilotSkills?.disks) || 0))
+            : isStationPreview
+              ? Math.max(0, Math.floor(Number(user?.inventory?.resources?.[stationResKey]) || 0))
+              : user.inventory?.counts?.[it.id] || 0);
     updatePurchaseSummary();
   };
   updatePurchaseSummary();
@@ -4797,6 +4831,10 @@ function buildFitWindow() {
           <section class="fitSlotGroup" data-slot-type="extras">
             <div class="fitGroupTitle"><span>EXTRAS</span></div>
             <div id="fitSlotsExtras" class="slotGrid"></div>
+          </section>
+          <section class="fitSlotGroup" data-slot-type="particle">
+            <div class="fitGroupTitle"><span>CANON À PARTICULES</span></div>
+            <div id="fitSlotsParticle" class="slotGrid"></div>
           </section>
           <section class="fitSlotGroup" data-slot-type="shipMods">
             <div class="fitGroupTitle"><span>MODULES</span><small><span id="shipModsCount">4</span></small></div>
@@ -5010,7 +5048,7 @@ let fitState = {
   // Brouillons mis de côté par config (1/2) quand on bascule sans appliquer.
   stash: null,
   used: null,
-  slots: { lasers: 15, gens: 15, extras: 15, shipMods: 4 },
+  slots: { lasers: 15, gens: 15, extras: 15, particle: PARTICLE_SLOTS, shipMods: 4 },
   section: "ship",
   droneId: null,
 };
@@ -5069,6 +5107,7 @@ function initFitDrafts(hangarId, configNo) {
     lasers: normalizeFitArray(baseFit.lasers, fitState.slots.lasers),
     gens: normalizeFitArray(baseFit.gens, fitState.slots.gens),
     extras: normalizeFitArray(baseFit.extras, fitState.slots.extras),
+    particle: normalizeFitArray(baseFit.particle, fitState.slots.particle),
     shipMods: normalizeFitArray(baseFit.shipMods, fitState.slots.shipMods),
   };
   fitState.droneDrafts = {};
@@ -5806,6 +5845,7 @@ function slotTypeForItem(itemId) {  if (isRouletteModuleId(itemId)) return "ship
   if (type === "laser") return "lasers";
   if (type === "speed" || type === "shield") return "gens";
   if (type === "extra") return "extras";
+  if (type === "particle") return "particle";
   return null;
 }
 
@@ -5978,8 +6018,9 @@ function equipSelectedInventoryItems(preferredSlotType = null) {
   compactCurrentFit();
   let added = 0;
   let extraDupError = "";
-  for (const slotType of ["lasers", "gens", "extras"]) {
+  for (const slotType of ["lasers", "gens", "extras", "particle"]) {
     if (preferredSlotType && preferredSlotType !== slotType) continue;
+    if (!Array.isArray(fitState.draft[slotType])) fitState.draft[slotType] = Array(Number(fitState.slots[slotType]) || 0).fill(null);
     let itemIds = selected.filter((itemId) => slotTypeForItem(itemId) === slotType);
     if (slotType === "extras") {
       const filtered = filterExtraDuplicates(fitState.draft.extras, itemIds);
@@ -6057,7 +6098,7 @@ function showFitError(text) {
 
 function computeUsage(draft) {
   const map = Object.create(null);
-  const all = [...(draft?.lasers || []), ...(draft?.gens || []), ...(draft?.extras || []), ...(draft?.shipMods || [])];
+  const all = [...(draft?.lasers || []), ...(draft?.gens || []), ...(draft?.extras || []), ...(draft?.particle || []), ...(draft?.shipMods || [])];
   // ✅ Comptage exclusif au hangar en cours d'édition (chaque vaisseau a ses propres drones + P.E.T).
   for (const drone of user?.drones?.items || []) {
     const fit = droneFitForState(drone);
@@ -6105,6 +6146,7 @@ function isItemAllowedInSlot(slotType, itemId) {
   if (slotType === "lasers") return t === "laser";
   if (slotType === "gens") return t === "speed" || t === "shield";
   if (slotType === "extras") return t === "extra";
+  if (slotType === "particle") return t === "particle";
   return false;
 }
 
@@ -6135,6 +6177,7 @@ function sanitizePresetDraft(p, currentUser) {
     lasers: cleanList(p?.lasers, false),
     gens: cleanList(p?.gens, false),
     extras: cleanList(p?.extras, false),
+    particle: cleanList(p?.particle, false),
     shipMods: cleanList(p?.shipMods, true),
   };
 }
@@ -6196,6 +6239,7 @@ function resetAllSlots() {
   fitState.draft.lasers = fitState.draft.lasers.map(() => null);
   fitState.draft.gens = fitState.draft.gens.map(() => null);
   fitState.draft.extras = fitState.draft.extras.map(() => null);
+  fitState.draft.particle = (fitState.draft.particle || []).map(() => null);
   fitState.draft.shipMods = fitState.draft.shipMods.map(() => null);
 
   clearFitSelection();
@@ -6461,6 +6505,8 @@ function renderSlots() {
   lasersRoot.innerHTML = "";
   gensRoot.innerHTML = "";
   extrasRoot.innerHTML = "";
+  const particleRoot = document.getElementById("fitSlotsParticle");
+  if (particleRoot) particleRoot.innerHTML = "";
   shipModsRoot.innerHTML = "";
 
   compactCurrentFit();
@@ -6488,7 +6534,7 @@ function renderSlots() {
         const alreadyFullySelected = fitState.selectedSlots.size > 0 && matched === fitState.selectedSlots.size;
         clearFitSelection();
         if (!alreadyFullySelected) {
-          for (const currentType of ["lasers", "gens", "extras", "shipMods"]) {
+          for (const currentType of ["lasers", "gens", "extras", "particle", "shipMods"]) {
             fitState.draft[currentType].forEach((currentItemId, currentIndex) => {
               if (currentItemId === itemId) fitState.selectedSlots.set(`${currentType}#${currentIndex}`, currentItemId);
             });
@@ -6638,6 +6684,21 @@ function renderSlots() {
     attachSlotDrag(cell, slotType, i, id);
     attachDrop(cell, slotType, i);
     extrasRoot.appendChild(cell);
+  }
+
+  // Canon à particules : emplacement dédié (1 par vaisseau).
+  if (particleRoot) {
+    if (!Array.isArray(draft.particle)) draft.particle = Array(Number(fitState?.slots?.particle ?? 0)).fill(null);
+    const PC = Number(fitState?.slots?.particle ?? 0);
+    for (let i = 0; i < PC; i++) {
+      const slotType = "particle";
+      const id = draft.particle[i];
+      const label = id ? findCatalogItem(id)?.name || id : "—";
+      const cell = slotCell(label, !!id, id);
+      attachSlotDrag(cell, slotType, i, id);
+      attachDrop(cell, slotType, i);
+      particleRoot.appendChild(cell);
+    }
   }
 
   // ShipMods (slots dynamiques)
@@ -6848,6 +6909,7 @@ function updateShipGroupCounts() {
       lasers: ["LASERS", draft.lasers, fitState.slots.lasers],
       gens: ["GÉNÉRATEURS", draft.gens, fitState.slots.gens],
       extras: ["EXTRAS", draft.extras, fitState.slots.extras],
+      particle: ["CANON À PARTICULES", draft.particle, fitState.slots.particle],
       shipMods: ["MODULES", draft.shipMods, fitState.slots.shipMods],
     };
     for (const [type, [label, arr, total]] of Object.entries(counts)) {
@@ -7340,6 +7402,7 @@ cfgBar.querySelectorAll(".fitCfgBtn").forEach((b) => {
         lasers: normalizeFitArray(p.lasers, fitState.slots.lasers),
         gens: normalizeFitArray(p.gens, fitState.slots.gens),
         extras: normalizeFitArray(p.extras, fitState.slots.extras),
+        particle: normalizeFitArray(p.particle, fitState.slots.particle),
         shipMods: normalizeFitArray(p.shipMods, fitState.slots.shipMods),
       };
       compactCurrentFit();
@@ -7424,6 +7487,8 @@ function closeFitModal() {
   const a = document.getElementById("fitSlotsLasers");
   const b = document.getElementById("fitSlotsGens");
   const c = document.getElementById("fitSlotsExtras");
+  const cp = document.getElementById("fitSlotsParticle");
+  if (cp) cp.innerHTML = "";
   const d = document.getElementById("fitSlotsShipMods");
   if (a) a.innerHTML = "";
   if (b) b.innerHTML = "";

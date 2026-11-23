@@ -16595,19 +16595,19 @@ body #profileOverlay .shopRow img.formationShopRowImage {
 #fitCard .petHeaderCard .droneCardSprite {
   image-rendering:auto !important;
 }
-#fitOverlay #fitCard #fitSlotsLasers.slotGrid, #fitOverlay #fitCard #fitSlotsGens.slotGrid, #fitOverlay #fitCard #fitSlotsExtras.slotGrid, #fitOverlay #fitCard #fitDroneWorkspace .droneCardSlots > div, #fitOverlay #fitCard #fitPetWorkspace .petGroupSlots {
+#fitOverlay #fitCard #fitSlotsLasers.slotGrid, #fitOverlay #fitCard #fitSlotsGens.slotGrid, #fitOverlay #fitCard #fitSlotsExtras.slotGrid, #fitOverlay #fitCard #fitSlotsParticle.slotGrid, #fitOverlay #fitCard #fitDroneWorkspace .droneCardSlots > div, #fitOverlay #fitCard #fitPetWorkspace .petGroupSlots {
   gap: 2px !important;
 }
-#fitOverlay #fitCard #fitSlotsLasers.slotGrid, #fitOverlay #fitCard #fitSlotsGens.slotGrid, #fitOverlay #fitCard #fitSlotsExtras.slotGrid {
+#fitOverlay #fitCard #fitSlotsLasers.slotGrid, #fitOverlay #fitCard #fitSlotsGens.slotGrid, #fitOverlay #fitCard #fitSlotsExtras.slotGrid , #fitOverlay #fitCard #fitSlotsParticle.slotGrid {
   grid-template-columns: repeat(auto-fill, 52px) !important;
 }
-#fitOverlay #fitCard #fitSlotsLasers .slotCell, #fitOverlay #fitCard #fitSlotsGens .slotCell, #fitOverlay #fitCard #fitSlotsExtras .slotCell {
+#fitOverlay #fitCard #fitSlotsLasers .slotCell, #fitOverlay #fitCard #fitSlotsGens .slotCell, #fitOverlay #fitCard #fitSlotsExtras .slotCell , #fitOverlay #fitCard #fitSlotsParticle .slotCell {
   width: 52px !important;
   min-width: 52px !important;
   height: 52px !important;
   aspect-ratio: auto !important;
 }
-#fitOverlay #fitCard #fitSlotsLasers .slotCell, #fitOverlay #fitCard #fitSlotsGens .slotCell, #fitOverlay #fitCard #fitSlotsExtras .slotCell, #fitOverlay #fitCard #fitDroneWorkspace .droneFitSlot, #fitOverlay #fitCard #fitDroneWorkspace .droneDesignSlot, #fitOverlay #fitCard #fitPetWorkspace .petFitSlot {
+#fitOverlay #fitCard #fitSlotsLasers .slotCell, #fitOverlay #fitCard #fitSlotsGens .slotCell, #fitOverlay #fitCard #fitSlotsExtras .slotCell, #fitOverlay #fitCard #fitSlotsParticle .slotCell, #fitOverlay #fitCard #fitDroneWorkspace .droneFitSlot, #fitOverlay #fitCard #fitDroneWorkspace .droneDesignSlot, #fitOverlay #fitCard #fitPetWorkspace .petFitSlot {
   position: relative !important;
   display: grid !important;
   place-items: center !important;
@@ -16620,7 +16620,7 @@ body #profileOverlay .shopRow img.formationShopRowImage {
   background: linear-gradient(135deg, rgba(143, 229, 246, .045), transparent 45%), #081620 !important;
   box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .35) !important;
 }
-#fitOverlay #fitCard #fitSlotsLasers .slotCell::before, #fitOverlay #fitCard #fitSlotsGens .slotCell::before, #fitOverlay #fitCard #fitSlotsExtras .slotCell::before, #fitOverlay #fitCard #fitDroneWorkspace .droneFitSlot::before, #fitOverlay #fitCard #fitDroneWorkspace .droneDesignSlot::before, #fitOverlay #fitCard #fitPetWorkspace .petFitSlot::before {
+#fitOverlay #fitCard #fitSlotsLasers .slotCell::before, #fitOverlay #fitCard #fitSlotsGens .slotCell::before, #fitOverlay #fitCard #fitSlotsExtras .slotCell::before, #fitOverlay #fitCard #fitSlotsParticle .slotCell::before, #fitOverlay #fitCard #fitDroneWorkspace .droneFitSlot::before, #fitOverlay #fitCard #fitDroneWorkspace .droneDesignSlot::before, #fitOverlay #fitCard #fitPetWorkspace .petFitSlot::before {
   content: "" !important;
   position: absolute !important;
   top: 3px !important;
@@ -16631,16 +16631,16 @@ body #profileOverlay .shopRow img.formationShopRowImage {
   border-left: 1px solid rgba(116, 222, 242, .38) !important;
   pointer-events: none !important;
 }
-#fitOverlay #fitCard #fitSlotsLasers .slotCell.filled, #fitOverlay #fitCard #fitSlotsGens .slotCell.filled, #fitOverlay #fitCard #fitSlotsExtras .slotCell.filled, #fitOverlay #fitCard #fitDroneWorkspace .droneFitSlot.filled, #fitOverlay #fitCard #fitPetWorkspace .petFitSlot.filled {
+#fitOverlay #fitCard #fitSlotsLasers .slotCell.filled, #fitOverlay #fitCard #fitSlotsGens .slotCell.filled, #fitOverlay #fitCard #fitSlotsExtras .slotCell.filled, #fitOverlay #fitCard #fitSlotsParticle .slotCell.filled, #fitOverlay #fitCard #fitDroneWorkspace .droneFitSlot.filled, #fitOverlay #fitCard #fitPetWorkspace .petFitSlot.filled {
   border-color: rgba(101, 223, 245, .54) !important;
   background: radial-gradient(circle, rgba(27, 129, 155, .20), #09202c 72%) !important;
   box-shadow: inset 0 -2px rgba(88, 215, 239, .16) !important;
 }
-#fitOverlay #fitCard #fitSlotsLasers .slotCell:hover, #fitOverlay #fitCard #fitSlotsGens .slotCell:hover, #fitOverlay #fitCard #fitSlotsExtras .slotCell:hover, #fitOverlay #fitCard #fitDroneWorkspace .droneFitSlot:hover, #fitOverlay #fitCard #fitDroneWorkspace .droneDesignSlot:hover, #fitOverlay #fitCard #fitPetWorkspace .petFitSlot:hover {
+#fitOverlay #fitCard #fitSlotsLasers .slotCell:hover, #fitOverlay #fitCard #fitSlotsGens .slotCell:hover, #fitOverlay #fitCard #fitSlotsExtras .slotCell:hover, #fitOverlay #fitCard #fitSlotsParticle .slotCell:hover, #fitOverlay #fitCard #fitDroneWorkspace .droneFitSlot:hover, #fitOverlay #fitCard #fitDroneWorkspace .droneDesignSlot:hover, #fitOverlay #fitCard #fitPetWorkspace .petFitSlot:hover {
   border-color: rgba(123, 232, 250, .74) !important;
   background-color: #0c2734 !important;
 }
-#fitOverlay #fitCard #fitSlotsLasers .slotCell img, #fitOverlay #fitCard #fitSlotsGens .slotCell img, #fitOverlay #fitCard #fitSlotsExtras .slotCell img, #fitOverlay #fitCard #fitDroneWorkspace .droneFitSlot img, #fitOverlay #fitCard #fitPetWorkspace .petFitSlot img {
+#fitOverlay #fitCard #fitSlotsLasers .slotCell img, #fitOverlay #fitCard #fitSlotsGens .slotCell img, #fitOverlay #fitCard #fitSlotsExtras .slotCell img, #fitOverlay #fitCard #fitSlotsParticle .slotCell img, #fitOverlay #fitCard #fitDroneWorkspace .droneFitSlot img, #fitOverlay #fitCard #fitPetWorkspace .petFitSlot img {
   width: 86% !important;
   height: 86% !important;
   object-fit: contain !important;
@@ -16708,12 +16708,12 @@ body #profileOverlay .shopRow img.formationShopRowImage {
   color: #ff8fc0 !important;
   background: rgba(40, 8, 25, .9) !important;
 }
-#fitOverlay #fitCard #fitSlotsLasers .slotCell.selected, #fitOverlay #fitCard #fitSlotsGens .slotCell.selected, #fitOverlay #fitCard #fitSlotsExtras .slotCell.selected, #fitOverlay #fitCard #fitSlotsShipMods .slotCell.selected, #fitOverlay #fitCard #fitDroneWorkspace .droneFitSlot.selected, #fitOverlay #fitCard #fitDroneWorkspace .droneDesignSlot.selected, #fitOverlay #fitCard #fitPetWorkspace .petFitSlot.selected {
+#fitOverlay #fitCard #fitSlotsLasers .slotCell.selected, #fitOverlay #fitCard #fitSlotsGens .slotCell.selected, #fitOverlay #fitCard #fitSlotsExtras .slotCell.selected, #fitOverlay #fitCard #fitSlotsParticle .slotCell.selected, #fitOverlay #fitCard #fitSlotsShipMods .slotCell.selected, #fitOverlay #fitCard #fitDroneWorkspace .droneFitSlot.selected, #fitOverlay #fitCard #fitDroneWorkspace .droneDesignSlot.selected, #fitOverlay #fitCard #fitPetWorkspace .petFitSlot.selected {
   border-color: #70e7fa !important;
   background: radial-gradient(circle, rgba(33, 157, 184, .25), #09212c 75%) !important;
   box-shadow: inset 0 -2px #5adcf3, 0 0 11px rgba(76, 218, 243, .18) !important;
 }
-#fitOverlay #fitCard #fitSlotsLasers .slotCell.selected::after, #fitOverlay #fitCard #fitSlotsGens .slotCell.selected::after, #fitOverlay #fitCard #fitSlotsExtras .slotCell.selected::after, #fitOverlay #fitCard #fitSlotsShipMods .slotCell.selected::after, #fitOverlay #fitCard #fitDroneWorkspace .droneFitSlot.selected::after, #fitOverlay #fitCard #fitDroneWorkspace .droneDesignSlot.selected::after, #fitOverlay #fitCard #fitPetWorkspace .petFitSlot.selected::after {
+#fitOverlay #fitCard #fitSlotsLasers .slotCell.selected::after, #fitOverlay #fitCard #fitSlotsGens .slotCell.selected::after, #fitOverlay #fitCard #fitSlotsExtras .slotCell.selected::after, #fitOverlay #fitCard #fitSlotsParticle .slotCell.selected::after, #fitOverlay #fitCard #fitSlotsShipMods .slotCell.selected::after, #fitOverlay #fitCard #fitDroneWorkspace .droneFitSlot.selected::after, #fitOverlay #fitCard #fitDroneWorkspace .droneDesignSlot.selected::after, #fitOverlay #fitCard #fitPetWorkspace .petFitSlot.selected::after {
   content: "" !important;
   position: absolute !important;
   z-index: 3 !important;
@@ -16793,7 +16793,7 @@ body #profileOverlay .shopRow img.formationShopRowImage {
 #fitCard .fitShipModules .shipModRow.equipped:hover {
   background: linear-gradient(145deg, rgba(140, 226, 244, .04), transparent 46%), #081620 !important;
 }
-#fitOverlay #fitCard .fitSlotGroup.dragCompatible #fitSlotsLasers .slotCell, #fitOverlay #fitCard .fitSlotGroup.dragCompatible #fitSlotsGens .slotCell, #fitOverlay #fitCard .fitSlotGroup.dragCompatible #fitSlotsExtras .slotCell, #fitOverlay #fitCard .fitSlotGroup.dragCompatible #fitSlotsShipMods .slotCell {
+#fitOverlay #fitCard .fitSlotGroup.dragCompatible #fitSlotsLasers .slotCell, #fitOverlay #fitCard .fitSlotGroup.dragCompatible #fitSlotsGens .slotCell, #fitOverlay #fitCard .fitSlotGroup.dragCompatible #fitSlotsExtras .slotCell, #fitOverlay #fitCard .fitSlotGroup.dragCompatible #fitSlotsParticle .slotCell, #fitOverlay #fitCard .fitSlotGroup.dragCompatible #fitSlotsShipMods .slotCell {
   border-color: rgba(105, 233, 255, .68) !important;
   background: rgba(0, 217, 255, .09) !important;
   box-shadow: inset 0 0 10px rgba(0, 217, 255, .08), 0 0 12px rgba(105, 233, 255, .12) !important;
@@ -16803,7 +16803,7 @@ body #profileOverlay .shopRow img.formationShopRowImage {
   background: rgba(0, 217, 255, .09) !important;
   box-shadow: 0 0 12px rgba(105, 233, 255, .28), inset 0 0 16px rgba(105, 233, 255, .08) !important;
 }
-#fitOverlay #fitCard #fitSlotsLasers .slotCell.dragTarget, #fitOverlay #fitCard #fitSlotsGens .slotCell.dragTarget, #fitOverlay #fitCard #fitSlotsExtras .slotCell.dragTarget, #fitOverlay #fitCard #fitSlotsShipMods .slotCell.dragTarget, #fitOverlay #fitCard #fitDroneWorkspace .droneFitSlot.dragTarget, #fitOverlay #fitCard #fitPetWorkspace .petFitSlot.dragTarget {
+#fitOverlay #fitCard #fitSlotsLasers .slotCell.dragTarget, #fitOverlay #fitCard #fitSlotsGens .slotCell.dragTarget, #fitOverlay #fitCard #fitSlotsExtras .slotCell.dragTarget, #fitOverlay #fitCard #fitSlotsParticle .slotCell.dragTarget, #fitOverlay #fitCard #fitSlotsShipMods .slotCell.dragTarget, #fitOverlay #fitCard #fitDroneWorkspace .droneFitSlot.dragTarget, #fitOverlay #fitCard #fitPetWorkspace .petFitSlot.dragTarget {
   border-color: #70e7fa !important;
   background: rgba(20, 154, 182, .22) !important;
   box-shadow: 0 0 12px rgba(105, 233, 255, .35) !important;
@@ -21693,22 +21693,22 @@ html body #hangarOverlay #hangarWindow.gameWindow.fit-open > .gameWinBar .gameWi
 #fitOverlay #fitCard .droneEquipmentCard:last-child, #fitOverlay #fitCard .petSlotsCard:last-child {
   border-bottom:0 !important;
 }
-#fitOverlay #fitCard #fitSlotsLasers .slotCell, #fitOverlay #fitCard #fitSlotsGens .slotCell, #fitOverlay #fitCard #fitSlotsExtras .slotCell, #fitOverlay #fitCard #fitSlotsShipMods .slotCell, #fitOverlay #fitCard .droneFitSlot, #fitOverlay #fitCard .droneDesignSlot, #fitOverlay #fitCard .petFitSlot, #fitOverlay #fitCard .invCell {
+#fitOverlay #fitCard #fitSlotsLasers .slotCell, #fitOverlay #fitCard #fitSlotsGens .slotCell, #fitOverlay #fitCard #fitSlotsExtras .slotCell, #fitOverlay #fitCard #fitSlotsParticle .slotCell, #fitOverlay #fitCard #fitSlotsShipMods .slotCell, #fitOverlay #fitCard .droneFitSlot, #fitOverlay #fitCard .droneDesignSlot, #fitOverlay #fitCard .petFitSlot, #fitOverlay #fitCard .invCell {
   border:1px solid rgba(124,240,255,.38) !important;
   border-radius:8px !important;
   color:#eaffff !important;
   background:linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34)) !important;
   box-shadow:inset 0 0 0 1px rgba(255,255,255,.03) !important;
 }
-#fitOverlay #fitCard #fitSlotsLasers .slotCell::before, #fitOverlay #fitCard #fitSlotsGens .slotCell::before, #fitOverlay #fitCard #fitSlotsExtras .slotCell::before, #fitOverlay #fitCard .droneFitSlot::before, #fitOverlay #fitCard .droneDesignSlot::before, #fitOverlay #fitCard .petFitSlot::before {
+#fitOverlay #fitCard #fitSlotsLasers .slotCell::before, #fitOverlay #fitCard #fitSlotsGens .slotCell::before, #fitOverlay #fitCard #fitSlotsExtras .slotCell::before, #fitOverlay #fitCard #fitSlotsParticle .slotCell::before, #fitOverlay #fitCard .droneFitSlot::before, #fitOverlay #fitCard .droneDesignSlot::before, #fitOverlay #fitCard .petFitSlot::before {
   display:none !important;
 }
-#fitOverlay #fitCard #fitSlotsLasers .slotCell:hover, #fitOverlay #fitCard #fitSlotsGens .slotCell:hover, #fitOverlay #fitCard #fitSlotsExtras .slotCell:hover, #fitOverlay #fitCard #fitSlotsShipMods .slotCell:hover, #fitOverlay #fitCard .droneFitSlot:hover, #fitOverlay #fitCard .droneDesignSlot:hover, #fitOverlay #fitCard .petFitSlot:hover, #fitOverlay #fitCard .invCell:hover {
+#fitOverlay #fitCard #fitSlotsLasers .slotCell:hover, #fitOverlay #fitCard #fitSlotsGens .slotCell:hover, #fitOverlay #fitCard #fitSlotsExtras .slotCell:hover, #fitOverlay #fitCard #fitSlotsParticle .slotCell:hover, #fitOverlay #fitCard #fitSlotsShipMods .slotCell:hover, #fitOverlay #fitCard .droneFitSlot:hover, #fitOverlay #fitCard .droneDesignSlot:hover, #fitOverlay #fitCard .petFitSlot:hover, #fitOverlay #fitCard .invCell:hover {
   border-color:rgba(124,240,255,.62) !important;
   background:rgba(0,140,185,.3) !important;
   box-shadow:0 0 16px rgba(0,217,255,.12) !important;
 }
-#fitOverlay #fitCard #fitSlotsLasers .slotCell.filled, #fitOverlay #fitCard #fitSlotsGens .slotCell.filled, #fitOverlay #fitCard #fitSlotsExtras .slotCell.filled, #fitOverlay #fitCard #fitSlotsShipMods .slotCell.filled, #fitOverlay #fitCard .droneFitSlot.filled, #fitOverlay #fitCard .petFitSlot.filled, #fitOverlay #fitCard .invCell.selected, #fitOverlay #fitCard #fitSlotsLasers .slotCell.selected, #fitOverlay #fitCard #fitSlotsGens .slotCell.selected, #fitOverlay #fitCard #fitSlotsExtras .slotCell.selected, #fitOverlay #fitCard .droneFitSlot.selected, #fitOverlay #fitCard .petFitSlot.selected {
+#fitOverlay #fitCard #fitSlotsLasers .slotCell.filled, #fitOverlay #fitCard #fitSlotsGens .slotCell.filled, #fitOverlay #fitCard #fitSlotsExtras .slotCell.filled, #fitOverlay #fitCard #fitSlotsParticle .slotCell.filled, #fitOverlay #fitCard #fitSlotsShipMods .slotCell.filled, #fitOverlay #fitCard .droneFitSlot.filled, #fitOverlay #fitCard .petFitSlot.filled, #fitOverlay #fitCard .invCell.selected, #fitOverlay #fitCard #fitSlotsLasers .slotCell.selected, #fitOverlay #fitCard #fitSlotsGens .slotCell.selected, #fitOverlay #fitCard #fitSlotsExtras .slotCell.selected, #fitOverlay #fitCard #fitSlotsParticle .slotCell.selected, #fitOverlay #fitCard .droneFitSlot.selected, #fitOverlay #fitCard .petFitSlot.selected {
   border-color:#69e9ff !important;
   background:linear-gradient(135deg,rgba(0,170,220,.5),rgba(0,90,125,.45)) !important;
   box-shadow:inset 0 0 0 1px rgba(255,255,255,.05),0 0 16px rgba(0,217,255,.12) !important;
@@ -21733,7 +21733,7 @@ html body #hangarOverlay #hangarWindow.gameWindow.fit-open > .gameWinBar .gameWi
   background:linear-gradient(135deg,rgba(0,170,220,.5),rgba(0,90,125,.45)) !important;
   box-shadow:inset 0 0 0 1px rgba(255,255,255,.05),0 0 16px rgba(0,217,255,.12) !important;
 }
-#fitOverlay #fitCard #fitSlotsLasers .slotCell::before, #fitOverlay #fitCard #fitSlotsGens .slotCell::before, #fitOverlay #fitCard #fitSlotsExtras .slotCell::before, #fitOverlay #fitCard #fitSlotsShipMods .slotCell::before, #fitOverlay #fitCard #fitDroneWorkspace .droneFitSlot::before, #fitOverlay #fitCard #fitDroneWorkspace .droneDesignSlot::before, #fitOverlay #fitCard #fitPetWorkspace .petFitSlot::before, #fitOverlay #fitCard .invCell::before {
+#fitOverlay #fitCard #fitSlotsLasers .slotCell::before, #fitOverlay #fitCard #fitSlotsGens .slotCell::before, #fitOverlay #fitCard #fitSlotsExtras .slotCell::before, #fitOverlay #fitCard #fitSlotsParticle .slotCell::before, #fitOverlay #fitCard #fitSlotsShipMods .slotCell::before, #fitOverlay #fitCard #fitDroneWorkspace .droneFitSlot::before, #fitOverlay #fitCard #fitDroneWorkspace .droneDesignSlot::before, #fitOverlay #fitCard #fitPetWorkspace .petFitSlot::before, #fitOverlay #fitCard .invCell::before {
   content:"" !important;
   display:block !important;
   position:absolute !important;
@@ -21749,19 +21749,19 @@ html body #hangarOverlay #hangarWindow.gameWindow.fit-open > .gameWinBar .gameWi
   border-top-color:var(--rarity) !important;
   border-left-color:var(--rarity) !important;
 }
-#fitOverlay #fitCard #fitSlotsLasers .slotCell.filled.rarity-common, #fitOverlay #fitCard #fitSlotsGens .slotCell.filled.rarity-common, #fitOverlay #fitCard #fitSlotsExtras .slotCell.filled.rarity-common, #fitOverlay #fitCard #fitSlotsShipMods .slotCell.filled.rarity-common, #fitOverlay #fitCard #fitDroneWorkspace .droneFitSlot.filled.rarity-common, #fitOverlay #fitCard #fitPetWorkspace .petFitSlot.filled.rarity-common, #fitOverlay #fitCard .invCell.rarity-common {
+#fitOverlay #fitCard #fitSlotsLasers .slotCell.filled.rarity-common, #fitOverlay #fitCard #fitSlotsGens .slotCell.filled.rarity-common, #fitOverlay #fitCard #fitSlotsExtras .slotCell.filled.rarity-common, #fitOverlay #fitCard #fitSlotsParticle .slotCell.filled.rarity-common, #fitOverlay #fitCard #fitSlotsShipMods .slotCell.filled.rarity-common, #fitOverlay #fitCard #fitDroneWorkspace .droneFitSlot.filled.rarity-common, #fitOverlay #fitCard #fitPetWorkspace .petFitSlot.filled.rarity-common, #fitOverlay #fitCard .invCell.rarity-common {
   border-color:#a9bcc7 !important;
   background:linear-gradient(135deg,rgba(169,188,199,.38),rgba(169,188,199,.15)) !important;
 }
-#fitOverlay #fitCard #fitSlotsLasers .slotCell.filled.rarity-rare, #fitOverlay #fitCard #fitSlotsGens .slotCell.filled.rarity-rare, #fitOverlay #fitCard #fitSlotsExtras .slotCell.filled.rarity-rare, #fitOverlay #fitCard #fitSlotsShipMods .slotCell.filled.rarity-rare, #fitOverlay #fitCard #fitDroneWorkspace .droneFitSlot.filled.rarity-rare, #fitOverlay #fitCard #fitPetWorkspace .petFitSlot.filled.rarity-rare, #fitOverlay #fitCard .invCell.rarity-rare {
+#fitOverlay #fitCard #fitSlotsLasers .slotCell.filled.rarity-rare, #fitOverlay #fitCard #fitSlotsGens .slotCell.filled.rarity-rare, #fitOverlay #fitCard #fitSlotsExtras .slotCell.filled.rarity-rare, #fitOverlay #fitCard #fitSlotsParticle .slotCell.filled.rarity-rare, #fitOverlay #fitCard #fitSlotsShipMods .slotCell.filled.rarity-rare, #fitOverlay #fitCard #fitDroneWorkspace .droneFitSlot.filled.rarity-rare, #fitOverlay #fitCard #fitPetWorkspace .petFitSlot.filled.rarity-rare, #fitOverlay #fitCard .invCell.rarity-rare {
   border-color:#45bfff !important;
   background:linear-gradient(135deg,rgba(69,191,255,.38),rgba(69,191,255,.15)) !important;
 }
-#fitOverlay #fitCard #fitSlotsLasers .slotCell.filled.rarity-epic, #fitOverlay #fitCard #fitSlotsGens .slotCell.filled.rarity-epic, #fitOverlay #fitCard #fitSlotsExtras .slotCell.filled.rarity-epic, #fitOverlay #fitCard #fitSlotsShipMods .slotCell.filled.rarity-epic, #fitOverlay #fitCard #fitDroneWorkspace .droneFitSlot.filled.rarity-epic, #fitOverlay #fitCard #fitPetWorkspace .petFitSlot.filled.rarity-epic, #fitOverlay #fitCard .invCell.rarity-epic {
+#fitOverlay #fitCard #fitSlotsLasers .slotCell.filled.rarity-epic, #fitOverlay #fitCard #fitSlotsGens .slotCell.filled.rarity-epic, #fitOverlay #fitCard #fitSlotsExtras .slotCell.filled.rarity-epic, #fitOverlay #fitCard #fitSlotsParticle .slotCell.filled.rarity-epic, #fitOverlay #fitCard #fitSlotsShipMods .slotCell.filled.rarity-epic, #fitOverlay #fitCard #fitDroneWorkspace .droneFitSlot.filled.rarity-epic, #fitOverlay #fitCard #fitPetWorkspace .petFitSlot.filled.rarity-epic, #fitOverlay #fitCard .invCell.rarity-epic {
   border-color:#ba72ff !important;
   background:linear-gradient(135deg,rgba(186,114,255,.38),rgba(186,114,255,.15)) !important;
 }
-#fitOverlay #fitCard #fitSlotsLasers .slotCell.filled.rarity-legendary, #fitOverlay #fitCard #fitSlotsGens .slotCell.filled.rarity-legendary, #fitOverlay #fitCard #fitSlotsExtras .slotCell.filled.rarity-legendary, #fitOverlay #fitCard #fitSlotsShipMods .slotCell.filled.rarity-legendary, #fitOverlay #fitCard #fitDroneWorkspace .droneFitSlot.filled.rarity-legendary, #fitOverlay #fitCard #fitPetWorkspace .petFitSlot.filled.rarity-legendary, #fitOverlay #fitCard .invCell.rarity-legendary {
+#fitOverlay #fitCard #fitSlotsLasers .slotCell.filled.rarity-legendary, #fitOverlay #fitCard #fitSlotsGens .slotCell.filled.rarity-legendary, #fitOverlay #fitCard #fitSlotsExtras .slotCell.filled.rarity-legendary, #fitOverlay #fitCard #fitSlotsParticle .slotCell.filled.rarity-legendary, #fitOverlay #fitCard #fitSlotsShipMods .slotCell.filled.rarity-legendary, #fitOverlay #fitCard #fitDroneWorkspace .droneFitSlot.filled.rarity-legendary, #fitOverlay #fitCard #fitPetWorkspace .petFitSlot.filled.rarity-legendary, #fitOverlay #fitCard .invCell.rarity-legendary {
   border-color:#ffd15c !important;
   background:linear-gradient(135deg,rgba(255,209,92,.38),rgba(255,209,92,.15)) !important;
 }
@@ -21849,7 +21849,7 @@ body #hangarOverlay .hangarListItem .tileActions button:disabled {
   height:144px !important;
   box-sizing:border-box !important;
 }
-#fitOverlay #fitCard #fitSlotsLasers .slotCell:not(.filled), #fitOverlay #fitCard #fitSlotsGens .slotCell:not(.filled), #fitOverlay #fitCard #fitSlotsExtras .slotCell:not(.filled), #fitOverlay #fitCard #fitSlotsShipMods .slotCell:not(.filled), #fitOverlay #fitCard #fitDroneWorkspace .droneFitSlot:not(.filled), #fitOverlay #fitCard #fitDroneWorkspace .droneDesignSlot:not(.filled), #fitOverlay #fitCard #fitPetWorkspace .petFitSlot:not(.filled) {
+#fitOverlay #fitCard #fitSlotsLasers .slotCell:not(.filled), #fitOverlay #fitCard #fitSlotsGens .slotCell:not(.filled), #fitOverlay #fitCard #fitSlotsExtras .slotCell:not(.filled), #fitOverlay #fitCard #fitSlotsParticle .slotCell:not(.filled), #fitOverlay #fitCard #fitSlotsShipMods .slotCell:not(.filled), #fitOverlay #fitCard #fitDroneWorkspace .droneFitSlot:not(.filled), #fitOverlay #fitCard #fitDroneWorkspace .droneDesignSlot:not(.filled), #fitOverlay #fitCard #fitPetWorkspace .petFitSlot:not(.filled) {
   border-color:rgba(169,188,199,.35) !important;
   background:linear-gradient(135deg,rgba(169,188,199,.16),rgba(169,188,199,.07)) !important;
   box-shadow:inset 0 0 0 1px rgba(255,255,255,.03) !important;
@@ -21931,11 +21931,11 @@ body #hangarOverlay .hangarListItem .tileActions button:disabled {
   opacity:.35 !important;
   cursor:default !important;
 }
-#fitOverlay #fitCard #fitSlotsLasers .slotCell:not(.filled)::before, #fitOverlay #fitCard #fitSlotsGens .slotCell:not(.filled)::before, #fitOverlay #fitCard #fitSlotsExtras .slotCell:not(.filled)::before, #fitOverlay #fitCard #fitSlotsShipMods .slotCell:not(.filled)::before, #fitOverlay #fitCard #fitDroneWorkspace .droneFitSlot:not(.filled)::before, #fitOverlay #fitCard #fitDroneWorkspace .droneDesignSlot:not(.filled)::before, #fitOverlay #fitCard #fitPetWorkspace .petFitSlot:not(.filled)::before {
+#fitOverlay #fitCard #fitSlotsLasers .slotCell:not(.filled)::before, #fitOverlay #fitCard #fitSlotsGens .slotCell:not(.filled)::before, #fitOverlay #fitCard #fitSlotsExtras .slotCell:not(.filled)::before, #fitOverlay #fitCard #fitSlotsParticle .slotCell:not(.filled)::before, #fitOverlay #fitCard #fitSlotsShipMods .slotCell:not(.filled)::before, #fitOverlay #fitCard #fitDroneWorkspace .droneFitSlot:not(.filled)::before, #fitOverlay #fitCard #fitDroneWorkspace .droneDesignSlot:not(.filled)::before, #fitOverlay #fitCard #fitPetWorkspace .petFitSlot:not(.filled)::before {
   border-top-color:rgba(169,188,199,.45) !important;
   border-left-color:rgba(169,188,199,.45) !important;
 }
-#fitOverlay #fitCard #fitSlotsLasers .slotCell.filled[class*="rarity-"]::before, #fitOverlay #fitCard #fitSlotsGens .slotCell.filled[class*="rarity-"]::before, #fitOverlay #fitCard #fitSlotsExtras .slotCell.filled[class*="rarity-"]::before, #fitOverlay #fitCard #fitSlotsShipMods .slotCell.filled[class*="rarity-"]::before, #fitOverlay #fitCard #fitDroneWorkspace .droneFitSlot.filled[class*="rarity-"]::before, #fitOverlay #fitCard #fitPetWorkspace .petFitSlot.filled[class*="rarity-"]::before {
+#fitOverlay #fitCard #fitSlotsLasers .slotCell.filled[class*="rarity-"]::before, #fitOverlay #fitCard #fitSlotsGens .slotCell.filled[class*="rarity-"]::before, #fitOverlay #fitCard #fitSlotsExtras .slotCell.filled[class*="rarity-"]::before, #fitOverlay #fitCard #fitSlotsParticle .slotCell.filled[class*="rarity-"]::before, #fitOverlay #fitCard #fitSlotsShipMods .slotCell.filled[class*="rarity-"]::before, #fitOverlay #fitCard #fitDroneWorkspace .droneFitSlot.filled[class*="rarity-"]::before, #fitOverlay #fitCard #fitPetWorkspace .petFitSlot.filled[class*="rarity-"]::before {
   border-top-color:var(--rarity) !important;
   border-left-color:var(--rarity) !important;
 }

@@ -16,18 +16,25 @@
 //   Branchés : Bounty I/II (dégâts lasers PvP via pvpPct).
 // Ce module ne touche ni DOM ni stockage.
 
-export const PILOT_MAX_POINTS = 50;
+// Total des niveaux de tous les talents : tout l'arbre peut être monté à fond.
+export const PILOT_MAX_POINTS = 95;
 export const PILOT_PP_PER_LEVEL = 1;
 export const LOGDISK_PRICE = 300000; // 1 disque de log
 export const LOGDISK_PACK = 10; // pack boutique (3 000 000 crédits)
 export const PILOT_RESET_BASE = 1000000; // reset 1 : 1M, puis x2 à chaque reset
 
-// Disques requis par point (table officielle, points 1 à 50).
+// Disques requis par point (table officielle, points 1 à 50 ; points 51 à
+// 95 : même progression, +10 % par point).
 export const LOGDISK_ROWS = Object.freeze([
   30, 33, 36, 40, 44, 48, 53, 58, 64, 71, 78, 86, 94, 104, 114, 125,
   138, 152, 167, 183, 202, 222, 244, 269, 295, 325, 358, 393, 433,
   476, 523, 576, 633, 697, 766, 843, 927, 1020, 1122, 1234, 1358,
   1494, 1643, 1807, 1988, 2187, 2405, 2646, 2911, 3202,
+  3522, 3874, 4261, 4687, 5156, 5672, 6239, 6863, 7549, 8304,
+  9134, 10047, 11052, 12157, 13373, 14710, 16181, 17799, 19579, 21537,
+  23691, 26060, 28666, 31533, 34686, 38155, 41970, 46167, 50784, 55862,
+  61448, 67593, 74352, 81787, 89966, 98963, 108859, 119745, 131720, 144892,
+  159381, 175319, 192851, 212136, 233350,
 ]);
 
 export function pilotResetCost(resetsDone) {

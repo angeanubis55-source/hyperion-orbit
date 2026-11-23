@@ -106,7 +106,7 @@ import {
   unlockCurrentUserTitle,
   refreshCurrentUserTitles,
 } from "./ACCOUNT.js";
-import { extrasCapacity, shipExtraKeys, EXTRA_RADAR_BONUS, EXTRA_PET_FUEL_THRESHOLD, EXTRA_PET_FUEL_BUY, EXTRA_REPAIR_SEC, EXTRA_AIM_MISS_CUT, EXTRA_SHIELD_REGEN_PCT, RAYGUN_DAMAGE, RAYGUN_VARIANCE, RAYGUN_PROC_CHANCE, RAYGUN_ABILITY } from "../DATA/SHIP_EXTRAS.js";
+import { extrasCapacity, shipExtraKeys, EXTRA_RADAR_BONUS, EXTRA_PET_FUEL_THRESHOLD, EXTRA_PET_FUEL_BUY, EXTRA_REPAIR_SEC, EXTRA_AIM_MISS_CUT, EXTRA_SHIELD_REGEN_PCT, RAYGUN_DAMAGE, RAYGUN_VARIANCE, RAYGUN_PROC_CHANCE, RAYGUN_ABILITY, PARTICLE_CANNON_DEFS } from "../DATA/SHIP_EXTRAS.js";
 import { pumpSharedAuction } from "./AUCTION_NET.js";
 import { apiWinterRankingClaim, flushNetUser, netActive, netList, noteNetConsumption, noteNetCreditGain, noteNetPetFuelConsumed, noteNetPurchase, noteNetResourceGain, noteNetServerReward, noteNetUpgradeConsumed } from "./ACCOUNT_NET.js";
 import {
@@ -1817,7 +1817,10 @@ function solHeal(pct) {
   } catch {}
 }
 function droneAbilityCooldown(seconds) {
-  return droneDesignCooldown(seconds, player.droneCooldownReductionPct);
+  // Designs de drones + booster CD-B01 / CD-B02 (même plafond -90 %).
+  let boosterCd = 0;
+  try { boosterCd = Math.max(0, Number(playerBoosterMults().cd) || 0); } catch {}
+  return droneDesignCooldown(seconds, (Number(player.droneCooldownReductionPct) || 0) + boosterCd);
 }
 function startSolCooldown() {
   player.solCd = droneAbilityCooldown(SOLACE_COOLDOWN);
@@ -11588,7 +11591,7 @@ function boosterCatalogId(def) {
 }
 
 // Ordre des familles dans la fenêtre.
-const BOOSTER_FAMILY_ORDER = ["dmgPct", "shieldPct", "hpPct", "expPct", "honorPct", "repairPct", "resPct", "sregPct", "boxPct", "questPct", "petXpPct"];
+const BOOSTER_FAMILY_ORDER = ["dmgPct", "shieldPct", "hpPct", "expPct", "honorPct", "repairPct", "resPct", "sregPct", "cdPct", "boxPct", "questPct", "petXpPct"];
 
 // Couleurs officielles lexique FR (cf. screenshot) : rouge = dégâts,
 // cyan = bouclier, vert = PV, orange = exp, rose = honneur, etc.
@@ -11601,6 +11604,7 @@ const BOOSTER_FAMILY_COLORS = Object.freeze({
   repairPct: "#c061ff",
   resPct: "#e6c200",
   sregPct: "#6b7cff",
+  cdPct: "#ffe14d",
   boxPct: "#f5e0a0",
   questPct: "#ffffff",
   petXpPct: "#e5a055",
@@ -11616,6 +11620,7 @@ const BOOSTER_FAMILY_ICONS = Object.freeze({
   repairPct: "/ASSETS/BOOSTERS/CAT/rep.png",
   resPct: "/ASSETS/BOOSTERS/CAT/res.png",
   sregPct: "/ASSETS/BOOSTERS/CAT/sreg.png",
+  cdPct: "/ASSETS/BOOSTERS/MINI/cd.png",
   boxPct: "/ASSETS/BOOSTERS/CAT/bb.png",
   questPct: "/ASSETS/BOOSTERS/MINI/qr.png",
   petXpPct: "/ASSETS/BOOSTERS/CAT/pep.png",
@@ -22469,6 +22474,7 @@ function playerBoosterMults() {
           const add = (Number(v) || 0) * Number(n);
           if (!add) continue;
           if (k === "hitPct") base.hit = (Number(base.hit) || 0) + add;
+          else if (k === "cdPct") base.cd = (Number(base.cd) || 0) + add;
           else if (k in base) base[k] = Number(base[k] || 1) + add / 100;
         }
       }
@@ -32565,7 +32571,7 @@ function damageEnemy(e, dmg, shieldPenetration, crit, opts = {}) {
   if (e._netPet && isSharedZone()) {
     const amount = Math.max(0, Math.round(Number(dmg) || 0));
     try {
-      sendPvpPetHit({ target: e._netPet, dmg: amount, pen: shieldPenetration, critChance: crit?.chance, critMult: crit?.mult, rocket: opts.rocket });
+      sendPvpPetHit({ target: e._netPet, dmg: amount, pen: shieldPenetration, critChance: crit?.chance, critMult: crit?.mult, rocket: opts.rocket, ability: opts.ability });
     } catch {}
     try { recordDps({ total: amount }, opts); } catch {}
     return { total: amount, sh: 0, hp: amount, bypass: 0, isCrit: false, rawDamage: amount };
@@ -33633,11 +33639,13 @@ function tickRaygun() {
 // Appelé à chaque tir laser du vaisseau : 35 % de chance de déclencher le canon.
 function raygunOnLaserShot(t) {
   if (!hasShipExtra("particle") || player.dead) return;
-  // NPC uniquement (ni joueur, ni station, ni REX).
-  if (!t || !(t.hp > 0) || t._netPlayer || t._stationTarget || t.isPetTarget === true) return;
+  // Toutes les cibles du tir laser : NPC, joueurs, P.E.T, stations...
+  if (!t || (Number.isFinite(Number(t.hp)) && !(Number(t.hp) > 0))) return;
   if (dist2(player.x, player.y, t.x, t.y) > playerRange * playerRange) return;
   if (Math.random() >= RAYGUN_PROC_CHANCE) return;
-  const shotIdx = Math.floor(Math.random() * PCANNON_SHOTS.length);
+  // Canon équipé dans l'emplacement dédié : son rayon. Ancien CPU : au hasard.
+  const fixedIdx = hasShipExtra("particle_thermal") ? 0 : hasShipExtra("particle_electro") ? 1 : hasShipExtra("particle_corrosive") ? 2 : -1;
+  const shotIdx = fixedIdx >= 0 ? fixedIdx : Math.floor(Math.random() * PCANNON_SHOTS.length);
   const shot = PCANNON_SHOTS[shotIdx];
   // Direction figée au tir : du vaisseau vers la position du NPC à cet instant.
   raygunFx.push({ shot, t0: performance.now(), ax: player.x, ay: player.y, ar: player.r, tx: t.x, ty: t.y });
@@ -33647,7 +33655,11 @@ function raygunOnLaserShot(t) {
   try { breakPoliceCloak(); } catch {}
   let out = null;
   // 50 000 ±5 % (pas pile la même valeur à chaque tir).
-  const rayDmg = Math.round(RAYGUN_DAMAGE * (1 - RAYGUN_VARIANCE + Math.random() * 2 * RAYGUN_VARIANCE));
+  // Dégâts du canon équipé (thermique / électrique / corrosif), ancien CPU : 50 000.
+  const baseDmg = fixedIdx >= 0
+    ? (Object.values(PARTICLE_CANNON_DEFS).find((d) => d.shot === ["thermal", "electro", "corrosive"][fixedIdx])?.damage || RAYGUN_DAMAGE)
+    : RAYGUN_DAMAGE;
+  const rayDmg = Math.round(baseDmg * (1 - RAYGUN_VARIANCE + Math.random() * 2 * RAYGUN_VARIANCE));
   try { out = damageEnemy(t, rayDmg, undefined, { chance: 0, mult: 1 }, { ability: RAYGUN_ABILITY, fixedDamage: true }); } catch {}
   if (out && (out.total || 0) > 0) { try { queueVolleyFloat(t, out, volleySeq++, 1); } catch {} }
 }
@@ -35339,8 +35351,9 @@ function tryFireRocket(opts = {}) {
   // Tir réel : toute attaque casse le camouflage ultime.
   breakPoliceCloak();
   if (isForgeTarget(t)) { try { breakForgeRule("norocket"); } catch {} }
-  // CPU Double roquette : une 2e roquette part en même temps (s'il en reste).
-  if (hasShipExtra("rocket2") && rocketCount(rocket.id) > 0) {
+  // CPU Double roquette : une 2e roquette part en même temps (s'il en reste),
+  // roquettes standard uniquement (celles à cooldown propre : 1 seule).
+  if (hasShipExtra("rocket2") && !(personalCooldown > 0) && rocketCount(rocket.id) > 0) {
     player.rockets[rocket.id] = rocketCount(rocket.id) - 1;
     noteNetConsumption("rockets", rocket.id, 1);
     mirrorConsumedStock("rockets", rocket.id, player.rockets[rocket.id]);

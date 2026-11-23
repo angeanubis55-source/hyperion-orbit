@@ -223,7 +223,7 @@ function pageDrones() {
 }
 
 function pageEquipement() {
-  const lasers = CATALOG.lasers.map((l) => [img(l.icon), `<b>${esc(l.name.replace(/^laser\s+/i, ""))}</b>`, gold(num(l.module?.damage)), lines(l.desc || ""),
+  const lasers = CATALOG.lasers.filter((l) => l?.module?.type === "laser").map((l) => [img(l.icon), `<b>${esc(l.name.replace(/^laser\s+/i, ""))}</b>`, gold(num(l.module?.damage)), lines(l.desc || ""),
     l.petOnly ? "P.E.T" : (l.noPet ? "Vaisseau" : "Tous"), l.shopHidden ? "Assemblage" : gold(money(l.price))]);
   const shields = CATALOG.shieldGen.map((g) => [img(g.icon), `<b>${esc(g.name)}</b>`, gold(num(g.module?.bonusShield)), g.module?.absorbPct ? pct(g.module.absorbPct) : "—", g.petOnly ? "P.E.T" : "Tous", gold(money(g.price))]);
   const speeds = CATALOG.speedGen.map((g) => [img(g.icon), `<b>${esc(g.name)}</b>`, gold(`+${num(g.module?.bonusSpeed)}`), gold(money(g.price))]);

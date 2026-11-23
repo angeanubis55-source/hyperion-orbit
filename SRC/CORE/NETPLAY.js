@@ -2606,6 +2606,8 @@ export function sendPvpPetHit(hit) {
   try {
     const h = { t: "pvpPetHit", target: String(hit.target) };
     if (typeof hit.rocket === "string") h.rocket = hit.rocket.slice(0, 16);
+    // Canon à particules : validé comme tel côté serveur.
+    if (hit.ability === "ability_extra_raygun") h.ability = hit.ability;
     if (hit.kind === "sab") {
       h.kind = "sab";
       h.dmg = Math.max(0, Number(hit.dmg) || 0);

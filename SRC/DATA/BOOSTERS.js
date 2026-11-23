@@ -334,6 +334,29 @@ export const BOOSTERS = Object.freeze([
     iconMini: "/ASSETS/BOOSTERS/CAT/sreg.png",
     effect: Object.freeze({ sregPct: 25 }),
   },
+  // ---- Temps de recharge des aptitudes (officiel : CD-B01 -20 %, CD-B02 -30 %) ----
+  {
+    id: "cd",
+    code: "CD-B01",
+    name: "Booster Recharge",
+    desc: "Temps de recharge des aptitudes du vaisseau -20 % pendant 1 h.",
+    price: 2000000,
+    durationSec: 3600,
+    icon: "/ASSETS/BOOSTERS/cd.png",
+    iconMini: "/ASSETS/BOOSTERS/MINI/cd.png",
+    effect: Object.freeze({ cdPct: 20 }),
+  },
+  {
+    id: "cd2",
+    code: "CD-B02",
+    name: "Booster Recharge",
+    desc: "Temps de recharge des aptitudes du vaisseau -30 %,\n-5 % pour les membres du groupe sur la même carte.",
+    price: 4000000,
+    durationSec: 3600,
+    icon: "/ASSETS/BOOSTERS/cd.png",
+    iconMini: "/ASSETS/BOOSTERS/MINI/cd.png",
+    effect: Object.freeze({ cdPct: 30 }),
+  },
   // ---- Bonus box ----
   {
     id: "bb",
@@ -392,7 +415,7 @@ export function getBooster(id) {
 
 // Boosters B02 à bonus de groupe : chaque membre du groupe qui l'a actif
 // donne son bonus à tout le groupe (proportionnel au nombre de membres).
-export const GROUP_BOOSTER_IDS = Object.freeze(["dmg2", "shd2", "hp2", "ep2", "hon2", "rep2", "res2", "sreg2"]);
+export const GROUP_BOOSTER_IDS = Object.freeze(["dmg2", "shd2", "hp2", "ep2", "hon2", "rep2", "res2", "sreg2", "cd2"]);
 export const GROUP_BOOSTER_BONUS = Object.freeze({
   dmg2: Object.freeze({ dmgPct: 1 }),
   shd2: Object.freeze({ shieldPct: 2 }),
@@ -402,6 +425,8 @@ export const GROUP_BOOSTER_BONUS = Object.freeze({
   rep2: Object.freeze({ repairPct: 1 }),
   res2: Object.freeze({ resPct: 10 }),
   sreg2: Object.freeze({ sregPct: 1 }),
+  // CD-B02 : -5 % de recharge des aptitudes par membre qui l'a actif.
+  cd2: Object.freeze({ cdPct: 5 }),
 });
 
 // Forme persistée sur le compte : { stock: {id: n}, active: {id: expiresAtMs} }.
@@ -437,7 +462,8 @@ export function boosterTimeLeftMs(boosters, id, now = Date.now()) {
 // dmg/shield/hp/exp/honor/petXp/repair/res/sreg/box/quest : facteurs (×).
 // hit : points additifs de précision laser.
 export function activeBoosterMults(boosters, now = Date.now()) {
-  const mults = { dmg: 1, shield: 1, hp: 1, exp: 1, honor: 1, repair: 1, res: 1, petXp: 1, hit: 0, sreg: 1, box: 1, quest: 1 };
+  // cd : réduction (en %) des temps de recharge des aptitudes du vaisseau.
+  const mults = { dmg: 1, shield: 1, hp: 1, exp: 1, honor: 1, repair: 1, res: 1, petXp: 1, hit: 0, sreg: 1, box: 1, quest: 1, cd: 0 };
   if (!boosters?.active) return mults;
   for (const b of BOOSTERS) {
     if (Number(boosters.active[b.id] || 0) <= now) continue;
@@ -455,6 +481,7 @@ export function activeBoosterMults(boosters, now = Date.now()) {
     if (effect.sregPct) mults.sreg += Number(effect.sregPct) / 100;
     if (effect.boxPct) mults.box += Number(effect.boxPct) / 100;
     if (effect.questPct) mults.quest += Number(effect.questPct) / 100;
+    if (effect.cdPct) mults.cd += Number(effect.cdPct);
   }
   return mults;
 }

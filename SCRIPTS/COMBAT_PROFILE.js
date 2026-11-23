@@ -12,7 +12,7 @@ import { ROCKET_TYPES } from "../COMBAT/ROCKET_TYPES.js";
 import { abilityShipKeyFor, getAbilitiesForShip, HYPERION_QA_DAMAGE, HYPERION_QA_BURST_SEC, HYPERION_QA_SALVOS } from "../SHIP/SHIP_ABILITIES.js";
 import { acBucket } from "./ANTICHEAT.js";
 import { isAbilityDamage, validateAbilityDamage } from "../SRC/CORE/ABILITY_COMBAT_RULES.js";
-import { getShipExtraDef, RAYGUN_ABILITY, RAYGUN_DAMAGE, RAYGUN_VARIANCE, RAYGUN_SERVER_CAP, RAYGUN_SERVER_PER_SEC } from "../SRC/DATA/SHIP_EXTRAS.js";
+import { getShipExtraDef, getParticleCannonDef, particleCannonDamage, RAYGUN_ABILITY, RAYGUN_DAMAGE, RAYGUN_VARIANCE, RAYGUN_SERVER_CAP, RAYGUN_SERVER_PER_SEC } from "../SRC/DATA/SHIP_EXTRAS.js";
 
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, Number(v) || 0));
 const pct = (v) => 1 + Math.max(0, Number(v) || 0) / 100;
@@ -53,6 +53,8 @@ export function combatProfile(user, mapId, configNo = null, groupBoosters = {}) 
   for (const [id, count] of Object.entries(groupBoosters)) {
     for (const [effect, value] of Object.entries(GROUP_BOOSTER_BONUS[id] || {})) {
       if (boosterKeys[effect]) boost[boosterKeys[effect]] += value * clamp(count, 0, 9) / 100;
+      // CD-B02 du groupe : réduction de recharge en % (pas un multiplicateur).
+      if (effect === "cdPct") boost.cd = (Number(boost.cd) || 0) + value * clamp(count, 0, 9);
     }
   }
   const pilot = pilotSkillMults(user.pilotSkills);
@@ -93,7 +95,8 @@ export function combatProfile(user, mapId, configNo = null, groupBoosters = {}) 
     penetration: clamp(stats.bonusPenetrationPct / 100, 0, 1),
     butterfly: Number(stats.formationEffects?.penetrationPct || stats.formationEffects?.shieldPenetrationPct || 0) >= 20,
     laserDamage: clamp(laser, 0, 1e8),
-    abilityCooldownMult: droneDesignCooldown(1, stats.bonusAbilityCooldownPct),
+    // Designs de drones + booster CD-B01 / CD-B02.
+    abilityCooldownMult: droneDesignCooldown(1, (Number(stats.bonusAbilityCooldownPct) || 0) + (Number(boost.cd) || 0)),
     laserHitBonusPct: stats.bonusLaserHitPct,
     rocketHitBonusPct: stats.bonusRocketHitPct,
     critChance: osl ? Math.min(0.50, 0.05 + (3 * osl) / 100) : 0.05,
@@ -103,7 +106,11 @@ export function combatProfile(user, mapId, configNo = null, groupBoosters = {}) 
       50000, hpMax * 0.25), 1, 1e8),
     rocketIds,
     // Extras CPU équipés (clés d'effet).
-    extras: (Array.isArray(fit.extras) ? fit.extras : []).map((id) => getShipExtraDef(id)?.key).filter(Boolean),
+    // + « particle » si un canon à particules est dans son emplacement dédié.
+    extras: [...(Array.isArray(fit.extras) ? fit.extras : []).map((id) => getShipExtraDef(id)?.key).filter(Boolean),
+      ...((Array.isArray(fit.particle) ? fit.particle : []).some((id) => getParticleCannonDef(id)) ? ["particle"] : [])],
+    // Dégâts de base du canon à particules équipé.
+    particleDamage: particleCannonDamage(fit.particle),
     cloakSkill: abilities.find(a => /cloak/.test(a.id)) || null,
     petOwned: !!pet?.owned,
     // Le PET et les deux clones de Triple barrage peuvent recolter ensemble.
@@ -137,7 +144,7 @@ export function validateCombatHit(profile, message, state = null, now = Date.now
   // à portée, sans critique.
   if (message.ability === RAYGUN_ABILITY) {
     if (!Array.isArray(profile.extras) || !profile.extras.includes("particle")) return null;
-    if (!Number.isFinite(dmg) || !(dmg > 0) || dmg > Math.ceil(RAYGUN_DAMAGE * (1 + RAYGUN_VARIANCE))) return null;
+    if (!Number.isFinite(dmg) || !(dmg > 0) || dmg > Math.ceil((Number(profile.particleDamage) || RAYGUN_DAMAGE) * (1 + RAYGUN_VARIANCE))) return null;
     if (target && state && Math.hypot(Number(target.x) - Number(state.x), Number(target.y) - Number(state.y)) > profile.range) return null;
     if (state && !acBucket(state, "Raygun", now, RAYGUN_SERVER_CAP, RAYGUN_SERVER_PER_SEC, 1)) return null;
     return { uid: message.uid, target: message.target, dmg, kind: "direct", pen: profile.penetration,

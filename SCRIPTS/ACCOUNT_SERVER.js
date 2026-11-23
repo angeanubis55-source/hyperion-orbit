@@ -1084,6 +1084,12 @@ function applyCatalogPurchase(data, item, requestedQuantity, options = {}) {
     data.inventory.resources ||= {};
     data.inventory.resources[resourceId] = Math.max(0, Math.floor(Number(data.inventory.resources[resourceId]) || 0)) + Math.max(0, Math.floor(Number(amount) || 0)) * quantity;
   }
+  // Logfiles : disques de log de l'arbre de compétences pilote.
+  if (item.give?.logDisks) {
+    data.pilotSkills ||= {};
+    data.pilotSkills.disks = Math.max(0, Math.floor(Number(data.pilotSkills.disks) || 0))
+      + Math.max(0, Math.floor(Number(item.give.logDisks) || 0)) * quantity;
+  }
   if (item.give?.ammo || item.give?.rockets || item.module || item.petGear || item.petProtocol || item.ticket?.kind || item.petFuel) {
     addInventoryCount(data, item.id, quantity);
   }
@@ -1452,7 +1458,7 @@ function applyServerGalaxyGateOperation(data, body) {
 
 function visitEquipmentFits(data, callback) {
   for (const hangar of data.hangars || []) {
-    for (const config of ["1", "2"]) callback(hangar?.fits?.[config], ["lasers", "gens", "extras", "shipMods"]);
+    for (const config of ["1", "2"]) callback(hangar?.fits?.[config], ["lasers", "gens", "extras", "particle", "shipMods"]);
   }
   for (const drone of data.drones?.items || []) {
     for (const perHangar of Object.values(drone?.fitsByHangar || {})) for (const config of ["1", "2"]) callback(perHangar?.[config], ["equipment"]);
@@ -1472,7 +1478,7 @@ function reservedCatalogCopies(data, itemId) {
   for (const hangar of data.hangars || []) for (const config of ["1", "2"]) {
     let used = 0;
     const shipFit = hangar?.fits?.[config] || {};
-    for (const group of ["lasers", "gens", "extras"]) used += count(shipFit[group]);
+    for (const group of ["lasers", "gens", "extras", "particle"]) used += count(shipFit[group]);
     for (const drone of data.drones?.items || []) {
       const fit = drone?.fitsByHangar?.[String(hangar.id)]?.[config] || drone?.fits?.[config] || drone?.fit;
       used += count(fit?.equipment);
@@ -4794,7 +4800,7 @@ export function handleAccountApi(req, res) {
         } else {
           const item = findCatalogItem(id);
           if (!item) throw Object.assign(new Error("Item introuvable."), { client: true });
-          if (item.ship || item.design || item.petDesign || item.pet || item.ticket || !(Number(item.price) > 0)) {
+          if (item.ship || item.design || item.petDesign || item.pet || item.ticket || item.give?.logDisks || !(Number(item.price) > 0)) {
             throw Object.assign(new Error("Cet article ne peut pas etre vendu."), { client: true });
           }
           const owned = Math.max(0, Math.floor(Number(data.inventory.counts[id]) || 0));
@@ -5318,7 +5324,7 @@ export function adminInventory(target) {
       .filter(([, v]) => Number(v) !== 0 && Number.isFinite(Number(v))).map(([k, v]) => [k, Math.floor(Number(v))]));
     const fitOf = (fit) => ({
       lasers: (fit?.lasers || []).filter(Boolean), gens: (fit?.gens || []).filter(Boolean),
-      extras: (fit?.extras || []).filter(Boolean), shipMods: (fit?.shipMods || []).filter(Boolean).length,
+      extras: (fit?.extras || []).filter(Boolean), particle: (fit?.particle || []).filter(Boolean), shipMods: (fit?.shipMods || []).filter(Boolean).length,
     });
     const now = Date.now();
     return {
