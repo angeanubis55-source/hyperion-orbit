@@ -237,9 +237,6 @@ import {
   canAcceptQuest,
   claimQuest,
   createForgeQuest,
-  failForgeQuest,
-  forgeHasRule,
-  getForgeCondition,
   FORGE_MAX_AMOUNT,
   findQuestDefinition,
   forgePreview,
@@ -20235,8 +20232,9 @@ for (const node of [ui.questWindow, ui.questOfferWindow]) {
   });
 }
 
-// Contrat fabriqué : règles de contrat. La moindre infraction annule le
-// contrat (failForgeQuest) : progression perdue, délai de 24 h conservé.
+// Contrat fabriqué : les contraintes sont vérifiées à chaque kill
+// (questChallengeContext / questChallengeMet). Un NPC tué sans les respecter
+// ne compte pas ; le contrat n'est jamais annulé.
 function forgeLoadout() {
   let config = 1;
   let lasers = 0;
@@ -20260,38 +20258,6 @@ function forgeCreationIssues(spec) {
   if (conds.includes("solo") && lo.grouped) issues.push("Contrainte « En solo » : quitte ton groupe d'abord.");
   return issues;
 }
-function isForgeTarget(e) {
-  const forge = questState?.forge;
-  return !!e && forge?.status === "active" && !!forge.spec && String(e.type || "") === String(forge.spec.type);
-}
-function breakForgeRule(ruleId) {
-  if (!forgeHasRule(questState, ruleId)) return false;
-  const quest = failForgeQuest(questState, ruleId);
-  if (!quest) return false;
-  const label = getForgeCondition(ruleId)?.label || ruleId;
-  if (selectedQuestId === quest.id) selectedQuestId = null;
-  showNotification(`Contrat annulé — contrainte « ${label} » non respectée`, 4, "error");
-  markProgressDirty();
-  saveProgressNow();
-  questJournalRenderPending = true;
-  questTerminalRenderPending = true;
-  try { renderQuestWindow(); } catch {}
-  try { refreshPendingQuestViews(); } catch {}
-  return true;
-}
-// Vérifications continues (config, lasers, groupe), 2 fois par seconde.
-let forgeRuleTickT = 0;
-function tickForgeRules(dt) {
-  if (questState?.forge?.status !== "active") return;
-  forgeRuleTickT += dt;
-  if (forgeRuleTickT < 0.5) return;
-  forgeRuleTickT = 0;
-  const lo = forgeLoadout();
-  const lock = Number(questState.forge.lockConfig) || 0;
-  if (lock && lo.config !== lock && breakForgeRule("oneconfig")) return;
-  if (lo.lasers > 1 && breakForgeRule("onelaser")) return;
-  if (lo.grouped) breakForgeRule("solo");
-}
 
 // Défis de quête : suivi du combat sur une cible, du premier tir au kill
 // (position, coque, munitions utilisées).
@@ -20304,11 +20270,13 @@ function noteQuestChallengeShot(target, ammoKey) {
   fight.ammo.add(String(ammoKey || "x1"));
   if (!fight.moved && Math.hypot(player.x - fight.x, player.y - fight.y) > QUEST_STAY_RADIUS) fight.moved = true;
   if (!fight.hullLost && (Number(player.hp) || 0) < fight.hp - 1) fight.hullLost = true;
-  // Contrat fabriqué : munition ou déplacement interdits sur la cible.
-  if (isForgeTarget(target)) {
-    if (String(ammoKey || "x1") !== "x1" && breakForgeRule("x1")) return;
-    if (fight.moved) breakForgeRule("stayed");
-  }
+}
+// Défis / contrats fabriqués : la cible a été touchée par une source
+// interdite par certaines contraintes (le kill ne comptera pas).
+function noteQuestTargetHit(target, kind) {
+  if (!target || typeof target !== "object") return;
+  const hits = target._questHits || (target._questHits = {});
+  hits[kind] = true;
 }
 const QUEST_STAY_RADIUS = 40;
 
@@ -20337,6 +20305,12 @@ function questChallengeContext(e, ownsKill = true) {
     ammo: fight ? [...fight.ammo] : null,
     stayed: !!fight && !fight.moved && Math.hypot(player.x - fight.x, player.y - fight.y) <= QUEST_STAY_RADIUS,
     hullIntact: !!fight && !fight.hullLost && (Number(player.hp) || 0) >= fight.hp - 1,
+    // Config verrouillée par le contrat fabriqué en cours (0 = aucune).
+    forgeConfig: questState?.forge?.status === "active" ? Number(questState.forge.lockConfig) || 0 : 0,
+    rocketHit: e?._questHits?.rocket === true,
+    launcherHit: e?._questHits?.launcher === true,
+    raygunHit: e?._questHits?.raygun === true,
+    kamikazeHit: e?._questHits?.kamikaze === true,
   };
 }
 
@@ -27712,6 +27686,8 @@ function detonatePetKamikaze() {
     const out = damageEnemy(e, dmg * fall, 0, { chance: 0, mult: 1 }, { ability: "pet_kamikaze", fixedDamage: true });
     if (out?.total > 0) {
       hit++;
+      // Contrainte « Sans kamikaze » : cette cible ne comptera pas.
+      noteQuestTargetHit(e, "kamikaze");
       try { notePetPlayerDamage(e); } catch {}
       addFloatText(
         Number(e.x) + (Math.random() - 0.5) * 60,
@@ -33355,8 +33331,6 @@ function hurtPlayer(amount, source = null) {
   }
 
   onPlayerPreparationDamage(Math.max(0, dmgRes.hp - redirected), dmgRes.sh);
-  // Contrat fabriqué « Sans perte de coque » : un point de coque perdu l'annule.
-  if (dmgRes.hp - redirected > 0) { try { breakForgeRule("hull"); } catch {} }
   addPlayerCombatFloat(Math.max(0, Math.round(amount - redirected)), "rgba(255,80,100,0.95)");
 
   if (player.hp <= 0) {
@@ -33888,6 +33862,8 @@ function raygunOnLaserShot(t) {
     : RAYGUN_DAMAGE;
   const rayDmg = Math.round(baseDmg * (1 - RAYGUN_VARIANCE + Math.random() * 2 * RAYGUN_VARIANCE));
   try { out = damageEnemy(t, rayDmg, undefined, { chance: 0, mult: 1 }, { ability: RAYGUN_ABILITY, fixedDamage: true }); } catch {}
+  // Contrainte « Sans canon à particules » : cette cible ne comptera pas.
+  if (out && (out.total || 0) > 0) noteQuestTargetHit(t, "raygun");
   if (out && (out.total || 0) > 0) { try { queueVolleyFloat(t, out, volleySeq++, 1); } catch {} }
 }
 // Rayon : image à sa vraie taille, son CENTRE joué sur le centre de la
@@ -35584,7 +35560,7 @@ function tryFireRocket(opts = {}) {
 
   // Tir réel : toute attaque casse le camouflage ultime.
   breakPoliceCloak();
-  if (isForgeTarget(t)) { try { breakForgeRule("norocket"); } catch {} }
+  noteQuestTargetHit(t, "rocket");
   // CPU Double roquette : une 2e roquette part en même temps (s'il en reste),
   // roquettes standard uniquement (celles à cooldown propre : 1 seule).
   if (hasShipExtra("rocket2") && !(personalCooldown > 0) && rocketCount(rocket.id) > 0) {
@@ -35736,7 +35712,7 @@ function tryFireSalvo(opts = {}) {
 
   // Salve réelle : toute attaque casse le camouflage ultime.
   breakPoliceCloak();
-  if (isForgeTarget(t)) { try { breakForgeRule("nolauncher"); } catch {} }
+  noteQuestTargetHit(t, "launcher");
   const volleyId = volleySeq++;
   const volleyMiss = Math.random() < Math.max(0, PLAYER_SHOTS.missChance - ((Number(player.rocketHitBonusPct || 0) + playerPilotMults().rocketHit) / 100)) * playerMissMult();
   for (let i = 0; i < n; i++) {
@@ -46255,7 +46231,6 @@ function update(dt) {
 
   tickAutoAttack(dt);
   tickAutoRockets();
-  try { tickForgeRules(dt); } catch {}
   tickVolleyFloats(dt);
   tickExplosions(dt);
   tickShipDamages(dt);

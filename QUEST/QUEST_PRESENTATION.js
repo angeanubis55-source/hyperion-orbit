@@ -383,8 +383,8 @@ function buildForgePanel({ questState, draft, npcLocations, npcTypes, collectabl
   }).join("");
   const condCard = `<section class="wikiCard qfCard">`
     + `<div class="qfCardHead"><div class="wikiCardTitle">Contraintes de défi</div><span class="qfTotal">Bonus total <b>${forgePct(preview.bonus)}</b></span></div>`
-    + `<div class="wikiTableWrap"><table class="wikiTable qfTable"><thead><tr><th></th><th>Contrainte</th><th>Annule le contrat si…</th><th>Bonus</th></tr></thead><tbody>${condRows}</tbody></table></div>`
-    + `<p class="wikiNote">Facultatif. Les bonus s'additionnent, sans plafond. Une infraction annule le contrat.</p>`
+    + `<div class="wikiTableWrap"><table class="wikiTable qfTable"><thead><tr><th></th><th>Contrainte</th><th>Le NPC ne compte pas si…</th><th>Bonus</th></tr></thead><tbody>${condRows}</tbody></table></div>`
+    + `<p class="wikiNote">Facultatif. Les bonus s'additionnent, sans plafond. Le contrat n'est jamais annulé : un NPC tué sans respecter une contrainte ne compte simplement pas.</p>`
     + `</section>`;
 
   const quest = { id: "forge_preview", title: preview.title, objectives: [preview.objective], reward: preview.reward };

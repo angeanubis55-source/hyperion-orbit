@@ -770,6 +770,9 @@ const EXTENSION_300 = [
 //   cond.ammo       : la cible n'a reçu que cette munition
 //   cond.stayed     : aucun déplacement depuis le premier tir sur la cible
 //   cond.hullIntact : aucune perte de coque depuis le premier tir
+//   cond.sameConfig : (fabricateur) kill avec la config du départ du contrat
+//   cond.noRocket / noLauncher / noRaygun / noKamikaze : cible jamais touchée
+//                     par roquette / lance-roquettes / canon à particules / kamikaze
 // ---------------------------------------------------------------------------
 const CK = (id, type, amount, label, cond, map) => ({ ...K(id, type, amount, label, map), cond });
 const CHALLENGE_CONTRACTS = [
@@ -973,9 +976,9 @@ export const QUEST_DEFINITIONS = Object.freeze([...QUEST_CATALOG.map(withTitleRe
 // création du précédent (abandon ou échec compris).
 // Récompense = calcul standard des quêtes kill × (1 + somme des bonus des
 // contraintes) : chaque contrainte s'ajoute, sans plafond.
-// Contraintes = règles de contrat : la moindre infraction ANNULE le contrat
-// (voir failForgeQuest, appelée par le moteur). Les contrats réussis sont
-// gardés dans forge.history (onglet « Terminées » du terminal).
+// Contraintes = conditions de kill : un NPC tué sans les respecter ne compte
+// pas, le contrat n'est jamais annulé (voir questChallengeMet). Les contrats
+// réussis sont gardés dans forge.history (onglet « Terminées » du terminal).
 // ---------------------------------------------------------------------------
 export const FORGE_COOLDOWN_MS = 24 * 60 * 60 * 1000;
 export const FORGE_MAX_AMOUNT = 5000;
@@ -986,16 +989,19 @@ export const FORGE_HISTORY_MAX = 30;
 // contrats fabriqués : 1 Streuner ne doit pas rapporter une fortune.
 export const FORGE_FEE_RATE = 0.2;
 export const FORGE_FEE_MIN = 5000;
-// `rule` : ce qui annule le contrat (affiché tel quel au pilote).
+// `cond` : vérifiée à chaque kill (questChallengeMet).
+// `rule` : quand le NPC ne compte pas (affiché tel quel au pilote).
 export const FORGE_CONDITIONS = Object.freeze([
-  Object.freeze({ id: "solo", label: "En solo", bonus: 0.25, cond: { solo: true }, rule: "Rejoindre un groupe annule le contrat. Seuls tes propres kills comptent." }),
-  Object.freeze({ id: "oneconfig", label: "Une seule config", bonus: 0.15, rule: "Changer de configuration annule le contrat." }),
-  Object.freeze({ id: "onelaser", label: "1 laser équipé", bonus: 0.4, rule: "Équiper plus d'un laser annule le contrat." }),
-  Object.freeze({ id: "x1", label: "Munitions LCB-10 uniquement", bonus: 0.5, rule: "Toucher la cible avec une autre munition (SAB compris) annule le contrat. Les autres NPC ne comptent pas." }),
-  Object.freeze({ id: "norocket", label: "Sans roquettes", bonus: 0.2, rule: "Tirer une roquette sur la cible annule le contrat." }),
-  Object.freeze({ id: "nolauncher", label: "Sans lance-roquettes", bonus: 0.2, rule: "Tirer au lance-roquettes sur la cible annule le contrat." }),
-  Object.freeze({ id: "stayed", label: "Sans bouger en combat", bonus: 0.5, rule: "Bouger pendant un combat contre la cible annule le contrat." }),
-  Object.freeze({ id: "hull", label: "Sans perte de coque", bonus: 0.75, rule: "Perdre un seul point de coque annule le contrat (le bouclier peut descendre)." }),
+  Object.freeze({ id: "solo", label: "En solo", bonus: 0.25, cond: { solo: true }, rule: "tu es en groupe, ou ce n'est pas ton propre kill." }),
+  Object.freeze({ id: "oneconfig", label: "Une seule config", bonus: 0.15, cond: { sameConfig: true }, rule: "tu le tues avec une autre config que celle du départ." }),
+  Object.freeze({ id: "onelaser", label: "1 laser équipé", bonus: 0.4, cond: { maxLasers: 1 }, rule: "tu as plus d'un laser équipé au moment du kill." }),
+  Object.freeze({ id: "x1", label: "Munitions LCB-10 uniquement", bonus: 0.5, cond: { ammo: "x1" }, rule: "tu l'as touché avec une autre munition (SAB compris)." }),
+  Object.freeze({ id: "norocket", label: "Sans roquettes", bonus: 0.2, cond: { noRocket: true }, rule: "tu l'as touché avec une roquette." }),
+  Object.freeze({ id: "nolauncher", label: "Sans lance-roquettes", bonus: 0.2, cond: { noLauncher: true }, rule: "tu l'as touché au lance-roquettes." }),
+  Object.freeze({ id: "noraygun", label: "Sans canon à particules", bonus: 0.3, cond: { noRaygun: true }, rule: "ton canon à particules l'a touché." }),
+  Object.freeze({ id: "nokamikaze", label: "Sans kamikaze", bonus: 0.15, cond: { noKamikaze: true }, rule: "le kamikaze de ton P.E.T l'a touché." }),
+  Object.freeze({ id: "stayed", label: "Sans bouger en combat", bonus: 0.5, cond: { stayed: true }, rule: "tu as bougé pendant le combat contre lui." }),
+  Object.freeze({ id: "hull", label: "Sans perte de coque", bonus: 0.75, cond: { hullIntact: true }, rule: "tu as perdu un point de coque pendant le combat (le bouclier peut descendre)." }),
 ]);
 const FORGE_CONDITION_BY_ID = new Map(FORGE_CONDITIONS.map(c => [c.id, c]));
 export const getForgeCondition = id => FORGE_CONDITION_BY_ID.get(String(id)) || null;
@@ -1367,6 +1373,11 @@ export function questChallengeMet(cond, ch) {
   if (cond.ammo && (!Array.isArray(ch.ammo) || !ch.ammo.length || ch.ammo.some(a => a !== cond.ammo))) return false;
   if (cond.stayed && ch.stayed !== true) return false;
   if (cond.hullIntact && ch.hullIntact !== true) return false;
+  if (cond.sameConfig && Number(ch.forgeConfig) > 0 && Number(ch.config) !== Number(ch.forgeConfig)) return false;
+  if (cond.noRocket && ch.rocketHit === true) return false;
+  if (cond.noLauncher && ch.launcherHit === true) return false;
+  if (cond.noRaygun && ch.raygunHit === true) return false;
+  if (cond.noKamikaze && ch.kamikazeHit === true) return false;
   return true;
 }
 
