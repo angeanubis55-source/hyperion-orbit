@@ -8950,14 +8950,13 @@ tr.clanRankTop3 .clanRankPos { color:#e0a070; }
 :root[data-chat-unread] #gameWindowDock [data-window-id="chatWindow"].gameDockIcon::before {
   content:"";
   position:absolute;
-  top:-4px;
-  right:-4px;
-  width:12px;
-  height:12px;
+  top:4px;
+  right:4px;
+  width:8px;
+  height:8px;
   border-radius:50%;
   background:#ff2a3a;
-  border:2px solid #1a0306;
-  box-shadow:0 0 8px rgba(255,42,58,.9);
+  box-shadow:0 0 5px rgba(255,42,58,.75);
   pointer-events:none;
   z-index:2;
   animation:chatUnreadBlink 1s ease-in-out infinite;
