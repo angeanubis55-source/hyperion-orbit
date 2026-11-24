@@ -1,5 +1,5 @@
 "use strict";
-import { shouldRefreshWindow } from "../SRC/CORE/BACKGROUND_REFRESH.js";
+import { shouldRefreshWindow, isWindowShown } from "../SRC/CORE/BACKGROUND_REFRESH.js";
 
 import { drainNetChatInbox, sendChat, sendWhisper, sendClanChat, netMyId, netMyPseudo, netplayStatus } from "../SRC/CORE/NETPLAY.js";
 import { escapeHtml } from "./UI_DOM.js";
@@ -94,6 +94,25 @@ export function initChatUI() {
   let online = true;
   let onlineNeedsRender = false;
   let pendingMessages = [];
+  // Pastille « nouveau message » sur le bouton Chat du dock : allumée quand
+  // un message arrive fenêtre fermée, éteinte une fois la fenêtre ouverte et
+  // lue jusqu'en bas. Attribut sur <html> : survit au re-rendu du dock.
+  // L'historique rejoué à la connexion (messages d'avant le chargement)
+  // ne l'allume pas.
+  const loadedAt = Date.now();
+  let unread = false;
+  function setUnread(v) {
+    if (v === unread) return;
+    unread = v;
+    document.documentElement.toggleAttribute("data-chat-unread", v);
+  }
+  function chatReadToBottom() {
+    return isWindowShown("chatWindow") && entries.scrollHeight - entries.scrollTop - entries.clientHeight < 24;
+  }
+  function isMine(m) {
+    return (m.by && m.by === netMyId()) || (m.from && netMyPseudo() && m.from === netMyPseudo());
+  }
+  entries.addEventListener("scroll", () => { if (unread && chatReadToBottom()) setUnread(false); }, { passive: true });
 
   function setOnline(v) {
     if (v === online && !onlineNeedsRender) return;
@@ -109,7 +128,7 @@ export function initChatUI() {
   function appendMessage(m) {
     // L'id serveur change a chaque refresh : pour l'historique on se
     // reconnait aussi par le pseudo (stable).
-    const mine = (m.by && m.by === netMyId()) || (m.from && netMyPseudo() && m.from === netMyPseudo());
+    const mine = isMine(m);
     const row = document.createElement("div");
     row.className = "chatRow" + (mine ? " chatMine" : "") + (m.from === "[ADMIN]" ? " chatAdmin" : "");
     row.setAttribute("translate", "no");
@@ -132,15 +151,18 @@ export function initChatUI() {
       setOnline(!!st.connected);
       const received = drainNetChatInbox();
       for (const message of received) announceMessage(message);
+      if (!isWindowShown("chatWindow") && received.some((m) => !isMine(m) && Number(m.at || Date.now()) >= loadedAt - 60000)) setUnread(true);
       pendingMessages = pendingMessages.concat(received).slice(-MAX_SHOWN);
-      if (!shouldRefreshWindow("chatWindow") || !pendingMessages.length) return;
-      const inbox = pendingMessages;
-      pendingMessages = [];
-      const empty = entries.querySelector(".chatEmpty");
-      if (empty) empty.remove();
-      for (const m of inbox) appendMessage(m);
-      shown += inbox.length;
-      entries.scrollTop = entries.scrollHeight;
+      if (shouldRefreshWindow("chatWindow") && pendingMessages.length) {
+        const inbox = pendingMessages;
+        pendingMessages = [];
+        const empty = entries.querySelector(".chatEmpty");
+        if (empty) empty.remove();
+        for (const m of inbox) appendMessage(m);
+        shown += inbox.length;
+        entries.scrollTop = entries.scrollHeight;
+      }
+      if (unread && chatReadToBottom()) setUnread(false);
     } catch {}
   }
 

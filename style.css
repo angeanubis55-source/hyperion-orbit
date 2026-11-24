@@ -8945,6 +8945,30 @@ tr.clanRankTop3 .clanRankPos { color:#e0a070; }
 #gameWindowDock [data-window-id="chatWindow"].gameDockIcon img {
   display:none !important;
 }
+/* Nouveau message reçu fenêtre fermée : pastille rouge clignotante en haut
+   à droite (::after sert déjà au libellé du dock). */
+:root[data-chat-unread] #gameWindowDock [data-window-id="chatWindow"].gameDockIcon::before {
+  content:"";
+  position:absolute;
+  top:-4px;
+  right:-4px;
+  width:12px;
+  height:12px;
+  border-radius:50%;
+  background:#ff2a3a;
+  border:2px solid #1a0306;
+  box-shadow:0 0 8px rgba(255,42,58,.9);
+  pointer-events:none;
+  z-index:2;
+  animation:chatUnreadBlink 1s ease-in-out infinite;
+}
+@keyframes chatUnreadBlink {
+  0%, 100% { opacity:1; transform:scale(1); }
+  50% { opacity:.25; transform:scale(.8); }
+}
+@media (prefers-reduced-motion: reduce) {
+  :root[data-chat-unread] #gameWindowDock [data-window-id="chatWindow"].gameDockIcon::before { animation:none; }
+}
 /* Groupe (bouton dynamique data-window-id="groupWindow") : même modèle, icônes crew. */
 #gameWindowDock [data-window-id="groupWindow"].gameDockIcon {
   width:46px !important;
