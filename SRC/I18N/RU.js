@@ -5,6 +5,27 @@
 
 export default {
   texts: {
+    // Terminal de quêtes : recherche et filtres.
+    "Rechercher : nom, NPC, carte, récompense…": "Поиск: название, NPC, карта, награда…",
+    "Filtrer par carte": "Фильтр по карте",
+    "Trier les missions": "Сортировать миссии",
+    "Nom (A → Z)": "Название (А → Я)",
+    "Réinitialiser les filtres": "Сбросить фильтры",
+    "Missions affichées / missions de l'onglet": "Показано миссий / миссий во вкладке",
+    // Fenêtre Bot : règles GG / quêtes.
+    "la récompense de fin est elle aussi réduite de": "награда за прохождение тоже уменьшается на",
+    "dès que le bot est activé dans la gate, ne serait-ce qu'une seconde. Le run reste marqué même si tu coupes le bot ensuite, après une mort ou un rafraîchissement, et les NPC touchés pendant que le bot tournait restent réduits.": "как только бот включён во вратах, хотя бы на секунду. Забег остаётся помеченным, даже если потом выключить бота, после смерти или перезагрузки, а NPC, задетые во время работы бота, остаются с уменьшенной наградой.",
+    "leurs récompenses ne sont jamais réduites, bot actif ou non.": "их награды никогда не уменьшаются, с ботом или без.",
+    "Galaxy Gates": "Galaxy Gates",
+    // Fenêtre Cible.
+    "Aucune cible": "Нет цели",
+    // Fenêtre Amélioration : lignes de stats des lasers.
+    "Instable": "Нестабильный",
+    "Contre les NPC": "Против NPC",
+    "Contre les Mimesis": "Против Mimesis",
+    "Contre les NPC Blacklight": "Против NPC Blacklight",
+    "Tous les 5 tirs": "Каждые 5 выстрелов",
+    "Dans la GG Awakened": "В GG Awakened",
     "Commandes téléphone": "Управление с телефона",
     "Joystick de déplacement": "Джойстик движения",
     "Déplacement": "Движение",
@@ -4325,6 +4346,14 @@ export default {
     "Ignore les NPC déjà attaqués par un autre joueur ou un bot (lock gris : pas de récompense pour toi).": "Игнорирует NPC, уже атакованных другим игроком или ботом (серый захват: награды не будет).",
   },
   patterns: {
+    "Instable : {0}": "Нестабильный: {0}",
+    "Contre les NPC : {0}": "Против NPC: {0}",
+    "Contre les Mimesis : {0}": "Против Mimesis: {0}",
+    "Contre les NPC Blacklight : {0}": "Против NPC Blacklight: {0}",
+    "Tous les 5 tirs : {0}": "Каждые 5 выстрелов: {0}",
+    "Dans la GG Awakened : {0}": "В GG Awakened: {0}",
+    "Vitesse : {0}": "Скорость: {0}",
+    "Bouclier : {0}": "Щит: {0}",
     "{0} : un seul peut être équipé.": "{0}: можно установить только один.",
     "CPU Carburant : +{0} carburant P.E.T ({1} crédits)": "ЦП топлива: +{0} топлива P.E.T ({1} кредитов)",
     "Vous avez reçu {0} énergie Galaxy Gates !": "Вы получили {0} энергии Galaxy Gates!",

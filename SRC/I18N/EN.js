@@ -5,6 +5,27 @@
 
 export default {
   texts: {
+    // Terminal de quêtes : recherche et filtres.
+    "Rechercher : nom, NPC, carte, récompense…": "Search: name, NPC, map, reward…",
+    "Filtrer par carte": "Filter by map",
+    "Trier les missions": "Sort missions",
+    "Nom (A → Z)": "Name (A → Z)",
+    "Réinitialiser les filtres": "Reset filters",
+    "Missions affichées / missions de l'onglet": "Missions shown / missions in this tab",
+    // Fenêtre Bot : règles GG / quêtes.
+    "la récompense de fin est elle aussi réduite de": "the completion reward is also reduced by",
+    "dès que le bot est activé dans la gate, ne serait-ce qu'une seconde. Le run reste marqué même si tu coupes le bot ensuite, après une mort ou un rafraîchissement, et les NPC touchés pendant que le bot tournait restent réduits.": "as soon as the bot is turned on in the gate, even for a single second. The run stays marked even if you turn the bot off afterwards, after a death or a refresh, and NPCs hit while the bot was running stay reduced.",
+    "leurs récompenses ne sont jamais réduites, bot actif ou non.": "their rewards are never reduced, bot on or off.",
+    "Galaxy Gates": "Galaxy Gates",
+    // Fenêtre Cible.
+    "Aucune cible": "No target",
+    // Fenêtre Amélioration : lignes de stats des lasers.
+    "Instable": "Unstable",
+    "Contre les NPC": "Against NPCs",
+    "Contre les Mimesis": "Against Mimesis",
+    "Contre les NPC Blacklight": "Against Blacklight NPCs",
+    "Tous les 5 tirs": "Every 5 shots",
+    "Dans la GG Awakened": "In the Awakened GG",
     "Commandes téléphone": "Phone controls",
     "Joystick de déplacement": "Movement joystick",
     "Déplacement": "Movement",
@@ -4326,6 +4347,14 @@ export default {
     "Ignore les NPC déjà attaqués par un autre joueur ou un bot (lock gris : pas de récompense pour toi).": "Ignores NPCs already attacked by another player or a bot (grey lock: no reward for you).",
   },
   patterns: {
+    "Instable : {0}": "Unstable: {0}",
+    "Contre les NPC : {0}": "Against NPCs: {0}",
+    "Contre les Mimesis : {0}": "Against Mimesis: {0}",
+    "Contre les NPC Blacklight : {0}": "Against Blacklight NPCs: {0}",
+    "Tous les 5 tirs : {0}": "Every 5 shots: {0}",
+    "Dans la GG Awakened : {0}": "In the Awakened GG: {0}",
+    "Vitesse : {0}": "Speed: {0}",
+    "Bouclier : {0}": "Shield: {0}",
     "{0} : un seul peut être équipé.": "{0}: only one can be equipped.",
     "CPU Carburant : +{0} carburant P.E.T ({1} crédits)": "Fuel CPU: +{0} P.E.T fuel ({1} credits)",
     "Vous avez reçu {0} énergie Galaxy Gates !": "You received {0} Galaxy Gates energy!",

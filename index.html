@@ -810,7 +810,7 @@
         <div class="botTopRow">
           <button id="botPlayBtn" class="botPlayBtn" type="button" title="Démarrer">▶</button>
           <span id="botCompactTime" class="botCompactTime" title="Durée de la session">—</span>
-          <p class="botRule"><b>L'utilisation du bot est autorisée.</b> En contrepartie, tout ce qu'il rapporte est réduit de <b>75 %</b> :<br />NPC détruits (crédits, expérience, honneur), box ramassées et récompense de fin des Galaxy Gates (dès que le bot a été activé pendant la gate). Seuls le palladium et les Sun Box gardent leur gain complet.</p>
+          <p class="botRule"><b>L'utilisation du bot est autorisée.</b> En contrepartie, tout ce qu'il rapporte est réduit de <b>75 %</b> :<br />NPC détruits (crédits, expérience, honneur) et box ramassées. Seuls le palladium et les Sun Box gardent leur gain complet.<br /><b>Galaxy Gates :</b> la récompense de fin est elle aussi réduite de <b>75 %</b> dès que le bot est activé dans la gate, ne serait-ce qu'une seconde. Le run reste marqué même si tu coupes le bot ensuite, après une mort ou un rafraîchissement, et les NPC touchés pendant que le bot tournait restent réduits.<br /><b>Quêtes :</b> leurs récompenses ne sont jamais réduites, bot actif ou non.</p>
         </div>
         <nav class="botTabs" id="botTabs" aria-label="Sections du bot">
           <button class="botTab active" data-bot-tab="dash" type="button">Tableau de bord</button>
@@ -1041,6 +1041,22 @@
       </div>
       <div class="dpsSep"></div>
       <table class="dpsCalcTable"><thead><tr><th></th><th>NPC</th><th class="dpsColSep"></th><th>Joueurs</th></tr></thead><tbody id="dpsCalcBody"></tbody><tfoot><tr><td class="k">Estimation</td><td class="v" id="dpsEstNpcTxt">0</td><td class="dpsColSep"></td><td class="v" id="dpsEstPvpTxt">0</td></tr></tfoot></table>
+    </div>
+
+    <div id="targetWindow" class="panel targetPanel noTarget">
+      <div class="targetBody">
+      <div id="targetNameTxt" class="targetName">Aucune cible</div>
+      <div class="barWrap targetMeters">
+        <div class="vitalsMeter">
+          <div class="vitalsMeterTop"><span class="vitalsMeterLabel is-hp">Coque</span><span class="barValue" id="targetHpTxt">0 / 0</span></div>
+          <div class="bar hp slim"><i id="targetHpBar"></i></div>
+        </div>
+        <div class="vitalsMeter">
+          <div class="vitalsMeterTop"><span class="vitalsMeterLabel is-sh">Bouclier</span><span class="barValue" id="targetShTxt">0 / 0</span></div>
+          <div class="bar sh slim"><i id="targetShBar"></i></div>
+        </div>
+      </div>
+      </div>
     </div>
 
     <div id="chatWindow" class="panel chatPanel">

@@ -34,7 +34,7 @@ import { measureGameTask } from "../SRC/CORE/PERFORMANCE_TIMINGS.js";
 import { apiAccountIdentity, apiAccountStatus, apiPseudoFree, flushNetUser, netActive, netList, noteServerModuleQuota } from "../SRC/CORE/ACCOUNT_NET.js";
 
 import { CATALOG, findCatalogItem } from "../SRC/CORE/CATALOG.js";
-import { UPGRADE_MAX_LEVEL, isUpgradableItem, itemUpgradeLevel, upgradeBonusPct } from "../SRC/DATA/UPGRADES.js";
+import { UPGRADE_MAX_LEVEL, isUpgradableItem, itemUpgradeLevel, upgradeBonusPct, upgradedStatLines } from "../SRC/DATA/UPGRADES.js";
 import { extrasCapacity, getShipExtraDef, shipExtraDuplicateError, PARTICLE_SLOTS } from "../SRC/DATA/SHIP_EXTRAS.js";
 import { getPetDesign } from "../PET/PET_DESIGNS.js";
 import { SHIP_PACKS, getShipFamilyId, getShipFamilyIds, getShipFamilyMembers, getShipFamilyName, getShipDesignBaseId, getShipDesignIds, getShipPackById } from "../SHIP/SHIP_PACKS.js";
@@ -1693,11 +1693,11 @@ function inventoryTooltipText(entry) {
   } else if (entry.kind === "equipment") {
     const module = entry.item?.module || {};
     // Stats de l'exemplaire (niveau d'amélioration inclus).
-    const lvMult = 1 + upgradeBonusPct(entry.upgradeLevel || 1) / 100;
-    const statNum = (v) => formatNumber(Math.round(Number(v) * lvMult * 100) / 100);
-    if (Number.isFinite(Number(module.damage))) lines.push(`Dégâts : ${statNum(module.damage)}`);
-    if (Number.isFinite(Number(module.bonusSpeed))) lines.push(`Vitesse : +${statNum(module.bonusSpeed)}`);
-    if (Number.isFinite(Number(module.bonusShield))) lines.push(`Bouclier : +${statNum(module.bonusShield)}`);
+    // Un laser peut avoir plusieurs lignes (vs NPC, overdrive...) : toutes suivent le niveau.
+    for (const l of upgradedStatLines(entry.item, entry.upgradeLevel || 1)) {
+      const plus = l.plus || module.type !== "laser" ? "+" : "";
+      lines.push(`${l.label} : ${plus}${formatNumber(l.value)}${l.max != null ? ` – ${formatNumber(l.max)}` : ""}`);
+    }
     if (module.key) lines.push(`Effet : ${humanizeInventoryId(module.key)}`);
     if (entry.item?.desc && !entry.item?.petGear) lines.push(entry.item.desc);
     if (entry.item?.petProtocol) lines.push(`Bonus : +${Number(entry.item.petProtocol.pct) || 0} % ${petProtocolStatLabel(entry.item.petProtocol.key)} (équipé sur le P.E.T)`);

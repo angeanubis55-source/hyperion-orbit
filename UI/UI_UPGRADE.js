@@ -19,6 +19,7 @@ import {
   reservedEquippedCopies,
   upgradeBonusPct,
   upgradeCost,
+  upgradedStatLines,
 } from "../SRC/DATA/UPGRADES.js";
 
 let ctx = null;
@@ -27,11 +28,6 @@ let filter = "all";
 let selectedKey = null;
 let busy = false;
 
-const TYPE_STAT = {
-  laser: { key: "damage", label: "Dégâts" },
-  shield: { key: "bonusShield", label: "Bouclier" },
-  speed: { key: "bonusSpeed", label: "Vitesse" },
-};
 // Ordre d'affichage : lasers, puis boucliers avant vitesse dans Générateurs.
 const TYPE_ORDER = { laser: 0, shield: 1, speed: 2 };
 
@@ -89,12 +85,6 @@ function inFilter(s) {
   return filter === "laser" ? s.type === "laser" : s.type !== "laser";
 }
 
-function statValue(item, level) {
-  const stat = TYPE_STAT[item?.module?.type];
-  const base = Number(item?.module?.[stat?.key]) || 0;
-  return Math.round(base * (1 + upgradeBonusPct(level) / 100) * 100) / 100;
-}
-
 function rarityId(item) {
   try { return rarityForCatalogItem(item) || "common"; } catch { return "common"; }
 }
@@ -110,15 +100,22 @@ function slotHtml(c) {
 
 function detailHtml(u, s) {
   if (!s) return `<div class="upgDetailEmpty">Sélectionne une case pour l'améliorer.</div>`;
-  const stat = TYPE_STAT[s.type];
   const isMax = s.level >= UPGRADE_MAX_LEVEL;
   const next = Math.min(UPGRADE_MAX_LEVEL, s.level + 1);
   const icon = `<div class="inventorySlot rarity-${escapeHtml(rarityId(s.item))} upgDetailIcon"><img src="${escapeHtml(s.item.icon || "")}" alt="" draggable="false" /><span class="upgLvlBadge${isMax ? " isMax" : ""}">LVL.${s.level}</span></div>`;
+  // Une ligne par stat (un laser peut en avoir plusieurs : vs NPC, overdrive...).
+  const cur = upgradedStatLines(s.item, s.level);
+  const nxt = upgradedStatLines(s.item, next);
+  const fmt = (l) => `${l.plus ? "+" : ""}${formatInteger(l.value)}${l.max != null ? ` – ${formatInteger(l.max)}` : ""}`;
+  const statRows = cur.map((l, i) => isMax
+    ? `<span><span>${escapeHtml(l.label)}</span> <b>${fmt(l)}</b></span>`
+    : `<span><span>${escapeHtml(l.label)}</span> <b>${fmt(l)}</b> ➜ <b class="upgUp">${fmt(nxt[i] || l)}</b></span>`).join("");
   const info = `<div class="upgDetailInfo">`
     + `<strong>${escapeHtml(s.item.name)}</strong>`
     + (isMax
-      ? `<span><span>lvl.${s.level}</span> · <span>${stat.label}</span> <b>${formatInteger(statValue(s.item, s.level))}</b> · <b>+${upgradeBonusPct(s.level)} %</b></span>`
-      : `<span><b class="upgLvCur">lvl.${s.level}</b> ➜ <b class="upgUp">lvl.${next}</b> · <span>${stat.label}</span> <b>${formatInteger(statValue(s.item, s.level))}</b> ➜ <b class="upgUp">${formatInteger(statValue(s.item, next))}</b> · <b>+${upgradeBonusPct(s.level)} %</b> ➜ <b class="upgUp">+${upgradeBonusPct(next)} %</b></span>`)
+      ? `<span><span>lvl.${s.level}</span> · <b>+${upgradeBonusPct(s.level)} %</b></span>`
+      : `<span><b class="upgLvCur">lvl.${s.level}</b> ➜ <b class="upgUp">lvl.${next}</b> · <b>+${upgradeBonusPct(s.level)} %</b> ➜ <b class="upgUp">+${upgradeBonusPct(next)} %</b></span>`)
+    + statRows
     + `<span class="upgOwned">${s.copyEquipped ? `<span>Exemplaire équipé</span>` : `<span>Exemplaire libre</span>`}</span>`
     + `</div>`;
   if (isMax) return icon + info + `<div class="upgDetailMax">Niveau maximal atteint</div>`;

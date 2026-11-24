@@ -413,10 +413,88 @@ function buildForgePanel({ questState, draft, npcLocations, npcTypes, collectabl
   return `<div class="qfPanel"><div class="qfMain">${objectiveCard}${condCard}</div>${summary}</div>`;
 }
 
-export function buildQuestTerminalView({ questState, selectedId, hasAccess, collectables, npcTypes, npcLocations = {}, searchQuery = "", filter = "open", playerSector = null, expanded = true, forgeDraft = null, forgeIssues = [], playerCredits = 0, now = Date.now() }) {
+// ------------------------------------------------------------
+// Terminal : recherche avancée, filtre par carte, tri.
+// ------------------------------------------------------------
+// Sans accents ni casse : "eliminer" trouve "Éliminer".
+const foldText = (value) => String(value ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+const stripTags = (value) => String(value ?? "").replace(/<[^>]*>/g, " ");
+
+// Cartes où une mission se joue (objectifs avec une carte connue).
+// Les objectifs « toutes les cartes » ne sont rattachés à aucune carte.
+function questMaps(quest, npcLocations, collectables) {
+  const maps = new Set();
+  for (const objective of getQuestObjectives(quest)) {
+    if (objective.kind === "gate") continue;
+    if (objective.kind === "visit") { if (objective.type) maps.add(String(objective.type)); continue; }
+    if (objective.map) { for (const map of [].concat(objective.map)) if (map) maps.add(String(map)); continue; }
+    if (objective.kind === "collect") {
+      const list = collectables?.[objective.type]?.maps;
+      if (Array.isArray(list)) for (const map of list) maps.add(String(map));
+      else if (list && list !== "*") maps.add(String(list));
+      continue;
+    }
+    if (objective.type === "*") continue;
+    for (const map of npcLocations?.[objective.type] || []) maps.add(String(map));
+  }
+  return maps;
+}
+
+// Ordre naturel : 1-1, 1-2… 5-3, puis les Gates par nom.
+function compareMaps(a, b) {
+  const ga = /^gate\s/i.test(a), gb = /^gate\s/i.test(b);
+  if (ga !== gb) return ga ? 1 : -1;
+  return String(a).localeCompare(String(b), "fr", { numeric: true });
+}
+
+// Texte où chercher : titre, description, objectifs, cibles, cartes,
+// récompenses, en français et dans la langue affichée.
+function questSearchText(quest, { npcTypes, npcLocations, collectables, translate }) {
+  const parts = [quest.title, stripTags(quest.description)];
+  for (const objective of getQuestObjectives(quest)) {
+    parts.push(objectiveLabel(objective), apercuObjectiveLabel(objective), formatQuestEntityName(objective.type));
+    if (npcTypes?.[objective.type]?.name) parts.push(npcTypes[objective.type].name);
+    parts.push(objectiveWhere(objective, npcLocations, collectables), ...questChallengeTokens(objective));
+  }
+  for (const [label] of rewardRows(quest)) parts.push(label);
+  const text = parts.filter(Boolean).map(String);
+  if (typeof translate === "function") {
+    for (const part of [...text]) {
+      try { const tr = translate(part); if (tr && tr !== part) text.push(String(tr)); } catch {}
+    }
+  }
+  return foldText(text.join(" | "));
+}
+
+const QUEST_SORTS = [
+  ["level", "Niveau"],
+  ["credits", "Crédits"],
+  ["exp", "Expérience"],
+  ["name", "Nom (A → Z)"],
+];
+
+export function buildQuestTerminalView({ questState, selectedId, hasAccess, collectables, npcTypes, npcLocations = {}, searchQuery = "", filter = "open", mapFilter = "", sort = "level", translate = null, playerSector = null, expanded = true, forgeDraft = null, forgeIssues = [], playerCredits = 0, now = Date.now() }) {
   const tab = QUEST_TERMINAL_TABS.some(([id]) => id === filter) ? filter : "open";
-  const query = String(searchQuery || "").trim().toLowerCase();
-  const matches = (quest) => !query || String(quest.title || "").toLowerCase().includes(query);
+  // Recherche : chaque mot doit apparaître quelque part dans la mission
+  // (titre, description, objectifs, NPC, cartes, récompenses).
+  const tokens = foldText(searchQuery).split(/\s+/).filter(Boolean);
+  const query = tokens.join(" ");
+  const searchCtx = { npcTypes, npcLocations, collectables, translate };
+  const searchCache = new Map();
+  const searchText = (quest) => {
+    if (!searchCache.has(quest.id)) searchCache.set(quest.id, questSearchText(quest, searchCtx));
+    return searchCache.get(quest.id);
+  };
+  const mapCache = new Map();
+  const mapsOf = (quest) => {
+    if (!mapCache.has(quest.id)) mapCache.set(quest.id, questMaps(quest, npcLocations, collectables));
+    return mapCache.get(quest.id);
+  };
+  const map = String(mapFilter || "");
+  const matchesText = (quest) => !tokens.length || tokens.every((token) => searchText(quest).includes(token));
+  const matchesMap = (quest) => !map || mapsOf(quest).has(map);
+  const matches = (quest) => matchesText(quest) && matchesMap(quest);
+  const sortKey = QUEST_SORTS.some(([id]) => id === sort) ? sort : "level";
   const statusOf = (quest) => getQuestTerminalStatus(questState, quest.id);
   const isExterm = (quest) => String(quest?.id || "").startsWith("exterm1000_");
   const isFinal = (quest) => Array.isArray(quest?.requiresAll) && quest.requiresAll.length > 1;
@@ -430,7 +508,27 @@ export function buildQuestTerminalView({ questState, selectedId, hasAccess, coll
   const sorted = [...ordered].sort((a, b) => levels.get(a.id) - levels.get(b.id) || String(a.title || "").localeCompare(String(b.title || ""), "fr"));
   const counts = { open: 0, active: 0, locked: 0, done: 0, forge: 0 };
   for (const quest of sorted) counts[statusOf(quest)] += 1;
-  const visible = sorted.filter((quest) => statusOf(quest) === tab && matches(quest));
+  const credOf = (quest) => Math.max(0, Number(quest.reward?.credits) || 0);
+  const expOf = (quest) => Math.max(0, Number(getQuestExperienceReward(quest)) || 0);
+  const byTitle = (a, b) => String(a.title || "").localeCompare(String(b.title || ""), "fr");
+  const comparators = {
+    credits: (a, b) => credOf(b) - credOf(a) || byTitle(a, b),
+    exp: (a, b) => expOf(b) - expOf(a) || byTitle(a, b),
+    name: byTitle,
+  };
+  const inTab = sorted.filter((quest) => statusOf(quest) === tab);
+  let visible = inTab.filter(matches);
+  if (comparators[sortKey]) visible = [...visible].sort(comparators[sortKey]);
+  // Liste des cartes : toutes celles des missions de l'onglet, avec le nombre
+  // de missions qui correspondent à la recherche en cours.
+  const mapCounts = new Map();
+  for (const quest of inTab) {
+    const textOk = matchesText(quest);
+    for (const m of mapsOf(quest)) mapCounts.set(m, (mapCounts.get(m) || 0) + (textOk ? 1 : 0));
+  }
+  if (map && !mapCounts.has(map)) mapCounts.set(map, 0);
+  const mapOptions = [...mapCounts.keys()].sort(compareMaps);
+  const filtered = !!(tokens.length || map || sortKey !== "level");
 
   const selectedQuestId = sorted.some((quest) => quest.id === selectedId)
     ? selectedId
@@ -438,7 +536,9 @@ export function buildQuestTerminalView({ questState, selectedId, hasAccess, coll
 
   // Style tableau : une ligne par mission (mission, objectifs, crédits,
   // XP) ; la mission sélectionnée se déplie sur place (fiche complète).
-  const flat = [...visible.filter((item) => !isExterm(item)), ...visible.filter(isExterm)];
+  const flat = sortKey === "level"
+    ? [...visible.filter((item) => !isExterm(item)), ...visible.filter(isExterm)]
+    : visible;
   const activeCount = Object.keys(questState.active).length;
   const full = activeCount >= MAX_ACTIVE_QUESTS;
   const rewardValue = (quest, label) => rewardRows(quest).find(([name]) => name === label)?.[1] || "—";
@@ -523,7 +623,7 @@ export function buildQuestTerminalView({ questState, selectedId, hasAccess, coll
       + `</div>`;
   };
 
-  const emptyText = query ? "Aucune mission ne correspond à ta recherche."
+  const emptyText = query || map ? "Aucune mission ne correspond à ta recherche."
     : { open: "Aucune mission disponible.", active: "Aucune mission en cours.", locked: "Aucune mission verrouillée.", done: "Aucune mission terminée." }[tab];
   const rowsHtml = flat.length ? flat.map(row).join("") : `<div class="qtEmpty">${emptyText}</div>`;
   const isForge = tab === "forge";
@@ -537,9 +637,21 @@ export function buildQuestTerminalView({ questState, selectedId, hasAccess, coll
   const listHtml = `<div class="qtToolbar">`
     + `<div class="qtTabs" role="tablist" aria-label="Statut des missions">${QUEST_TERMINAL_TABS.map(([id, label]) =>
       `<button type="button" class="qtTab is-${id}${id === tab ? " isActive" : ""}" data-quest-filter="${id}" role="tab" aria-selected="${id === tab}"><span>${label}</span>${id === "forge" ? "" : ` · <b>${counts[id]}</b>`}</button>`).join("")}</div>`
-    + (isForge ? `<span class="qtSearch qfSpacer"></span>` : `<label class="qtSearch">${SVG_SEARCH}<input type="search" placeholder="Rechercher une mission…" value="${escapeAttr(searchQuery)}" data-quest-search aria-label="Rechercher une mission"></label>`)
+    + `<span class="qtSearch qfSpacer"></span>`
     + `<span class="qtSlots"><span>Actives</span> <b>${activeCount} / ${MAX_ACTIVE_QUESTS}</b></span>`
     + `</div>`
+    + (isForge ? "" : `<div class="qtFilters">`
+      + `<label class="qtSearch">${SVG_SEARCH}<input type="search" placeholder="Rechercher : nom, NPC, carte, récompense…" value="${escapeAttr(searchQuery)}" data-quest-search aria-label="Rechercher une mission"></label>`
+      + `<label class="wikiField qtFilterField"><span>Carte</span><select data-quest-map aria-label="Filtrer par carte">`
+      + `<option value="">Toutes les cartes</option>`
+      + mapOptions.map((m) => `<option value="${escapeAttr(m)}"${m === map ? " selected" : ""}>${m} (${mapCounts.get(m) || 0})</option>`).join("")
+      + `</select></label>`
+      + `<label class="wikiField qtFilterField"><span>Trier par</span><select data-quest-sort aria-label="Trier les missions">`
+      + QUEST_SORTS.map(([id, label]) => `<option value="${id}"${id === sortKey ? " selected" : ""}>${label}</option>`).join("")
+      + `</select></label>`
+      + `<span class="qtResultCount" title="Missions affichées / missions de l'onglet"><b>${formatInteger(flat.length)}</b> / ${formatInteger(inTab.length)}</span>`
+      + (filtered ? `<button type="button" class="qtResetFilters" data-quest-reset title="Réinitialiser les filtres" aria-label="Réinitialiser les filtres">✕</button>` : "")
+      + `</div>`)
     + tableHtml;
   return { selectedQuestId, listHtml, detailHtml: "" };
 }

@@ -28807,3 +28807,159 @@ html body #botWindow.botCompact .botCompactTime {
   text-align:center;
   text-shadow:0 0 8px rgba(255,225,77,.25);
 }
+
+/* ===== Cible : icône du dock (bouton dynamique data-window-id="targetWindow") ===== */
+#gameWindowDock [data-window-id="targetWindow"].gameDockIcon {
+  width:46px !important; min-width:46px !important; max-width:46px !important;
+  height:44px !important; min-height:44px !important; max-height:44px !important;
+  flex:0 0 46px !important; padding:0 !important; border-radius:8px !important;
+  font-size:0 !important; color:transparent !important;
+  border:1px solid rgba(124,240,255,.38) !important;
+  background:url("ASSETS/UI/MENU/target.png") center / 34px 34px no-repeat, linear-gradient(135deg,rgba(0,145,190,.38),rgba(0,70,100,.34)) !important;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.03) !important;
+}
+#gameWindowDock [data-window-id="targetWindow"].gameDockIcon:hover:not(.dockIconActive):not(.active):not(:disabled) {
+  border-color:rgba(124,240,255,.62) !important;
+  background:url("ASSETS/UI/MENU/target_hover.png") center / 34px no-repeat, rgba(0,140,185,.3) !important;
+  box-shadow:0 0 16px rgba(0,217,255,.12) !important;
+}
+#gameWindowDock [data-window-id="targetWindow"].gameDockIcon.dockIconActive,
+#gameWindowDock [data-window-id="targetWindow"].gameDockIcon.active {
+  border-color:rgba(255,209,102,.9) !important;
+  background:url("ASSETS/UI/MENU/target_select.png") center / 34px no-repeat, rgba(0,140,185,.3) !important;
+  box-shadow:0 0 16px rgba(255,209,102,.35) !important;
+}
+#gameWindowDock [data-window-id="targetWindow"].gameDockIcon span,
+#gameWindowDock [data-window-id="targetWindow"].gameDockIcon img {
+  display:none !important;
+}
+
+/* ===== Cible : fenêtre (mêmes barres que Coque / Bouclier du vaisseau) ===== */
+/* Même gabarit que Boosters : la fenêtre reste neutre (barre de titre
+   standard insérée par le gestionnaire), le contenu vit dans .targetBody. */
+#targetWindow {
+  padding-bottom:0 !important;
+}
+.targetPanel {
+  width:280px !important;
+  min-width:0 !important;
+  max-width:min(280px, calc(100vw - 20px)) !important;
+}
+#targetWindow .targetBody {
+  display:grid;
+  gap:8px;
+  padding:8px 12px 12px;
+}
+#targetWindow .targetName {
+  text-align:center;
+  color:#ff4d4d;
+  font-size:14px;
+  font-weight:900;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+#targetWindow.noTarget .targetName {
+  color:#fff;
+}
+#targetWindow .targetMeters {
+  display:grid;
+  gap:7px;
+}
+#targetWindow .vitalsMeter { display:grid; gap:3px; min-width:0; }
+#targetWindow .vitalsMeterTop {
+  display:flex; align-items:center; justify-content:space-between; gap:8px; min-width:0;
+}
+#targetWindow .vitalsMeterLabel {
+  display:inline-flex; align-items:center; gap:6px;
+  font-size:12px; font-weight:800; white-space:nowrap;
+}
+#targetWindow .vitalsMeterLabel::before {
+  content:""; width:6px; height:6px; border-radius:50%; flex:0 0 auto;
+}
+#targetWindow .vitalsMeterLabel.is-hp { color:#5fd97c; }
+#targetWindow .vitalsMeterLabel.is-hp::before { background:#5fd97c; box-shadow:0 0 6px rgba(95,217,124,.6); }
+#targetWindow .vitalsMeterLabel.is-sh { color:#4fd8f7; }
+#targetWindow .vitalsMeterLabel.is-sh::before { background:#4fd8f7; box-shadow:0 0 6px rgba(79,216,247,.6); }
+#targetWindow .barValue {
+  position:static; display:block; color:#fff;
+  font-size:12px; font-weight:900; font-variant-numeric:tabular-nums;
+  text-shadow:none; opacity:1; white-space:nowrap; pointer-events:none;
+}
+#targetWindow .bar.slim {
+  position:relative; height:6px; overflow:hidden; isolation:isolate;
+  border-radius:999px;
+  background:rgba(255,255,255,.07);
+  border:1px solid rgba(255,255,255,.09);
+}
+#targetWindow .bar.slim > i {
+  position:absolute; inset:0 auto 0 0; z-index:0; height:100%; width:0;
+  border-radius:999px; transition:width .18s ease;
+}
+#targetWindow .bar.hp > i { background:linear-gradient(90deg, #3fae5a, #b6f0c3); }
+
+/* ===== Terminal de quêtes : barre de recherche / filtres ===== */
+.qtFilters {
+  display:flex;
+  align-items:center;
+  flex-wrap:wrap;
+  gap:8px 10px;
+  flex:0 0 auto;
+}
+.qtFilters .qtSearch { flex:1 1 240px; min-width:180px; margin:0; }
+.qtFilters .qtSearch input {
+  height:30px;
+  border:1px solid rgba(124,240,255,.22);
+  border-radius:8px;
+  background:rgba(255,255,255,.03);
+  font:700 11px/1 ui-sans-serif,system-ui;
+}
+.qtFilters .qtSearch input:focus { border-color:rgba(124,240,255,.6); }
+.qtFilters .qtFilterField {
+  display:flex;
+  align-items:center;
+  gap:6px;
+  width:auto;
+  min-width:0;
+  flex:0 0 auto;
+}
+.qtFilters .qtFilterField > span { white-space:nowrap; }
+.qtFilters .qtFilterField select {
+  height:30px;
+  padding:0 8px;
+  border:1px solid rgba(124,240,255,.3);
+  border-radius:8px;
+  background:#051521;
+  color:#eaffff;
+  font:800 12px system-ui;
+  outline:none;
+}
+.qtFilters .qtFilterField .tdmShipCombo { flex:0 0 auto !important; min-width:150px; }
+.qtFilters .qtFilterField .tdmShipBtn {
+  height:30px !important;
+  padding:0 8px !important;
+  font:800 12px system-ui !important;
+}
+.qtFilters .qtResultCount {
+  color:#8fcddd;
+  font:700 11px/1 ui-sans-serif,system-ui;
+  white-space:nowrap;
+  font-variant-numeric:tabular-nums;
+}
+.qtFilters .qtResultCount b { color:#fff; }
+.qtFilters .qtResetFilters {
+  width:30px;
+  height:30px;
+  padding:0;
+  border:1px solid rgba(255,120,120,.4);
+  border-radius:8px;
+  background:rgba(255,80,80,.08);
+  color:#ff9a9a;
+  font:900 13px/1 system-ui;
+  cursor:pointer;
+}
+.qtFilters .qtResetFilters:hover {
+  border-color:rgba(255,120,120,.75);
+  background:rgba(255,80,80,.18);
+  color:#fff;
+}

@@ -5,7 +5,7 @@ import { getDroneDesignBonuses, getDroneFitForHangar } from "../DRONE/DRONE_DESI
 import { getShipDesignBaseId, getShipPackById } from "./SHIP_PACKS.js";
 import { getShipEffectStats } from "./SHIP_BONUSES.js";
 import { FACTIONS, normalizeFactionId } from "../SRC/CORE/FACTIONS.js";
-import { upgradeMult } from "../SRC/DATA/UPGRADES.js";
+import { scaledGgBonus, upgradeMult } from "../SRC/DATA/UPGRADES.js";
 
 /**
  * calcule les bonus à partir d'un hangar + user.inventory.shipModules
@@ -54,9 +54,10 @@ const fit =
         damage: Number(it.module.damage || 0) * lvMult,
         mult: lvMult,
         vsMatch: it.module.vsMatch, vsMult: it.module.vsMult,
-        overdrive: it.module.overdrive, critPct: it.module.critPct,
+        // Overdrive et bonus de gate suivent aussi le niveau du canon.
+        overdrive: Number(it.module.overdrive || 0) * lvMult, critPct: it.module.critPct,
         unstable: it.module.unstable, mf: it.module.mf,
-        blMult: it.module.blMult, ggBonus: it.module.ggBonus,
+        blMult: it.module.blMult, ggBonus: scaledGgBonus(it.module.ggBonus, lvMult),
       });
       if (it.module.mf) mfCount += 1;
       hpBonusPct += Number(it.module.hpPct || 0);
@@ -105,7 +106,7 @@ const fit =
           vsMatch: item.module.vsMatch, vsMult: item.module.vsMult,
           overdrive: Number(item.module.overdrive || 0) * mult,
           unstable: item.module.unstable,
-          blMult: item.module.blMult, ggBonus: item.module.ggBonus,
+          blMult: item.module.blMult, ggBonus: scaledGgBonus(item.module.ggBonus, mult),
         });
       }
       if (item?.module?.type === "shield") baseShield += Number(item.module.bonusShield || 0) * levelMultiplier * upgradeMult(itemId);

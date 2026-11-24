@@ -215,6 +215,7 @@ import { wireWikiWindow } from "../../UI/UI_WIKI.js";
 import { initSkylabUI, tickSkylabProduction } from "../../UI/UI_SKYLAB.js";
 import { initAuctionUI, renderAuctionWindow, tickAuctionDisplay } from "../../UI/UI_AUCTION.js";
 import { initUpgradeUI } from "../../UI/UI_UPGRADE.js";
+import { updateTargetHud } from "../../UI/UI_TARGET.js";
 import { initChatUI } from "../../UI/UI_CHAT.js";
 import { initGroupUI } from "../../UI/UI_GROUP.js";
 import { initFriendsUI } from "../../UI/UI_FRIENDS.js";
@@ -11511,6 +11512,7 @@ function registerHudWindows() {
   reg("titleWindow", "Titres", menuIcon("titles_hover"), false);
   reg("passWindow", "Passe de combat", menuIcon("rank_hover"), false);
   reg("dpsWindow", "DPS", menuIcon("dps_hover"), false);
+  reg("targetWindow", "Cible", menuIcon("target_hover"), false);
   try {
     document.getElementById("dpsResetBtn")?.addEventListener("click", () => {
       try { resetDpsLog(); } catch {}
@@ -19905,6 +19907,9 @@ if (questWindowElement) {
 let selectedQuestOfferId = null;
 let questTerminalSearch = "";
 let questTerminalFilter = "open";
+// Terminal : filtre par carte ("" = toutes) et tri de la liste.
+let questTerminalMap = "";
+let questTerminalSort = "level";
 // Fabricateur : brouillon du contrat en cours de composition.
 let questForgeDraft = { type: "npc_Streuner", amount: 50, map: "", conds: [], title: "", titleIdx: Math.floor(Math.random() * 8) };
 // Ligne sélectionnée dépliée (re-clic = repliée).
@@ -19936,6 +19941,9 @@ function renderQuestTerminal() {
     npcLocations: questNpcLocations,
     searchQuery: questTerminalSearch,
     filter: questTerminalFilter,
+    mapFilter: questTerminalMap,
+    sort: questTerminalSort,
+    translate: i18nText,
     playerSector: pilotSector,
     expanded: questTerminalExpanded,
     forgeDraft: questForgeDraft,
@@ -19993,6 +20001,16 @@ function closeQuestTerminal() {
 }
 
 ui.questOfferList?.addEventListener("click", event => {
+  if (event.target.closest("[data-quest-reset]")) {
+    questTerminalSearch = "";
+    questTerminalMap = "";
+    questTerminalSort = "level";
+    selectedQuestOfferId = null;
+    renderQuestTerminal();
+    const rows = document.getElementById("questTerminalRows");
+    if (rows) rows.scrollTop = 0;
+    return;
+  }
   const tab = event.target.closest("[data-quest-filter]");
   if (tab) {
     if (tab.dataset.questFilter === questTerminalFilter) return;
@@ -20054,6 +20072,9 @@ function refreshQuestForgePreview() {
     npcLocations: questNpcLocations,
     searchQuery: questTerminalSearch,
     filter: questTerminalFilter,
+    mapFilter: questTerminalMap,
+    sort: questTerminalSort,
+    translate: i18nText,
     expanded: questTerminalExpanded,
     forgeDraft: questForgeDraft,
     forgeIssues: forgeCreationIssues(questForgeDraft),
@@ -20066,6 +20087,18 @@ function refreshQuestForgePreview() {
   if (next) current.replaceWith(next);
 }
 ui.questOfferList?.addEventListener("change", event => {
+  // Filtre carte / tri : la liste repart du haut.
+  const mapSelect = event.target.closest?.("[data-quest-map]");
+  const sortSelect = event.target.closest?.("[data-quest-sort]");
+  if (mapSelect || sortSelect) {
+    if (mapSelect) questTerminalMap = String(mapSelect.value || "");
+    if (sortSelect) questTerminalSort = String(sortSelect.value || "level");
+    selectedQuestOfferId = null;
+    renderQuestTerminal();
+    const rows = document.getElementById("questTerminalRows");
+    if (rows) rows.scrollTop = 0;
+    return;
+  }
   if (event.target.tagName === "SELECT" || event.target.matches?.('[data-forge-field="amount"]')) handleQuestForgeField(event);
 });
 ui.questOfferList?.addEventListener("input", event => {
@@ -26918,7 +26951,7 @@ function petVolleyDamage(pet, user, target) {
       }
       // Xénocide : +510 par canon dans la GG Awakened.
       if (item.module.ggBonus && String(currentMapId()).toLowerCase() === String(item.module.ggBonus.gate || "").toLowerCase()) {
-        base += Math.max(0, Number(item.module.ggBonus.damage) || 0);
+        base += Math.max(0, Number(item.module.ggBonus.damage) || 0) * upgradeMult(itemId);
       }
     }
   }
@@ -50323,6 +50356,19 @@ updateConfigButtons();
       lastDpsHudAt = nowDpsHud;
       try { updateDpsHud(dpsSnapshot(5), laserDpsBreakdown()); } catch {}
     }
+  }
+  // Fenêtre Cible : nom + coque / bouclier de la cible verrouillée.
+  if (shouldRefreshWindow("targetWindow")) {
+    try {
+      // NPC uniquement : ni joueur, ni P.E.T, ni base / module de station.
+      const locked = Target.get();
+      const isNpc = !!locked && locked._netPlayer == null && locked._netPet == null
+        && locked.isPetTarget !== true && locked._stationTarget == null
+        && locked.type !== "player" && locked.type !== "station_module";
+      const tgt = isNpc ? locked : null;
+      const tgtName = tgt ? String(NPC_TYPES[tgt.type]?.name || tgt.name || tgt.type || "NPC").replace(/^npc_/i, "") : "";
+      updateTargetHud(tgt, tgtName);
+    } catch {}
   }
   // Comptoir pirate : la fenêtre se ferme dès qu'on s'éloigne du bouton.
   if (isOreTradeWindowOpen() && !isTradeWindowAnchored()) closeOreTradeWindow();

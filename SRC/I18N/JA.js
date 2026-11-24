@@ -5,6 +5,27 @@
 
 export default {
   texts: {
+    // Terminal de quêtes : recherche et filtres.
+    "Rechercher : nom, NPC, carte, récompense…": "検索：名前、NPC、マップ、報酬…",
+    "Filtrer par carte": "マップで絞り込み",
+    "Trier les missions": "ミッションを並べ替え",
+    "Nom (A → Z)": "名前（A → Z）",
+    "Réinitialiser les filtres": "フィルターをリセット",
+    "Missions affichées / missions de l'onglet": "表示中のミッション / タブ内のミッション",
+    // Fenêtre Bot : règles GG / quêtes.
+    "la récompense de fin est elle aussi réduite de": "クリア報酬も次の割合で減少します：",
+    "dès que le bot est activé dans la gate, ne serait-ce qu'une seconde. Le run reste marqué même si tu coupes le bot ensuite, après une mort ou un rafraîchissement, et les NPC touchés pendant que le bot tournait restent réduits.": "ゲート内でBOTを一度でも有効にすると（たとえ1秒でも）適用されます。その後BOTを止めても、死亡やリロードの後でも、その周回はマークされたままです。BOT稼働中に攻撃したNPCも減少したままです。",
+    "leurs récompenses ne sont jamais réduites, bot actif ou non.": "報酬は一切減少しません（BOTの有無に関係なく）。",
+    "Galaxy Gates": "Galaxy Gates",
+    // Fenêtre Cible.
+    "Aucune cible": "ターゲットなし",
+    // Fenêtre Amélioration : lignes de stats des lasers.
+    "Instable": "不安定",
+    "Contre les NPC": "NPCに対して",
+    "Contre les Mimesis": "Mimesisに対して",
+    "Contre les NPC Blacklight": "Blacklight NPCに対して",
+    "Tous les 5 tirs": "5発ごと",
+    "Dans la GG Awakened": "Awakened GG内",
     "Commandes téléphone": "スマホ操作",
     "Joystick de déplacement": "移動ジョイスティック",
     "Déplacement": "移動",
@@ -4325,6 +4346,14 @@ export default {
     "Ignore les NPC déjà attaqués par un autre joueur ou un bot (lock gris : pas de récompense pour toi).": "他のプレイヤーやボットが攻撃中のNPCを無視します（グレーのロック：報酬なし）。",
   },
   patterns: {
+    "Instable : {0}": "不安定：{0}",
+    "Contre les NPC : {0}": "NPCに対して：{0}",
+    "Contre les Mimesis : {0}": "Mimesisに対して：{0}",
+    "Contre les NPC Blacklight : {0}": "Blacklight NPCに対して：{0}",
+    "Tous les 5 tirs : {0}": "5発ごと：{0}",
+    "Dans la GG Awakened : {0}": "Awakened GG内：{0}",
+    "Vitesse : {0}": "速度：{0}",
+    "Bouclier : {0}": "シールド：{0}",
     "{0} : un seul peut être équipé.": "{0}：1つのみ装備可能です。",
     "CPU Carburant : +{0} carburant P.E.T ({1} crédits)": "燃料CPU：P.E.T燃料+{0}（{1}クレジット）",
     "Vous avez reçu {0} énergie Galaxy Gates !": "ギャラクシーゲートのエネルギーを{0}獲得しました！",

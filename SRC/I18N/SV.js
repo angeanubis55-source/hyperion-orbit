@@ -5,6 +5,27 @@
 
 export default {
   texts: {
+    // Terminal de quêtes : recherche et filtres.
+    "Rechercher : nom, NPC, carte, récompense…": "Sök: namn, NPC, karta, belöning…",
+    "Filtrer par carte": "Filtrera efter karta",
+    "Trier les missions": "Sortera uppdrag",
+    "Nom (A → Z)": "Namn (A → Ö)",
+    "Réinitialiser les filtres": "Återställ filter",
+    "Missions affichées / missions de l'onglet": "Visade uppdrag / uppdrag i fliken",
+    // Fenêtre Bot : règles GG / quêtes.
+    "la récompense de fin est elle aussi réduite de": "även slutbelöningen minskas med",
+    "dès que le bot est activé dans la gate, ne serait-ce qu'une seconde. Le run reste marqué même si tu coupes le bot ensuite, après une mort ou un rafraîchissement, et les NPC touchés pendant que le bot tournait restent réduits.": "så fort boten aktiveras i gaten, om så bara i en sekund. Rundan förblir markerad även om du stänger av boten efteråt, efter en död eller en omladdning, och NPC:er som träffades medan boten var igång förblir reducerade.",
+    "leurs récompenses ne sont jamais réduites, bot actif ou non.": "deras belöningar minskas aldrig, oavsett om boten är på eller inte.",
+    "Galaxy Gates": "Galaxy Gates",
+    // Fenêtre Cible.
+    "Aucune cible": "Inget mål",
+    // Fenêtre Amélioration : lignes de stats des lasers.
+    "Instable": "Instabil",
+    "Contre les NPC": "Mot NPC:er",
+    "Contre les Mimesis": "Mot Mimesis",
+    "Contre les NPC Blacklight": "Mot Blacklight-NPC:er",
+    "Tous les 5 tirs": "Var 5:e skott",
+    "Dans la GG Awakened": "I Awakened-GG",
     "Commandes téléphone": "Mobilkontroller",
     "Joystick de déplacement": "Rörelsejoystick",
     "Déplacement": "Rörelse",
@@ -4325,6 +4346,14 @@ export default {
     "Ignore les NPC déjà attaqués par un autre joueur ou un bot (lock gris : pas de récompense pour toi).": "Ignorerar NPC som redan attackeras av en annan spelare eller bot (grå låsning: ingen belöning för dig).",
   },
   patterns: {
+    "Instable : {0}": "Instabil: {0}",
+    "Contre les NPC : {0}": "Mot NPC:er: {0}",
+    "Contre les Mimesis : {0}": "Mot Mimesis: {0}",
+    "Contre les NPC Blacklight : {0}": "Mot Blacklight-NPC:er: {0}",
+    "Tous les 5 tirs : {0}": "Var 5:e skott: {0}",
+    "Dans la GG Awakened : {0}": "I Awakened-GG: {0}",
+    "Vitesse : {0}": "Hastighet: {0}",
+    "Bouclier : {0}": "Sköld: {0}",
     "{0} : un seul peut être équipé.": "{0}: endast en kan utrustas.",
     "CPU Carburant : +{0} carburant P.E.T ({1} crédits)": "Bränsle-CPU: +{0} P.E.T-bränsle ({1} krediter)",
     "Vous avez reçu {0} énergie Galaxy Gates !": "Du fick {0} Galaxy Gates-energi!",

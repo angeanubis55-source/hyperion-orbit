@@ -52,6 +52,39 @@ export function upgradeBonusPct(level) {
   return (Math.max(1, Math.min(UPGRADE_MAX_LEVEL, Math.floor(Number(level) || 1))) - 1) * UPGRADE_PCT_PER_LEVEL;
 }
 
+// Toutes les lignes de stats d'un objet au niveau donné : un laser peut en
+// avoir plusieurs (vs NPC, vs Blacklight, overdrive, bonus de gate, plage
+// instable) et toutes suivent le niveau d'amélioration, comme au combat.
+// Libellés en français (clés i18n).
+// -> [{ label, value, max?, plus? }]
+export function upgradedStatLines(item, level) {
+  const mod = item?.module || {};
+  const mult = 1 + upgradeBonusPct(level) / 100;
+  const scaled = (v) => Math.round((Number(v) || 0) * mult * 100) / 100;
+  if (mod.type === "shield") return [{ label: "Bouclier", value: scaled(mod.bonusShield) }];
+  if (mod.type === "speed") return [{ label: "Vitesse", value: scaled(mod.bonusSpeed) }];
+  if (mod.type !== "laser") return [];
+  const dmg = Number(mod.damage) || 0;
+  const vsMult = Number(mod.vsMult) || 1;
+  const lines = [{ label: "Dégâts", value: scaled(dmg) }];
+  if (mod.unstable) lines.push({ label: "Instable", value: scaled(128), max: scaled(220) });
+  if (vsMult !== 1 && mod.vsLabel) lines.push({ label: `Contre les ${mod.vsLabel}`, value: scaled(dmg * vsMult) });
+  const blMult = Number(mod.blMult);
+  if (blMult > 0 && blMult !== 1) lines.push({ label: "Contre les NPC Blacklight", value: scaled(dmg * vsMult * blMult) });
+  if (Number(mod.overdrive) > 0) lines.push({ label: "Tous les 5 tirs", value: scaled(mod.overdrive), plus: true });
+  if (Number(mod.ggBonus?.damage) > 0) {
+    const gate = String(mod.ggBonus.gate || "");
+    lines.push({ label: `Dans la GG ${gate.charAt(0).toUpperCase()}${gate.slice(1)}`, value: scaled(mod.ggBonus.damage), plus: true });
+  }
+  return lines;
+}
+
+// Bonus de gate d'un canon mis à l'échelle (Xénocide +510 dans la GG).
+export function scaledGgBonus(ggBonus, mult) {
+  if (!ggBonus) return ggBonus;
+  return { ...ggBonus, damage: (Number(ggBonus.damage) || 0) * (Number(mult) || 1) };
+}
+
 export function isUpgradableItem(item) {
   return !!item && UPGRADE_TYPES.includes(item?.module?.type);
 }
