@@ -28726,3 +28726,84 @@ display: flex;
 .ggPortalPreview img#ggPortalImage[data-gate="omicron"] {
   width:min(440px,100%);
 }
+
+/* Fenêtre BOT compacte (bouton − / + de la barre) : seul lecture / pause. */
+html body #botWindow.botCompact {
+  width:auto !important;
+  min-width:0 !important;
+  max-width:none !important;
+  height:auto !important;
+  min-height:0 !important;
+}
+html body #botWindow.botCompact .botBody {
+  display:block !important;
+  padding:8px !important;
+  max-height:none !important;
+}
+html body #botWindow.botCompact .botBody > :not(.botTopRow),
+html body #botWindow.botCompact .botTopRow > :not(.botPlayBtn):not(.botCompactTime) {
+  display:none !important;
+}
+html body #botWindow.botCompact .botTopRow {
+  justify-content:center !important;
+  padding:0 !important;
+  border:0 !important;
+  background:none !important;
+}
+
+/* Bouton − / + de la fenêtre BOT : même dessin que la mini-carte, collé au
+   bouton réduire (la barre a un gap de 8px, comme Galaxy Gates / Missions). */
+#botWindow > .gameWinBar > .botCompactBar {
+  flex:0 0 auto;
+  margin:0 0 0 auto;
+}
+#botWindow.gameWindow > .gameWinBar > .botCompactBar + .gameWinMinBtn:not(.miniZoomBtn) {
+  margin-left:-9px !important;
+}
+#botWindow #botCompactBtn {
+  position:relative;
+  font-size:0 !important;
+}
+#botWindow #botCompactBtn::before {
+  content:"";
+  position:absolute;
+  left:50%;
+  top:50%;
+  width:12px;
+  height:2px;
+  margin:-1px 0 0 -6px;
+  border-radius:2px;
+  background:#eaffff;
+  filter:drop-shadow(0 0 4px rgba(0,217,255,.6));
+}
+#botWindow.botCompact #botCompactBtn::after {
+  content:"";
+  position:absolute;
+  left:50%;
+  top:50%;
+  width:2px;
+  height:12px;
+  margin:-6px 0 0 -1px;
+  border-radius:2px;
+  background:#eaffff;
+  filter:drop-shadow(0 0 4px rgba(0,217,255,.6));
+}
+
+/* Durée de session : visible seulement en mode réduit, à droite de lecture / pause. */
+#botWindow .botCompactTime {
+  display:none;
+}
+html body #botWindow.botCompact .botTopRow {
+  gap:12px !important;
+  padding:0 6px !important;
+}
+html body #botWindow.botCompact .botCompactTime {
+  display:block;
+  order:2;
+  min-width:58px;
+  color:#ffe14d;
+  font:900 18px/1 ui-sans-serif,system-ui;
+  font-variant-numeric:tabular-nums;
+  text-align:center;
+  text-shadow:0 0 8px rgba(255,225,77,.25);
+}

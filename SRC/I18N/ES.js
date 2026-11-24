@@ -4319,6 +4319,10 @@ export default {
     "Paramètres → Disposition → Zoom du jeu : descends jusqu'à 60 %.": "Ajustes → Disposición → Zoom del juego: baja hasta el 60 %.",
     "L'extra Radar + / CPU Radar agrandit la portée de détection.": "El extra Radar + / CPU Radar amplía el alcance de detección.",
     "Paramètres → Langue : 7 langues disponibles.": "Ajustes → Idioma: 7 idiomas disponibles.",
+    "Réduire au bouton lecture / pause": "Reducir al botón de reproducir / pausa",
+    "Durée de la session": "Duración de la sesión",
+    "Ne pas attaquer les NPC grisés (déjà attaqués)": "No atacar a los NPC en gris (ya atacados)",
+    "Ignore les NPC déjà attaqués par un autre joueur ou un bot (lock gris : pas de récompense pour toi).": "Ignora los NPC ya atacados por otro jugador o un bot (fijación gris: sin recompensa para ti).",
   },
   patterns: {
     "{0} : un seul peut être équipé.": "{0}: solo se puede equipar uno.",

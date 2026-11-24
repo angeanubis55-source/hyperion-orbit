@@ -11973,6 +11973,8 @@ const Bot = {
   // Recherche des box (0 = toute la map) et box ramassées en plein combat.
   boxRadius: 0,
   grabInFight: true,
+  // Zone de travail : ignorer les NPC grisés (déjà revendiqués par un autre).
+  skipClaimed: false,
   grabRadius: 700,
   grabT0: 0,
   // Compteurs de session (depuis le démarrage) : totaux et détail par type.
@@ -12095,6 +12097,7 @@ function botSaveConfig() {
       fleePct: Bot.fleePct,
       fleeCloak: Bot.fleeCloak,
       grabInFight: Bot.grabInFight,
+      skipClaimed: Bot.skipClaimed,
       cargo: Bot.cargo,
       cargoPct: Bot.cargoPct,
       sellBase: Bot.sellBase,
@@ -12205,6 +12208,7 @@ function botLoadConfig() {
       return Number.isFinite(n) ? Math.max(min, Math.min(max, n)) : fallback;
     };
     if (typeof data.grabInFight === "boolean") Bot.grabInFight = data.grabInFight;
+    if (typeof data.skipClaimed === "boolean") Bot.skipClaimed = data.skipClaimed;
     if (typeof data.cargo === "boolean") Bot.cargo = data.cargo;
     Bot.cargoPct = intIn(data.cargoPct, 1, 100, Bot.cargoPct);
     if (["auto", "low", "high", "pirate"].includes(data.sellBase)) Bot.sellBase = data.sellBase;
@@ -12495,6 +12499,7 @@ function botRefreshStats() {
   if (!Bot.statsT0 || !Bot.gains0) {
     set("botStatTime", "—");
     set("botHeroTime", "—");
+    set("botCompactTime", "—");
     set("botHeroCreditsH", "—");
     for (const [valueId, rateId] of rows) { set(valueId, "+0"); set(rateId, "— / h"); }
     set("botStatKillsH", "— / h");
@@ -12510,6 +12515,8 @@ function botRefreshStats() {
   const time = hh > 0 ? `${hh}h${mm}m` : `${mm}:${ss}`;
   set("botStatTime", time);
   set("botHeroTime", time);
+  // Fenêtre BOT réduite : durée de session à côté du bouton lecture / pause.
+  set("botCompactTime", time);
   let now = Bot.gains0;
   try { now = frozen && Bot.gainsEnd ? Bot.gainsEnd : botGainsNow(); } catch {}
   const perH = (n) => (elapsedS >= 1 ? `${sign(Math.round(n / elapsedS * 3600))} / h` : "— / h");
@@ -13618,6 +13625,10 @@ function wireBotWindow() {
     }
   }
   document.getElementById("botPlayBtn")?.addEventListener("click", () => botSetActive(!Bot.active));
+  // Bouton − / + de la barre (comme la mini-carte) : − réduit la fenêtre au
+  // seul bouton lecture / pause, + la remet en grand.
+  try { ensureBotCompactButton(); } catch {}
+  setTimeout(() => { try { ensureBotCompactButton(); } catch {} }, 0);
   // Filtre NPC par groupe de maps (X-1..X-8, X-BL, 4-x...) : options
   // reconstruites par botRenderNpcList depuis la liste fixe.
   const npcMapFilter = document.getElementById("botNpcMapFilter");
@@ -13666,6 +13677,15 @@ function wireBotWindow() {
     if (!grabBox.dataset.wired) {
       grabBox.dataset.wired = "1";
       grabBox.addEventListener("change", () => { Bot.grabInFight = grabBox.checked; botSaveConfig(); });
+    }
+  }
+  // NPC grisés (déjà attaqués par un autre joueur / bot) ignorés.
+  const skipClaimedBox = document.getElementById("botSkipClaimed");
+  if (skipClaimedBox) {
+    skipClaimedBox.checked = Bot.skipClaimed === true;
+    if (!skipClaimedBox.dataset.wired) {
+      skipClaimedBox.dataset.wired = "1";
+      skipClaimedBox.addEventListener("change", () => { Bot.skipClaimed = skipClaimedBox.checked; botSaveConfig(); });
     }
   }
   document.getElementById("botResetStats")?.addEventListener("click", () => {
@@ -14262,6 +14282,9 @@ function botQuestTargets() {
 // illimité en gate), lock conservé, NPC qui nous attaque toujours visible.
 // Utilisé par les recherches de cibles (pas de wallhack map-wide).
 function botNpcVisible(e) {
+  // Option « Ne pas attaquer les NPC grisés » : un NPC déjà revendiqué par
+  // un autre joueur (lock gris) n'est jamais choisi comme cible.
+  if (Bot.skipClaimed === true && npcClaimedByOther(e)) return false;
   try {
     let locked = null;
     try { locked = Target.get(); } catch {}
@@ -14965,7 +14988,10 @@ function botKiteCombatMove(npc, d, standD, dt) {
       maxY: WORLD.h,
       margin: 120,
     },
-    state: Bot.steering?.npcId === npc.id ? Bot.steering : {},
+    // Nouvelle cible : on garde le sens d'orbite en cours (sinon il dépend
+    // de l'id du NPC et s'inverse à chaque changement -> aller-retour).
+    state: Bot.steering?.npcId === npc.id ? Bot.steering
+      : (Bot.steering?.direction === 1 || Bot.steering?.direction === -1 ? { direction: Bot.steering.direction } : {}),
     dt,
     // Orbite décollée des murs (pas de frôlement/glitch contre les cailloux).
     walls: isZoneMap && Array.isArray(zoneWalls) && zoneWalls.length ? zoneWalls : null,
@@ -15416,6 +15442,9 @@ function botSyncGgModeUi() {
   if (mapField) mapField.style.display = gg ? "none" : "";
   const grabField = document.getElementById("botGrabField");
   if (grabField) grabField.style.display = gg ? "none" : "";
+  // Gates = instances solo : pas d'autre joueur, l'option ne sert pas.
+  const skipClaimedField = document.getElementById("botSkipClaimedField");
+  if (skipClaimedField) skipClaimedField.style.display = gg ? "none" : "";
   const note = document.getElementById("botGgModeNote");
   if (note) { note.hidden = false; note.style.display = gg ? "" : "none"; }
 }
@@ -16059,8 +16088,9 @@ function tickBot(dt) {
         // NPC rentré/coincé dans un mur : on casse le lock au lieu de
         // glitcher contre le mur en attendant qu'il ressorte. Ban court
         // pour ne pas le re-locker aussitôt.
-        if (botNpcInWall(cur)) {
-          try { botNpcBanWall(cur, 8000); } catch {}
+        if (botNpcInWall(cur) || (Bot.skipClaimed === true && npcClaimedByOther(cur))) {
+          // Mur : ban court. NPC grisé : le filtre de sélection suffit.
+          if (botNpcInWall(cur)) { try { botNpcBanWall(cur, 8000); } catch {} }
           try { if (botTargetIsNpc(cur) && Target.get()) Target.clear(); } catch {}
           try { if (attackActive) stopAttack(); } catch {}
           Bot.combatTargetId = null;
@@ -16111,6 +16141,23 @@ function tickBot(dt) {
       found = cur ? { npc: cur } : nearest;
     } else {
       found = nearest;
+      // Anti-drift : changer de cible à chaque image (paquet de NPC presque
+      // équidistants) relockait tout le paquet et remettait à zéro le
+      // placement (portée / recul), d'où le vaisseau qui tremble sur place.
+      // La cible en cours est gardée tant qu'elle est à portée, sauf si un
+      // NPC est NETTEMENT plus proche (-35 % et 200 px de moins) et qu'elle
+      // est tenue depuis au moins 1,5 s.
+      if (cur && nearest && nearest.npc !== cur) {
+        const dCur = Math.hypot(cur.x - player.x, cur.y - player.y);
+        const dNew = Math.sqrt(Math.max(0, Number(nearest.d2) || 0));
+        let reach = 700;
+        try { reach = botEngageRange(); } catch {}
+        const curInRange = dCur <= reach + 20;
+        const muchCloser = dNew < dCur * 0.65 && dCur - dNew > 200;
+        const heldMs = performance.now() - (Number(Bot.ggTargetSince) || 0);
+        if (curInRange && (!muchCloser || heldMs < 1500)) found = { npc: cur };
+      }
+      if (found?.npc && found.npc !== cur) Bot.ggTargetSince = performance.now();
     }
     if (!found) {
       try { botGgUseExploreProfile(); } catch {}
@@ -18907,6 +18954,54 @@ function setGalaxyGatePreviewPortal(gateId, fallbackSrc) {
   const jumpSrc = skin?.jump?.src || fallbackSrc;
   if (jumpSrc && imgEl.getAttribute("src") !== jumpSrc) imgEl.src = jumpSrc;
 }
+
+// ============================================================
+// Fenêtre BOT : mode compact (seul le bouton lecture / pause visible).
+// Un seul bouton dans la barre de titre : "−" en mode normal, "+" en mode
+// compact. Réduire puis rouvrir la fenêtre la remet toujours en grand.
+// ============================================================
+function setBotCompact(compact) {
+  const win = document.getElementById("botWindow");
+  if (!win) return;
+  win.classList.toggle("botCompact", compact === true);
+  const btn = document.getElementById("botCompactBtn");
+  if (btn) {
+    btn.textContent = compact ? "+" : "−";
+    btn.title = compact ? "Agrandir" : "Réduire au bouton lecture / pause";
+    btn.setAttribute("aria-label", btn.title);
+    btn.setAttribute("aria-pressed", compact ? "true" : "false");
+  }
+}
+
+function ensureBotCompactButton() {
+  const win = document.getElementById("botWindow");
+  const bar = win?.querySelector(":scope > .gameWinBar");
+  if (!bar || document.getElementById("botCompactBtn")) return;
+  const holder = document.createElement("div");
+  holder.className = "miniZoomActions botCompactBar";
+  holder.dataset.noDrag = "1";
+  const btn = document.createElement("button");
+  btn.id = "botCompactBtn";
+  btn.type = "button";
+  btn.className = "gameWinMinBtn miniZoomBtn";
+  holder.appendChild(btn);
+  holder.addEventListener("pointerdown", (e) => e.stopPropagation());
+  btn.addEventListener("click", (event) => {
+    event.stopPropagation();
+    setBotCompact(!win.classList.contains("botCompact"));
+  });
+  bar.insertBefore(holder, bar.querySelector(":scope > .gameWinMinBtn:not(.miniZoomBtn)") || null);
+  setBotCompact(win.classList.contains("botCompact"));
+}
+
+try {
+  window.addEventListener("orbit:window-restoring", (event) => {
+    if (event?.detail?.id !== "botWindow") return;
+    try { ensureBotCompactButton(); } catch {}
+    // Réouverture : toujours en grand.
+    setBotCompact(false);
+  });
+} catch {}
 
 function getPortalFrameSrc(pack, index) {
   if (!pack) return null;
@@ -44228,7 +44323,10 @@ function drawTargetMarker(e, ox, oy, time) {
 // groupe (pas de récompense pour nous), ou par un bot JPC qui le farme déjà
 // (comme un vrai joueur : il garde sa cible, on voit gris), rouge sinon —
 // premier attaquant, NPC libre, membre du groupe, ou solo (pas de _netUid).
-function targetLockSprite(e) {
+// NPC « grisé » : revendiqué par un autre joueur hors groupe ou par un bot
+// JPC qui le farme. Même règle que le lock gris (targetLockSprite) et que
+// l'option du BOT « Ne pas attaquer les NPC grisés ».
+function npcClaimedByOther(e) {
   try {
     if (e && e._netUid && !e._netPlayer && !e._netPet && e._netLockBy != null) {
       const holder = String(e._netLockBy);
@@ -44238,22 +44336,21 @@ function targetLockSprite(e) {
             && String(m.map).toLowerCase() === String(window.__CURRENT_MAP_ID__ || "").toLowerCase()
             && m.instance !== true,
         );
-        if (mate !== true) {
-          return LOCK_GREY_SPR || { ...LOCK_SPR, src: "ASSETS/UI/LOCK_DEJAPRIS.png" };
-        }
+        if (mate !== true) return true;
       }
     }
     // Multi : NPC farmé par un JPC vivant → gris pour tout le monde, même
     // en le lockant soi-même (c'est sa cible : pas de récompense partagée,
     // tuer le bot libère la proie).
-    if (e && e._netUid && !e._netPlayer && !e._netPet && e._netJpcBy != null) {
-      return LOCK_GREY_SPR || { ...LOCK_SPR, src: "ASSETS/UI/LOCK_DEJAPRIS.png" };
-    }
+    if (e && e._netUid && !e._netPlayer && !e._netPet && e._netJpcBy != null) return true;
     // Solo : NPC farmé par un JPC vivant qui est toujours dessus → gris.
-    if (jpcPreyClaimedByLiveBot(e)) {
-      return LOCK_GREY_SPR || { ...LOCK_SPR, src: "ASSETS/UI/LOCK_DEJAPRIS.png" };
-    }
+    if (jpcPreyClaimedByLiveBot(e)) return true;
   } catch {}
+  return false;
+}
+
+function targetLockSprite(e) {
+  if (npcClaimedByOther(e)) return LOCK_GREY_SPR || { ...LOCK_SPR, src: "ASSETS/UI/LOCK_DEJAPRIS.png" };
   return LOCK_SPR;
 }
 

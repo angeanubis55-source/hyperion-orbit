@@ -4319,6 +4319,10 @@ export default {
     "Paramètres → Disposition → Zoom du jeu : descends jusqu'à 60 %.": "設定 → レイアウト → ゲームズーム：60 %まで下げられます。",
     "L'extra Radar + / CPU Radar agrandit la portée de détection.": "エクストラ「レーダー＋」/ レーダーCPUで探知範囲が広がります。",
     "Paramètres → Langue : 7 langues disponibles.": "設定 → 言語：7言語に対応。",
+    "Réduire au bouton lecture / pause": "再生 / 一時停止ボタンだけに縮小",
+    "Durée de la session": "セッション時間",
+    "Ne pas attaquer les NPC grisés (déjà attaqués)": "グレー表示のNPC（攻撃済み）を攻撃しない",
+    "Ignore les NPC déjà attaqués par un autre joueur ou un bot (lock gris : pas de récompense pour toi).": "他のプレイヤーやボットが攻撃中のNPCを無視します（グレーのロック：報酬なし）。",
   },
   patterns: {
     "{0} : un seul peut être équipé.": "{0}：1つのみ装備可能です。",

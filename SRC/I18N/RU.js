@@ -4319,6 +4319,10 @@ export default {
     "Paramètres → Disposition → Zoom du jeu : descends jusqu'à 60 %.": "Настройки → Расположение → Масштаб игры: до 60 %.",
     "L'extra Radar + / CPU Radar agrandit la portée de détection.": "Экстра «Радар +» / CPU Радар увеличивает дальность обнаружения.",
     "Paramètres → Langue : 7 langues disponibles.": "Настройки → Язык: доступно 7 языков.",
+    "Réduire au bouton lecture / pause": "Свернуть до кнопки пуск / пауза",
+    "Durée de la session": "Длительность сессии",
+    "Ne pas attaquer les NPC grisés (déjà attaqués)": "Не атаковать серых NPC (уже атакованных)",
+    "Ignore les NPC déjà attaqués par un autre joueur ou un bot (lock gris : pas de récompense pour toi).": "Игнорирует NPC, уже атакованных другим игроком или ботом (серый захват: награды не будет).",
   },
   patterns: {
     "{0} : un seul peut être équipé.": "{0}: можно установить только один.",

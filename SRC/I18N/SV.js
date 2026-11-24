@@ -4319,6 +4319,10 @@ export default {
     "Paramètres → Disposition → Zoom du jeu : descends jusqu'à 60 %.": "Inställningar → Layout → Spelzoom: gå ner till 60 %.",
     "L'extra Radar + / CPU Radar agrandit la portée de détection.": "Extrat Radar + / Radar-CPU ökar upptäcktsräckvidden.",
     "Paramètres → Langue : 7 langues disponibles.": "Inställningar → Språk: 7 språk tillgängliga.",
+    "Réduire au bouton lecture / pause": "Krymp till spela / paus-knappen",
+    "Durée de la session": "Sessionens längd",
+    "Ne pas attaquer les NPC grisés (déjà attaqués)": "Attackera inte gråmarkerade NPC (redan attackerade)",
+    "Ignore les NPC déjà attaqués par un autre joueur ou un bot (lock gris : pas de récompense pour toi).": "Ignorerar NPC som redan attackeras av en annan spelare eller bot (grå låsning: ingen belöning för dig).",
   },
   patterns: {
     "{0} : un seul peut être équipé.": "{0}: endast en kan utrustas.",

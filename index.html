@@ -809,6 +809,7 @@
       <div class="botBody">
         <div class="botTopRow">
           <button id="botPlayBtn" class="botPlayBtn" type="button" title="Démarrer">▶</button>
+          <span id="botCompactTime" class="botCompactTime" title="Durée de la session">—</span>
           <p class="botRule"><b>L'utilisation du bot est autorisée.</b> En contrepartie, tout ce qu'il rapporte est réduit de <b>75 %</b> :<br />NPC détruits (crédits, expérience, honneur), box ramassées et récompense de fin des Galaxy Gates (dès que le bot a été activé pendant la gate). Seuls le palladium et les Sun Box gardent leur gain complet.</p>
         </div>
         <nav class="botTabs" id="botTabs" aria-label="Sections du bot">
@@ -861,6 +862,7 @@
             <small class="botNote" id="botGgModeNote" style="display:none">Le bot rejoint la X-1 de sa firme puis entre dans les Galaxy Gates cochées (onglet Galaxy Gates).</small>
             <label class="botField" id="botMapField"><span>Map de travail</span><select id="botMapSelect" aria-label="Carte cible du bot"></select></label>
             <label class="botSwitch" id="botGrabField" title="Une box n'est prise que si on peut continuer à tirer depuis elle."><input id="botGrabInFight" type="checkbox" checked /><i></i><span>Ramasser les box proches en plein combat</span></label>
+            <label class="botSwitch" id="botSkipClaimedField" title="Ignore les NPC déjà attaqués par un autre joueur ou un bot (lock gris : pas de récompense pour toi)."><input id="botSkipClaimed" type="checkbox" /><i></i><span>Ne pas attaquer les NPC grisés (déjà attaqués)</span></label>
           </section>
           <section class="botSection" data-bot-section="farm">
             <div class="botSectionTitle">Compétences automatiques</div>
