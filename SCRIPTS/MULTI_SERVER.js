@@ -160,6 +160,17 @@ function jamPlayerAbilities(state, room, now, durationMs) {
   state.moveSpeed = movementSpeed(state, state._combat, now);
   state.vmax = state.moveSpeed;
 }
+// JAMX lancé par un NPC (Hitac Givré) : halo de brouillage sur le vaisseau
+// et décamouflage, mais AUCUN brouillage des modules -> aptitudes de vaisseau
+// et techs (high tech) ni coupées ni bloquées, locks et passifs conservés.
+function npcJamPlayer(state, now, durationMs) {
+  if (state.cloaked && state._combat?.cloakSkill) {
+    state._cloakCdUntil = now + profileAbilityCooldown(Number(state._combat.cloakSkill.cooldownSec || 240), state._combat) * 1000;
+  }
+  state.cloaked = false;
+  state._cloakUntil = 0;
+  state._jamxUntil = Math.max(Number(state._jamxUntil) || 0, now + durationMs);
+}
 function awardPlayerKill(room, id, victim, now) {
   if (!id || String(id) === String(victim.id)) return;
   const total = Math.max(1, Number(victim.hpMax) || 1) + Math.max(0, Number(victim.shMax) || 0);
@@ -5119,15 +5130,15 @@ setInterval(() => {
         // Les tirs NPC partages retirent les PV dans le meme pool autoritaire
         // que le PvP. Les soins du client (reparateur, regen) remontent ce
         // pool via les pos ; les degats serveur restent prioritaires.
-        // JAMX Creed lancé par un NPC (Hitac Givré) : brouillage identique
-        // au Creed joueur (locks coupés, aptitudes coupées, modules
-        // verrouillés) + halo diffusé à toute la map.
+        // JAMX Creed lancé par un NPC (Hitac Givré) : halo + décamouflage
+        // seulement (npcJamPlayer) — aptitudes, techs et locks intacts.
         if (typeof sim.drainPlayerJams === "function") {
           for (const jam of sim.drainPlayerJams()) {
             const ps = room.get(String(jam?.playerId))?.state;
             if (!ps || ps.pvpDead === true || !(Number(ps.hp) > 0)) continue;
             if (Date.now() < Number(ps.ishUntil || 0) || Date.now() < Number(ps.iemUntil || 0)) continue;
-            try { jamPlayerAbilities(ps, room, Date.now(), Math.max(0, Number(jam.durMs) || 6000)); } catch {}
+            // Brouillage NPC : ni aptitudes de vaisseau ni techs coupées.
+            try { npcJamPlayer(ps, Date.now(), Math.max(0, Number(jam.durMs) || 6000)); } catch {}
           }
         }
         // DCR-250 invisible lancée par un NPC : même ralentissement que la

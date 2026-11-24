@@ -2852,8 +2852,8 @@ drainPlayerHits() {
         }
       }
       // Aptitude JAMX Creed à la place du tir (Hitac Givré) : toutes les
-      // `interval` s, tous les joueurs à portée sont brouillés comme par un
-      // vrai Creed et prennent `damage` dégâts.
+      // `interval` s, tous les joueurs à portée prennent `damage` dégâts, le
+      // halo de brouillage et sont décamouflés (aptitudes / techs intactes).
       const creedCfg = NPC_TYPES[e.type]?.creedPulse;
       if (creedCfg) {
         e.creedCd = Math.max(0, Number(e.creedCd || 0) - dt);

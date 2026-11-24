@@ -1566,7 +1566,8 @@ export const NPC_TYPES = {
     passiveNative: false,
     spriteSpeed: 0,
     bulletSprite: { src: "COMBAT/MUNITIONS/SPECIAL8.png", w: 55, h: 17, glow: true, invert: true },
-    // Pas de tir : JAMX Creed toutes les 10 s (1000 px, brouillage 6 s, 7 500 dégâts).
+    // Pas de tir : JAMX Creed toutes les 10 s (1000 px, halo 6 s + décamouflage,
+    // 7 500 dégâts ; aptitudes de vaisseau et techs NON coupées).
     creedPulse: { interval: 10, radius: 1000, duration: 6, damage: 7500 },
     // Roquette DCR-250 invisible toutes les 3 s sur un joueur au hasard à
     // portée : ralenti de 30 % pendant 5 s (comme la DCR-250 joueur).
