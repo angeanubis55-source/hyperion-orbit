@@ -22,6 +22,11 @@ export const SHIP_EXTRA_DEFS = Object.freeze({
   // Canon à particules : tir aléatoire (rayon thermique / électrique /
   // corrosif au hasard), 50 000 dégâts à la cible.
   extra_particle_cannon: Object.freeze({ key: "particle", group: "particle" }),
+  // CPU Générateur (turbomine_01) / CPU Laser (turbomine_02) : cumulables
+  // (pas de groupe). Chacun occupe un emplacement
+  // d'extras et donne 1 emplacement de générateur ou de laser.
+  extra_turbomine_01: Object.freeze({ key: "turbomine1", addGens: 1 }),
+  extra_turbomine_02: Object.freeze({ key: "turbomine2", addLasers: 1 }),
 });
 
 // Réglages des effets.
@@ -98,7 +103,8 @@ export function shipExtraDuplicateError(extras, nameOf = (id) => id) {
   const seen = new Map();
   for (const id of Array.isArray(extras) ? extras : []) {
     const def = getShipExtraDef(id);
-    if (!def) continue;
+    // Sans groupe (turbomines) : cumulable.
+    if (!def || !def.group) continue;
     if (seen.has(def.group)) {
       if (def.group === "aim") return "Un seul CPU de visée peut être équipé.";
       if (def.group === "slot") return "Un seul CPU d'emplacement peut être équipé.";
@@ -126,6 +132,34 @@ export function extraSlotBonus(extras) {
 // Nombre d'emplacements d'extras d'un vaisseau pour cette liste d'extras.
 export function extrasCapacity(baseSlots, extras) {
   return Math.max(0, Math.floor(Number(baseSlots) || 0)) + extraSlotBonus(extras);
+}
+
+// Emplacements de lasers / générateurs en plus donnés par les turbomines
+// équipées (cumulables : +1 chacune).
+export function extraFitBonus(extras) {
+  let lasers = 0;
+  let gens = 0;
+  for (const id of Array.isArray(extras) ? extras : []) {
+    const def = getShipExtraDef(id);
+    if (!def) continue;
+    lasers += Math.max(0, Math.floor(Number(def.addLasers) || 0));
+    gens += Math.max(0, Math.floor(Number(def.addGens) || 0));
+  }
+  return { lasers, gens };
+}
+
+// Emplacements d'un vaisseau (lasers, générateurs, extras) avec les bonus
+// des extras équipés (CPU Emplacement, turbomines). `baseSlots` n'est pas
+// modifié.
+export function fitSlotsWithExtras(baseSlots, extras) {
+  const base = baseSlots || {};
+  const bonus = extraFitBonus(extras);
+  return {
+    ...base,
+    lasers: Math.max(0, Math.floor(Number(base.lasers) || 0)) + bonus.lasers,
+    gens: Math.max(0, Math.floor(Number(base.gens) || 0)) + bonus.gens,
+    extras: extrasCapacity(base.extras, extras),
+  };
 }
 
 // Multiplicateur de soute (CPU Soute : x2).

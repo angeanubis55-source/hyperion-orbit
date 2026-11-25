@@ -106,7 +106,7 @@ import {
   unlockCurrentUserTitle,
   refreshCurrentUserTitles,
 } from "./ACCOUNT.js";
-import { extrasCapacity, shipExtraKeys, EXTRA_RADAR_BONUS, EXTRA_PET_FUEL_THRESHOLD, EXTRA_PET_FUEL_BUY, EXTRA_REPAIR_SEC, EXTRA_AIM_MISS_CUT, EXTRA_SHIELD_REGEN_PCT, RAYGUN_DAMAGE, RAYGUN_VARIANCE, RAYGUN_PROC_CHANCE, RAYGUN_ABILITY, PARTICLE_CANNON_DEFS } from "../DATA/SHIP_EXTRAS.js";
+import { extrasCapacity, fitSlotsWithExtras, shipExtraKeys, EXTRA_RADAR_BONUS, EXTRA_PET_FUEL_THRESHOLD, EXTRA_PET_FUEL_BUY, EXTRA_REPAIR_SEC, EXTRA_AIM_MISS_CUT, EXTRA_SHIELD_REGEN_PCT, RAYGUN_DAMAGE, RAYGUN_VARIANCE, RAYGUN_PROC_CHANCE, RAYGUN_ABILITY, PARTICLE_CANNON_DEFS } from "../DATA/SHIP_EXTRAS.js";
 import { pumpSharedAuction } from "./AUCTION_NET.js";
 import { apiWinterRankingClaim, flushNetUser, netActive, netList, noteNetConsumption, noteNetCreditGain, noteNetPetFuelConsumed, noteNetPurchase, noteNetResourceGain, noteNetServerReward, noteNetUpgradeConsumed } from "./ACCOUNT_NET.js";
 import {
@@ -24206,12 +24206,12 @@ function getActiveHangarFromUser(u) {
 }
 
 function normalizeFit(fit, pack) {
-  const slots = pack?.slots || { lasers: 15, gens: 15, extras: 15 };
-  const L = Math.max(0, Number(slots.lasers || 0));
-  const G = Math.max(0, Number(slots.gens || 0));
   const base = fit || {};
-  // CPU Emplacement : emplacements d'extras en plus.
-  const E = extrasCapacity(slots.extras, base.extras);
+  // CPU Emplacement (extras) et turbomines (lasers / générateurs) en plus.
+  const slots = fitSlotsWithExtras(pack?.slots || { lasers: 15, gens: 15, extras: 15 }, base.extras);
+  const L = slots.lasers;
+  const G = slots.gens;
+  const E = slots.extras;
 
   const lasers = (Array.isArray(base.lasers) ? base.lasers : []).slice(0, L);
   const gens = (Array.isArray(base.gens) ? base.gens : []).slice(0, G);

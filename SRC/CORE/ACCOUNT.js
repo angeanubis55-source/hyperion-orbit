@@ -21,7 +21,7 @@ import { isHalloweenEventActive } from "../../NPC/NPC_HALLOWEEN.js";
 import { getRefineryRecipe, refineOreOutput, isOreResource, ORE_SELL_PRICES, UPGRADE_SLOT_ORES, upgradeOreCapacity, planAutoUpgradeCharges, cargoAdd, cargoFree, CARGO_CAPACITY } from "../DATA/RESOURCES.js";
 import { getModuleRarity, MODULE_DAILY_ROLL_LIMIT, MODULE_ROLL_COST, MODULE_SELL_PRICES } from "../DATA/MODULE_DROPS.js";
 import { generateShipModule } from "../DATA/MODULE_GEN.js";
-import { extrasCapacity, shipExtraCargoMult, shipExtraDuplicateError, PARTICLE_SLOTS } from "../DATA/SHIP_EXTRAS.js";
+import { extrasCapacity, fitSlotsWithExtras, shipExtraCargoMult, shipExtraDuplicateError, PARTICLE_SLOTS } from "../DATA/SHIP_EXTRAS.js";
 import { getPassShopOffer, PASS_MODULE_FORCED } from "../DATA/PASS_SHOP.js";
 export { PASS_MODULE_KEY_COSTS, PASS_SHOP_OFFERS } from "../DATA/PASS_SHOP.js";
 import {
@@ -354,9 +354,8 @@ function makeEmptyFit(shipId) {
 }
 
 function normalizeFitForShip(shipId, fit) {
-  const slots = { ...getShipSlots(shipId) };
-  // CPU Emplacement : emplacements d'extras en plus.
-  slots.extras = extrasCapacity(slots.extras, fit?.extras);
+  // CPU Emplacement (extras) et turbomines (lasers / générateurs) en plus.
+  const slots = fitSlotsWithExtras(getShipSlots(shipId), fit?.extras);
 
   return compactFitDraft({
     lasers: normalizeArraySize(fit?.lasers, slots.lasers, null),
@@ -1165,9 +1164,10 @@ function ensureUserShape(u) {
     }
 
     // normalize arrays size selon le ship
-    h.fit.lasers = normalizeArraySize(h.fit.lasers, slots.lasers, null);
-    h.fit.gens = normalizeArraySize(h.fit.gens, slots.gens, null);
-    h.fit.extras = normalizeArraySize(h.fit.extras, extrasCapacity(slots.extras, h.fit.extras), null);
+    const fitSlots = fitSlotsWithExtras(slots, h.fit.extras);
+    h.fit.lasers = normalizeArraySize(h.fit.lasers, fitSlots.lasers, null);
+    h.fit.gens = normalizeArraySize(h.fit.gens, fitSlots.gens, null);
+    h.fit.extras = normalizeArraySize(h.fit.extras, fitSlots.extras, null);
     h.fit.particle = normalizeArraySize(h.fit.particle, slots.particle, null);
     h.fit.shipMods = normalizeArraySize(h.fit.shipMods, slots.shipMods, null);
 
@@ -1217,7 +1217,7 @@ function ensureUserShape(u) {
 }
 
 function clampFitToSlots(shipId, fit) {
-  const slots = getShipSlots(shipId);
+  const slots = fitSlotsWithExtras(getShipSlots(shipId), fit?.extras);
 
   const normArr = (arr, n) =>
     (Array.isArray(arr) ? arr.slice(0, n) : [])
@@ -1227,7 +1227,7 @@ function clampFitToSlots(shipId, fit) {
   return {
     lasers: normArr(fit?.lasers, slots.lasers),
     gens: normArr(fit?.gens, slots.gens),
-    extras: normArr(fit?.extras, extrasCapacity(slots.extras, fit?.extras)),
+    extras: normArr(fit?.extras, slots.extras),
     particle: normArr(fit?.particle, slots.particle),
     shipMods: normArr(fit?.shipMods, slots.shipMods || FIT_SLOTS.shipMods),
   };
@@ -3063,8 +3063,8 @@ export function getActiveHangarCombatStats() {
   if (!h) return null;
 
   const shipId = h.shipId || u.ship;
-  const slots = getShipSlots(shipId);
   const fit = clampFitToSlots(shipId, getHangarActiveFit(h) || {});
+  const slots = fitSlotsWithExtras(getShipSlots(shipId), fit.extras);
 
   const { dmg, bonusSpeed, bonusShield, bonusAbsorb } = computeCombatFromFit(fit);
 

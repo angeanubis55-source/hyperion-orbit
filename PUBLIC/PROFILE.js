@@ -35,7 +35,7 @@ import { apiAccountIdentity, apiAccountStatus, apiPseudoFree, flushNetUser, netA
 
 import { CATALOG, findCatalogItem } from "../SRC/CORE/CATALOG.js";
 import { UPGRADE_MAX_LEVEL, isUpgradableItem, itemUpgradeLevel, upgradeBonusPct, upgradedStatLines } from "../SRC/DATA/UPGRADES.js";
-import { extrasCapacity, getShipExtraDef, shipExtraDuplicateError, PARTICLE_SLOTS } from "../SRC/DATA/SHIP_EXTRAS.js";
+import { extrasCapacity, fitSlotsWithExtras, getShipExtraDef, shipExtraDuplicateError, PARTICLE_SLOTS } from "../SRC/DATA/SHIP_EXTRAS.js";
 import { getPetDesign } from "../PET/PET_DESIGNS.js";
 import { SHIP_PACKS, getShipFamilyId, getShipFamilyIds, getShipFamilyMembers, getShipFamilyName, getShipDesignBaseId, getShipDesignIds, getShipPackById } from "../SHIP/SHIP_PACKS.js";
 import { getShipBonusInfo } from "../SHIP/SHIP_BONUSES.js";
@@ -5789,10 +5789,21 @@ function returnSelectedEquippedItems() {
 
 // CPU Emplacement : la capacité d'extras suit le brouillon (base du vaisseau
 // + bonus du CPU équipé). Retirer le CPU fait retomber les extras en trop.
+// Turbomines : même principe pour les lasers (02) et les générateurs (01),
+// +1 par turbomine équipée.
 function applyExtraSlotBonus(extras) {
   if (!fitState.slots) return;
   if (fitState.slots.extrasBase == null) fitState.slots.extrasBase = Number(fitState.slots.extras) || 0;
-  fitState.slots.extras = extrasCapacity(fitState.slots.extrasBase, extras);
+  if (fitState.slots.lasersBase == null) fitState.slots.lasersBase = Number(fitState.slots.lasers) || 0;
+  if (fitState.slots.gensBase == null) fitState.slots.gensBase = Number(fitState.slots.gens) || 0;
+  const slots = fitSlotsWithExtras({
+    lasers: fitState.slots.lasersBase,
+    gens: fitState.slots.gensBase,
+    extras: fitState.slots.extrasBase,
+  }, extras);
+  fitState.slots.extras = slots.extras;
+  fitState.slots.lasers = slots.lasers;
+  fitState.slots.gens = slots.gens;
 }
 // Extras CPU : un seul de chaque (un seul par famille : réparation, visée,
 // emplacement). Retire des ids à poser ceux dont la famille est déjà là.
@@ -6047,8 +6058,11 @@ function equipSelectedInventoryItems(preferredSlotType = null) {
   compactCurrentFit();
   let added = 0;
   let extraDupError = "";
-  for (const slotType of ["lasers", "gens", "extras", "particle"]) {
+  // Extras d'abord : une turbomine posée ouvre son emplacement laser /
+  // générateur avant que les lasers et générateurs de la sélection soient posés.
+  for (const slotType of ["extras", "lasers", "gens", "particle"]) {
     if (preferredSlotType && preferredSlotType !== slotType) continue;
+    if (slotType !== "extras" && added) compactCurrentFit();
     if (!Array.isArray(fitState.draft[slotType])) fitState.draft[slotType] = Array(Number(fitState.slots[slotType]) || 0).fill(null);
     let itemIds = selected.filter((itemId) => slotTypeForItem(itemId) === slotType);
     if (slotType === "extras") {
@@ -6103,6 +6117,8 @@ function equipSelectedInventoryItems(preferredSlotType = null) {
     }
   }
 
+  // Capacités à jour (CPU Emplacement, turbomines) pour l'affichage.
+  if (added) compactCurrentFit();
   clearFitSelection();
   fitState.draggedItemIds = [];
   clearFitDropHighlights();
