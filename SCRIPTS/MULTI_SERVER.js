@@ -1084,7 +1084,7 @@ function handleAdminApi(request, response, pathname) {
   if (pathname === "/api/admin/chat" && request.method === "GET") {
     // Tchat en direct pour le panneau admin (lire l'historique global).
     // Répondre = POST /api/admin/broadcast (message [ADMIN] à tous).
-    adminJson(response, 200, { ok: true, list: chatHistory.slice(-40) });
+    adminJson(response, 200, { ok: true, list: chatHistory });
     return true;
   }
   if (pathname === "/api/admin/bans" && request.method === "GET") {
@@ -1432,8 +1432,7 @@ function handleAdminApi(request, response, pathname) {
           const text = String(body?.text || "").replace(/\s+/g, " ").trim().slice(0, 200);
           if (!text) { adminJson(response, 400, { ok: false, error: "Message vide." }); return; }
           const entry = { from: "[ADMIN]", text, at: Date.now(), by: "admin", adminBlast: true };
-          chatHistory.push(entry);
-          if (chatHistory.length > 40) chatHistory.splice(0, chatHistory.length - 40);
+          pushChatHistory(entry);
           broadcastAll(JSON.stringify({ t: "chatMsg", ...entry }));
           adminJson(response, 200, { ok: true });
           return;
@@ -1504,8 +1503,7 @@ function handleAdminApi(request, response, pathname) {
           }
           // Message [Système] public (tchat seul, pas de bannière).
           const sysEntry = { from: "[Système]", text: `Un joueur a été banni. Motif : ${reason}`, at: Date.now(), by: "admin" };
-          chatHistory.push(sysEntry);
-          if (chatHistory.length > 40) chatHistory.splice(0, chatHistory.length - 40);
+          pushChatHistory(sysEntry);
           broadcastAll(JSON.stringify({ t: "chatMsg", ...sysEntry }));
           adminJson(response, 200, { ok: true, pseudo: targetPseudo, reason, until });
           return;
@@ -1804,7 +1802,38 @@ const boxRoomLoads = new Map(); // mapId -> Promise<Map>
 const boxRespawns = new Map(); // mapId -> [{ uid, type, at }]
 const pvpFeeds = new Map(); // mapId(lower) -> Map("victime|attaquant" -> { uid, by, total })
 const pvpFarm = new Map(); // anti-farm : "tueur|victime" -> { n, t0 } (rendement decroissant 60 min)
-const chatHistory = []; // global : [{ from, text, at }] (40 derniers)
+// Chat global : [{ from, text, at, by }] (CHAT_HISTORY_MAX derniers),
+// persisté sur disque (survit au redémarrage serveur) et envoyé en entier
+// à chaque connexion.
+const CHAT_HISTORY_MAX = 50;
+const CHAT_HISTORY_FILE = join(dataRoot, "chat_history.json");
+const chatHistory = [];
+try {
+  const saved = JSON.parse(readFileSync(CHAT_HISTORY_FILE, "utf8"));
+  if (Array.isArray(saved)) {
+    for (const m of saved.slice(-CHAT_HISTORY_MAX)) {
+      if (m && typeof m === "object" && typeof m.text === "string") chatHistory.push(m);
+    }
+  }
+} catch {}
+let chatSaveTimer = null;
+function saveChatHistory() {
+  if (chatSaveTimer) return;
+  chatSaveTimer = setTimeout(() => {
+    chatSaveTimer = null;
+    try {
+      mkdirSync(dataRoot, { recursive: true });
+      const tmp = `${CHAT_HISTORY_FILE}.tmp`;
+      writeFileSync(tmp, JSON.stringify(chatHistory));
+      renameSync(tmp, CHAT_HISTORY_FILE);
+    } catch {}
+  }, 1000);
+}
+function pushChatHistory(entry) {
+  chatHistory.push(entry);
+  if (chatHistory.length > CHAT_HISTORY_MAX) chatHistory.splice(0, chatHistory.length - CHAT_HISTORY_MAX);
+  saveChatHistory();
+}
 const chatLastById = new Map(); // anti-spam : id -> timestamp dernier message
 const clanChatLast = new Map(); // anti-spam tchat de clan : id -> timestamp
 const cleanClanTag = (tag) => String(tag || "").normalize("NFKC").slice(0, 32);
@@ -4128,7 +4157,7 @@ wss.on("connection", (ws) => {
         state.updatedAt = Date.now();
         instancePeers.set(id, { ws, state, mapId });
         try {
-          ws.send(JSON.stringify({ t: "chatHistory", list: chatHistory.slice(-30) }));
+          ws.send(JSON.stringify({ t: "chatHistory", list: chatHistory }));
         } catch {}
         try {
           ws.send(JSON.stringify(getAuctionSync()));
@@ -4162,7 +4191,7 @@ wss.on("connection", (ws) => {
       sendBoxSync(ws, mapId);
       // Historique du chat global pour le nouveau venu.
       try {
-        ws.send(JSON.stringify({ t: "chatHistory", list: chatHistory.slice(-30) }));
+        ws.send(JSON.stringify({ t: "chatHistory", list: chatHistory }));
       } catch {}
       // Enchères partagées : état complet du cycle pour le nouveau venu.
       try {
@@ -4225,8 +4254,7 @@ wss.on("connection", (ws) => {
         if (!text) return;
         chatLastById.set(id, now);
         const entry = { from: String(state.pseudo || "Pilote").slice(0, 20), text, at: now, by: id };
-        chatHistory.push(entry);
-        if (chatHistory.length > 40) chatHistory.splice(0, chatHistory.length - 40);
+        pushChatHistory(entry);
         broadcastAll(JSON.stringify({ t: "chatMsg", ...entry }));
       } catch {}
       return;
@@ -5562,6 +5590,13 @@ for (const signal of ["SIGINT", "SIGTERM"]) {
   process.on(signal, () => {
     if (shuttingDown) return;
     shuttingDown = true;
+    // Chat : écriture immédiate (pas d'attente du délai d'1 s).
+    try {
+      if (chatSaveTimer) { clearTimeout(chatSaveTimer); chatSaveTimer = null; }
+      mkdirSync(dataRoot, { recursive: true });
+      writeFileSync(`${CHAT_HISTORY_FILE}.tmp`, JSON.stringify(chatHistory));
+      renameSync(`${CHAT_HISTORY_FILE}.tmp`, CHAT_HISTORY_FILE);
+    } catch {}
     // Maintenance ordonnée : demande d'abord aux navigateurs de sauvegarder,
     // puis ferme toutes les sockets avec le code standard "service restart".
     try { broadcastAll(JSON.stringify({ t: "maintenance", reason: "deploy", retryMs: 3000 })); } catch {}

@@ -1428,7 +1428,7 @@ export function ensureNetplayConnection() {
       return;
     }
     if (msg.t === "chatHistory" && Array.isArray(msg.list)) {
-      for (const m of msg.list.slice(-30)) pushChatMessage(m);
+      for (const m of msg.list.slice(-50)) pushChatMessage(m);
       return;
     }
     if (msg.t === "pcannon") {
