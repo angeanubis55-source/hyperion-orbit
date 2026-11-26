@@ -21,7 +21,7 @@ import { winterParisTime } from "../../NPC/NPC_WINTER.js";
 export const LEVIATHAN_GATE_MAP = "leviathan";
 export const LEVIATHAN_GATE_NAME = "Leviathan Gate";
 
-export const LEVIATHAN_GATE_WORLD = Object.freeze({ w: 16000, h: 10000 });
+export const LEVIATHAN_GATE_WORLD = Object.freeze({ w: 8000, h: 5000 });
 
 // Dates de l'événement (mois 0-11, heure de Paris). L'année est fixée :
 // événement unique, à redater pour une nouvelle édition.
