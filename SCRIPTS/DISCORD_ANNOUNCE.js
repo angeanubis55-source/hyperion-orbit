@@ -9,9 +9,6 @@ import { HALLOWEEN_END, HALLOWEEN_START } from "../NPC/NPC_HALLOWEEN.js";
 import { HITAC_SNOW_END_AT, HITAC_SNOW_START_AT } from "../NPC/NPC_HITAC_SNOW.js";
 import { LEVIATHAN_GATE_ENABLED, LEVIATHAN_GATE_END_AT, LEVIATHAN_GATE_START_AT, leviathanGateWindowLabel } from "../SRC/CORE/LEVIATHAN_GATE.js";
 import { SUNDAY_END_MINUTES, SUNDAY_START_MINUTES, SUNDAY_WEEKDAY } from "../NPC/NPC_SUNDAY.js";
-// Retour de la GG d'hiver (2 classements Winter, voir WINTER_RANKING_ENDS).
-export const WINTER_GATE_RETURN_START_AT = Object.freeze({ year: 2026, month: 10, day: 30, hour: 0, minute: 1 });
-export const WINTER_GATE_RETURN_END_AT = Object.freeze({ year: 2026, month: 11, day: 13, hour: 23, minute: 59 });
 import { GALAXY_EVENT_END_MINUTES, GALAXY_EVENT_START_MINUTES, GALAXY_EVENT_WEEKDAY, GALAXY_SATURDAY_WEEKDAY } from "../SRC/CORE/GALAXY_GATES.js";
 
 const PARIS_TZ = "Europe/Paris";
@@ -141,29 +138,6 @@ export const LEVIATHAN_GATE_END_MESSAGE = `@everyone
 La Gate Of Olympus se referme. Merci à tous d'avoir participé !
 > Les gains du dernier classement sont versés au top 30 dans quelques minutes`;
 
-export const WINTER_GATE_RETURN_MESSAGE = `@everyone
-# :santa: RETOUR DE LA GG D'HIVER :santa:
-:clock3: **Du ${dayAt(WINTER_GATE_RETURN_START_AT)} au ${dayAt(WINTER_GATE_RETURN_END_AT)} (heure de Paris)**
-Le convoi du Père Noël reprend la route pour **2 semaines** !
-
-:gift: **Le convoi**
-> Portail au centre des maps **1-3, 2-3 et 3-3**
-> **2 sessions par heure** : entrée de **:00 à :05** et de **:30 à :35**, départ commun à :05 / :35
-> **25 minutes** pour protéger le convoi contre des vagues de plus en plus fortes
-> Récompense de fin selon la **vague atteinte**, la même pour tous les présents
-
-:trophy: **Le classement Winter**
-> Chaque NPC du convoi lâche une **Box de Noël** qui donne des **points givrés**
-> **2 classements d'une semaine** : du 30/11 au 06/12, puis du 07/12 au 13/12
-> Le **top 30** de chaque classement gagne crédits, XP, honneur et ICE-100
-
-Bonne chasse à tous ! :rocket:`;
-
-export const WINTER_GATE_RETURN_END_MESSAGE = `@everyone
-# :santa: FIN DE LA GG D'HIVER :santa:
-Le convoi du Père Noël est rentré au pôle. Merci à tous d'avoir participé !
-> Les gains du dernier classement Winter sont versés au top 30 dans quelques minutes`;
-
 export const GG_SUNDAY_MESSAGE = `@everyone
 # :cyclone: ÉVÉNEMENT DIMANCHE GALAXY GATES :cyclone:
 :clock3: **Ce dimanche de ${hm(GALAXY_EVENT_START_MINUTES)} à ${hm(GALAXY_EVENT_END_MINUTES)} (heure de Paris)**
@@ -243,9 +217,6 @@ const SCHEDULES = [
   // Hitac enneigée (une seule fois, année fixée) : début à l'ouverture, fin à la fermeture.
   // Début Hitac enneigée 2026 : annonce postée à la main le 22/11 à 23h15.
   { key: "hitac_snow_end", ...yearly(HITAC_SNOW_END_AT), message: () => HITAC_SNOW_END_MESSAGE, label: "fin Hitac enneigée" },
-  // Retour de la GG d'hiver (une seule fois, année fixée) : 1 h avant + à la fin.
-  { key: "winter_gate_return_start", ...yearly(WINTER_GATE_RETURN_START_AT, -ANNOUNCE_LEAD_MINUTES), message: () => WINTER_GATE_RETURN_MESSAGE, label: "retour GG d'hiver" },
-  { key: "winter_gate_return_end", ...yearly(WINTER_GATE_RETURN_END_AT), message: () => WINTER_GATE_RETURN_END_MESSAGE, label: "fin GG d'hiver" },
   // Gate Of Olympus (une seule fois, année fixée) : 1 h avant l'ouverture +
   // à la fermeture. Seulement si l'événement est activé (LEVIATHAN_GATE_ENABLED).
   ...(LEVIATHAN_GATE_ENABLED ? [

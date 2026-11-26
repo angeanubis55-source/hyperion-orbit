@@ -193,13 +193,12 @@ export function winterFrostPoints(hpMax) {
 
 // Classement Winter : classements d'une semaine (heure de Paris), chaque
 // année. Le premier démarre avec l'hiver (NPC_WINTER.js, WINTER_START), les
-// suivants de minuit à minuit : 2-8 nov., 9-15, 16-22, puis reprise après
-// une pause : 30 nov.-6 déc. (à 00h01) et 7-13 déc.
+// suivants de minuit à minuit : 2-8 nov., 9-15, 16-22 (3 semaines).
 // [mois de fin, jour de fin, (début [mois, jour] si pause avant)].
 // Hors de ces dates, GG d'hiver et onglet Winter
 // du classement sont indisponibles. user.winter.frostPeriod = classement des
 // frostPoints ; un autre classement compte pour 0.
-export const WINTER_RANKING_ENDS = Object.freeze([[10, 9], [10, 16], [10, 23], [11, 7, [10, 30]], [11, 14]]);
+export const WINTER_RANKING_ENDS = Object.freeze([[10, 9], [10, 16], [10, 23]]);
 const winterPeriodCache = new Map();
 // Les classements de la saison d'hiver de `year`.
 export function winterRankingPeriods(year) {
