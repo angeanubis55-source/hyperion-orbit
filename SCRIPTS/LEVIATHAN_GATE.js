@@ -16,7 +16,7 @@ import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import {
   LEVIATHAN_BOSS, LEVIATHAN_BOSS_POS, LEVIATHAN_FORTRESS_TYPE, LEVIATHAN_GUARDIAN_TYPE, LEVIATHAN_HARBINGER_TYPE,
-  isLeviathanGateActive, leviathanGateSession, leviathanNextAdds, leviathanPulseHitAt,
+  isLeviathanGateActive, leviathanGateSession, leviathanNextAdds, leviathanPulseHitAt, leviathanPulseInterval,
 } from "../SRC/CORE/LEVIATHAN_GATE.js";
 
 // Fin de session affichée avant la fermeture (retour base).
@@ -160,7 +160,7 @@ function startFight(sim, now, restored = null) {
     gate.boss.cycle -= 1;
   }
   releaseAdds(sim);
-  gate.nextPulseAt = now + LEVIATHAN_BOSS.pulseEveryMs[stage];
+  gate.nextPulseAt = now + leviathanPulseInterval(stage, e.hp, e.hpMax);
   gate.nextSeekerAt = now + LEVIATHAN_BOSS.seekerEveryMs;
   gate.pulseQueue = [];
   gate.pushes = [];
@@ -179,7 +179,7 @@ function guardianExplodes(sim, ctx, now) {
   b.hp = e.hp;
   b.hpMax = e.hpMax;
   releaseAdds(sim);
-  gate.nextPulseAt = now + LEVIATHAN_BOSS.pulseEveryMs.fortress;
+  gate.nextPulseAt = now + leviathanPulseInterval("fortress", e.hp, e.hpMax);
   gate.pulseQueue = [];
 }
 
@@ -204,7 +204,7 @@ function tickPulses(room, sim, ctx, now) {
     if (b.stage === "fortress" && Math.random() < LEVIATHAN_BOSS.doublePulseChance) {
       gate.pulseQueue.push(now + LEVIATHAN_BOSS.doublePulseDelayMs);
     }
-    gate.nextPulseAt = now + LEVIATHAN_BOSS.pulseEveryMs[b.stage];
+    gate.nextPulseAt = now + leviathanPulseInterval(b.stage, b.hp, b.hpMax);
   }
   while (gate.pulseQueue.length && now >= gate.pulseQueue[0]) {
     gate.pulseQueue.shift();

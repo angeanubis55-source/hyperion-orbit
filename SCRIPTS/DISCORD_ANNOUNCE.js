@@ -121,8 +121,8 @@ Une nouvelle gate s'ouvre au centre des maps **1-3, 2-3 et 3-3** !
 
 :fire: **Le Dreadfyre Guardian**
 > Fixe au centre de la carte, **100 millions** de points de vie
-> Toutes les 10 s, son **impulsion** balaie la carte : **30 000 dégâts**, elle ralentit et repousse
-> Sous **10 %** de vie, il explose… et la **Dreadfyre Fortress** prend sa place : **300 millions** de points de vie, impulsions plus fréquentes, parfois deux d'affilée
+> Son **impulsion** balaie la carte : **30 000 dégâts**, elle ralentit et repousse. Toutes les **15 s** au début, puis de plus en plus souvent à mesure qu'il perd de la vie (jusqu'à **3 s**)
+> Sous **10 %** de vie, il explose… et la **Dreadfyre Fortress** prend sa place : **300 millions** de points de vie, impulsions toutes les **10 s** puis jusqu'à **2 s**, parfois deux d'affilée
 > **Chacun pour soi** : pas de groupe et pas de PvP dans la gate
 
 :trophy: **Le classement**

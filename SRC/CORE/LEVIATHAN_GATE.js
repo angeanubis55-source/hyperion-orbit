@@ -78,8 +78,12 @@ export const LEVIATHAN_BOSS = Object.freeze({
   windowMs: 3000,
   // Le Guardian explose sous ce pourcentage de vie.
   guardianExplodePct: 0.10,
-  // Intervalle des impulsions ; Fortress : chance d'une 2e juste après.
-  pulseEveryMs: Object.freeze({ guardian: 10000, fortress: 6000 }),
+  // Intervalle des impulsions : pulseEveryMs à pleine vie, qui se resserre
+  // à mesure que le boss perd de la vie jusqu'à pulseMinMs (Guardian : à
+  // 10 %, juste avant d'exploser ; Fortress : à 0). Fortress : chance d'une
+  // 2e impulsion juste après.
+  pulseEveryMs: Object.freeze({ guardian: 15000, fortress: 10000 }),
+  pulseMinMs: Object.freeze({ guardian: 3000, fortress: 2000 }),
   doublePulseChance: 0.35,
   doublePulseDelayMs: 1500,
   // Impulsion : vitesse de l'onde (px/s), ralenti et poussée.
@@ -105,6 +109,16 @@ export const LEVIATHAN_POINT_HP = 50000;
 export const LEVIATHAN_BOSS_DAMAGE_PER_POINT = 100000;
 export function leviathanPoints(hpMax) {
   return Math.max(1, Math.round(Math.max(0, Number(hpMax) || 0) / LEVIATHAN_POINT_HP));
+}
+// Intervalle avant la prochaine impulsion selon la vie du boss.
+export function leviathanPulseInterval(stage, hp, hpMax) {
+  const max = LEVIATHAN_BOSS.pulseEveryMs[stage] ?? LEVIATHAN_BOSS.pulseEveryMs.guardian;
+  const min = LEVIATHAN_BOSS.pulseMinMs[stage] ?? max;
+  const frac = Number(hpMax) > 0 ? Math.max(0, Math.min(1, Number(hp) / Number(hpMax))) : 1;
+  // Guardian : 100 % -> 10 % de vie couvre tout l'écart (il explose à 10 %).
+  const floor = stage === "guardian" ? LEVIATHAN_BOSS.guardianExplodePct : 0;
+  const t = Math.max(0, Math.min(1, (frac - floor) / Math.max(0.0001, 1 - floor)));
+  return Math.round(min + (max - min) * t);
 }
 export function isLeviathanBossType(type) {
   return type === LEVIATHAN_GUARDIAN_TYPE || type === LEVIATHAN_FORTRESS_TYPE;
