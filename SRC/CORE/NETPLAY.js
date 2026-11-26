@@ -1617,7 +1617,7 @@ export function ensureNetplayConnection() {
         reason: String(msg.reason || ""),
         // Boss : stage guardian | fortress, fight adds | window.
         stage: msg.stage === "fortress" ? "fortress" : msg.stage === "guardian" ? "guardian" : "",
-        fight: msg.fight === "window" ? "window" : msg.fight === "adds" ? "adds" : "",
+        fight: ["window", "adds", "open"].includes(msg.fight) ? msg.fight : "",
         windowUntil: num(msg.windowUntil),
         cycle: Math.max(0, Math.floor(num(msg.cycle))),
         adds: Math.max(0, Math.floor(num(msg.adds))),

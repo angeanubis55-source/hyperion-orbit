@@ -110,7 +110,7 @@ Le Hitac Givré a quitté le secteur. Merci à tous d'avoir participé !
 > Les Box Strike encore au sol restent ramassables pendant leurs 24 h`;
 
 export const LEVIATHAN_GATE_MESSAGE = `@everyone
-# :ocean: ÉVÉNEMENT LEVIATHAN GATE :ocean:
+# :zap: ÉVÉNEMENT GATE OF OLYMPUS :zap:
 :clock3: **Du ${dayAt(LEVIATHAN_GATE_START_AT)} au ${dayAt(LEVIATHAN_GATE_END_AT)} (heure de Paris)**
 Une nouvelle gate s'ouvre au centre des maps **1-3, 2-3 et 3-3** !
 
@@ -120,15 +120,13 @@ Une nouvelle gate s'ouvre au centre des maps **1-3, 2-3 et 3-3** !
 > Mort dans la gate : retour à la base, pas de retour avant la session suivante
 
 :fire: **Le Dreadfyre Guardian**
-> Fixe au centre de la carte et **invincible** : il lâche des **Dreadfyre Harbinger**
-> Tous les Harbinger détruits : **3 secondes** pour le frapper, puis il redevient invincible et en relâche **2 de plus**
-> Toutes les 10 s, son **impulsion** balaie la carte : elle ralentit et repousse, sans dégâts
-> Toutes les 5 s, il lâche des **Seeker Rockets** qui traquent le pilote le plus proche et explosent au contact
-> Sous **10 %** de vie, il explose… et la **Dreadfyre Fortress** prend sa place : **+6 Harbinger** par lâcher, impulsions plus fréquentes, parfois deux d'affilée
+> Fixe au centre de la carte, **100 millions** de points de vie
+> Toutes les 10 s, son **impulsion** balaie la carte : **30 000 dégâts**, elle ralentit et repousse
+> Sous **10 %** de vie, il explose… et la **Dreadfyre Fortress** prend sa place : **300 millions** de points de vie, impulsions plus fréquentes, parfois deux d'affilée
 > **Chacun pour soi** : pas de groupe et pas de PvP dans la gate
 
 :trophy: **Le classement**
-> Harbinger détruits et dégâts infligés au boss rapportent des **points Leviathan** (onglet Leviathan du classement)
+> Les dégâts infligés au boss rapportent des **points Olympus** (onglet Olympus du classement)
 > Le coup final sur la Fortress rapporte une grosse récompense
 > **2 classements d'une semaine** : du 30/11 au 06/12, puis du 07/12 au 13/12
 > Le **top 30** de chaque classement gagne crédits, XP et honneur
@@ -136,8 +134,8 @@ Une nouvelle gate s'ouvre au centre des maps **1-3, 2-3 et 3-3** !
 Bonne chasse à tous ! :rocket:`;
 
 export const LEVIATHAN_GATE_END_MESSAGE = `@everyone
-# :ocean: FIN DE L'ÉVÉNEMENT LEVIATHAN GATE :ocean:
-La Leviathan Gate se referme. Merci à tous d'avoir participé !
+# :zap: FIN DE L'ÉVÉNEMENT GATE OF OLYMPUS :zap:
+La Gate Of Olympus se referme. Merci à tous d'avoir participé !
 > Les gains du dernier classement sont versés au top 30 dans quelques minutes`;
 
 export const GG_SUNDAY_MESSAGE = `@everyone
@@ -220,8 +218,8 @@ const SCHEDULES = [
   // Début Hitac enneigée 2026 : annonce postée à la main le 22/11 à 23h15.
   { key: "hitac_snow_end", ...yearly(HITAC_SNOW_END_AT), message: () => HITAC_SNOW_END_MESSAGE, label: "fin Hitac enneigée" },
   // Leviathan Gate (une seule fois, année fixée) : 1 h avant l'ouverture + à la fermeture.
-  { key: "leviathan_gate_start", ...yearly(LEVIATHAN_GATE_START_AT, -ANNOUNCE_LEAD_MINUTES), message: () => LEVIATHAN_GATE_MESSAGE, label: "Leviathan Gate" },
-  { key: "leviathan_gate_end", ...yearly(LEVIATHAN_GATE_END_AT), message: () => LEVIATHAN_GATE_END_MESSAGE, label: "fin Leviathan Gate" },
+  { key: "leviathan_gate_start", ...yearly(LEVIATHAN_GATE_START_AT, -ANNOUNCE_LEAD_MINUTES), message: () => LEVIATHAN_GATE_MESSAGE, label: "Gate Of Olympus" },
+  { key: "leviathan_gate_end", ...yearly(LEVIATHAN_GATE_END_AT), message: () => LEVIATHAN_GATE_END_MESSAGE, label: "fin Gate Of Olympus" },
 ];
 
 // Horaires d'envoi lisibles (journal de démarrage, tests).

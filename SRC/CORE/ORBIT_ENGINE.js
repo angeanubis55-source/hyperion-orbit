@@ -47,7 +47,7 @@ import {
   isWinterGateActive, winterPeriodFrostPoints, winterRankingPeriod,
 } from "./WINTER_CONVOY.js";
 import {
-  LEVIATHAN_BOSS, LEVIATHAN_BOSS_DAMAGE_PER_POINT, LEVIATHAN_GATE_NAME, LEVIATHAN_TYPES, isLeviathanBossType, isLeviathanGateActive,
+  LEVIATHAN_BOSS, LEVIATHAN_BOSS_DAMAGE_PER_POINT, LEVIATHAN_FORTRESS_TYPE, LEVIATHAN_GATE_NAME, LEVIATHAN_TYPES, isLeviathanBossType, isLeviathanGateActive,
   leviathanGateArrival, leviathanGateSession, leviathanGateWindowLabel, leviathanPeriodPoints, leviathanPoints, leviathanRankingPeriod,
 } from "./LEVIATHAN_GATE.js";
 import { blacklightSearchTarget } from "./BOT_SEARCH.js";
@@ -39346,9 +39346,10 @@ function drawMinimap() {
     },
     // Spearhead Recon : radar minimap x2 pendant l'effet.
     // GG d'hiver : les attaquants du convoi restent visibles hors portée radar.
-    shouldShowNpc: (source, enemy, locked) => rules?.convoy === true || shouldDetectNpc(source, enemy, ((player.reconT || 0) > 0 ? NPC_SENSOR_RANGES.radar * 2 : NPC_SENSOR_RANGES.radar), locked),
+    // Leviathan Gate : mini-carte entièrement révélée (NPC et joueurs).
+    shouldShowNpc: (source, enemy, locked) => rules?.convoy === true || rules?.leviathan === true || shouldDetectNpc(source, enemy, ((player.reconT || 0) > 0 ? NPC_SENSOR_RANGES.radar * 2 : NPC_SENSOR_RANGES.radar), locked),
     npcOpacity: (source, enemy, locked) => {
-      if (rules?.convoy === true) return 1;
+      if (rules?.convoy === true || rules?.leviathan === true) return 1;
       const recon = (player.reconT || 0) > 0 ? 2 : 1;
       return npcSensorOpacity(source, enemy, DEFAULT_NPC_RADAR_FADE_START * recon, NPC_SENSOR_RANGES.radar * recon, locked);
     },
@@ -48924,7 +48925,9 @@ function tickLeviathanGate() {
     if (st.phase === "lobby") {
       showNotification(`${LEVIATHAN_GATE_NAME} — départ à ${leviathanGateWindowLabel().start} pour tout le monde, chacun pour soi !`, 4, "info");
     } else if (st.phase === "run") {
-      showNotification("Détruisez les Harbinger pour exposer le Dreadfyre Guardian !", 4, "info");
+      showNotification(LEVIATHAN_BOSS.harbingers
+        ? "Détruisez les Harbinger pour exposer le Dreadfyre Guardian !"
+        : "Détruisez le Dreadfyre Guardian !", 4, "info");
     } else if (st.phase === "done") {
       leaveLeviathanGate(st.reason === "victory"
         ? "Victoire ! La Dreadfyre Fortress est détruite"
@@ -48991,6 +48994,63 @@ function tickLeviathanEvents() {
   }
 }
 
+// Poussée de l'impulsion : le vaisseau est déjà à sa nouvelle position
+// (serveur), on le dessine en train de glisser depuis l'ancienne (amorti sur
+// LEVIATHAN_PUSH_FX_SEC), avec un flash d'impact. Purement visuel.
+const LEVIATHAN_PUSH_FX_SEC = 0.4;
+let leviathanPushFx = null; // { dx, dy, t0, hitX, hitY }
+function startLeviathanPushFx(fromX, fromY, toX, toY) {
+  const dx = Number(fromX) - Number(toX), dy = Number(fromY) - Number(toY);
+  if (!Number.isFinite(dx) || !Number.isFinite(dy) || Math.hypot(dx, dy) > 1500) return;
+  leviathanPushFx = { dx, dy, t0: performance.now(), hitX: Number(fromX), hitY: Number(fromY) };
+  // Petite secousse de caméra à l'impact.
+  if (!camShake || camShake.max < 8) camShake = { t: 0, dur: 0.3, max: 8 };
+}
+function leviathanPushOffset() {
+  const fx = leviathanPushFx;
+  if (!fx) return null;
+  const p = (performance.now() - fx.t0) / 1000 / LEVIATHAN_PUSH_FX_SEC;
+  if (p >= 1) { leviathanPushFx = null; return null; }
+  const k = Math.pow(1 - p, 3); // easeOutCubic inversé : reste en arrière puis rattrape
+  return { x: fx.dx * k, y: fx.dy * k, p };
+}
+// Dessin de la frame avec le vaisseau décalé pendant la poussée.
+function drawWithLeviathanPush() {
+  const off = leviathanPushOffset();
+  if (!off) return draw();
+  const x = player.x, y = player.y;
+  player.x = x + off.x;
+  player.y = y + off.y;
+  try {
+    draw();
+  } finally {
+    player.x = x;
+    player.y = y;
+  }
+}
+// Flash d'impact à l'endroit où l'onde a frappé + traînée vers le vaisseau.
+function drawLeviathanPushFx(ox, oy) {
+  const fx = leviathanPushFx;
+  if (!fx) return;
+  const p = clamp((performance.now() - fx.t0) / 1000 / LEVIATHAN_PUSH_FX_SEC, 0, 1);
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
+  ctx.globalAlpha = (1 - p) * 0.9;
+  ctx.strokeStyle = "rgba(255,170,80,1)";
+  ctx.lineWidth = 6 * (1 - p) + 1;
+  ctx.beginPath();
+  ctx.arc(fx.hitX + ox, fx.hitY + oy, 40 + 160 * p, 0, TAU);
+  ctx.stroke();
+  ctx.lineWidth = 14 * (1 - p);
+  ctx.lineCap = "round";
+  ctx.strokeStyle = "rgba(255,120,50,0.6)";
+  ctx.beginPath();
+  ctx.moveTo(fx.hitX + ox, fx.hitY + oy);
+  ctx.lineTo(player.x + ox, player.y + oy);
+  ctx.stroke();
+  ctx.restore();
+}
+
 // Onde d'impulsion : anneau qui s'étend du boss jusqu'aux bords de la map.
 function drawLeviathanPulses(ox, oy) {
   if (!leviathanPulses.length) return;
@@ -49015,6 +49075,45 @@ function drawLeviathanPulses(ox, oy) {
   ctx.restore();
 }
 
+// Barre de vie du boss (comme le convoi du Père Noël) : nom au-dessus,
+// barre, puis « PV / PV max » en dessous, ancrée au sommet du sprite et en
+// taille écran quel que soit le zoom.
+function drawLeviathanBossHud(ox, oy) {
+  if (!leviathanGate || rules?.leviathan !== true) return;
+  let boss = null;
+  for (const e of enemies) if (e && e.hp > 0 && isLeviathanBossType(e.type)) { boss = e; break; }
+  if (!boss) return;
+  const sp = NPC_TYPES[boss.type]?.sprite;
+  const trim = Number(sp?.h) || 400;
+  const hpMax = Math.max(1, Number(boss.hpMax) || Number(NPC_TYPES[boss.type]?.hp) || 1);
+  const hp = Math.max(0, Number(boss.hp) || 0);
+  ctx.save();
+  const k = worldUiScale();
+  const prevTextScale = worldTextScale;
+  ctx.translate(boss.x + ox, boss.y + oy - trim * 0.42);
+  if (k !== 1) { ctx.scale(k, k); worldTextScale = 1; }
+  const bw = 320, bh = 9, bx = -bw / 2, by = -12;
+  const hpPct = clamp(hp / hpMax, 0, 1);
+  ctx.globalAlpha = 0.95;
+  ctx.lineWidth = 1.5;
+  ctx.strokeStyle = "rgba(255,255,255,0.22)";
+  ctx.fillStyle = "rgba(0,0,0,0.45)";
+  ctx.fillRect(bx, by, bw, bh);
+  ctx.fillStyle = hpHueColor(hpPct, 0.98);
+  ctx.fillRect(bx, by, bw * hpPct, bh);
+  ctx.strokeRect(bx - 0.5, by - 0.5, bw + 1, bh + 1);
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = "#ffe2c6";
+  ctx.font = "800 17px system-ui";
+  ctx.textAlign = "center";
+  ctx.fillText(LEVIATHAN_BOSS_LABEL[boss.type === LEVIATHAN_FORTRESS_TYPE ? "fortress" : "guardian"], 0, by - 12);
+  ctx.font = "700 14px system-ui";
+  ctx.textBaseline = "top";
+  ctx.fillText(`${formatInteger(Math.ceil(hp))} / ${formatInteger(hpMax)}`, 0, by + bh + 5);
+  worldTextScale = prevTextScale;
+  ctx.restore();
+}
+
 // Bandeau en haut de l'écran : boss, état du combat et chrono.
 function drawLeviathanGateHud() {
   if (!leviathanGate || leviathanGate.leaving) return;
@@ -49022,11 +49121,15 @@ function drawLeviathanGateHud() {
   let text;
   if (st?.phase === "run" && st.stage) {
     const boss = LEVIATHAN_BOSS_LABEL[st.stage];
-    const state = st.fight === "window"
-      ? `VULNÉRABLE ${Math.max(0, Math.ceil((st.windowUntil - (Date.now() - (st.skew || 0))) / 1000))} s`
-      : `INVINCIBLE — Harbinger : ${formatInteger(st.harbingers)}`;
     const pct = st.hpMax > 0 ? Math.max(0, Math.ceil(st.hp / st.hpMax * 100)) : 0;
-    text = i18nText(`${boss} ${pct} % — ${state} — ${leviathanGateTimeLeft()}`);
+    if (st.fight === "open") {
+      text = i18nText(`${boss} ${pct} % — ${leviathanGateTimeLeft()}`);
+    } else {
+      const state = st.fight === "window"
+        ? `VULNÉRABLE ${Math.max(0, Math.ceil((st.windowUntil - (Date.now() - (st.skew || 0))) / 1000))} s`
+        : `INVINCIBLE — Harbinger : ${formatInteger(st.harbingers)}`;
+      text = i18nText(`${boss} ${pct} % — ${state} — ${leviathanGateTimeLeft()}`);
+    }
   } else {
     text = i18nText(`${LEVIATHAN_GATE_NAME} — ${leviathanGateTimeLeft()}`);
   }
@@ -49064,7 +49167,7 @@ function grantLeviathanPoints(e) {
   if (isLeviathanBossType(e?.type)) return null;
   const points = leviathanPoints(NPC_TYPES[e?.type]?.hp ?? e?.hpMax);
   if (!addLeviathanPoints(points)) return null;
-  return `Vous avez reçu ${formatInteger(points)} points Leviathan`;
+  return `Vous avez reçu ${formatInteger(points)} points Olympus`;
 }
 
 // Dégâts infligés au boss : 1 point par LEVIATHAN_BOSS_DAMAGE_PER_POINT,
@@ -49085,8 +49188,8 @@ function flushLeviathanWindowPoints() {
   if (!g || !(g.windowPoints > 0)) return;
   const points = g.windowPoints;
   g.windowPoints = 0;
-  showNotification(`Vous avez reçu ${formatInteger(points)} points Leviathan`, 3, "reward");
-  try { addGameLog(`${LEVIATHAN_GATE_NAME} : +${formatInteger(points)} points Leviathan (dégâts au boss)`, "reward"); } catch {}
+  showNotification(`Vous avez reçu ${formatInteger(points)} points Olympus`, 3, "reward");
+  try { addGameLog(`${LEVIATHAN_GATE_NAME} : +${formatInteger(points)} points Olympus (dégâts au boss)`, "reward"); } catch {}
 }
 
 // Classement Leviathan : gains de fin de classement (même circuit que le
@@ -49383,6 +49486,7 @@ function draw() {
   drawZoneWalls(ox, oy);
   drawWinterConvoy(ox, oy);
   drawLeviathanPulses(ox, oy);
+  drawLeviathanPushFx(ox, oy);
 
   drawZonePortals(ox, oy);
   drawSafeModules(ox, oy);
@@ -49788,7 +49892,8 @@ function draw() {
     try {
       // Bots JPC : plaque joueur (pseudo, grade/firme BOT, titre violet).
       if (e.isJpcBot === true) drawJpcBotPlate(e, shouldShowNpcBars(e, selectedEnemyForBars));
-      else drawNpcStatus(
+      // Leviathan Gate : le boss a sa grande barre (drawLeviathanBossHud).
+      else if (!(rules?.leviathan === true && isLeviathanBossType(e.type))) drawNpcStatus(
         ctx,
         e,
         npcLabelFor(e),
@@ -50489,6 +50594,8 @@ function draw() {
   ctx.restore();
   // GG d'hiver : nom, chrono et vie du convoi toujours au premier plan.
   drawWinterConvoyHud(ox, oy);
+  // Leviathan Gate : nom et vie du boss, au premier plan.
+  drawLeviathanBossHud(ox, oy);
   // Effet de saut (sur le vaisseau) : suit le zoom monde.
   drawStarJumpHud(px, py);
   // Fin du monde zoomé : minimap, toasts, radiation en taille écran.
@@ -51307,7 +51414,7 @@ function frame(t) {
 
     if (document.visibilityState !== "hidden") {
       lastDrawDt = Math.min(0.1, realDt);
-      measureGameTask("frame.draw", draw);
+      measureGameTask("frame.draw", drawWithLeviathanPush);
       if (botMinimalRenderActive()) {
         minimalUiRefreshAcc += realDt;
         // Les textes, jauges et boutons du HUD n'ont pas besoin d'etre
@@ -51347,6 +51454,9 @@ window.addEventListener("orbit:server-position", async (event) => {
       const result = await goToMapFast(correction.map);
       if (result !== "switched" && result !== "same") return;
     }
+    // Poussée de l'impulsion (Leviathan Gate) : glissement visuel depuis
+    // l'ancienne position (la position réelle, elle, suit le serveur).
+    if (correction.push === true) startLeviathanPushFx(player.x, player.y, x, y);
     player.x = x; player.y = y;
     player.vx = 0; player.vy = 0;
     moveTarget.active = false;

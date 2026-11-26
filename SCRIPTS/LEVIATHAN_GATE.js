@@ -37,7 +37,7 @@ const gate = {
   endAt: 0,
   reason: "", // fin : "victory" | "time" | "empty"
   doneAt: 0,
-  // Boss : stage guardian | fortress ; fight adds (invulnérable, Harbinger en
+  // Boss : stage guardian | fortress ; fight open (seul, vulnérable) | adds (invulnérable, Harbinger en
   // vie) | window (vulnérable jusqu'à windowUntil).
   boss: null, // { uid, stage, fight, adds, cycle, windowUntil, hp, hpMax }
   nextPulseAt: 0,
@@ -129,9 +129,16 @@ function setInvulnerable(sim, on) {
   if (e) e.escortShieldOn = on === true;
 }
 
-// Nouveau lâcher : boss invulnérable, N Harbinger autour de lui.
+// Nouveau lâcher : boss invulnérable, N Harbinger autour de lui. Sans
+// Harbinger (LEVIATHAN_BOSS.harbingers) : boss seul, toujours vulnérable.
 function releaseAdds(sim) {
   const b = gate.boss;
+  if (!LEVIATHAN_BOSS.harbingers) {
+    b.fight = "open";
+    b.windowUntil = 0;
+    setInvulnerable(sim, false);
+    return;
+  }
   b.adds = leviathanNextAdds(b.adds, b.stage);
   b.cycle += 1;
   b.fight = "adds";
@@ -189,7 +196,7 @@ function emitPulse(room, ctx, now) {
   }
 }
 
-function tickPulses(room, ctx, now) {
+function tickPulses(room, sim, ctx, now) {
   const b = gate.boss;
   if (!b) return;
   if (now >= gate.nextPulseAt) {
@@ -209,6 +216,12 @@ function tickPulses(room, ctx, now) {
   gate.pushes = gate.pushes.filter((p) => now < p.at);
   for (const p of due) {
     try { ctx.push(p.pid, p.bx, p.by, LEVIATHAN_BOSS.pulsePush); } catch {}
+    // Dégâts de l'impulsion (pipeline des tirs NPC : bouclier, feed, mort…).
+    try {
+      if (LEVIATHAN_BOSS.pulseDamage > 0 && gate.boss && Array.isArray(sim?.playerHits)) {
+        sim.playerHits.push({ playerId: p.pid, npcUid: String(gate.boss.uid), damage: LEVIATHAN_BOSS.pulseDamage, kind: "pulse" });
+      }
+    } catch {}
   }
 }
 
@@ -359,7 +372,9 @@ function tickInner(room, sim, ctx, now) {
       guardianExplodes(sim, ctx, now);
       return;
     }
-    if (b.fight === "adds" && sim.gateWaveAlive() === 0) {
+    if (!LEVIATHAN_BOSS.harbingers) {
+      // Boss seul : toujours vulnérable.
+    } else if (b.fight === "adds" && sim.gateWaveAlive() === 0) {
       // Tous les Harbinger tués : fenêtre de dégâts.
       b.fight = "window";
       b.windowUntil = now + LEVIATHAN_BOSS.windowMs;
@@ -367,9 +382,9 @@ function tickInner(room, sim, ctx, now) {
     } else if (b.fight === "window" && now >= b.windowUntil) {
       releaseAdds(sim);
     }
-    tickPulses(room, ctx, now);
+    tickPulses(room, sim, ctx, now);
     // Salve de Seeker Rockets toutes les 5 s, une par joueur en vie.
-    if (now >= gate.nextSeekerAt) {
+    if (LEVIATHAN_BOSS.seekers && now >= gate.nextSeekerAt) {
       gate.nextSeekerAt = now + LEVIATHAN_BOSS.seekerEveryMs;
       try { sim.spawnGateSeekers(e, present, Date.now(), LEVIATHAN_BOSS.seekerMax); } catch {}
     }

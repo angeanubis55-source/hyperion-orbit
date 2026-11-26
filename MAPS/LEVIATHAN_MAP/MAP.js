@@ -33,7 +33,7 @@ export function init() {
       // ✅ Leviathan Gate partagée (SRC/CORE/LEVIATHAN_GATE.js) : session
       // horaire commune, vagues infinies, chacun pour soi, pas de PvP.
       mode: "zone",
-      mapLabel: "Leviathan Gate",
+      mapLabel: "Gate Of Olympus",
       leviathan: true,
       noBackground: true,
       // ✅ mort dans la gate : réparation à la base uniquement (pas de retour

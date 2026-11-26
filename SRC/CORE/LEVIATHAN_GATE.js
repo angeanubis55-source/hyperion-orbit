@@ -19,7 +19,7 @@
 import { winterParisTime } from "../../NPC/NPC_WINTER.js";
 
 export const LEVIATHAN_GATE_MAP = "leviathan";
-export const LEVIATHAN_GATE_NAME = "Leviathan Gate";
+export const LEVIATHAN_GATE_NAME = "Gate Of Olympus";
 
 export const LEVIATHAN_GATE_WORLD = Object.freeze({ w: 8000, h: 5000 });
 
@@ -41,7 +41,7 @@ export const LEVIATHAN_GATE_TEST = true;
 
 // Sessions : une par heure, entrée de :MM à :MM+5 (MM = minute d'ouverture),
 // fin pile une heure après l'ouverture.
-export const LEVIATHAN_GATE_OPEN_MINUTE = 3;
+export const LEVIATHAN_GATE_OPEN_MINUTE = 23;
 export const LEVIATHAN_GATE_PERIOD_MS = 60 * 60 * 1000;
 export const LEVIATHAN_GATE_ENTRY_MS = 5 * 60 * 1000;
 export const LEVIATHAN_GATE_RUN_MS = LEVIATHAN_GATE_PERIOD_MS - LEVIATHAN_GATE_ENTRY_MS;
@@ -65,6 +65,11 @@ export const LEVIATHAN_HARBINGER_TYPE = "npc_Dreadfyre_Harbinger";
 export const LEVIATHAN_TYPES = Object.freeze([LEVIATHAN_GUARDIAN_TYPE, LEVIATHAN_FORTRESS_TYPE, LEVIATHAN_HARBINGER_TYPE, "npc_Barrage_Seeker_Rocket"]);
 
 export const LEVIATHAN_BOSS = Object.freeze({
+  // Interrupteurs : lâchers de Harbinger (et phases invincible / fenêtre de
+  // dégâts) et salves de Seeker Rockets. Désactivés : le boss est seul et
+  // toujours vulnérable.
+  harbingers: false,
+  seekers: false,
   // Premier lâcher de Harbinger.
   firstAdds: 10,
   // Harbinger en plus à chaque nouveau lâcher.
@@ -82,6 +87,8 @@ export const LEVIATHAN_BOSS = Object.freeze({
   pulseSlowPct: 50,
   pulseSlowSec: 3,
   pulsePush: 250,
+  // Dégâts de l'impulsion (bouclier puis coque, comme un tir).
+  pulseDamage: 30000,
   // Lâcher des Harbinger : autour du boss.
   addsDistance: Object.freeze([450, 900]),
   // Seeker Rockets (celles du Strokelight Barrage) : une salve toutes les

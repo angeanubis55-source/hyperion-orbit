@@ -3138,7 +3138,7 @@ wss.on("connection", (ws) => {
       // Leviathan Gate : chacun pour soi, ni création ni invitation ni acceptation.
       if ((msg.t === "groupCreate" || msg.t === "groupInvite" || msg.t === "groupAccept")
         && String(state.serverMap || mapId || "").toLowerCase() === "leviathan") {
-        try { if (ws.readyState === 1) ws.send(JSON.stringify({ t: "groupNotice", text: "Impossible dans la Leviathan Gate : chacun pour soi." })); } catch {}
+        try { if (ws.readyState === 1) ws.send(JSON.stringify({ t: "groupNotice", text: "Impossible dans la Gate Of Olympus : chacun pour soi." })); } catch {}
         return;
       }
       try {
@@ -5232,8 +5232,9 @@ setInterval(() => {
               if (!safeHitOk) continue;
             }
             const scramble = activeAbility(s, "ability_mimesis_scramble", now);
-            // JAMX Creed de NPC : impact de zone, jamais esquivé.
-            if (hit?.kind !== "creed" && Math.random() < Math.max(0, Math.min(0.9, (Number(s.evade) || 0) + (scramble ? 0.65 : 0)))) continue;
+            // JAMX Creed de NPC / impulsion de la Gate Of Olympus : impact de
+            // zone, jamais esquivé.
+            if (hit?.kind !== "creed" && hit?.kind !== "pulse" && Math.random() < Math.max(0, Math.min(0.9, (Number(s.evade) || 0) + (scramble ? 0.65 : 0)))) continue;
             const hitNow = Date.now();
             const damage = Math.max(0, Math.min(1e8, Number(hit?.damage) || 0));
             if (!(damage > 0)) continue;
@@ -5418,7 +5419,7 @@ setInterval(() => {
               const ny = Math.max(80, Math.min(Number(world.h) - 80, Number(s.y) + (dy / len) * dist));
               Object.assign(s, { x: nx, y: ny, vx: 0, vy: 0, moving: false, motionBlocked: false,
                 teleportSeq: (Number(s.teleportSeq) || 0) + 1, moveBuck: 0, moveBuckT: now });
-              try { if (entry.ws?.readyState === 1) entry.ws.send(JSON.stringify({ t: "stateCorrection", map: key, x: nx, y: ny })); } catch {}
+              try { if (entry.ws?.readyState === 1) entry.ws.send(JSON.stringify({ t: "stateCorrection", map: key, x: nx, y: ny, push: true })); } catch {}
             },
           });
         }

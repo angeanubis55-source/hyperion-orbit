@@ -105,7 +105,7 @@ export function initRankingsUI() {
   });
   setupEventRanking({
     tabKey: "leviathan", timerId: "rankingLeviathanTimer", helpId: "rankingLeviathanHelp", tipId: "rankingLeviathanRewards",
-    periodOf: () => leviathanRankingPeriod(), rewards: LEVIATHAN_RANKING_REWARDS, title: "Gains du classement Leviathan",
+    periodOf: () => leviathanRankingPeriod(), rewards: LEVIATHAN_RANKING_REWARDS, title: "Gains du classement Olympus",
     columns: [["credits", "Crédits"], ["exp", "XP"], ["honor", "Honneur"]],
   });
   const tickEventTimers = () => { for (const tick of eventTickers) { try { tick(); } catch {} } };
