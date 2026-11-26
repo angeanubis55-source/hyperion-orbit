@@ -2041,7 +2041,9 @@ export const NPC_TYPES = {
     passiveNative: false,
     spriteSpeed: 18,
     bulletSprite: { src: "COMBAT/MUNITIONS/SPECIAL8.png", w: 55, h: 17, glow: true, invert: true },
-    r: 180, hp: 250000, shield: 150000, speed: 250, bulletDmg: 3000, bulletSpeed: 4500, shootRange: 550,
+    // Leviathan Gate : boss fixe de 2e phase (SCRIPTS/LEVIATHAN_GATE.js),
+    // immobile, ne tire pas (impulsions pilotées par le serveur).
+    r: 320, hp: 60000000, shield: 0, speed: 0, bulletDmg: 0, bulletSpeed: 4500, shootRange: 0,
   },
   npc_Dreadfyre_Guardian: {
     name: "-=[ Dreadfyre Guardian ]=-",
@@ -2050,7 +2052,8 @@ export const NPC_TYPES = {
     passiveNative: false,
     spriteSpeed: 18,
     bulletSprite: { src: "COMBAT/MUNITIONS/SPECIAL8.png", w: 55, h: 17, glow: true, invert: true },
-    r: 90, hp: 250000, shield: 150000, speed: 250, bulletDmg: 3000, bulletSpeed: 4500, shootRange: 550,
+    // Leviathan Gate : boss fixe de 1re phase (explose sous 10 %).
+    r: 170, hp: 30000000, shield: 0, speed: 0, bulletDmg: 0, bulletSpeed: 4500, shootRange: 0,
   },
   npc_Dreadfyre_Harbinger: {
     name: "-=[ Dreadfyre Harbinger ]=-",

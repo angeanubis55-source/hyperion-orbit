@@ -171,6 +171,20 @@ function reapSoloGhost(pid, ctx) {
   } catch {}
 }
 
+// Leviathan Gate (chacun pour soi) : sortie forcée du groupe et des
+// invitations en cours, sans délai de grâce.
+export function socialForceLeave(pid, ctx) {
+  const key = String(pid);
+  try {
+    for (const [target, inv] of invites) {
+      if (String(target) === key || String(inv?.from) === key) invites.delete(target);
+    }
+    const left = leaveGroup(key, ctx);
+    if (left) ctx.sendTo(key, { t: "groupUpdate", group: null });
+    return left;
+  } catch { return false; }
+}
+
 export function socialGroupOf(pid) {
   return inRealGroup(pid);
 }

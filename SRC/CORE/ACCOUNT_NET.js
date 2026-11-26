@@ -1051,10 +1051,16 @@ export async function apiClanBank(action, body = {}) {
 // Gains de fin de classement Winter : le serveur les ajoute au compte et le
 // renvoie (même circuit que la banque de clan : gains jamais dupliqués ni
 // écrasés par une sauvegarde en attente). rewards vide = rien à recevoir.
-export async function apiWinterRankingClaim() {
+export function apiWinterRankingClaim() {
+  return rankingClaim("/api/winter/claim", "winterRankingClaim", "winterRanking");
+}
+// Gains de fin de classement Leviathan Gate : même circuit.
+export function apiLeviathanRankingClaim() {
+  return rankingClaim("/api/leviathan/claim", "leviathanRankingClaim", "leviathanRanking");
+}
+async function rankingClaim(path, operationKey, reason) {
   if (!netActive()) return { ok: false, error: "Session serveur inactive." };
   const busy = accountWriteNotice();
-  const operationKey = "winterRankingClaim";
   if (!beginAuthoritativeOperation(operationKey)) return busy;
   const token = memToken;
   const userId = memUser.id;
@@ -1069,11 +1075,11 @@ export async function apiWinterRankingClaim() {
     writer = authoritativeWriter ? await waitForAuthoritativeWriter() : createAuthoritativeWriter();
     if (!netActive() || memToken !== token || memUser.id !== userId) return { ok: false, ignored: true };
     clearTimeout(saveTimer); saveTimer = null;
-    const out = await api("/api/winter/claim", { method: "POST", body: {}, token });
+    const out = await api(path, { method: "POST", body: {}, token });
     if (!netActive() || memToken !== token || memUser.id !== userId) return { ok: false, ignored: true };
     if (out?.ok && out.user) {
-      adoptServerUser(out.user, { reason: "winterRanking" });
-      try { window.dispatchEvent(new CustomEvent("orbit:user-updated", { detail: { userId: memUser.id, revision: memUser.revision, source: "winterRanking" } })); } catch {}
+      adoptServerUser(out.user, { reason });
+      try { window.dispatchEvent(new CustomEvent("orbit:user-updated", { detail: { userId: memUser.id, revision: memUser.revision, source: reason } })); } catch {}
     }
     return out || { ok: false, error: "Réponse serveur invalide." };
   } catch {

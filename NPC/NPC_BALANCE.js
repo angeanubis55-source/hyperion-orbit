@@ -261,7 +261,8 @@ export const NPC_REWARDS = Object.freeze({
   npc_Hitac_Underling: { credits: 50000, exp: 25000, honor: 100 },
   npc_Hitac_Underboss: { credits: 50000, exp: 25000, honor: 100 },
   npc_Mimesis_Turret: { credits: 128000, exp: 25600, honor: 128 },
-  npc_Dreadfyre_Fortress: { credits: 50000, exp: 25000, honor: 100 },
+  // Leviathan Gate : coup final de la Fortress = récompense d'un Emperor Sibelon.
+  npc_Dreadfyre_Fortress: { credits: 42000000, exp: 15360000, honor: 61440 },
   npc_Dreadfyre_Guardian: { credits: 50000, exp: 25000, honor: 100 },
   npc_Dreadfyre_Harbinger: { credits: 50000, exp: 25000, honor: 100 },
   npc_Nightmare_Reaper: { credits: 50000, exp: 25000, honor: 100 },

@@ -7,6 +7,7 @@ import { getFaction } from "../SRC/CORE/FACTIONS.js";
 import { formatInteger } from "../SRC/CORE/NUMBER_FORMAT.js";
 import { escapeHtml } from "./UI_DOM.js";
 import { WINTER_RANKING_REWARDS, winterRankingPeriod } from "../SRC/CORE/WINTER_CONVOY.js";
+import { LEVIATHAN_RANKING_REWARDS, leviathanRankingPeriod } from "../SRC/CORE/LEVIATHAN_GATE.js";
 
 let started = false;
 
@@ -19,47 +20,47 @@ export function initRankingsUI() {
     honor: { body: document.getElementById("rankingRowsHonor"), status: document.getElementById("rankingStatusHonor") },
     eternal: { body: document.getElementById("rankingRowsEternal"), status: document.getElementById("rankingStatusEternal") },
     winter: { body: document.getElementById("rankingRowsWinter"), status: document.getElementById("rankingStatusWinter") },
+    leviathan: { body: document.getElementById("rankingRowsLeviathan"), status: document.getElementById("rankingStatusLeviathan") },
   };
   if (!boards.board.body) return;
 
-  // Classement Winter (WINTER_CONVOY.js) : onglet masqué hors des 6
-  // classements de la saison, sinon compte à rebours jusqu'à sa fin.
-  const winterTimer = document.getElementById("rankingWinterTimer");
-  const winterTab = document.querySelector('#rankingWindow [data-ranking-tab="winter"]');
-  function tickWinterTimer() {
-    const period = winterRankingPeriod();
-    if (winterTab && (winterTab.style.display === "none") !== !period) {
-      winterTab.style.display = period ? "" : "none";
-      if (!period && winterTab.classList.contains("active")) {
-        document.querySelector('#rankingWindow [data-ranking-tab="board"]')?.click();
+  // Classements d'événement (Winter : WINTER_CONVOY.js, Leviathan :
+  // LEVIATHAN_GATE.js) : onglet masqué hors de leurs classements, sinon
+  // compte à rebours jusqu'à la fin du classement en cours, et « ? » des
+  // gains par place (panneau centré sur la fenêtre, survol ou clic).
+  const eventTickers = [];
+  function setupEventRanking({ tabKey, timerId, helpId, tipId, periodOf, rewards, title, columns }) {
+    const timer = document.getElementById(timerId);
+    const tab = document.querySelector(`#rankingWindow [data-ranking-tab="${tabKey}"]`);
+    const tick = () => {
+      const period = periodOf();
+      if (tab && (tab.style.display === "none") !== !period) {
+        tab.style.display = period ? "" : "none";
+        if (!period && tab.classList.contains("active")) {
+          document.querySelector('#rankingWindow [data-ranking-tab="board"]')?.click();
+        }
       }
-    }
-    if (!winterTimer || !period) return;
-    const left = Math.max(0, Math.floor((period.endAt - Date.now()) / 1000));
-    const d = Math.floor(left / 86400), h = Math.floor(left % 86400 / 3600);
-    const m = Math.floor(left % 3600 / 60), s = left % 60;
-    winterTimer.textContent = `Fin du classement hebdomadaire dans ${d} jour${d > 1 ? "s" : ""} ${h} h ${m} min ${s} s`;
-  }
-  setInterval(tickWinterTimer, 1000);
-
-  // « ? » du classement Winter : gains par place, panneau centré sur la
-  // fenêtre (survol ou clic), comme les récompenses des Galaxy Gates.
-  {
-    const trigger = document.getElementById("rankingWinterHelp");
-    const tip = document.getElementById("rankingWinterRewards");
+      if (!timer || !period) return;
+      const left = Math.max(0, Math.floor((period.endAt - Date.now()) / 1000));
+      const d = Math.floor(left / 86400), h = Math.floor(left % 86400 / 3600);
+      const m = Math.floor(left % 3600 / 60), s = left % 60;
+      timer.textContent = `Fin du classement hebdomadaire dans ${d} jour${d > 1 ? "s" : ""} ${h} h ${m} min ${s} s`;
+    };
+    eventTickers.push(tick);
+    const trigger = document.getElementById(helpId);
+    const tip = document.getElementById(tipId);
     const win = document.getElementById("rankingWindow");
     const topLayer = typeof tip?.showPopover === "function";
     if (!topLayer) tip?.removeAttribute("popover");
     const place = (n) => (n === 1 ? "1er" : `${n}e`);
     if (tip) {
-      tip.innerHTML = `<strong>Gains du classement Winter</strong>` +
+      tip.innerHTML = `<strong>${escapeHtml(title)}</strong>` +
         `<div class="rankingRewardList">` +
-        `<div class="rankingRewardTier rankingRewardHead"><b>Place</b><span>Crédits</span><span>XP</span><span>Honneur</span><span>ICE-100</span></div>` +
-        // 10e -> 30e : même gain, une seule ligne.
-        WINTER_RANKING_REWARDS.slice(0, 10).map((r) =>
-          `<div class="rankingRewardTier"><b>${r.rank === 10 ? `${place(10)} → ${place(WINTER_RANKING_REWARDS.length)}` : place(r.rank)}</b>` +
-          `<span>${formatInteger(r.credits)}</span><span>${formatInteger(r.exp)}</span>` +
-          `<span>${formatInteger(r.honor)}</span><span>${formatInteger(r.ice)}</span></div>`).join("") +
+        `<div class="rankingRewardTier rankingRewardHead"><b>Place</b>${columns.map(([, label]) => `<span>${escapeHtml(label)}</span>`).join("")}</div>` +
+        // 10e -> dernier : même gain, une seule ligne.
+        rewards.slice(0, 10).map((r) =>
+          `<div class="rankingRewardTier"><b>${r.rank === 10 ? `${place(10)} → ${place(rewards.length)}` : place(r.rank)}</b>` +
+          columns.map(([key]) => `<span>${formatInteger(r[key])}</span>`).join("") + `</div>`).join("") +
         `</div>`;
     }
     const show = () => {
@@ -82,7 +83,7 @@ export function initRankingsUI() {
       if (trigger?.matches(":hover") || tip?.matches(":hover")) return;
       hide();
     };
-    trigger?.setAttribute("aria-controls", "rankingWinterRewards");
+    trigger?.setAttribute("aria-controls", tipId);
     trigger?.setAttribute("aria-expanded", "false");
     trigger?.addEventListener("pointerenter", show);
     trigger?.addEventListener("pointerleave", leave);
@@ -97,6 +98,18 @@ export function initRankingsUI() {
     });
     document.querySelectorAll("#rankingWindow [data-ranking-tab]").forEach((btn) => btn.addEventListener("click", hide));
   }
+  setupEventRanking({
+    tabKey: "winter", timerId: "rankingWinterTimer", helpId: "rankingWinterHelp", tipId: "rankingWinterRewards",
+    periodOf: () => winterRankingPeriod(), rewards: WINTER_RANKING_REWARDS, title: "Gains du classement Winter",
+    columns: [["credits", "Crédits"], ["exp", "XP"], ["honor", "Honneur"], ["ice", "ICE-100"]],
+  });
+  setupEventRanking({
+    tabKey: "leviathan", timerId: "rankingLeviathanTimer", helpId: "rankingLeviathanHelp", tipId: "rankingLeviathanRewards",
+    periodOf: () => leviathanRankingPeriod(), rewards: LEVIATHAN_RANKING_REWARDS, title: "Gains du classement Leviathan",
+    columns: [["credits", "Crédits"], ["exp", "XP"], ["honor", "Honneur"]],
+  });
+  const tickEventTimers = () => { for (const tick of eventTickers) { try { tick(); } catch {} } };
+  setInterval(tickEventTimers, 1000);
 
   function renderBoard(kind, list) {
     const target = boards[kind];
@@ -113,6 +126,11 @@ export function initRankingsUI() {
     } else if (kind === "eternal") {
       // ✅ vagues Eternal terminées (triées côté serveur, seules les >0 sont envoyées).
       valueOf = (row) => Number(row.eternalWaves) || 0;
+      sorted = sorted.filter((row) => valueOf(row) > 0);
+      sorted.sort((a, b) => valueOf(b) - valueOf(a));
+    } else if (kind === "leviathan") {
+      // ✅ points Leviathan (triés côté serveur, seuls les >0 sont envoyés).
+      valueOf = (row) => Number(row.leviathanPoints) || 0;
       sorted = sorted.filter((row) => valueOf(row) > 0);
       sorted.sort((a, b) => valueOf(b) - valueOf(a));
     } else if (kind === "winter") {
@@ -166,6 +184,7 @@ export function initRankingsUI() {
       renderBoard("honor", out.list);
       renderBoard("eternal", Array.isArray(out.eternal) ? out.eternal : []);
       renderBoard("winter", Array.isArray(out.winter) ? out.winter : []);
+      renderBoard("leviathan", Array.isArray(out.leviathan) ? out.leviathan : []);
     } catch {
       if (!shouldRefreshWindow("rankingWindow")) return;
       Object.values(boards).forEach((t) => { if (t.status) t.status.textContent = "Hors ligne (serveur injoignable)"; });
@@ -206,10 +225,10 @@ export function initRankingsUI() {
         document.querySelectorAll("#rankingWindow [data-ranking-pane]").forEach((pane) => {
           pane.classList.toggle("active", pane.dataset.rankingPane === next);
         });
-        if (next === "board" || next === "exp" || next === "honor" || next === "eternal" || next === "winter") load();
+        if (next === "board" || next === "exp" || next === "honor" || next === "eternal" || next === "winter" || next === "leviathan") load();
         else try { window.dispatchEvent(new CustomEvent("orbit:ranking-npcs-shown")); } catch {}
       });
     });
   } catch {}
-  tickWinterTimer();
+  tickEventTimers();
 }

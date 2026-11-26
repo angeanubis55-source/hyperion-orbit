@@ -7,6 +7,7 @@
 //   (vérifie le webhook sans @everyone ; --test-ufonit poste la vraie annonce)
 import { HALLOWEEN_END, HALLOWEEN_START } from "../NPC/NPC_HALLOWEEN.js";
 import { HITAC_SNOW_END_AT, HITAC_SNOW_START_AT } from "../NPC/NPC_HITAC_SNOW.js";
+import { LEVIATHAN_GATE_END_AT, LEVIATHAN_GATE_START_AT, leviathanGateWindowLabel } from "../SRC/CORE/LEVIATHAN_GATE.js";
 import { SUNDAY_END_MINUTES, SUNDAY_START_MINUTES, SUNDAY_WEEKDAY } from "../NPC/NPC_SUNDAY.js";
 import { GALAXY_EVENT_END_MINUTES, GALAXY_EVENT_START_MINUTES, GALAXY_EVENT_WEEKDAY, GALAXY_SATURDAY_WEEKDAY } from "../SRC/CORE/GALAXY_GATES.js";
 
@@ -108,6 +109,36 @@ export const HITAC_SNOW_END_MESSAGE = `@everyone
 Le Hitac Givré a quitté le secteur. Merci à tous d'avoir participé !
 > Les Box Strike encore au sol restent ramassables pendant leurs 24 h`;
 
+export const LEVIATHAN_GATE_MESSAGE = `@everyone
+# :ocean: ÉVÉNEMENT LEVIATHAN GATE :ocean:
+:clock3: **Du ${dayAt(LEVIATHAN_GATE_START_AT)} au ${dayAt(LEVIATHAN_GATE_END_AT)} (heure de Paris)**
+Une nouvelle gate s'ouvre au centre des maps **1-3, 2-3 et 3-3** !
+
+:hourglass: **Les sessions**
+> Une session **toutes les heures** : entrée ouverte de **${leviathanGateWindowLabel().open} à ${leviathanGateWindowLabel().start}**, départ commun à ${leviathanGateWindowLabel().start}
+> Fin **une heure après l'ouverture** (ou à la chute de la Fortress), tout le monde est renvoyé à sa base
+> Mort dans la gate : retour à la base, pas de retour avant la session suivante
+
+:fire: **Le Dreadfyre Guardian**
+> Fixe au centre de la carte et **invincible** : il lâche des **Dreadfyre Harbinger**
+> Tous les Harbinger détruits : **15 secondes** pour le frapper, puis il redevient invincible et en relâche **2 de plus**
+> Toutes les 10 s, son **impulsion** balaie la carte : elle ralentit et repousse, sans dégâts
+> Sous **10 %** de vie, il explose… et la **Dreadfyre Fortress** prend sa place : **+6 Harbinger** par lâcher, impulsions plus fréquentes, parfois deux d'affilée
+> **Chacun pour soi** : pas de groupe et pas de PvP dans la gate
+
+:trophy: **Le classement**
+> Harbinger détruits et dégâts infligés au boss rapportent des **points Leviathan** (onglet Leviathan du classement)
+> Le coup final sur la Fortress rapporte une grosse récompense
+> **2 classements d'une semaine** : du 30/11 au 06/12, puis du 07/12 au 13/12
+> Le **top 30** de chaque classement gagne crédits, XP et honneur
+
+Bonne chasse à tous ! :rocket:`;
+
+export const LEVIATHAN_GATE_END_MESSAGE = `@everyone
+# :ocean: FIN DE L'ÉVÉNEMENT LEVIATHAN GATE :ocean:
+La Leviathan Gate se referme. Merci à tous d'avoir participé !
+> Les gains du dernier classement sont versés au top 30 dans quelques minutes`;
+
 export const GG_SUNDAY_MESSAGE = `@everyone
 # :cyclone: ÉVÉNEMENT DIMANCHE GALAXY GATES :cyclone:
 :clock3: **Ce dimanche de ${hm(GALAXY_EVENT_START_MINUTES)} à ${hm(GALAXY_EVENT_END_MINUTES)} (heure de Paris)**
@@ -187,6 +218,9 @@ const SCHEDULES = [
   // Hitac enneigée (une seule fois, année fixée) : début à l'ouverture, fin à la fermeture.
   // Début Hitac enneigée 2026 : annonce postée à la main le 22/11 à 23h15.
   { key: "hitac_snow_end", ...yearly(HITAC_SNOW_END_AT), message: () => HITAC_SNOW_END_MESSAGE, label: "fin Hitac enneigée" },
+  // Leviathan Gate (une seule fois, année fixée) : 1 h avant l'ouverture + à la fermeture.
+  { key: "leviathan_gate_start", ...yearly(LEVIATHAN_GATE_START_AT, -ANNOUNCE_LEAD_MINUTES), message: () => LEVIATHAN_GATE_MESSAGE, label: "Leviathan Gate" },
+  { key: "leviathan_gate_end", ...yearly(LEVIATHAN_GATE_END_AT), message: () => LEVIATHAN_GATE_END_MESSAGE, label: "fin Leviathan Gate" },
 ];
 
 // Horaires d'envoi lisibles (journal de démarrage, tests).

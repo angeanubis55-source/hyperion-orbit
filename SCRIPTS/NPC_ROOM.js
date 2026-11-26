@@ -19,6 +19,7 @@ import { createSpatialPairIndex } from "../SRC/CORE/SPATIAL_INDEX.js";
 import { DDOL_ACCURACY_PENALTY } from "./DISRUPTOR_RULES.js";
 import { NPC_DIRECT_SPEED_FACTOR, computeNpcKiteMove } from "../NPC/NPC_AI.js";
 import { WINTER_CONVOY_ID, winterConvoySpawnPoint } from "../SRC/CORE/WINTER_CONVOY.js";
+import { leviathanSpawnPoint } from "../SRC/CORE/LEVIATHAN_GATE.js";
 
 const clamp = (v, a, b) => Math.max(a, Math.min(b, Number(v)));
 const TAU = Math.PI * 2;
@@ -190,7 +191,7 @@ export class ZoneNpcSim {
     // Alias client -> dossier (casse exacte, systèmes sensibles à la casse) :
     // la Low partagée vit dans MAPS/LOW_MAP, la Maudite dans MAPS/MAUDITE,
     // les BL dans MAPS/1-BL, 2-BL, 3-BL.
-    const MAP_DIR_ALIASES = { low: "LOW_MAP", maudite: "MAUDITE", winter: "WINTER_MAP", "1-bl": "1-BL", "2-bl": "2-BL", "3-bl": "3-BL" };
+    const MAP_DIR_ALIASES = { low: "LOW_MAP", maudite: "MAUDITE", winter: "WINTER_MAP", leviathan: "LEVIATHAN_MAP", "1-bl": "1-BL", "2-bl": "2-BL", "3-bl": "3-BL" };
     const dir = MAP_DIR_ALIASES[id] || id;
     try {
       const [{ WORLD }, spawns] = await Promise.all([
@@ -201,7 +202,7 @@ export class ZoneNpcSim {
       const world = { w: Number(WORLD.w) || 11000, h: Number(WORLD.h) || 7000 };
       const rawDefs = spawns.getZoneSpawns(world);
       // GG d'hiver : aucun camp, seulement les vagues du convoi.
-      if (!Array.isArray(rawDefs) || (!rawDefs.length && id !== "winter")) return null;
+      if (!Array.isArray(rawDefs) || (!rawDefs.length && id !== "winter" && id !== "leviathan")) return null;
       // Event Halloween (x-3..x-8, dates) + densité -30 % : mêmes règles qu'en solo.
       const defs = applyNpcDensityToCamps(
         appendHalloweenCamps(rawDefs, world, { npcTypes: NPC_TYPES, mapId: id }));
@@ -1982,6 +1983,99 @@ drainPlayerHits() {
     return n;
   }
 
+  // --- Leviathan Gate : vagues de SCRIPTS/LEVIATHAN_GATE.js ---
+  // NPC chasseurs (traque map-wide, ne fuient pas) qui attaquent les joueurs.
+  // Chaque NPC apparaît autour d'un des points donnés (ex. le boss), à une
+  // distance de `distance` ([min, max]).
+  spawnGateWave(types, anchors, { distance } = {}) {
+    const points = (Array.isArray(anchors) ? anchors : []).filter((p) => Number.isFinite(p?.x) && Number.isFinite(p?.y));
+    const fallback = { x: this.world.w / 2, y: this.world.h / 2 };
+    for (const type of types) {
+      const stats = statsFor(type);
+      if (!stats) continue;
+      const anchor = points.length ? points[Math.floor(Math.random() * points.length)] : fallback;
+      const { x, y } = leviathanSpawnPoint(anchor.x, anchor.y, distance);
+      const n = (this.gateWaveSeq = (Number(this.gateWaveSeq) || 0) + 1);
+      const uid = `gatewave:${n}`;
+      this.entries.set(uid, {
+        uid, campId: null, type, gateWave: true,
+        x: clamp(x, 80, this.world.w - 80),
+        y: clamp(y, 80, this.world.h - 80),
+        angle: Math.atan2(anchor.y - y, anchor.x - x),
+        hp: stats.hpMax, sh: stats.shMax,
+        hpMax: stats.hpMax, shMax: stats.shMax,
+        speed: stats.speed, dr: stats.dr, spread: stats.spread,
+        r: stats.r,
+        passive: false, kamikaze: false,
+        explodeOnTouch: false, explodeRadius: 0, explodeDmg: 0,
+        canShoot: stats.canShoot, shootRange: stats.shootRange, shootRate: stats.shootRate,
+        bulletDmg: stats.bulletDmg, burst: stats.burst, shootCd: 0.5 + Math.random(),
+        aggroRange: 20000, aggroHoldMs: 8000,
+        hunter: true,
+        aggroBy: null, aggroUntil: 0,
+        tx: null, ty: null, killer: null, firstBy: null, lastHitBy: null,
+        lockBy: null, lockHitAt: 0, lockReleaseAt: 0, hitHist: [],
+        orbitDir: Math.random() < 0.5 ? -1 : 1, orbitT: 2 + Math.random() * 3,
+        seq: this.nextSpawnSequence(uid),
+      });
+    }
+  }
+
+  gateWaveAlive() {
+    let n = 0;
+    for (const e of this.entries.values()) if (e && e.gateWave === true && e.hp > 0) n++;
+    return n;
+  }
+
+  // Fin de session : NPC de la vague (et boss) retirés sans mort ni récompense.
+  clearGateWave() {
+    for (const [uid, e] of [...this.entries]) {
+      if (!e || (e.gateWave !== true && e.gateBoss !== true)) continue;
+      this.entries.delete(uid);
+      if (e.hp > 0 && this.recentGone.length < 200) this.recentGone.push(uid);
+    }
+  }
+
+  // Leviathan Gate : boss fixe (Dreadfyre Guardian / Fortress). Immobile, ne
+  // tire pas, saute toute l'IA (voir tick) ; invulnérable tant que
+  // escortShieldOn est vrai (applyHit + bulle npcIsh côté clients).
+  spawnGateBoss(type, x, y, { invulnerable = true } = {}) {
+    const stats = statsFor(type);
+    if (!stats) return null;
+    const n = (this.gateWaveSeq = (Number(this.gateWaveSeq) || 0) + 1);
+    const uid = `gateboss:${n}`;
+    const entry = {
+      uid, campId: null, type, gateBoss: true,
+      x: clamp(x, 80, this.world.w - 80),
+      y: clamp(y, 80, this.world.h - 80),
+      angle: 0,
+      hp: stats.hpMax, sh: stats.shMax,
+      hpMax: stats.hpMax, shMax: stats.shMax,
+      speed: 0, dr: stats.dr, spread: stats.spread,
+      r: stats.r,
+      passive: true, kamikaze: false, stationary: true,
+      explodeOnTouch: false, explodeRadius: 0, explodeDmg: 0,
+      canShoot: false, shootRange: 0, shootRate: 0,
+      bulletDmg: 0, burst: 1, shootCd: 0,
+      aggroRange: 0, aggroHoldMs: 0,
+      escortShieldOn: invulnerable === true,
+      aggroBy: null, aggroUntil: 0,
+      tx: null, ty: null, killer: null, firstBy: null, lastHitBy: null,
+      lockBy: null, lockHitAt: 0, lockReleaseAt: 0, hitHist: [],
+      seq: this.nextSpawnSequence(uid),
+    };
+    this.entries.set(uid, entry);
+    return entry;
+  }
+
+  // Boss retiré sans mort ni récompense (explosion du Guardian à 10 %).
+  removeGateBoss(uid) {
+    const e = this.entries.get(String(uid));
+    if (!e) return;
+    this.entries.delete(String(uid));
+    if (this.recentGone.length < 200) this.recentGone.push(String(uid));
+  }
+
   // Fin de session : attaquants retirés sans mort ni récompense.
   clearConvoyAttackers() {
     for (const [uid, e] of [...this.entries]) {
@@ -2473,6 +2567,15 @@ drainPlayerHits() {
       // récent (pas besoin de taper pour passer rouge) ; personne → libre.
       // firstBy suit pour que la récompense aille au nouveau rouge.
       this.tickNpcLock(e, nowMs);
+      // Boss fixe de la Leviathan Gate : aucune IA (ni déplacement, ni tir,
+      // ni repli, ni régénération) ; ses attaques sont pilotées par
+      // SCRIPTS/LEVIATHAN_GATE.js.
+      if (e.gateBoss === true) {
+        e.chaseId = null;
+        e.vx = 0;
+        e.vy = 0;
+        continue;
+      }
       if (e.convoyAttacker === true) {
         try { this.tickConvoyAttacker(e, dt, nowMs); } catch {}
         continue;
@@ -2971,6 +3074,8 @@ drainPlayerHits() {
         if (a.jpc || b.jpc || isAnchoredNpcType(a.type) || isAnchoredNpcType(b.type)) return;
         // Attaquants du convoi : traversée libre entre eux.
         if (a.convoyAttacker === true || b.convoyAttacker === true) return;
+        // Boss fixe de la Leviathan Gate : jamais déplacé.
+        if (a.gateBoss === true || b.gateBoss === true) return;
         if (isHoldingMinionMaster(a, nowMs) || isHoldingMinionMaster(b, nowMs)) return;
         // Escorte en formation : ni elle ni son maître ne se repoussent.
         if (a.escortOffset || b.escortOffset || a.escortMaster || b.escortMaster) return;

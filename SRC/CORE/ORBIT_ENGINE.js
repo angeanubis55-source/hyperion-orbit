@@ -46,6 +46,10 @@ import {
   createWinterConvoyRoute, winterFrostPoints, winterGateArrival, winterGateSession, winterGateWindowLabel,
   isWinterGateActive, winterPeriodFrostPoints, winterRankingPeriod,
 } from "./WINTER_CONVOY.js";
+import {
+  LEVIATHAN_BOSS, LEVIATHAN_BOSS_DAMAGE_PER_POINT, LEVIATHAN_GATE_NAME, LEVIATHAN_TYPES, isLeviathanBossType, isLeviathanGateActive,
+  leviathanGateArrival, leviathanGateSession, leviathanGateWindowLabel, leviathanPeriodPoints, leviathanPoints, leviathanRankingPeriod,
+} from "./LEVIATHAN_GATE.js";
 import { blacklightSearchTarget } from "./BOT_SEARCH.js";
 import { botCatalogGroups, botMapGroupKey, botMapGroupLabel, botMapsLabel, buildBotNpcCatalog } from "./BOT_NPC_CATALOG.js";
 import { watchSelects } from "../../UI/UI_SELECT_COMBO.js";
@@ -108,7 +112,7 @@ import {
 } from "./ACCOUNT.js";
 import { extrasCapacity, fitSlotsWithExtras, shipExtraKeys, EXTRA_RADAR_BONUS, EXTRA_PET_FUEL_THRESHOLD, EXTRA_PET_FUEL_BUY, EXTRA_REPAIR_SEC, EXTRA_AIM_MISS_CUT, EXTRA_SHIELD_REGEN_PCT, RAYGUN_DAMAGE, RAYGUN_VARIANCE, RAYGUN_PROC_CHANCE, RAYGUN_ABILITY, PARTICLE_CANNON_DEFS } from "../DATA/SHIP_EXTRAS.js";
 import { pumpSharedAuction } from "./AUCTION_NET.js";
-import { apiWinterRankingClaim, flushNetUser, netActive, netList, noteNetConsumption, noteNetCreditGain, noteNetPetFuelConsumed, noteNetPurchase, noteNetResourceGain, noteNetServerReward, noteNetUpgradeConsumed } from "./ACCOUNT_NET.js";
+import { apiLeviathanRankingClaim, apiWinterRankingClaim, flushNetUser, netActive, netList, noteNetConsumption, noteNetCreditGain, noteNetPetFuelConsumed, noteNetPurchase, noteNetResourceGain, noteNetServerReward, noteNetUpgradeConsumed } from "./ACCOUNT_NET.js";
 import {
   GALAXY_GATE_BUILD_LIMIT,
   normalizeGalaxyGateWave, GALAXY_GATE_DEFINITIONS,
@@ -180,7 +184,7 @@ import { renderSpeedGuard } from "./SPEED_GUARD_UI.js";
 import { netServerMessageAge, netSimulationStep, netGameTimeMs, netSpeedGuardActive, queueGameLogForServer } from "./NETPLAY.js";
   import { pushNetplayLocal, sendNetplayBackgroundState, netplayLocalUpdateDue, getNetplayRemotes, tickNetplayRemotes, getNetNpcs, getNetDeaths, drainNetGone, getNetBoxes, drainNetBoxInbox, drainNetDmgInbox, drainNetHealInbox, drainNetShotEvents, drainNetSkillInbox, drainNetSkillDenied, clearNetShots, clearNetplayGameplay, sendShotEvent, sendSkillUse, sendHealAlly, sendPvpHit, sendPvpPetHit, getNetSelf, setNetInstanceMode, clearNetBoxes, claimNetBox, requestBoxSync, netBoxSyncAgeMs, netBoxSnapshotReady, netInInstance, sendNetHit, netMyId, netplayStatus, sendPing, netLatencyMs, netPongAge, netHelloAckAge, netServerVersion, netConnected, forceNetReconnect, ensureNetplayConnection, drainNetPvpKillInbox, drainNetPvpPetKillInbox, takeNetNpcReward, sendPvpLoot, sendPvpLootTake, drainNetPvpLootInbox,
   drainNetPvpLootTakeInbox, drainNetAdminKickInbox, drainNetAdminBoomInbox, drainNetBannedInbox, drainNetCheatInbox, netDisconnect, drainNetSunInbox, drainNetSundayInbox, drainNetStrikeInbox, sendStrikeClaim, requestStrikeSync, drainNetPcannonInbox, sendPcannonFx, drainNetDecloakInbox, drainNetIemHitInbox, drainNetStationDmgInbox, getNetClanBases, getNetStationOwners,
-  getNetGroup, getNetLowRaid, takeNetLowRaidReward, getNetWinterGate, takeNetWinterGateReward, setNetNpcRewardHandler, getNetServerRestartAt, consumeNetServerRestart, getMyClanTag, getClanRelation, setMyClanTag, setNetDiplo, netIsAuthed, sendStationInstall, sendStationUninstall, sendStationBuild, sendStationReplace, sendStationCancelReplace, sendStationRepair, sendStationDeflectToggle, requestStationSync, sendStationHit, requestStarJumpArrival, requestHangarArrival, finishHangarArrival } from "./NETPLAY.js";
+  getNetGroup, getNetLowRaid, takeNetLowRaidReward, getNetWinterGate, takeNetWinterGateReward, getNetLeviathanGate, drainNetLeviathanEvents, setNetNpcRewardHandler, getNetServerRestartAt, consumeNetServerRestart, getMyClanTag, getClanRelation, setMyClanTag, setNetDiplo, netIsAuthed, sendStationInstall, sendStationUninstall, sendStationBuild, sendStationReplace, sendStationCancelReplace, sendStationRepair, sendStationDeflectToggle, requestStationSync, sendStationHit, requestStarJumpArrival, requestHangarArrival, finishHangarArrival } from "./NETPLAY.js";
 import {
   createGatePortalState,
   getGateReturnMap as resolveGateReturnMap,
@@ -7903,7 +7907,7 @@ function breakCpuCloak(reason) {
 // Camouflage interdit par carte : GG + QZ + Low + Maudite. Boutons grisés
 // et activations refusées sur place (le serveur tranche en autorité).
 const NO_CLOAK_MAPS = new Set(["alpha", "beta", "gamma", "delta", "epsilon",
-  "zeta", "kappa", "lambda", "omicron", "kronos", "awakened", "eternal", "winter", "qz", "low", "maudite"]);
+  "zeta", "kappa", "lambda", "omicron", "kronos", "awakened", "eternal", "winter", "leviathan", "qz", "low", "maudite"]);
 function cloakBlockedOnMap(mapId = null) {
   try {
     const id = String(mapId ?? window.__CURRENT_MAP_ID__ ?? currentMapId() ?? "").toLowerCase();
@@ -19337,6 +19341,21 @@ function startZonePortalJump(ptl, entryConfirmed = false) {
       return false;
     }
   }
+  // ✅ Leviathan Gate : du 30/11 au 13/12, entrée de :00 à :05 (départ commun à :05).
+  if (targetMapId === "leviathan") {
+    if (!isLeviathanGateActive()) {
+      SFX.play("swDeny");
+      showToast(`${LEVIATHAN_GATE_NAME} — fermée`, 1.8);
+      return false;
+    }
+    const session = leviathanGateSession();
+    if (!session.open) {
+      SFX.play("swDeny");
+      const slot = leviathanGateWindowLabel();
+      showToast(`${LEVIATHAN_GATE_NAME} — entrée de ${slot.open} à ${slot.start}, prochaine ouverture dans ${winterConvoyClock(session.nextOpenAt - Date.now())}`, 2.2);
+      return false;
+    }
+  }
   if (targetMapId) {
     const user = account.user || getCurrentUserFull();
     const playerLevel = getLevelInfo(Number(user?.stats?.exp || 0)).level;
@@ -21123,6 +21142,8 @@ function isZonePortalAvailable(ptl) {
   const gateId = String(ptl?.toMap || "").toLowerCase();
   // ✅ GG d'hiver : portail central des X-3, visible pendant les classements Winter seulement.
   if (gateId === "winter") return isWinterGateActive();
+  // ✅ Leviathan Gate : même portail central, du 30/11 au 13/12 seulement.
+  if (gateId === "leviathan") return isLeviathanGateActive();
   // ✅ Gate Eternal : visible sur la map mère uniquement si posée via CPU (pas de stock).
   if (gateId === "eternal") {
     // Appelé par portail et par frame : pas de relecture complète du compte.
@@ -32871,6 +32892,8 @@ e._pendingSpawn = Math.max(1, Math.floor(Number(e.cubikonMinions?.refill) || 20)
 
   try { recordDps(result, opts); } catch {}
   try { noteBattlepassDamage(e, result, opts); } catch {}
+  // Leviathan Gate : points de classement selon les dégâts infligés au boss.
+  try { noteLeviathanBossDamage(e, result); } catch {}
   const sundayMult = sundayDamageMult(e?.type);
   if (sundayMult !== 1 && result.total > 0) {
     result.sh = Math.round(result.sh * sundayMult);
@@ -34234,6 +34257,17 @@ if (rules?.convoy === true) {
   dropType = "Christmas_Box";
 }
 
+// Leviathan Gate : points de classement reçus directement (pas de box).
+if (rules?.leviathan === true && ownsNpcLoot && !e.noRewards) {
+  try {
+    const line = grantLeviathanPoints(e);
+    if (line) {
+      if (Array.isArray(e._directDropLines)) e._directDropLines.push(line);
+      else e._directDropLines = [line];
+    }
+  } catch {}
+}
+
 // Event Halloween : les Curcubitors droppent des box à bonbons
 // (boss 100 %, normaux 45 %). Seul le propriétaire du loot la voit,
 // comme les cargos (ownsNpcLoot ci-dessous).
@@ -34249,6 +34283,8 @@ if (
   !e.noRewards &&
   e.type !== "npc_Protegit" &&
   e.type !== "npc_Barrage_Seeker_Rocket" &&
+  // Leviathan Gate : aucune box (points de classement directs).
+  rules?.leviathan !== true &&
   // Hitac / Minion Givré : aucun cargo, seulement la chance de Box Strike.
   e.type !== HITAC_SNOW_TYPE &&
   e.type !== HITAC_SNOW_MINION_DRAW_TYPE &&
@@ -34289,7 +34325,8 @@ if (ownsNpcLoot && !e.noRewards && isResourceGateNpc(e.type)) {
   try { e._directDropLines = grantResourceGateDrops(e); } catch {}
 }
 if (ownsNpcLoot && !e.noRewards && rules?.convoy !== true && !isResourceGateNpc(e.type)) {
-  const asmBox = rollNpcAssemblyBox(e.type);
+  // Leviathan Gate : pas de box d'assemblage (les drops directs restent).
+  const asmBox = rules?.leviathan === true ? null : rollNpcAssemblyBox(e.type);
   if (asmBox && COLLECTABLE_DEFS[asmBox.box]) {
     // Box d'assemblage : reste au sol indéfiniment (comme les bonus box),
     // jamais de despawn comme les cargos.
@@ -36741,7 +36778,7 @@ function portalProvidesSafety(portal, forJpc = false) {
   const playerSector = getFaction((account.user || getCurrentUserFull())?.faction).sector;
   if (!forJpc && sectorMatch && sectorMatch[1] !== playerSector) return false;
   const destination = String(portal?.toMap || "").trim().toLowerCase();
-  return !["alpha", "beta", "gamma", "delta", "epsilon", "zeta", "kappa", "lambda", "omicron", "kronos", "awakened", "eternal", "winter"].includes(destination);
+  return !["alpha", "beta", "gamma", "delta", "epsilon", "zeta", "kappa", "lambda", "omicron", "kronos", "awakened", "eternal", "winter", "leviathan"].includes(destination);
 }
 
 function baseProvidesSafety(forJpc = false) {
@@ -37110,13 +37147,13 @@ function netPvpBlocked(t) {
     } catch {}
     return true;
   }
-  // GG d'hiver : aucun PvP, ni sur les joueurs ni sur leurs P.E.T.
-  if ((t._netPlayer || t._netPet) && rules?.convoy === true) {
+  // GG d'hiver / Leviathan Gate : aucun PvP, ni sur les joueurs ni sur leurs P.E.T.
+  if ((t._netPlayer || t._netPet) && (rules?.convoy === true || rules?.leviathan === true)) {
     try {
       const nowMs = performance.now();
       if (nowMs - lastPvpSafeToastAt > 3000) {
         lastPvpSafeToastAt = nowMs;
-        showToast("Pas de PvP dans la GG d'hiver", 1.4);
+        showToast(rules?.leviathan === true ? `Pas de PvP dans la ${LEVIATHAN_GATE_NAME}` : "Pas de PvP dans la GG d'hiver", 1.4);
       }
     } catch {}
     return true;
@@ -38222,6 +38259,7 @@ jumpBaseFade: 1,
   }
 
   winterConvoy = null;
+  leviathanGate = null;
   if (isZoneMap && typeof rules.getZoneWalls === "function") {
     zoneWalls = rules.getZoneWalls(WORLD) || [];
   } else {
@@ -38373,6 +38411,7 @@ jumpBaseFade: 1,
     player.y = clamp(Number(spawn.y ?? WORLD.h * Number(spawn.yRatio ?? 0.5)), 80, WORLD.h - 80);
   }
   if (rules?.convoy) startWinterConvoy();
+  if (rules?.leviathan) startLeviathanGate();
 
   // ✅ Arrivée via un portail : le saut nettoie le combat (façon DO officiel).
   // Sans ça, combatT (> 0 jusqu'à 5 s) bloquait safeZoneActive et le joueur
@@ -38615,7 +38654,7 @@ function die() {
 // ✅ Portails annexes (par destination) : jamais utilisés pour une
 // réapparition au portail — low, QZ, Galaxy Gates (aussi celles des X-1),
 // map maudite et 5-2 (portail central de 4-5).
-const ANNEX_PORTAL_MAPS = new Set(["low", "qz", "alpha", "beta", "gamma", "delta", "epsilon", "zeta", "kappa", "lambda", "omicron", "kronos", "awakened", "eternal", "winter", "maudite", "5-2"]);
+const ANNEX_PORTAL_MAPS = new Set(["low", "qz", "alpha", "beta", "gamma", "delta", "epsilon", "zeta", "kappa", "lambda", "omicron", "kronos", "awakened", "eternal", "winter", "leviathan", "maudite", "5-2"]);
 
 function isAnnexPortal(portal) {
   // Retour Low : exclu aussi (sinon réapparition sur le portail masqué).
@@ -46661,6 +46700,7 @@ if (movementLocked) {
   } catch {}
   tickZonePortalVisualTransitions(dt);
   tickWinterConvoy(dt);
+  tickLeviathanGate();
   if (tickGatePortalJumps(dt)) return;
   if (tickZonePortalJumps(dt)) return;
 
@@ -48819,6 +48859,271 @@ function drawWinterConvoyHud(ox, oy) {
   ctx.restore();
 }
 
+// ============================================================================
+// Leviathan Gate partagée (réglages : SRC/CORE/LEVIATHAN_GATE.js, session et
+// vagues : SCRIPTS/LEVIATHAN_GATE.js). Le serveur fait apparaître les vagues
+// (NPC partagés) ; ici on suit la session (attente jusqu'à :05, vagues
+// infinies jusqu'à l'heure pleine, puis retour à la base) et on affiche le
+// bandeau (vague, chrono). Points de classement : grantLeviathanPoints au kill.
+// ============================================================================
+let leviathanGate = null;
+// Ondes d'impulsion en cours : { t0, x, y, speed, slowPct, slowSec, hit }.
+const leviathanPulses = [];
+const LEVIATHAN_BOSS_LABEL = Object.freeze({ guardian: "Dreadfyre Guardian", fortress: "Dreadfyre Fortress" });
+
+function leviathanGateTimeLeft() {
+  const st = getNetLeviathanGate();
+  if (!st) return "…";
+  const now = Date.now() - (st.skew || 0);
+  if (st.phase === "lobby") return `départ dans ${winterConvoyClock(st.startAt - now)}`;
+  if (st.phase === "run") return winterConvoyClock(st.endAt - now);
+  return "0:00";
+}
+
+function startLeviathanGate() {
+  // Sprites chargés d'avance (boss joué en continu, Harbinger d'un coup).
+  for (const type of LEVIATHAN_TYPES) if (NPC_TYPES[type]) ensureNpcLoaded(type);
+  leviathanGate = { phase: "", stage: "", fight: "", cycle: 0, leaving: false, bossDmg: 0, windowPoints: 0 };
+  leviathanPulses.length = 0;
+  try { drainNetLeviathanEvents(); } catch {}
+  // Arrivée : un peu partout sur la map, loin du boss.
+  const arrival = leviathanGateArrival();
+  player.x = clamp(arrival.x, 80, WORLD.w - 80);
+  player.y = clamp(arrival.y, 80, WORLD.h - 80);
+  player.vx = 0;
+  player.vy = 0;
+  moveTarget.active = false;
+}
+
+// Sortie (fin de session, gate fermée) : retour à la base mère.
+function leaveLeviathanGate(reason) {
+  const g = leviathanGate;
+  if (!g || g.leaving) return;
+  g.leaving = true;
+  flushLeviathanWindowPoints();
+  if (reason) showNotification(reason, 5, "info");
+  const user = account.user || getCurrentUserFull();
+  const home = getFactionRespawnMap(user?.faction, "leviathan", { gate: true });
+  setRespawnOverride({ map: home, baseCenter: true, fallback: getFactionBaseSpawn(user?.faction) });
+  if (typeof window.__SWITCH_MAP__ === "function") {
+    window.__SWITCH_MAP__(home).catch(() => window.__GO_TO_MAP__?.(home));
+  } else {
+    window.__GO_TO_MAP__?.(home);
+  }
+}
+
+function tickLeviathanGate() {
+  const g = leviathanGate;
+  if (!g || g.leaving || !started || mapSwitchInProgress) return;
+  tickLeviathanEvents();
+  const st = getNetLeviathanGate();
+  if (!st) return;
+  if (st.phase !== g.phase) {
+    const prev = g.phase;
+    g.phase = st.phase;
+    if (st.phase === "lobby") {
+      showNotification(`${LEVIATHAN_GATE_NAME} — départ à ${leviathanGateWindowLabel().start} pour tout le monde, chacun pour soi !`, 4, "info");
+    } else if (st.phase === "run") {
+      showNotification("Détruisez les Harbinger pour exposer le Dreadfyre Guardian !", 4, "info");
+    } else if (st.phase === "done") {
+      leaveLeviathanGate(st.reason === "victory"
+        ? "Victoire ! La Dreadfyre Fortress est détruite"
+        : `${LEVIATHAN_GATE_NAME} terminée`);
+      return;
+    } else if (st.phase === "closed" && !(prev === "" && leviathanGateSession().open)) {
+      const slot = leviathanGateWindowLabel();
+      leaveLeviathanGate(prev === "run" ? `${LEVIATHAN_GATE_NAME} interrompue` : `${LEVIATHAN_GATE_NAME} fermée — entrée de ${slot.open} à ${slot.start}`);
+      return;
+    }
+  }
+  if (st.phase !== "run" || !st.stage) return;
+  if (st.stage !== g.stage) {
+    const prev = g.stage;
+    g.stage = st.stage;
+    if (prev === "guardian" && st.stage === "fortress") {
+      showNotification("Le Dreadfyre Guardian explose — la Dreadfyre Fortress apparaît !", 4, "reward");
+    }
+  }
+  if (st.fight !== g.fight || st.cycle !== g.cycle) {
+    const prevFight = g.fight;
+    g.fight = st.fight;
+    g.cycle = st.cycle;
+    if (st.fight === "window") {
+      showNotification(`Le ${LEVIATHAN_BOSS_LABEL[st.stage]} est vulnérable : ${Math.round(LEVIATHAN_BOSS.windowMs / 1000)} s pour frapper !`, 3, "reward");
+    } else if (st.fight === "adds") {
+      if (prevFight === "window") flushLeviathanWindowPoints();
+      showNotification(`${formatInteger(st.adds)} Harbinger arrivent — le boss est invincible !`, 3, "info");
+    }
+  }
+}
+
+// Événements du boss (impulsions, explosion du Guardian).
+function tickLeviathanEvents() {
+  let events = [];
+  try { events = drainNetLeviathanEvents(); } catch {}
+  for (const ev of events) {
+    if (ev.t === "leviathanPulse") {
+      leviathanPulses.push({
+        t0: performance.now(), x: Number(ev.x) || 0, y: Number(ev.y) || 0,
+        speed: Math.max(500, Number(ev.speed) || LEVIATHAN_BOSS.pulseSpeed),
+        slowPct: Math.max(0, Number(ev.slowPct) || LEVIATHAN_BOSS.pulseSlowPct),
+        slowSec: Math.max(0, Number(ev.slowSec) || LEVIATHAN_BOSS.pulseSlowSec),
+        hit: false,
+      });
+      if (leviathanPulses.length > 6) leviathanPulses.shift();
+    } else if (ev.t === "leviathanBoss" && ev.ev === "explode") {
+      try { spawnExplosion(Number(ev.x) || 0, Number(ev.y) || 0, 4); } catch {}
+      try { SFX.play("npcDeath", { cooldown: 0 }); } catch {}
+    }
+  }
+  // L'onde touche le joueur : ralenti (la poussée vient du serveur).
+  const now = performance.now();
+  const maxR = Math.hypot(WORLD.w, WORLD.h);
+  for (let i = leviathanPulses.length - 1; i >= 0; i--) {
+    const p = leviathanPulses[i];
+    const r = (now - p.t0) / 1000 * p.speed;
+    if (!p.hit && !player.dead && r >= Math.hypot(player.x - p.x, player.y - p.y)) {
+      p.hit = true;
+      player.rocketSlowT = Math.max(Number(player.rocketSlowT) || 0, p.slowSec);
+      player.rocketSlowPct = Math.max(Number(player.rocketSlowPct) || 0, p.slowPct);
+    }
+    if (r > maxR) leviathanPulses.splice(i, 1);
+  }
+}
+
+// Onde d'impulsion : anneau qui s'étend du boss jusqu'aux bords de la map.
+function drawLeviathanPulses(ox, oy) {
+  if (!leviathanPulses.length) return;
+  const now = performance.now();
+  ctx.save();
+  for (const p of leviathanPulses) {
+    const r = (now - p.t0) / 1000 * p.speed;
+    if (r <= 0) continue;
+    const fade = clamp(1 - r / Math.hypot(WORLD.w, WORLD.h), 0.15, 1);
+    ctx.globalAlpha = 0.85 * fade;
+    ctx.lineWidth = 26;
+    ctx.strokeStyle = "rgba(255,90,40,0.35)";
+    ctx.beginPath();
+    ctx.arc(p.x + ox, p.y + oy, r, 0, TAU);
+    ctx.stroke();
+    ctx.lineWidth = 5;
+    ctx.strokeStyle = "rgba(255,200,120,0.95)";
+    ctx.beginPath();
+    ctx.arc(p.x + ox, p.y + oy, r, 0, TAU);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+// Bandeau en haut de l'écran : boss, état du combat et chrono.
+function drawLeviathanGateHud() {
+  if (!leviathanGate || leviathanGate.leaving) return;
+  const st = getNetLeviathanGate();
+  let text;
+  if (st?.phase === "run" && st.stage) {
+    const boss = LEVIATHAN_BOSS_LABEL[st.stage];
+    const state = st.fight === "window"
+      ? `VULNÉRABLE ${Math.max(0, Math.ceil((st.windowUntil - (Date.now() - (st.skew || 0))) / 1000))} s`
+      : `INVINCIBLE — Harbinger : ${formatInteger(st.harbingers)}`;
+    const pct = st.hpMax > 0 ? Math.max(0, Math.ceil(st.hp / st.hpMax * 100)) : 0;
+    text = i18nText(`${boss} ${pct} % — ${state} — ${leviathanGateTimeLeft()}`);
+  } else {
+    text = i18nText(`${LEVIATHAN_GATE_NAME} — ${leviathanGateTimeLeft()}`);
+  }
+  ctx.save();
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.font = "800 18px system-ui";
+  const y = 92;
+  ctx.lineWidth = 4;
+  ctx.strokeStyle = "rgba(5,8,20,0.85)";
+  ctx.strokeText(text, innerWidth / 2, y);
+  ctx.fillStyle = st?.fight === "window" ? "#ffd36b" : "#d9c2ff";
+  ctx.fillText(text, innerWidth / 2, y);
+  ctx.restore();
+}
+
+// Points de classement ajoutés au compte (ceux d'un classement passé
+// repartent de 0). false si aucun classement en cours.
+function addLeviathanPoints(points) {
+  const period = leviathanRankingPeriod();
+  if (!period || !(points > 0)) return false;
+  if (!account.user) loadAccountUser();
+  if (!account.user) return false;
+  account.user.leviathan = {
+    points: leviathanPeriodPoints(account.user.leviathan) + points,
+    period: period.key,
+  };
+  markProgressDirty();
+  return true;
+}
+
+// Kill d'un Harbinger : points selon sa vie max. Renvoie la ligne du toast.
+// (Le boss rapporte des points sur les dégâts, pas sur le kill.)
+function grantLeviathanPoints(e) {
+  if (isLeviathanBossType(e?.type)) return null;
+  const points = leviathanPoints(NPC_TYPES[e?.type]?.hp ?? e?.hpMax);
+  if (!addLeviathanPoints(points)) return null;
+  return `Vous avez reçu ${formatInteger(points)} points Leviathan`;
+}
+
+// Dégâts infligés au boss : 1 point par LEVIATHAN_BOSS_DAMAGE_PER_POINT,
+// annoncés en une fois à la fin de chaque fenêtre de dégâts.
+function noteLeviathanBossDamage(e, result) {
+  const g = leviathanGate;
+  if (!g || rules?.leviathan !== true || !isLeviathanBossType(e?.type)) return;
+  const dealt = Math.max(0, Number(result?.total) || 0);
+  if (!dealt) return;
+  g.bossDmg += dealt;
+  const points = Math.floor(g.bossDmg / LEVIATHAN_BOSS_DAMAGE_PER_POINT);
+  if (points <= 0) return;
+  g.bossDmg -= points * LEVIATHAN_BOSS_DAMAGE_PER_POINT;
+  if (addLeviathanPoints(points)) g.windowPoints += points;
+}
+function flushLeviathanWindowPoints() {
+  const g = leviathanGate;
+  if (!g || !(g.windowPoints > 0)) return;
+  const points = g.windowPoints;
+  g.windowPoints = 0;
+  showNotification(`Vous avez reçu ${formatInteger(points)} points Leviathan`, 3, "reward");
+  try { addGameLog(`${LEVIATHAN_GATE_NAME} : +${formatInteger(points)} points Leviathan (dégâts au boss)`, "reward"); } catch {}
+}
+
+// Classement Leviathan : gains de fin de classement (même circuit que le
+// classement Winter).
+let leviathanClaimBusy = false;
+let leviathanClaimTimer = null;
+async function claimLeviathanRankingRewards() {
+  if (leviathanClaimBusy || !netActive()) return;
+  leviathanClaimBusy = true;
+  try {
+    const out = await apiLeviathanRankingClaim();
+    if (!out?.ok || !Array.isArray(out.rewards)) return;
+    for (const r of out.rewards) {
+      const place = Number(r.rank) === 1 ? "1er" : `${formatInteger(r.rank)}e`;
+      const terms = [`${formatInteger(r.credits)} crédits`, `${formatInteger(r.exp)} XP`, `${formatInteger(r.honor)} honneur`];
+      showNotificationGroup([
+        `Classement ${LEVIATHAN_GATE_NAME} terminé : tu as fini ${place} !`,
+        ...terms.map((t) => `Vous avez reçu ${t}`),
+      ], "info", { goldTerms: [place, ...terms] });
+    }
+    if (out.rewards.length) {
+      try { drawUI(); } catch {}
+    }
+  } catch {} finally {
+    leviathanClaimBusy = false;
+  }
+}
+function scheduleLeviathanRankingClaim() {
+  clearTimeout(leviathanClaimTimer);
+  const period = leviathanRankingPeriod();
+  const untilEnd = period ? period.endAt + WINTER_CLAIM_AFTER_END_MS - Date.now() : Infinity;
+  leviathanClaimTimer = setTimeout(() => {
+    claimLeviathanRankingRewards().finally(scheduleLeviathanRankingClaim);
+  }, Math.max(1000, Math.min(WINTER_CLAIM_EVERY_MS, untilEnd)));
+}
+setTimeout(() => { claimLeviathanRankingRewards().finally(scheduleLeviathanRankingClaim); }, 9000);
+
 function botMinimalRenderActive() {
   return false;
 }
@@ -49077,6 +49382,7 @@ function draw() {
   setWorldTransform();
   drawZoneWalls(ox, oy);
   drawWinterConvoy(ox, oy);
+  drawLeviathanPulses(ox, oy);
 
   drawZonePortals(ox, oy);
   drawSafeModules(ox, oy);
@@ -50188,6 +50494,7 @@ function draw() {
   // Fin du monde zoomé : minimap, toasts, radiation en taille écran.
   setScreenTransform();
   drawMinimap();
+  drawLeviathanGateHud();
   drawToast();
   drawRadiationWarning();
 }
@@ -51579,6 +51886,7 @@ function paintStarMapNode(n) {
       if (p.hidden || p.arrival || starMapById.has(String(p.toMap).toLowerCase())) continue;
       if (/^[123]-1$/.test(key) && GALAXY_GATE_DEFINITIONS[String(p.toMap).toLowerCase()]) continue;
       if (String(p.toMap).toLowerCase() === "winter" && !isWinterGateActive()) continue;
+      if (String(p.toMap).toLowerCase() === "leviathan" && !isLeviathanGateActive()) continue;
       // ✅ Gate Eternal : point masqué tant qu'elle n'est pas posée via CPU.
       if (/^[123]-1$/.test(key) && String(p.toMap).toLowerCase() === "eternal"
         && !isEternalGateDeployed(getCurrentUserFull())) continue;
@@ -52051,7 +52359,7 @@ function refreshStarMap() {
       const reuseLeft = starMapJumpReuseLeftSec();
       const canJump = !!sel && sel.jumpable === true
         && normalizeMapId(sel.id) !== normalizeMapId(cur)
-        && !ch && reuseLeft <= 0 && started && !player.dead && rules?.mode !== "gate" && rules?.convoy !== true;
+        && !ch && reuseLeft <= 0 && started && !player.dead && rules?.mode !== "gate" && rules?.convoy !== true && rules?.leviathan !== true;
       btn.disabled = !canJump;
       btn.classList.toggle("channel", !!ch);
       if (ch && sel && String(ch.target).toLowerCase() === String(sel.id).toLowerCase()) {
@@ -52100,6 +52408,7 @@ function startStarJump() {
     if (rules?.mode === "gate") { showToast("Impossible en Galaxy Gate.", 1.6); return false; }
     // GG d'hiver : on n'en sort que par la fin de session.
     if (rules?.convoy === true) { showToast("Impossible dans la GG d'hiver.", 1.6); return false; }
+    if (rules?.leviathan === true) { showToast(`Impossible dans la ${LEVIATHAN_GATE_NAME}.`, 1.6); return false; }
     const sel = StarJump.selected ? starMapById.get(String(StarJump.selected).toLowerCase()) : null;
     if (!sel) { showToast("Choisis une carte.", 1.4); return false; }
     if (sel.jumpable !== true) { showToast(sel.reason || "Destination indisponible.", 1.6); return false; }
@@ -52378,9 +52687,9 @@ async function activateHangarAtSavedLocation(hangarId) {
   // mère », jamais « activation impossible ».
   // Hangar laissé dans la GG d'hiver ou le raid Low (entrée par session) :
   // il ressort en X-3, devant le portail de la gate (position fixée par le serveur).
-  if (destinationMap === "winter" || destinationMap === "low") {
+  if (destinationMap === "winter" || destinationMap === "leviathan" || destinationMap === "low") {
     const sector = getFaction(u?.faction).sector;
-    const gate = destinationMap === "winter" ? { x: 5500, y: 3500 } : { x: String(sector) === "3" ? 10000 : 1000, y: 1000 };
+    const gate = destinationMap === "winter" || destinationMap === "leviathan" ? { x: 5500, y: 3500 } : { x: String(sector) === "3" ? 10000 : 1000, y: 1000 };
     destinationMap = `${sector}-3`;
     destination = { ...destination, map: destinationMap, pos: gate };
   } else if (!destinationMap || !Number.isFinite(savedX) || !Number.isFinite(savedY)) {

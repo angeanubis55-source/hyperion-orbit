@@ -157,6 +157,20 @@ const WINTER_GATE_SKIN = Object.freeze({
   jumpFxPath: null,
 });
 
+// ✅ Leviathan Gate (centre de 1-3 / 2-3 / 3-3, du 30/11 au 13/12) : 3 états
+// fournis (560x560, 36 images chacun). DESACTIVE fixe dessous, ACTIVE en
+// boucle animée, JUMP joué au saut.
+const LEVIATHAN_GATE_SKIN = Object.freeze({
+  idle: { src: "ASSETS/PORTAL/LEVIATHAN/DESACTIVE.png", w: 560, h: 560, yOff: 0 },
+  open: { src: "ASSETS/PORTAL/LEVIATHAN/ACTIVE/1.png", path: "ASSETS/PORTAL/LEVIATHAN/ACTIVE/", firstNumber: 1, ext: ".png", frames: 36, fps: 24, w: 560, h: 560, yOff: 0 },
+  jump: { src: "ASSETS/PORTAL/LEVIATHAN/JUMP.png", w: 560, h: 560, yOff: 0, scale: 1, spinSpeed: 0, alpha: 1 },
+  jumpFxPath: "ASSETS/PORTAL/LEVIATHAN/JUMP_FX/",
+  jumpFxFrames: 36,
+  jumpFxFps: 36,
+  jumpFxW: 560,
+  jumpFxH: 560,
+});
+
 // Destinations utilisant le skin pirates : les portails vers 5-2 et vers LOW.
 // (les sprites pirates explicites déjà présents dans SPAWNS.js sont conservés
 //  tels quels et restent prioritaires ; 4-5 garde son fallback standard.)
@@ -222,6 +236,7 @@ function winterOverlayFor(category) {
 export function getPortalSkinForMap(toMap) {
   // GG d'hiver : pas (encore) de map enregistrée, normalizeMapId la ramènerait en 1-1.
   if (String(toMap || "").trim().toLowerCase() === "winter") return WINTER_GATE_SKIN;
+  if (String(toMap || "").trim().toLowerCase() === "leviathan") return LEVIATHAN_GATE_SKIN;
   const id = normalizeMapId(toMap);
   const lower = String(id || "").toLowerCase();
   // Portails spéciaux d'abord (galaxy gates + pirates).

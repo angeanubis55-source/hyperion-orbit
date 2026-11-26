@@ -158,6 +158,8 @@ export function suspendNetplay(v) {
     try { netLowRaid = null; } catch {}
     netWinterGate = null;
     netWinterGateReward = null;
+    netLeviathanGate = null;
+    netLeviathanEvents.length = 0;
     netPvpPetKillInbox.length = 0;
     netPvpLootInbox.length = 0;
     netPvpLootTakeInbox.length = 0;
@@ -320,6 +322,8 @@ function clearInstanceGameplay() {
     try { netLowRaid = null; } catch {}
     netWinterGate = null;
     netWinterGateReward = null;
+    netLeviathanGate = null;
+    netLeviathanEvents.length = 0;
     netPvpPetKillInbox.length = 0;
     netPvpLootInbox.length = 0;
     netPvpLootTakeInbox.length = 0;
@@ -563,6 +567,17 @@ let netWinterGate = null;
 let netWinterGateReward = null;
 export function getNetWinterGate() {
   return netWinterGate;
+}
+// Leviathan Gate : dernier état de la session (phase, boss, chrono) et
+// événements du boss à rejouer (impulsions, explosion du Guardian)
+// (SCRIPTS/LEVIATHAN_GATE.js).
+let netLeviathanGate = null;
+const netLeviathanEvents = [];
+export function getNetLeviathanGate() {
+  return netLeviathanGate;
+}
+export function drainNetLeviathanEvents() {
+  return netLeviathanEvents.splice(0, netLeviathanEvents.length);
 }
 export function takeNetWinterGateReward() {
   const reward = netWinterGateReward;
@@ -1592,6 +1607,31 @@ export function ensureNetplayConnection() {
         skew: Date.now() - num(msg.now),
         at: Date.now(),
       };
+      return;
+    }
+    if (msg.t === "leviathanGate" && msg && typeof msg === "object") {
+      const num = (v) => Number(v) || 0;
+      netLeviathanGate = {
+        phase: String(msg.phase || "closed"),
+        startAt: num(msg.startAt), endAt: num(msg.endAt), nextOpenAt: num(msg.nextOpenAt),
+        reason: String(msg.reason || ""),
+        // Boss : stage guardian | fortress, fight adds | window.
+        stage: msg.stage === "fortress" ? "fortress" : msg.stage === "guardian" ? "guardian" : "",
+        fight: msg.fight === "window" ? "window" : msg.fight === "adds" ? "adds" : "",
+        windowUntil: num(msg.windowUntil),
+        cycle: Math.max(0, Math.floor(num(msg.cycle))),
+        adds: Math.max(0, Math.floor(num(msg.adds))),
+        harbingers: Math.max(0, Math.floor(num(msg.harbingers))),
+        hp: Math.max(0, num(msg.hp)), hpMax: Math.max(0, num(msg.hpMax)),
+        // Décalage d'horloge serveur -> client (chronos exacts).
+        skew: Date.now() - num(msg.now),
+        at: Date.now(),
+      };
+      return;
+    }
+    if ((msg.t === "leviathanPulse" || msg.t === "leviathanBoss") && msg && typeof msg === "object") {
+      if (netLeviathanEvents.length > 16) netLeviathanEvents.shift();
+      netLeviathanEvents.push({ ...msg, skew: Date.now() - (Number(msg.at) || Date.now()) });
       return;
     }
     if (msg.t === "winterGateReward" && msg && typeof msg === "object") {

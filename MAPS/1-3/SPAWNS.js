@@ -119,6 +119,15 @@ export function getZonePortals(WORLD) {
       r: 260,
       toMap: "winter",
     },
+    // ✅ Leviathan Gate : même emplacement, visible du 30/11 au 13/12 seulement
+    // (jamais en même temps que la GG d'hiver ; voir SRC/CORE/LEVIATHAN_GATE.js).
+    {
+      id: "p_13_to_leviathan",
+      x: 5500,
+      y: 3500,
+      r: 260,
+      toMap: "leviathan",
+    },
   ];
 }
 

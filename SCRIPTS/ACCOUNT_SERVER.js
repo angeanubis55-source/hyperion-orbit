@@ -33,6 +33,7 @@ import { getPetTradeBonusPct } from "../PET/PET_GEARS.js";
 import { CRAFTING_ENABLED, getCraftingRecipe } from "../SRC/DATA/CRAFTING.js";
 import { isHalloweenEventActive } from "../NPC/NPC_HALLOWEEN.js";
 import { compareWinterStanding, winterFinalStandings, winterFrostPointsFor, winterPeriodFrostPoints, winterRankingPeriods } from "../SRC/CORE/WINTER_CONVOY.js";
+import { LEVIATHAN_RANKING_PERIODS, compareLeviathanStanding, leviathanFinalStandings, leviathanPeriodPoints, leviathanPointsFor } from "../SRC/CORE/LEVIATHAN_GATE.js";
 import { normalizeBattlepassState } from "../QUEST/BATTLEPASS.js";
 import { getPassShopOffer, PASS_MODULE_FORCED } from "../SRC/DATA/PASS_SHOP.js";
 import { SKYLAB_INSTANT_TRANSPORT_COST, SKYLAB_MAX_ROBOTS, SKYLAB_RESOURCE_IDS, SKYLAB_ROBOT_CREDIT_COST, SKYLAB_ROBOT_LIFETIME_MS, SKYLAB_TRANSPORT_COOLDOWN_SEC, canStartSkylabUpgrade, getSkylabModuleDef, isCollectorModule, normalizeSkylabState, skylabRobotCount, skylabStorageCap, tickSkylabState } from "../SRC/DATA/SKYLAB.js";
@@ -831,6 +832,25 @@ export function initAccountDb() {
     );
     CREATE INDEX IF NOT EXISTS idx_winter_ranking_rewards_user ON winter_ranking_rewards(user_id, claimed_at);`);
   } catch {}
+  // Classement Leviathan Gate : même principe que le classement Winter.
+  try {
+    db.exec(`CREATE TABLE IF NOT EXISTS leviathan_ranking_payouts (
+      period_key TEXT PRIMARY KEY,
+      winners INTEGER NOT NULL DEFAULT 0,
+      paid_at INTEGER NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS leviathan_ranking_rewards (
+      period_key TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      rank INTEGER NOT NULL,
+      points INTEGER NOT NULL,
+      reward TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      claimed_at INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY (period_key, user_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_leviathan_ranking_rewards_user ON leviathan_ranking_rewards(user_id, claimed_at);`);
+  } catch {}
   // Le rang Chef affiche tous les droits, banque comprise.
   try { db.exec("UPDATE clan_ranks SET rights = 31 WHERE builtin = 'leader' AND rights != 31"); } catch {}
   // Migration : colonne pseudo_norm pour les bases existantes (casse affichee preservee).
@@ -845,6 +865,8 @@ export function initAccountDb() {
   // Fin de classement Winter : top 30 figé quelques minutes après minuit.
   try { payoutWinterRankings(); } catch {}
   setInterval(() => { try { payoutWinterRankings(); } catch {} }, 60_000).unref?.();
+  try { payoutLeviathanRankings(); } catch {}
+  setInterval(() => { try { payoutLeviathanRankings(); } catch {} }, 60_000).unref?.();
   return db;
 }
 
@@ -1889,6 +1911,7 @@ export function adminDeleteAccount(target) {
     try { db.prepare("DELETE FROM pvp_pet_kills WHERE user_id = ?").run(uid); } catch {}
     try { db.prepare("DELETE FROM npc_reward_tx WHERE user_id = ?").run(uid); } catch {}
     try { db.prepare("DELETE FROM winter_ranking_rewards WHERE user_id = ?").run(uid); } catch {}
+    try { db.prepare("DELETE FROM leviathan_ranking_rewards WHERE user_id = ?").run(uid); } catch {}
     try { db.prepare("DELETE FROM friends WHERE user_id = ? OR friend_id = ?").run(uid, uid); } catch {}
     try { db.prepare("DELETE FROM friend_requests WHERE from_id = ? OR to_id = ?").run(uid, uid); } catch {}
     // Clan : départ propre (succession du chef ou dissolution si dernier).
@@ -3758,6 +3781,104 @@ export function payoutWinterRankings(now = Date.now()) {
   return paid;
 }
 
+// --- Classement Leviathan Gate : gains de fin de classement ---
+// Même fonctionnement que le classement Winter : top 30 figé quelques
+// minutes après la fin de chaque classement, gains réclamés par le jeu
+// (/api/leviathan/claim). Crédits, XP et honneur (la ressource spéciale de
+// l'événement s'ajoutera ici).
+function leviathanStandingsFor(periodKey) {
+  const rows = db.prepare(`SELECT id, pseudo,
+      json_extract(data, '$.leviathan.points') AS points,
+      json_extract(data, '$.leviathan.period') AS period
+    FROM users`).all();
+  return leviathanFinalStandings(rows.map((r) => ({
+    id: String(r.id),
+    pseudo: String(r.pseudo || "Pilote").slice(0, 20),
+    points: leviathanPointsFor({ points: r.points, period: r.period ?? undefined }, periodKey),
+  })));
+}
+
+// Fige les classements Leviathan terminés pas encore versés. Idempotent.
+export function payoutLeviathanRankings(now = Date.now()) {
+  initAccountDb();
+  const paid = [];
+  for (const period of LEVIATHAN_RANKING_PERIODS) {
+    if (period.endAt + WINTER_RANKING_PAYOUT_DELAY_MS > now) continue;
+    if (db.prepare("SELECT 1 FROM leviathan_ranking_payouts WHERE period_key = ?").get(period.key)) continue;
+    let inTx = false;
+    try {
+      db.exec("BEGIN IMMEDIATE"); inTx = true;
+      if (db.prepare("SELECT 1 FROM leviathan_ranking_payouts WHERE period_key = ?").get(period.key)) {
+        db.exec("ROLLBACK"); inTx = false;
+        continue;
+      }
+      const winners = leviathanStandingsFor(period.key);
+      const insert = db.prepare(`INSERT OR IGNORE INTO leviathan_ranking_rewards
+        (period_key, user_id, rank, points, reward, created_at) VALUES (?, ?, ?, ?, ?, ?)`);
+      for (const w of winners) {
+        const { credits, exp, honor } = w.reward;
+        insert.run(period.key, w.id, w.rank, w.points, JSON.stringify({ credits, exp, honor }), now);
+      }
+      db.prepare("INSERT INTO leviathan_ranking_payouts (period_key, winners, paid_at) VALUES (?, ?, ?)").run(period.key, winners.length, now);
+      db.exec("COMMIT"); inTx = false;
+      paid.push({ periodKey: period.key, winners: winners.map(({ pseudo, rank, points }) => ({ pseudo, rank, points })) });
+      console.info(`[leviathan] classement ${period.key} terminé : ${winners.length} gagnant(s)`);
+    } catch (e) {
+      if (inTx) { try { db.exec("ROLLBACK"); } catch {} }
+      console.error(`[leviathan] versement du classement ${period.key} :`, e?.message || e);
+    }
+  }
+  return paid;
+}
+
+// Crédite au compte tous ses gains Leviathan non réclamés.
+// { ok, rewards: [{ periodKey, rank, points, credits, exp, honor }], user? }
+export function claimLeviathanRankingRewards(userId, now = Date.now()) {
+  let inTx = false;
+  try {
+    initAccountDb();
+    const uid = String(userId || "");
+    if (!uid) return { ok: false, error: "NOT_FOUND" };
+    payoutLeviathanRankings(now);
+    db.exec("BEGIN IMMEDIATE"); inTx = true;
+    const pending = db.prepare(`SELECT period_key, rank, points, reward FROM leviathan_ranking_rewards
+      WHERE user_id = ? AND claimed_at = 0 ORDER BY period_key`).all(uid);
+    if (!pending.length) {
+      db.exec("COMMIT"); inTx = false;
+      return { ok: true, rewards: [] };
+    }
+    const row = db.prepare("SELECT * FROM users WHERE id = ?").get(uid);
+    if (!row) {
+      db.exec("ROLLBACK"); inTx = false;
+      return { ok: false, error: "NOT_FOUND" };
+    }
+    const data = rowToPublic(row);
+    const amount = (v) => Math.max(0, Math.floor(Number(v) || 0));
+    const rewards = pending.map((p) => {
+      let r = {};
+      try { r = JSON.parse(p.reward) || {}; } catch {}
+      return { periodKey: String(p.period_key), rank: amount(p.rank), points: amount(p.points),
+        credits: amount(r.credits), exp: amount(r.exp), honor: amount(r.honor) };
+    });
+    const total = (k) => rewards.reduce((sum, r) => sum + r[k], 0);
+    data.credits = amount(data.credits) + total("credits");
+    data.stats ||= { honor: 0, exp: 0, rankPoints: 0, lifetimeKills: 0 };
+    data.stats.exp = amount(data.stats.exp) + total("exp");
+    data.stats.honor = Math.floor(Number(data.stats.honor) || 0) + total("honor");
+    data.stats.rankPoints = calculateRankPoints(data.stats);
+    data.revision = Math.max(Math.floor(Number(data.revision) || 0), Number(row.revision) || 0) + 1;
+    data.updatedAt = now;
+    db.prepare("UPDATE users SET data = ?, revision = ?, updated_at = ? WHERE id = ?")
+      .run(accountDataJson(data, row.id), data.revision, now, row.id);
+    db.prepare("UPDATE leviathan_ranking_rewards SET claimed_at = ? WHERE user_id = ? AND claimed_at = 0").run(now, uid);
+    db.exec("COMMIT"); inTx = false;
+    return { ok: true, rewards, user: data };
+  } catch {
+    if (inTx) { try { db.exec("ROLLBACK"); } catch {} }
+    return { ok: false, error: "SERVER" };
+  }
+}
+
 // Crédite au compte tous ses gains Winter non réclamés.
 // { ok, rewards: [{ periodKey, rank, frostPoints, credits, exp, honor, ice }], user? }
 export function claimWinterRankingRewards(userId, now = Date.now()) {
@@ -4431,7 +4552,8 @@ export function handleAccountApi(req, res) {
       // complets gelait la boucle de jeu à chaque ouverture du classement.
       const rows = db.prepare(`SELECT u.pseudo AS pseudo, s.kills AS kills,
           json_extract(u.data, '$.stats.rankPoints', '$.stats.honor', '$.stats.exp', '$.faction',
-            '$.eternalGate.bestWaves', '$.winter.frostPoints', '$.winter.frostPeriod') AS fields
+            '$.eternalGate.bestWaves', '$.winter.frostPoints', '$.winter.frostPeriod',
+            '$.leviathan.points', '$.leviathan.period') AS fields
         FROM users u LEFT JOIN pvp_stats s ON s.user_id = u.id LIMIT 2000`).all();
       const list = [];
       for (const r of rows) {
@@ -4442,8 +4564,9 @@ export function handleAccountApi(req, res) {
         let faction = "";
         let eternalWaves = 0;
         let frostPoints = 0;
+        let leviathanPoints = 0;
         try {
-          const [rawRankPoints, rawHonor, rawExp, rawFaction, rawWaves, rawFrost, rawFrostPeriod] = JSON.parse(r.fields || "[]");
+          const [rawRankPoints, rawHonor, rawExp, rawFaction, rawWaves, rawFrost, rawFrostPeriod, rawLevPoints, rawLevPeriod] = JSON.parse(r.fields || "[]");
           rankPoints = Math.max(0, Math.floor(Number(rawRankPoints) || 0));
           honor = Math.max(0, Math.floor(Number(rawHonor) || 0));
           // XP / honneur TOTAUX du compte pour les points de classement.
@@ -4459,6 +4582,8 @@ export function handleAccountApi(req, res) {
           if (Number.isFinite(ew) && ew > 0) eternalWaves = ew;
           // GG d'hiver : points givrés du classement Winter en cours (box de Noël).
           frostPoints = winterPeriodFrostPoints({ frostPoints: rawFrost, frostPeriod: rawFrostPeriod });
+          // Leviathan Gate : points du classement Leviathan en cours.
+          leviathanPoints = leviathanPeriodPoints({ points: rawLevPoints, period: rawLevPeriod });
         } catch {}
         list.push({
           pseudo: String(r.pseudo || "Pilote").slice(0, 20),
@@ -4468,12 +4593,13 @@ export function handleAccountApi(req, res) {
           rankPoints, faction,
           eternalWaves,
           frostPoints,
+          leviathanPoints,
           _kills: kills,
         });
       }
       list.sort((a, b) => b.points - a.points || b._kills - a._kills);
-      const rowFields = ({ pseudo, points, exp, rankPoints, honor, faction, eternalWaves, frostPoints }) =>
-        ({ pseudo, points, exp: exp || 0, rankPoints, honor, faction, eternalWaves: eternalWaves || 0, frostPoints: frostPoints || 0 });
+      const rowFields = ({ pseudo, points, exp, rankPoints, honor, faction, eternalWaves, frostPoints, leviathanPoints }) =>
+        ({ pseudo, points, exp: exp || 0, rankPoints, honor, faction, eternalWaves: eternalWaves || 0, frostPoints: frostPoints || 0, leviathanPoints: leviathanPoints || 0 });
       // ✅ classement Eternal : top 100 par vagues terminées (indépendant du top points).
       const eternalTop = list.filter((row) => row.eternalWaves > 0)
         .sort((a, b) => b.eternalWaves - a.eternalWaves)
@@ -4482,12 +4608,26 @@ export function handleAccountApi(req, res) {
       const winterTop = list.filter((row) => row.frostPoints > 0)
         .sort(compareWinterStanding)
         .slice(0, 100).map(rowFields);
-      const body = { ok: true, list: list.slice(0, 100).map(rowFields), eternal: eternalTop, winter: winterTop };
+      // ✅ classement Leviathan Gate : top 100 par points Leviathan.
+      const leviathanTop = list.filter((row) => row.leviathanPoints > 0)
+        .map((row) => ({ ...row, _lev: row.leviathanPoints }))
+        .sort((a, b) => compareLeviathanStanding({ points: a._lev, pseudo: a.pseudo }, { points: b._lev, pseudo: b.pseudo }))
+        .slice(0, 100).map(rowFields);
+      const body = { ok: true, list: list.slice(0, 100).map(rowFields), eternal: eternalTop, winter: winterTop, leviathan: leviathanTop };
       generalRankingCache = { at: Date.now(), body };
       return json(res, 200, body);
     } catch {
       return json(res, 500, { ok: false, error: "Erreur serveur." });
     }
+  }
+  if (pathname === "/api/leviathan/claim" && req.method === "POST") {
+    // Gains de fin de classement Leviathan (voir claimLeviathanRankingRewards).
+    if (rateLimited(`${ip}:/api/leviathan/claim`, 30)) return json(res, 429, { ok: false, error: "Trop de tentatives, reessaie dans une minute." });
+    const me = authUser(req);
+    if (!me) return json(res, 401, { ok: false, error: "Session invalide." });
+    const r = claimLeviathanRankingRewards(me.id);
+    if (!r.ok) return json(res, r.error === "NOT_FOUND" ? 404 : 500, { ok: false, error: "Erreur serveur." });
+    return json(res, 200, { ok: true, rewards: r.rewards, user: r.user || undefined });
   }
   if (pathname === "/api/winter/claim" && req.method === "POST") {
     // Gains de fin de classement Winter (voir claimWinterRankingRewards).

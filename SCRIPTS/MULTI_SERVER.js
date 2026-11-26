@@ -29,6 +29,8 @@ const {
 } = AC;
 import { tickLowRaid, getLowRaidState } from "./LOW_RAID.js";
 import { tickWinterGate, getWinterGateState, persistWinterGate, winterGateRejoin, winterGateRejoinSpot } from "./WINTER_GATE.js";
+import { tickLeviathanGate, getLeviathanGateState, persistLeviathanGate, leviathanGateRejoin } from "./LEVIATHAN_GATE.js";
+import { leviathanGateArrival } from "../SRC/CORE/LEVIATHAN_GATE.js";
 import { damagePlayerLayers } from "../COMBAT/COMBAT_RULES.js";
 import { handleAccountApi, getAccountGameplayData, verifyWsToken, recordPvpKill, recordPvpPetKill, awardNpcKill, flushNpcRewards, grantSundayModule, grantSundayTickets, grantSundayAmmo, grantStrikeConsolation, listFriends, friendFollowers, findUserByPseudo, hasFriendRequest, isBlockedBy, clanIdOfUser, clanTagOfUser, clanMemberUserIds, setClanPresenceProvider, setClanBasesProvider, recordClanWarKill, adminGiveCredits, adminGiveExperience, adminGiveHonor, adminGiveModule, adminGiveTitle, adminListAccounts, adminDebugAccount, adminDeleteAccount, adminResetGalaxyGate, adminGiveGalaxyGate, adminDroneDesigns, adminGiveDroneDesign, adminShipFamilies, adminCatalog, adminInventory, adminGiveItem, adminAdjustStock, adminRemoveOwned, adminSetPosition, adminRename, adminSetFaction, adminResetPassword, adminGenerateAccount, appendPlayerLogs, adminPlayerLogs, adminLogAction, adminActionLog, adminStats } from "./ACCOUNT_SERVER.js";
 import { combatProfile, validateCombatHit, syncDeclaredFormation, accountWithFormation } from "./COMBAT_PROFILE.js";
@@ -61,7 +63,7 @@ const ABILITY_CLOAK_SILENT = new Set([
 // Camouflage interdit par carte : GG + QZ + Low + Maudite. Le client grise
 // les boutons, le serveur tranche en autorité (anti-contournement).
 const NO_CLOAK_MAPS = new Set(["alpha", "beta", "gamma", "delta", "epsilon",
-  "zeta", "kappa", "lambda", "omicron", "kronos", "awakened", "eternal", "winter", "qz", "low", "maudite"]);
+  "zeta", "kappa", "lambda", "omicron", "kronos", "awakened", "eternal", "winter", "leviathan", "qz", "low", "maudite"]);
 function ownsAbility(profile, skill) {
   // Source unique : MOVEMENT_RULES.shipOwnsAbility (Police + designs).
   try { return shipOwnsAbility(profile?.shipId, skill); } catch { return false; }
@@ -301,7 +303,8 @@ function broadcastChargedShot(room, state, hit, now) {
 }
 function applyServerAbilityDamage(room, sim, victim, damage, pen, now, sourceId, sourceProfile = null, weaken = 0, secondary = false) {
   // GG d'hiver : aucun PvP (seuls les NPC pourraient toucher un joueur).
-  if (String(sim?.mapId || victim?.serverMap || "") === "winter" && !sim?.entries?.has(String(sourceId))) {
+  // Leviathan Gate : pas de PvP non plus.
+  if (["winter", "leviathan"].includes(String(sim?.mapId || victim?.serverMap || "")) && !sim?.entries?.has(String(sourceId))) {
     return { total: 0, hp: 0, sh: 0, bypass: 0 };
   }
   const context = {
@@ -587,7 +590,7 @@ function trackAbilityFx(state, profile, skill, msg, room, id, now, sim = null) {
 }
 import { loadServerMaps, mapTransition, validArrival, reviveArrival, baseArrival, respawnMap } from "./MAP_RULES.js";
 import { getFaction, getFactionHomeMap } from "../SRC/CORE/FACTIONS.js";
-import { handleSocialMessage, socialPeerGone, socialPeerChanged, socialDescribeGroup, socialGroupOf } from "./SOCIAL_ROOM.js";
+import { handleSocialMessage, socialPeerGone, socialPeerChanged, socialDescribeGroup, socialGroupOf, socialForceLeave } from "./SOCIAL_ROOM.js";
 import { getAuctionSync, handleAuctionBid, pollAuctionCycle, auctionRoomStatus } from "./AUCTION_ROOM.js";
 import { getStationSync, handleStationInstall, handleStationUninstall, handleStationBuild, handleStationReplace, handleStationCancelReplace, handleStationRepair, handleStationDeflectToggle, handleStationHit, hasStationMap, getStationDefense, stationShotReady, stationShotFired, isStationFoe, isStationRetaliation, applyStationPassiveHeal, getClanBaseBonuses, getStationOwners, getClanBasesReport } from "./STATION_ROOM.js";
 import { GAME_VERSION } from "../SRC/DATA/VERSION.js";
@@ -1899,8 +1902,8 @@ function collectableAllowedOnMap(cfg, mapId) {
   // même si maps/deny OK.
   if (!collectableEventOn(cfg)) return false;
   const id = String(mapId || "").toLowerCase();
-  // GG d'hiver : aucune box ni ressource à ramasser.
-  if (id === "winter") return false;
+  // GG d'hiver / Leviathan Gate : aucune box ni ressource à ramasser.
+  if (id === "winter" || id === "leviathan") return false;
   const deny = cfg?.denyMaps ?? cfg?.blockedMaps ?? cfg?.disabledMaps ?? cfg?.excludeMaps;
   for (const value of (Array.isArray(deny) ? deny : deny != null ? [deny] : [])) {
     const denied = String(value || "").toLowerCase();
@@ -2009,7 +2012,7 @@ function sendBoxSync(ws, mapId) {
 // suivant est alors un no-op (déjà sur place côté serveur).
 // Refusé : instances, gates, raid Low, même map, cooldowns.
 // Refusé : instances, gates, raid Low, Maudite, 5-2, Blacklight, même map, cooldowns.
-const STAR_JUMP_BLOCKED_MAPS = new Set(["alpha", "beta", "gamma", "delta", "epsilon", "zeta", "kappa", "lambda", "omicron", "kronos", "awakened", "qz", "low", "maudite", "winter", "5-2", "1-bl", "2-bl", "3-bl"]);
+const STAR_JUMP_BLOCKED_MAPS = new Set(["alpha", "beta", "gamma", "delta", "epsilon", "zeta", "kappa", "lambda", "omicron", "kronos", "awakened", "qz", "low", "maudite", "winter", "leviathan", "5-2", "1-bl", "2-bl", "3-bl"]);
 const STAR_JUMP_REUSE_MS = STARMAP_JUMP_REUSE_SEC * 1000;
 const STAR_JUMP_MAP_ALIASES = { low: "LOW_MAP", maudite: "MAUDITE", "1-bl": "1-BL", "2-bl": "2-BL", "3-bl": "3-BL" };
 
@@ -2022,7 +2025,7 @@ async function handleStarJumpRequest(ws, peer, fromMap, target, setMapId) {
     const { id, state } = peer;
     if (!target || !serverMaps.has(target) || STAR_JUMP_BLOCKED_MAPS.has(target)) return deny("unreachable");
     // GG d'hiver : on n'en sort que par la fin de session (pas de saut).
-    if (String(fromMap || "").toLowerCase() === "winter") return deny("unreachable");
+    if (["winter", "leviathan"].includes(String(fromMap || "").toLowerCase())) return deny("unreachable");
     if (target === String(fromMap || "").toLowerCase()) return deny("same-map");
     if (now < Number(state.starJumpCdUntil || 0) || now < Number(state.portalCdUntil || 0)) return deny("cooldown");
     const world = serverMaps.get(target)?.world || { w: 11000, h: 7000 };
@@ -2071,7 +2074,7 @@ async function handleStarJumpRequest(ws, peer, fromMap, target, setMapId) {
   }
 }
 
-const HANGAR_SESSION_MAPS = new Set(["winter", "low"]);
+const HANGAR_SESSION_MAPS = new Set(["winter", "leviathan", "low"]);
 function handleHangarArrivalRequest(ws, peer, accountId, fromMap, hangarId, setMapId) {
   const { id, state } = peer, now = Date.now();
   const reply = body => { if (ws.readyState === 1) ws.send(JSON.stringify({ t: 'hangarArrival', hangarId, ...body })); };
@@ -3132,6 +3135,12 @@ wss.on("connection", (ws) => {
     if (msg.t === "groupCreate" || msg.t === "groupInvite" || msg.t === "groupAccept" || msg.t === "groupDecline"
       || msg.t === "groupLeave" || msg.t === "groupKick" || msg.t === "groupChat" || msg.t === "groupSync"
       || msg.t === "groupInviteLock" || msg.t === "groupRally" || msg.t === "whisper") {
+      // Leviathan Gate : chacun pour soi, ni création ni invitation ni acceptation.
+      if ((msg.t === "groupCreate" || msg.t === "groupInvite" || msg.t === "groupAccept")
+        && String(state.serverMap || mapId || "").toLowerCase() === "leviathan") {
+        try { if (ws.readyState === 1) ws.send(JSON.stringify({ t: "groupNotice", text: "Impossible dans la Leviathan Gate : chacun pour soi." })); } catch {}
+        return;
+      }
       try {
         handleSocialMessage({
           id, state, authed,
@@ -3585,8 +3594,8 @@ wss.on("connection", (ws) => {
         const me = room.get(id);
         if (!foe || !me) return;
         if (foe === me || me.state.pvpDead === true || !(me.state.hp > 0)) return;
-        // GG d'hiver : pas de PvP.
-        if (mapId === "winter") return;
+        // GG d'hiver / Leviathan Gate : pas de PvP.
+        if (mapId === "winter" || mapId === "leviathan") return;
         if (msg.ability === "ability_hyperion_qa"
           && foe.state.safe === true) return;
         const profile = refreshCombatProfile(me.state, accountId, mapId);
@@ -3870,8 +3879,8 @@ wss.on("connection", (ws) => {
         const me = room.get(id);
         if (!foe || !me) return;
         if (foe === me || me.state.pvpDead === true || !(me.state.hp > 0)) return;
-        // GG d'hiver : on ne tire pas non plus sur les P.E.T des autres.
-        if (mapId === "winter") return;
+        // GG d'hiver / Leviathan Gate : on ne tire pas non plus sur les P.E.T des autres.
+        if (mapId === "winter" || mapId === "leviathan") return;
         const profile = refreshCombatProfile(me.state, accountId, mapId);
         msg = validateCombatHit(profile, msg, me.state);
         if (!msg) {
@@ -4061,6 +4070,11 @@ wss.on("connection", (ws) => {
                 mapId = "winter";
                 winterRejoinSpot = winterGateRejoinSpot();
                 state._winterRejoin = true;
+              } else if (mapId !== "leviathan" && leviathanGateRejoin(stableId)) {
+                // Leviathan Gate reprise après un redémarrage : même principe.
+                mapId = "leviathan";
+                winterRejoinSpot = leviathanGateArrival();
+                state._leviathanRejoin = true;
               }
             }
             const profile = refreshCombatProfile(state, accountId, mapId);
@@ -4138,6 +4152,10 @@ wss.on("connection", (ws) => {
         state._winterRejoin = false;
         if (nextMap !== "winter" && msg.instance !== true) { correctState(); return; }
       }
+      if (state._leviathanRejoin === true) {
+        state._leviathanRejoin = false;
+        if (nextMap !== "leviathan" && msg.instance !== true) { correctState(); return; }
+      }
       if (!changeMap(nextMap, msg.instance === true)) { correctState(); return; }
       state._joined = true;
       const socialCtx = () => ({
@@ -4208,6 +4226,11 @@ wss.on("connection", (ws) => {
       // GG d'hiver : session en cours (attente, convoi, chrono).
       if (nextMap === "winter") {
         try { ws.send(JSON.stringify(getWinterGateState())); } catch {}
+      }
+      // Leviathan Gate : session en cours + chacun pour soi (sortie du groupe).
+      if (nextMap === "leviathan") {
+        try { ws.send(JSON.stringify(getLeviathanGateState())); } catch {}
+        try { socialForceLeave(id, socialCtx()); } catch {}
       }
       if (authed && accountId) {
         sendFriendsSync(ws, accountId);
@@ -5373,6 +5396,34 @@ setInterval(() => {
         }
       } catch {}
     }
+    // Leviathan Gate : session horaire (attente, vagues infinies, fin).
+    if (key === "leviathan") {
+      try {
+        const leviathanSim = npcSims.get(key);
+        if (leviathanSim && typeof leviathanSim.spawnGateWave === "function") {
+          tickLeviathanGate(room, leviathanSim, {
+            broadcast: (obj) => broadcastRoom(room, JSON.stringify(obj)),
+            // Impulsion du boss : poussée radiale (mouvement forcé serveur,
+            // teleportSeq + stateCorrection comme l'Incinération).
+            push: (pid, bx, by, dist) => {
+              const entry = room.get(String(pid));
+              const s = entry?.state;
+              if (!s || s.pvpDead === true || !(Number(s.hp) > 0)) return;
+              const world = serverMaps.get(key)?.world;
+              if (!world) return;
+              const dx = Number(s.x) - bx, dy = Number(s.y) - by;
+              const len = Math.hypot(dx, dy) || 1;
+              const now = Date.now();
+              const nx = Math.max(80, Math.min(Number(world.w) - 80, Number(s.x) + (dx / len) * dist));
+              const ny = Math.max(80, Math.min(Number(world.h) - 80, Number(s.y) + (dy / len) * dist));
+              Object.assign(s, { x: nx, y: ny, vx: 0, vy: 0, moving: false, motionBlocked: false,
+                teleportSeq: (Number(s.teleportSeq) || 0) + 1, moveBuck: 0, moveBuckT: now });
+              try { if (entry.ws?.readyState === 1) entry.ws.send(JSON.stringify({ t: "stateCorrection", map: key, x: nx, y: ny })); } catch {}
+            },
+          });
+        }
+      } catch {}
+    }
     // Feed degats PvP du tick, fusionne avec le feed NPC (plafond commun).
     try {
       const pf = pvpFeeds.get(key);
@@ -5603,6 +5654,7 @@ for (const signal of ["SIGINT", "SIGTERM"]) {
     try { saveNpcRespawns(); } catch {}
     try { flushNpcRewards(); } catch {}
     try { persistWinterGate(Date.now(), { final: true }); } catch {}
+    try { persistLeviathanGate(Date.now(), { final: true }); } catch {}
     setTimeout(() => {
       try {
         for (const client of wss.clients) {

@@ -7650,6 +7650,10 @@ tr.clanRankTop3 .clanRankPos { color:#e0a070; }
   padding:4px 0;
   border-bottom:1px solid rgba(124,240,255,.1);
 }
+/* Classement Leviathan : crédits, XP, honneur (3 colonnes de gains). */
+.rankingRewardsTip.rankingRewardsCols3 .rankingRewardTier {
+  grid-template-columns:82px repeat(3,minmax(0,1fr));
+}
 .rankingRewardsTip .rankingRewardTier:last-child {
   border-bottom:0;
 }

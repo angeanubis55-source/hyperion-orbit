@@ -25,7 +25,7 @@ export const JPC_BOT_TAG = "BOT";
 const JPC_EXCLUDED_MAPS = new Set([
   "4-1", "4-2", "4-3", "4-4", "4-5",
   "alpha", "beta", "gamma", "delta", "epsilon", "zeta", "kappa",
-  "lambda", "omicron", "kronos", "awakened", "low", "qz", "maudite", "winter",
+  "lambda", "omicron", "kronos", "awakened", "low", "qz", "maudite", "winter", "leviathan",
 ]);
 
 export function isJpcBotMap(mapId) {
