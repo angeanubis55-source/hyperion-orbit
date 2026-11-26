@@ -37,7 +37,11 @@ export const LEVIATHAN_RANKING_ENDS = Object.freeze([
 // ⚠️ TEST : true = événement actif tout de suite (client + serveur), points
 // sur un classement « test » à part (jamais versé). À repasser à false
 // avant le 30/11 (et LEVIATHAN_GATE_OPEN_MINUTE à 0 si voulu).
-export const LEVIATHAN_GATE_TEST = true;
+export const LEVIATHAN_GATE_TEST = false;
+
+// Interrupteur général : false = Gate Of Olympus annulée (portail, gate,
+// classement et versements désactivés).
+export const LEVIATHAN_GATE_ENABLED = false;
 
 // Sessions : une par heure, entrée de :MM à :MM+5 (MM = minute d'ouverture),
 // fin pile une heure après l'ouverture.
@@ -141,6 +145,7 @@ export const LEVIATHAN_RANKING_PERIODS = Object.freeze((() => {
 })());
 
 function forced() {
+  if (!LEVIATHAN_GATE_ENABLED) return false;
   if (LEVIATHAN_GATE_TEST) return true;
   try {
     // Test / debug serveur : LEVIATHAN_FORCE=1 simule l'événement.
@@ -153,6 +158,7 @@ const LEVIATHAN_TEST_PERIOD = Object.freeze({ index: 0, key: "test", startAt: 0,
 
 // Classement en cours ou null hors événement.
 export function leviathanRankingPeriod(nowMs = Date.now()) {
+  if (!LEVIATHAN_GATE_ENABLED) return null;
   const t = Number(nowMs);
   if (!Number.isFinite(t)) return null;
   const found = LEVIATHAN_RANKING_PERIODS.find((p) => t >= p.startAt && t < p.endAt) || null;
@@ -162,6 +168,7 @@ export function leviathanRankingPeriod(nowMs = Date.now()) {
 
 // Gate visible / jouable : pendant un classement (= pendant l'événement).
 export function isLeviathanGateActive(nowMs = Date.now()) {
+  if (!LEVIATHAN_GATE_ENABLED) return false;
   if (forced()) return true;
   return leviathanRankingPeriod(nowMs) !== null;
 }

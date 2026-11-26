@@ -33,7 +33,7 @@ import { getPetTradeBonusPct } from "../PET/PET_GEARS.js";
 import { CRAFTING_ENABLED, getCraftingRecipe } from "../SRC/DATA/CRAFTING.js";
 import { isHalloweenEventActive } from "../NPC/NPC_HALLOWEEN.js";
 import { compareWinterStanding, winterFinalStandings, winterFrostPointsFor, winterPeriodFrostPoints, winterRankingPeriods } from "../SRC/CORE/WINTER_CONVOY.js";
-import { LEVIATHAN_RANKING_PERIODS, compareLeviathanStanding, leviathanFinalStandings, leviathanPeriodPoints, leviathanPointsFor } from "../SRC/CORE/LEVIATHAN_GATE.js";
+import { LEVIATHAN_GATE_ENABLED, LEVIATHAN_RANKING_PERIODS, compareLeviathanStanding, leviathanFinalStandings, leviathanPeriodPoints, leviathanPointsFor } from "../SRC/CORE/LEVIATHAN_GATE.js";
 import { normalizeBattlepassState } from "../QUEST/BATTLEPASS.js";
 import { getPassShopOffer, PASS_MODULE_FORCED } from "../SRC/DATA/PASS_SHOP.js";
 import { SKYLAB_INSTANT_TRANSPORT_COST, SKYLAB_MAX_ROBOTS, SKYLAB_RESOURCE_IDS, SKYLAB_ROBOT_CREDIT_COST, SKYLAB_ROBOT_LIFETIME_MS, SKYLAB_TRANSPORT_COOLDOWN_SEC, canStartSkylabUpgrade, getSkylabModuleDef, isCollectorModule, normalizeSkylabState, skylabRobotCount, skylabStorageCap, tickSkylabState } from "../SRC/DATA/SKYLAB.js";
@@ -3802,6 +3802,8 @@ function leviathanStandingsFor(periodKey) {
 export function payoutLeviathanRankings(now = Date.now()) {
   initAccountDb();
   const paid = [];
+  // Gate Of Olympus annulée : aucun classement à verser.
+  if (!LEVIATHAN_GATE_ENABLED) return paid;
   for (const period of LEVIATHAN_RANKING_PERIODS) {
     if (period.endAt + WINTER_RANKING_PAYOUT_DELAY_MS > now) continue;
     if (db.prepare("SELECT 1 FROM leviathan_ranking_payouts WHERE period_key = ?").get(period.key)) continue;

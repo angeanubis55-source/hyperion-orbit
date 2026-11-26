@@ -191,21 +191,25 @@ export function winterFrostPoints(hpMax) {
   return Math.max(1, Math.round(Math.max(0, Number(hpMax) || 0) / WINTER_FROST_POINT_HP));
 }
 
-// Classement Winter : 3 classements par saison (heure de Paris), chaque
+// Classement Winter : classements d'une semaine (heure de Paris), chaque
 // année. Le premier démarre avec l'hiver (NPC_WINTER.js, WINTER_START), les
-// suivants de minuit à minuit : 2-8 nov., 9-15, 16-22 (3 semaines).
+// suivants de minuit à minuit : 2-8 nov., 9-15, 16-22, puis reprise après
+// une pause : 30 nov.-6 déc. (à 00h01) et 7-13 déc.
+// [mois de fin, jour de fin, (début [mois, jour] si pause avant)].
 // Hors de ces dates, GG d'hiver et onglet Winter
 // du classement sont indisponibles. user.winter.frostPeriod = classement des
 // frostPoints ; un autre classement compte pour 0.
-export const WINTER_RANKING_ENDS = Object.freeze([[10, 9], [10, 16], [10, 23]]);
+export const WINTER_RANKING_ENDS = Object.freeze([[10, 9], [10, 16], [10, 23], [11, 7, [10, 30]], [11, 14]]);
 const winterPeriodCache = new Map();
-// Les 3 classements de la saison de novembre de `year`.
+// Les classements de la saison d'hiver de `year`.
 export function winterRankingPeriods(year) {
   let list = winterPeriodCache.get(year);
   if (!list) {
     const s = WINTER_START;
     let startAt = winterParisTime(year, s.month, s.day, s.hour, s.minute);
-    list = Object.freeze(WINTER_RANKING_ENDS.map(([month, day], index) => {
+    list = Object.freeze(WINTER_RANKING_ENDS.map(([month, day, start], index) => {
+      // Reprise après une pause : début explicite (00h01).
+      if (Array.isArray(start)) startAt = winterParisTime(year, start[0], start[1], 0, 1);
       const endAt = winterParisTime(year, month, day);
       const period = Object.freeze({ index, key: `${year}-${index + 1}`, startAt, endAt });
       startAt = endAt;
