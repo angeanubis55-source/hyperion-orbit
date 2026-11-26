@@ -2030,7 +2030,7 @@ drainPlayerHits() {
   // Fin de session : NPC de la vague (et boss) retirés sans mort ni récompense.
   clearGateWave() {
     for (const [uid, e] of [...this.entries]) {
-      if (!e || (e.gateWave !== true && e.gateBoss !== true)) continue;
+      if (!e || (e.gateWave !== true && e.gateBoss !== true && e.gateSeeker !== true)) continue;
       this.entries.delete(uid);
       if (e.hp > 0 && this.recentGone.length < 200) this.recentGone.push(uid);
     }
@@ -2066,6 +2066,49 @@ drainPlayerHits() {
     };
     this.entries.set(uid, entry);
     return entry;
+  }
+
+  // Leviathan Gate : salve de Seeker Rockets lâchées par le boss, autant que
+  // de joueurs en vie. Chacune traque le joueur le plus proche (cible
+  // réévaluée en continu, explosion au contact). Plafond de `max` en vol.
+  spawnGateSeekers(boss, targetIds, nowMs = Date.now(), max = 30) {
+    if (!boss || !(boss.hp > 0)) return 0;
+    const stats = statsFor("npc_Barrage_Seeker_Rocket");
+    if (!stats) return 0;
+    let live = 0;
+    for (const e of this.entries.values()) if (e && e.gateSeeker === true && e.hp > 0) live++;
+    let spawned = 0;
+    for (const target of targetIds || []) {
+      if (live + spawned >= max) break;
+      if (!this.players.has(String(target))) continue;
+      const ang = Math.random() * TAU;
+      const dist = (Number(boss.r) || 120) + 40 + Math.random() * 80;
+      const n = (this.gateWaveSeq = (Number(this.gateWaveSeq) || 0) + 1);
+      const uid = `gateseeker:${n}`;
+      this.entries.set(uid, {
+        uid, campId: null, type: "npc_Barrage_Seeker_Rocket", gateSeeker: true,
+        x: clamp(Number(boss.x) + Math.cos(ang) * dist, 80, this.world.w - 80),
+        y: clamp(Number(boss.y) + Math.sin(ang) * dist, 80, this.world.h - 80),
+        angle: ang,
+        hp: stats.hpMax, sh: stats.shMax,
+        hpMax: stats.hpMax, shMax: stats.shMax,
+        speed: stats.speed, dr: stats.dr, spread: stats.spread,
+        passive: false, kamikaze: !!stats.kamikaze,
+        explodeOnTouch: !!stats.explodeOnTouch, explodeRadius: stats.explodeRadius, explodeDmg: stats.explodeDmg,
+        canShoot: false, shootRange: stats.shootRange, shootRate: 0,
+        bulletDmg: 0, burst: stats.burst, shootCd: 0,
+        aggroRange: 20000, aggroHoldMs: 0,
+        aggroBy: null, aggroUntil: 0,
+        hunter: true,
+        tx: null, ty: null, killer: null, firstBy: null, lastHitBy: null,
+        lockBy: null, lockHitAt: 0, lockReleaseAt: 0, hitHist: [],
+        fleeVx: 0, fleeVy: 0, deadAt: 0,
+        orbitDir: Math.random() < 0.5 ? -1 : 1, orbitT: 2 + Math.random() * 3,
+        seq: this.nextSpawnSequence(uid),
+      });
+      spawned++;
+    }
+    return spawned;
   }
 
   // Boss retiré sans mort ni récompense (explosion du Guardian à 10 %).

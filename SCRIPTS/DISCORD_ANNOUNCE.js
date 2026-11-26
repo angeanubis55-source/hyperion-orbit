@@ -121,8 +121,9 @@ Une nouvelle gate s'ouvre au centre des maps **1-3, 2-3 et 3-3** !
 
 :fire: **Le Dreadfyre Guardian**
 > Fixe au centre de la carte et **invincible** : il lâche des **Dreadfyre Harbinger**
-> Tous les Harbinger détruits : **15 secondes** pour le frapper, puis il redevient invincible et en relâche **2 de plus**
+> Tous les Harbinger détruits : **3 secondes** pour le frapper, puis il redevient invincible et en relâche **2 de plus**
 > Toutes les 10 s, son **impulsion** balaie la carte : elle ralentit et repousse, sans dégâts
+> Toutes les 5 s, il lâche des **Seeker Rockets** qui traquent le pilote le plus proche et explosent au contact
 > Sous **10 %** de vie, il explose… et la **Dreadfyre Fortress** prend sa place : **+6 Harbinger** par lâcher, impulsions plus fréquentes, parfois deux d'affilée
 > **Chacun pour soi** : pas de groupe et pas de PvP dans la gate
 

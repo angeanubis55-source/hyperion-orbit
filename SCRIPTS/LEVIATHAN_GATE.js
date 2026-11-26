@@ -41,6 +41,7 @@ const gate = {
   // vie) | window (vulnérable jusqu'à windowUntil).
   boss: null, // { uid, stage, fight, adds, cycle, windowUntil, hp, hpMax }
   nextPulseAt: 0,
+  nextSeekerAt: 0,
   pulseQueue: [], // impulsions programmées : [at]
   pushes: [], // poussées en attente : [{ pid, at, bx, by }]
   lastSentAt: 0,
@@ -153,6 +154,7 @@ function startFight(sim, now, restored = null) {
   }
   releaseAdds(sim);
   gate.nextPulseAt = now + LEVIATHAN_BOSS.pulseEveryMs[stage];
+  gate.nextSeekerAt = now + LEVIATHAN_BOSS.seekerEveryMs;
   gate.pulseQueue = [];
   gate.pushes = [];
   return true;
@@ -366,6 +368,11 @@ function tickInner(room, sim, ctx, now) {
       releaseAdds(sim);
     }
     tickPulses(room, ctx, now);
+    // Salve de Seeker Rockets toutes les 5 s, une par joueur en vie.
+    if (now >= gate.nextSeekerAt) {
+      gate.nextSeekerAt = now + LEVIATHAN_BOSS.seekerEveryMs;
+      try { sim.spawnGateSeekers(e, present, Date.now(), LEVIATHAN_BOSS.seekerMax); } catch {}
+    }
     return;
   }
 

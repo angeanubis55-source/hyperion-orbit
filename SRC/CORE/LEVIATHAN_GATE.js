@@ -41,7 +41,7 @@ export const LEVIATHAN_GATE_TEST = true;
 
 // Sessions : une par heure, entrée de :MM à :MM+5 (MM = minute d'ouverture),
 // fin pile une heure après l'ouverture.
-export const LEVIATHAN_GATE_OPEN_MINUTE = 50;
+export const LEVIATHAN_GATE_OPEN_MINUTE = 3;
 export const LEVIATHAN_GATE_PERIOD_MS = 60 * 60 * 1000;
 export const LEVIATHAN_GATE_ENTRY_MS = 5 * 60 * 1000;
 export const LEVIATHAN_GATE_RUN_MS = LEVIATHAN_GATE_PERIOD_MS - LEVIATHAN_GATE_ENTRY_MS;
@@ -61,7 +61,8 @@ export const LEVIATHAN_GATE_RUN_MS = LEVIATHAN_GATE_PERIOD_MS - LEVIATHAN_GATE_E
 export const LEVIATHAN_GUARDIAN_TYPE = "npc_Dreadfyre_Guardian";
 export const LEVIATHAN_FORTRESS_TYPE = "npc_Dreadfyre_Fortress";
 export const LEVIATHAN_HARBINGER_TYPE = "npc_Dreadfyre_Harbinger";
-export const LEVIATHAN_TYPES = Object.freeze([LEVIATHAN_GUARDIAN_TYPE, LEVIATHAN_FORTRESS_TYPE, LEVIATHAN_HARBINGER_TYPE]);
+// Types préchargés à l'arrivée (Seeker Rocket : salves du boss).
+export const LEVIATHAN_TYPES = Object.freeze([LEVIATHAN_GUARDIAN_TYPE, LEVIATHAN_FORTRESS_TYPE, LEVIATHAN_HARBINGER_TYPE, "npc_Barrage_Seeker_Rocket"]);
 
 export const LEVIATHAN_BOSS = Object.freeze({
   // Premier lâcher de Harbinger.
@@ -69,7 +70,7 @@ export const LEVIATHAN_BOSS = Object.freeze({
   // Harbinger en plus à chaque nouveau lâcher.
   addsStep: Object.freeze({ guardian: 2, fortress: 6 }),
   // Fenêtre de dégâts (boss vulnérable) une fois tous les Harbinger tués.
-  windowMs: 15000,
+  windowMs: 3000,
   // Le Guardian explose sous ce pourcentage de vie.
   guardianExplodePct: 0.10,
   // Intervalle des impulsions ; Fortress : chance d'une 2e juste après.
@@ -83,6 +84,11 @@ export const LEVIATHAN_BOSS = Object.freeze({
   pulsePush: 250,
   // Lâcher des Harbinger : autour du boss.
   addsDistance: Object.freeze([450, 900]),
+  // Seeker Rockets (celles du Strokelight Barrage) : une salve toutes les
+  // seekerEveryMs, autant de roquettes que de joueurs en vie (chacune traque le plus proche),
+  // au plus seekerMax en vol.
+  seekerEveryMs: 5000,
+  seekerMax: 30,
 });
 
 // Points de classement : 1 par tranche de LEVIATHAN_POINT_HP PV max d'un NPC

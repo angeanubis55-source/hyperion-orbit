@@ -2039,21 +2039,21 @@ export const NPC_TYPES = {
     sprite: { path: "NPC/NPC_SPRITES/DREADFYRE_FORTRESS/", frames: 96, firstNumber: 1, ext: ".png", w: 1000, h: 800 },
     playSprite: true,
     passiveNative: false,
-    spriteSpeed: 18,
+    spriteSpeed: 36,
     bulletSprite: { src: "COMBAT/MUNITIONS/SPECIAL8.png", w: 55, h: 17, glow: true, invert: true },
     // Leviathan Gate : boss fixe de 2e phase (SCRIPTS/LEVIATHAN_GATE.js),
     // immobile, ne tire pas (impulsions pilotées par le serveur).
-    r: 320, hp: 60000000, shield: 0, speed: 0, bulletDmg: 0, bulletSpeed: 4500, shootRange: 0,
+    r: 320, hp: 300000000, shield: 0, speed: 0, bulletDmg: 0, bulletSpeed: 4500, shootRange: 0,
   },
   npc_Dreadfyre_Guardian: {
     name: "-=[ Dreadfyre Guardian ]=-",
     sprite: { path: "NPC/NPC_SPRITES/DREADFYRE_GUARDIAN/", frames: 96, firstNumber: 1, ext: ".png", w: 502, h: 400 },
     playSprite: true,
     passiveNative: false,
-    spriteSpeed: 18,
+    spriteSpeed: 36,
     bulletSprite: { src: "COMBAT/MUNITIONS/SPECIAL8.png", w: 55, h: 17, glow: true, invert: true },
     // Leviathan Gate : boss fixe de 1re phase (explose sous 10 %).
-    r: 170, hp: 30000000, shield: 0, speed: 0, bulletDmg: 0, bulletSpeed: 4500, shootRange: 0,
+    r: 170, hp: 100000000, shield: 0, speed: 0, bulletDmg: 0, bulletSpeed: 4500, shootRange: 0,
   },
   npc_Dreadfyre_Harbinger: {
     name: "-=[ Dreadfyre Harbinger ]=-",
