@@ -1565,8 +1565,10 @@ export const NPC_TYPES = {
     playSprite: true,
     passiveNative: false,
     spriteSpeed: 0,
-    bulletSprite: { src: "COMBAT/MUNITIONS/SPECIAL8.png", w: 55, h: 17, glow: true, invert: true },
-    // Pas de tir : JAMX Creed toutes les 10 s (1000 px, halo 6 s + décamouflage,
+    bulletSprite: { src: "COMBAT/MUNITIONS/SPECIAL1.png", w: 120, h: 19, glow: true },
+    // Tire (munition SPECIAL1) EN PLUS de ses aptitudes (shootWithCreed).
+    shootWithCreed: true,
+    // JAMX Creed toutes les 10 s (1000 px, halo 6 s + décamouflage,
     // 7 500 dégâts ; aptitudes de vaisseau et techs NON coupées).
     creedPulse: { interval: 10, radius: 1000, duration: 6, damage: 7500 },
     // Roquette DCR-250 invisible toutes les 3 s sur un joueur au hasard à
@@ -1585,7 +1587,7 @@ export const NPC_TYPES = {
     playSprite: true,
     passiveNative: false,
     spriteSpeed: 0,
-    bulletSprite: { src: "COMBAT/MUNITIONS/SPECIAL8.png", w: 55, h: 17, glow: true, invert: true },
+    bulletSprite: { src: "COMBAT/MUNITIONS/SPECIAL1.png", w: 120, h: 19, glow: true },
     r: 20, hp: 5500000, shield: 3500000, speed: 250, bulletDmg: 20000, bulletSpeed: 4500, shootRange: 700,
   },
   npc_Boss_Curcubitor: {

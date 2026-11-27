@@ -57,7 +57,7 @@ import { SpatialIndex } from "./SPATIAL_INDEX.js";
 import { normalizeMapId } from "./MAP_REGISTRY.js";
 import { getPortalSkinForMap } from "./PORTAL_SKINS.js";
 import { WINTER_TYPES, isWinterEventActive, winterPreloadTypes } from "../../NPC/NPC_WINTER.js";
-import { HITAC_SNOW_DEBUG_CENTER, HITAC_SNOW_MINION_TYPE as HITAC_SNOW_MINION_DRAW_TYPE, HITAC_SNOW_TYPE, hitacSnowDrawLayer, hitacSnowPreloadTypes } from "../../NPC/NPC_HITAC_SNOW.js";
+import { HITAC_SNOW_DEBUG_CENTER, HITAC_SNOW_ESCORT_OFFSETS, HITAC_SNOW_MINION_TYPE as HITAC_SNOW_MINION_DRAW_TYPE, HITAC_SNOW_TYPE, hitacSnowDrawLayer, hitacSnowPreloadTypes } from "../../NPC/NPC_HITAC_SNOW.js";
 "use strict";
 import {
   getCurrentUserFull,
@@ -39343,8 +39343,27 @@ function drawMinimap() {
         if (!isHitac && (!isHalloweenVariantType(enemy?.type) || halloweenRoleOf(enemy?.type) !== "boss")) return null;
         const sp = NPC_TYPES[enemy.type]?.sprite;
         const imgs = Array.isArray(sp?._imgs) && sp._imgs.length ? sp._imgs : null;
-        // Hitac : 1re image seule (ses frames animent le cœur → scintillement).
-        return { imgs: isHitac && imgs ? [imgs[0]] : imgs, size: isHitac ? 16 : 12 };
+        if (isHitac) {
+          // Silhouette du groupe : Hitac + minions encore en vie, chacun à sa
+          // place dans la formation (uid "…:es<i>") ; évolue à chaque perte.
+          const ms = NPC_TYPES[HITAC_SNOW_MINION_DRAW_TYPE]?.sprite;
+          const himg = imgs ? imgs[0] : null;
+          const mimg = Array.isArray(ms?._imgs) ? ms._imgs[0] : null;
+          const alive = new Set();
+          for (const m of enemies) {
+            if (m?.type !== HITAC_SNOW_MINION_DRAW_TYPE || !(m.hp > 0)) continue;
+            const mt = /:es(\d+)$/.exec(String(m._netUid || ""));
+            if (mt && Math.hypot(m.x - enemy.x, m.y - enemy.y) < 500) alive.add(Number(mt[1]));
+          }
+          const idx = [...alive].filter((i) => HITAC_SNOW_ESCORT_OFFSETS[i]).sort((a, b) => a - b);
+          const parts = himg ? [{ img: himg, x: 0, y: 0, w: Number(sp.w) || 500, h: Number(sp.h) || 444 }] : [];
+          if (himg && mimg) for (const i of idx) {
+            const off = HITAC_SNOW_ESCORT_OFFSETS[i];
+            parts.push({ img: mimg, x: off.dx, y: off.dy, w: Number(ms.w) || 112, h: Number(ms.h) || 100 });
+          }
+          return { compose: parts.length ? { key: `hitac:${idx.join(",")}`, parts } : null, size: 26 };
+        }
+        return { imgs, size: 12 };
       } catch { return null; }
     },
     // Spearhead Recon : radar minimap x2 pendant l'effet.

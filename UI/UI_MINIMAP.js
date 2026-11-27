@@ -36,6 +36,48 @@ function whiteIcon(img) {
   return tinted;
 }
 
+// Icône composée (ex : Hitac Givré + minions) : silhouette blanche nette
+// (alpha seuillé, aucun bord semi-transparent) rendue directement à sa
+// taille finale, puis posée au pixel près → aucun scintillement.
+// parts = [{ img, x, y, w, h }] en px monde, centrés sur le NPC (0, 0).
+const composeIconCache = new Map();
+function composeIcon(compose, size) {
+  const parts = Array.isArray(compose?.parts) ? compose.parts : [];
+  if (!parts.length || parts.some((p) => !(Number(p?.img?.naturalWidth) > 0))) return null;
+  const key = `${compose.key}|${size}`;
+  let entry = composeIconCache.get(key);
+  if (entry) return entry;
+  let x1 = Infinity, y1 = Infinity, x2 = -Infinity, y2 = -Infinity;
+  for (const p of parts) {
+    x1 = Math.min(x1, p.x - p.w / 2); y1 = Math.min(y1, p.y - p.h / 2);
+    x2 = Math.max(x2, p.x + p.w / 2); y2 = Math.max(y2, p.y + p.h / 2);
+  }
+  const k = size / Math.max(1, x2 - x1, y2 - y1);
+  const cw = Math.max(1, Math.ceil((x2 - x1) * k)), ch = Math.max(1, Math.ceil((y2 - y1) * k));
+  const canvas = document.createElement("canvas");
+  canvas.width = cw; canvas.height = ch;
+  const g = canvas.getContext("2d");
+  for (const p of parts) g.drawImage(p.img, (p.x - p.w / 2 - x1) * k, (p.y - p.h / 2 - y1) * k, p.w * k, p.h * k);
+  try {
+    const data = g.getImageData(0, 0, cw, ch);
+    const px = data.data;
+    for (let i = 0; i < px.length; i += 4) {
+      const on = px[i + 3] >= 90;
+      px[i] = px[i + 1] = px[i + 2] = 255;
+      px[i + 3] = on ? 255 : 0;
+    }
+    g.putImageData(data, 0, 0);
+  } catch {
+    g.globalCompositeOperation = "source-in";
+    g.fillStyle = "#ffffff";
+    g.fillRect(0, 0, cw, ch);
+  }
+  entry = { canvas, ox: Math.round(-x1 * k), oy: Math.round(-y1 * k) };
+  if (composeIconCache.size > 32) composeIconCache.clear();
+  composeIconCache.set(key, entry);
+  return entry;
+}
+
 // Animation des icônes de boss : une frame par rendu (minimap à 20 Hz).
 let bossIconFrame = 0;
 
@@ -284,7 +326,10 @@ export function renderMinimap(context, options) {
       const y = enemy.y * scaleY;
       const imgs = Array.isArray(mark.imgs) ? mark.imgs : [];
       const img = imgs.length ? imgs[bossIconFrame % imgs.length] : null;
-      if (img && Number(img.naturalWidth) > 0) {
+      const composed = mark.compose ? composeIcon(mark.compose, size) : null;
+      if (composed) {
+        context.drawImage(composed.canvas, Math.round(x) - composed.ox, Math.round(y) - composed.oy);
+      } else if (img && Number(img.naturalWidth) > 0) {
         context.drawImage(whiteIcon(img), x - size / 2, y - size / 2, size, size);
       } else {
         // Sprite pas encore chargé : pastille blanche en attendant.

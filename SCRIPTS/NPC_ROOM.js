@@ -3089,7 +3089,9 @@ drainPlayerHits() {
       }
       const chasePlayer = chase ? this.players.get(String(chase.id)) : null;
       const chaseTargetOk = this.validTarget(chasePlayer) || this.retaliationOpen(e, chase ? chase.id : null, nowMs);
-      if (!creedCfg && !blastCfg && !frozen && !(nowMs < Number(e._redirectSilenceUntil || 0)) && e.canShoot !== false && e.shootRate > 0 && chase && chaseTargetOk
+      // shootWithCreed (Hitac Givré) : tire aussi en plus de ses aptitudes.
+      const creedBlocksShot = (creedCfg || blastCfg) && NPC_TYPES[e.type]?.shootWithCreed !== true;
+      if (!creedBlocksShot && !frozen && !(nowMs < Number(e._redirectSilenceUntil || 0)) && e.canShoot !== false && e.shootRate > 0 && chase && chaseTargetOk
         && (!e.jpc || nowMs >= Number(e.jpcIshUntil || 0))) {
         const distance = Math.hypot(chase.x - e.x, chase.y - e.y);
         if (distance <= e.shootRange && e.shootCd <= 0) {
