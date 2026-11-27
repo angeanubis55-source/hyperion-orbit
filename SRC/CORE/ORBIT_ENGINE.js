@@ -39338,10 +39338,12 @@ function drawMinimap() {
     // visible même hors portée radar — jamais le point rouge.
     bossIconFor: (enemy) => {
       try {
-        if (!isHalloweenVariantType(enemy?.type) || halloweenRoleOf(enemy?.type) !== "boss") return null;
+        // Hitac Givré : même icône blanche toujours visible (pas ses minions).
+        const isHitac = enemy?.type === HITAC_SNOW_TYPE;
+        if (!isHitac && (!isHalloweenVariantType(enemy?.type) || halloweenRoleOf(enemy?.type) !== "boss")) return null;
         const sp = NPC_TYPES[enemy.type]?.sprite;
         const imgs = Array.isArray(sp?._imgs) && sp._imgs.length ? sp._imgs : null;
-        return { imgs, size: 12 };
+        return { imgs, size: isHitac ? 16 : 12 };
       } catch { return null; }
     },
     // Spearhead Recon : radar minimap x2 pendant l'effet.

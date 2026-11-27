@@ -3,7 +3,8 @@
 // un Hitac givré, escorté de 6 Hitac-Minion givrés (de chaque côté
 // du bout de ses 3 bras), qui le suivent en formation.
 // Comme l'UFONIT : 1 seul à la fois, sur une map tirée au hasard parmi
-// 4-1 / 4-2 / 4-3, à une position aléatoire ; à sa mort il réapparaît
+// 4-1 / 4-2 / 4-3, sur un portail extérieur, puis patrouille de portail en
+// portail (HITAC_SNOW_ROUTES) ; à sa mort il réapparaît
 // aussitôt sur une autre map (contrôleur itinérant, NPC_ROOM.js).
 // Pur (aucun DOM) : importable côté serveur et côté client.
 
@@ -97,15 +98,35 @@ export function hitacSnowCampPos(world, random = Math.random) {
   };
 }
 
-// Camp à position aléatoire ; le Hitac erre sur la map sans jamais chasser
-// ni fuir (roamOnly), son escorte le suit en formation (`escort`).
-export function buildHitacSnowCamp(world, random = Math.random) {
-  const pos = hitacSnowCampPos(world, random);
+// Patrouille : les 3 portails extérieurs de chaque map (le portail
+// intérieur vers 4-4 est exclu). Copie des positions de MAPS/4-x/SPAWNS.js.
+// Le Hitac apparaît sur l'un d'eux, file tout droit vers le suivant et,
+// HITAC_SNOW_TURN_DIST px avant d'y arriver, vire vers le prochain (boucle).
+export const HITAC_SNOW_ROUTES = Object.freeze({
+  "4-1": Object.freeze([{ x: 803, y: 3067 }, { x: 10232, y: 1000 }, { x: 10232, y: 5900 }]),
+  "4-2": Object.freeze([{ x: 5517, y: 767 }, { x: 10232, y: 5900 }, { x: 1083, y: 5900 }]),
+  "4-3": Object.freeze([{ x: 10511, y: 3067 }, { x: 1083, y: 1000 }, { x: 1083, y: 5900 }]),
+});
+export const HITAC_SNOW_TURN_DIST = 800; // distance au portail où il change de cap
+export const HITAC_SNOW_TURN_RATE = 0.5; // rad/s : virage en douceur
+
+// Camp sur un portail extérieur de la map (position aléatoire si la map n'a
+// pas de route) ; le Hitac patrouille sans jamais chasser ni fuir
+// (roamOnly), son escorte le suit en formation (`escort`).
+export function buildHitacSnowCamp(world, random = Math.random, mapId = null) {
+  const r = typeof random === "function" ? random : Math.random;
+  const route = HITAC_SNOW_ROUTES[String(mapId || "").trim().toLowerCase()] || null;
+  const start = route ? Math.min(route.length - 1, Math.floor(r() * route.length)) : 0;
+  const dir = r() < 0.5 ? 1 : -1;
+  const pos = route ? route[start] : hitacSnowCampPos(world, r);
   return {
+    // Spawn pile sur le portail de départ, puis cap sur le portail suivant.
+    fixed: !!route,
+    patrol: route ? { route, idx: (start + dir + route.length) % route.length, dir,
+      turnDist: HITAC_SNOW_TURN_DIST, turnRate: HITAC_SNOW_TURN_RATE } : null,
     type: HITAC_SNOW_TYPE,
     event: HITAC_SNOW_EVENT,
     roaming: true,
-    fixed: false,
     stationary: false,
     roamOnly: true,
     x: pos.x,

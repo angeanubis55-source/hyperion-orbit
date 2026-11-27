@@ -777,6 +777,9 @@ export class ZoneNpcSim {
       // Errance seule (Hitac Givré) : se déplace sur la map sans jamais
       // chasser ni fuir ; ses attaques (Creed, DCR) restent actives.
       roamOnly: camp.roamOnly === true,
+      // Patrouille de portail en portail (Hitac Givré) : copie par entrée.
+      patrol: camp.patrol && Array.isArray(camp.patrol.route) && camp.patrol.route.length >= 2
+        ? { ...camp.patrol, heading: null } : null,
       aggroBy: null, aggroUntil: 0,
       tx: null, ty: null, killer: null, firstBy: null, lastHitBy: null,
       lockBy: null, lockHitAt: 0, lockReleaseAt: 0, hitHist: [],
@@ -2890,6 +2893,22 @@ drainPlayerHits() {
         mx = Number(mv.mx) || 0; my = Number(mv.my) || 0; spd = Math.max(0, Number(mv.spd) || 0);
       } else if (cubeAnchored && e.escortOffset) {
         mx = 0; my = 0; spd = 0;
+      } else if (e.roamOnly && e.patrol) {
+        // Ligne droite vers le portail visé ; turnDist px avant d'y arriver,
+        // cap sur le portail suivant, virage limité à turnRate rad/s.
+        const p = e.patrol, route = p.route;
+        let t = route[p.idx] || route[0];
+        if (Math.hypot(t.x - e.x, t.y - e.y) < (Number(p.turnDist) || 800)) {
+          p.idx = (p.idx + (p.dir || 1) + route.length) % route.length;
+          t = route[p.idx];
+        }
+        const want = Math.atan2(t.y - e.y, t.x - e.x);
+        if (!Number.isFinite(p.heading)) p.heading = want;
+        const diff = ((want - p.heading) % TAU + TAU * 1.5) % TAU - Math.PI;
+        const maxTurn = (Number(p.turnRate) || 0.5) * dt;
+        p.heading += clamp(diff, -maxTurn, maxTurn);
+        mx = Math.cos(p.heading); my = Math.sin(p.heading); spd = e.speed * 0.55;
+        e.angle = p.heading;
       } else if (e.roamOnly) {
         if (e.tx == null || Math.hypot(e.tx - e.x, e.ty - e.y) < 100) {
           const a = Math.random() * TAU, dist = 400 + Math.random() * 800;
@@ -3322,11 +3341,15 @@ function createRoamingEventController({ event, type, maps, isActive, pickMap, bu
       if (!camp) {
         let nextId = 0;
         for (const c of sim.camps) nextId = Math.max(nextId, Number(c?.id) || 0);
-        camp = { id: nextId + 1, ...buildCamp(sim.world, Math.random) };
+        camp = { id: nextId + 1, ...buildCamp(sim.world, Math.random, finalMap) };
         sim.camps.push(camp);
         ensureMapSlots(sim.universe, sim.mapId, sim.camps, nowMs);
       }
       const alive = [...sim.entries.values()].filter((e) => e && e.campId === camp.id && e.hp > 0).length;
+      // Camp réutilisé (même map) : nouveau tirage (portail de départ…).
+      if (!alive && camp._roamSpawned) {
+        try { const { id: _id, ...fresh } = buildCamp(sim.world, Math.random, finalMap); Object.assign(camp, fresh); } catch {}
+      }
       if (!alive && sim.spawnFor(camp, nowMs)) {
         try { sim.campT.set(camp.id, 0); } catch {}
         events.push({ t: "spawn", map: finalMap });
@@ -3355,7 +3378,7 @@ const WINTER_CONTROLLERS = WINTER_SPAWN_GROUPS.map(({ maps, type }) => createRoa
 export const syncHitacSnowEvent = createRoamingEventController({
   event: HITAC_SNOW_EVENT, type: HITAC_SNOW_TYPE, maps: HITAC_SNOW_MAPS,
   isActive: isHitacSnowActive, pickMap: hitacSnowPickMap,
-  buildCamp: (world, random) => buildHitacSnowCamp(world, random),
+  buildCamp: (world, random, mapId) => buildHitacSnowCamp(world, random, mapId),
 });
 
 // Même contrat que syncSundayEvent, sauf liveMaps (1 map par paire) ;
