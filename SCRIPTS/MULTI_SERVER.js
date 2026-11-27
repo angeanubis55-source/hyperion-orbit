@@ -10,6 +10,7 @@ import { discordWebhookUrl, startDiscordAnnounce } from "./DISCORD_ANNOUNCE.js";
 import { ZoneNpcSim, syncHitacSnowEvent, syncSundayEvent, syncWinterEvent } from "./NPC_ROOM.js";
 import { HITAC_SNOW_MAPS, HITAC_SNOW_TYPE, HITAC_SNOW_MINION_TYPE } from "../NPC/NPC_HITAC_SNOW.js";
 import { WINTER_MAPS, isWinterEventActive } from "../NPC/NPC_WINTER.js";
+import { isThanksgivingActive } from "../SRC/DATA/THANKSGIVING.js";
 import {
   ANTICHEAT as AC,
   acBucket,
@@ -1893,6 +1894,7 @@ let nextId = 1;
 function collectableEventOn(cfg) {
   if (cfg?.event === "halloween") return isHalloweenEventActive();
   if (cfg?.event === "winter") return isWinterEventActive();
+  if (cfg?.event === "thanksgiving") return isThanksgivingActive();
   return true;
 }
 
@@ -4896,9 +4898,9 @@ setInterval(() => {
 
 // Box d'event : apparition / disparition en direct (toutes les 5 s), sans
 // restart — les rooms ne sont construites qu'une fois. Pumpkin Box pendant
-// Halloween, Winter Gift Box pendant l'hiver.
+// Halloween, Winter Gift Box pendant l'hiver, Thanksgiving Box le week-end 28-29/11.
 setInterval(() => {
-  for (const type of ["Pumpkin_Box", "Winter_Gift_Box"]) {
+  for (const type of ["Pumpkin_Box", "Winter_Gift_Box", "Thanksgiving_Box"]) {
     try {
       const cfg = COLLECTABLE_TYPES[type];
       if (!cfg) continue;

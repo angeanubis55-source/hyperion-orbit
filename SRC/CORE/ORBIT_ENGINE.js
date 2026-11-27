@@ -57,6 +57,7 @@ import { SpatialIndex } from "./SPATIAL_INDEX.js";
 import { normalizeMapId } from "./MAP_REGISTRY.js";
 import { getPortalSkinForMap } from "./PORTAL_SKINS.js";
 import { WINTER_TYPES, isWinterEventActive, winterPreloadTypes } from "../../NPC/NPC_WINTER.js";
+import { isThanksgivingActive } from "../DATA/THANKSGIVING.js";
 import { HITAC_SNOW_DEBUG_CENTER, HITAC_SNOW_ESCORT_OFFSETS, HITAC_SNOW_MINION_TYPE as HITAC_SNOW_MINION_DRAW_TYPE, HITAC_SNOW_TYPE, hitacSnowDrawLayer, hitacSnowPreloadTypes } from "../../NPC/NPC_HITAC_SNOW.js";
 "use strict";
 import {
@@ -27916,7 +27917,7 @@ function scanTbrFetch(c, gears, exclude) {
 // st = état porteur du cooldown (petState ou clone TBR).
 function collectPetBox(box, st = petState) {
   const salvagePct = getPetProtocolPct(account.user?.pet, account.user, "salvage");
-  const eligible = ["Bonus_Box", "Pumpkin_Box", "Winter_Gift_Box", "Cargo_Box", "Green_Booty_Box", "Astral_Prime_Box"].includes(String(box?.type || ""));
+  const eligible = ["Bonus_Box", "Pumpkin_Box", "Winter_Gift_Box", "Thanksgiving_Box", "Cargo_Box", "Green_Booty_Box", "Astral_Prime_Box"].includes(String(box?.type || ""));
   try {
     if (salvagePct > 0 && eligible) box._petSalvagePct = salvagePct;
     else if (box) delete box._petSalvagePct;
@@ -30049,6 +30050,9 @@ function collectableEventActive(cfg) {
   if (cfg?.event === "winter") {
     try { return isWinterEventActive(); } catch { return false; }
   }
+  if (cfg?.event === "thanksgiving") {
+    try { return isThanksgivingActive(); } catch { return false; }
+  }
   return true;
 }
 
@@ -30787,7 +30791,7 @@ function applyCollectableReward(c) {
     }
   }
   const botBoxMult = collectableBotRewardMultiplier(c?.type, Bot.active === true);
-  const boxMult = ((String(c?.type || "") === "Bonus_Box" || String(c?.type || "") === "Pumpkin_Box" || String(c?.type || "") === "Winter_Gift_Box") ? playerBoosterMults().box * playerPilotMults().bonusLoot * playerPilotMults().luck : 1) * battleMult * salvageMult * x1Mult * botBoxMult;
+  const boxMult = ((String(c?.type || "") === "Bonus_Box" || String(c?.type || "") === "Pumpkin_Box" || String(c?.type || "") === "Winter_Gift_Box" || String(c?.type || "") === "Thanksgiving_Box") ? playerBoosterMults().box * playerPilotMults().bonusLoot * playerPilotMults().luck : 1) * battleMult * salvageMult * x1Mult * botBoxMult;
 
   // X-1 + niveau 10 : box consommée mais vide (officiel).
   if (x1Mult <= 0 && String(c?.type || "") === "Bonus_Box") {
@@ -31146,13 +31150,16 @@ function sweepExpiredEventBoxes(dt) {  eventBoxSweepT += Number(dt) || 0;
   try { active = isHalloweenEventActive(); } catch {}
   let winterActive = true;
   try { winterActive = isWinterEventActive(); } catch {}
-  if (active && winterActive) return;
+  let thanksgivingActive = true;
+  try { thanksgivingActive = isThanksgivingActive(); } catch {}
+  if (active && winterActive && thanksgivingActive) return;
   for (let i = collectables.length - 1; i >= 0; i--) {
     const c = collectables[i];
     const t = String(c?.type || "");
     const halloweenBox = t === "Pumpkin_Box" || t === "Cucurbitor_Box" || t === "Boss_Cucurbitor_Box";
     const winterBox = t === "Winter_Gift_Box";
-    if (!(halloweenBox && !active) && !(winterBox && !winterActive)) continue;
+    const thanksgivingBox = t === "Thanksgiving_Box";
+    if (!(halloweenBox && !active) && !(winterBox && !winterActive) && !(thanksgivingBox && !thanksgivingActive)) continue;
     if (collectableTargetId === c?.id) {
       try { cancelCollectableTarget(); } catch {}
       moveTarget.active = false;

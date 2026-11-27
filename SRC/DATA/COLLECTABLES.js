@@ -521,6 +521,46 @@ export const COLLECTABLE_TYPES = Object.freeze({
     ],
   },
 
+  // Thanksgiving Box (micro-event week-end 28-29/11, SRC/DATA/THANKSGIVING.js) :
+  // mêmes maps / respawn / 25 par map que les Winter Gift Box (flag `event`).
+  // Loot : celui de la Winter Gift Box x1,5, mêmes chances.
+  Thanksgiving_Box: {
+    name: "Thanksgiving Box",
+    maps: "*",
+    denyMaps: ["alpha", "beta", "gamma", "delta", "epsilon", "zeta", "kappa", "lambda", "omicron", "kronos", "awakened", "eternal", "low", "qz", "5-2", "1-bl", "2-bl", "3-bl", "maudite"],
+    event: "thanksgiving",
+    qty: 25,
+    spawnBatch: 25,
+    minSpacing: 100,
+    avoidPlayer: 0,
+    npcDespawnAfter: 0,
+    respawnDelaySec: 0,
+    r: 30,
+    pickupRadius: 50,
+    bob: 5,
+    sprite: {
+      path: "ASSETS/COLLECTABLES/THANKSGIVING_BOX/",
+      frames: 25,
+      firstNumber: 1,
+      ext: ".png",
+      fps: 20,
+      w: 80,
+      h: 80,
+      scale: 1,
+      randomStart: true,
+      glow: false,
+    },
+    exclusiveRewards: [
+      { weight: 150, reward: { credits: [11250, 22500] } },
+      { weight: 100, reward: { galaxyEnergy: [8, 23] } },
+      { weight: 280, reward: { ammo: { x2: [90, 270] } } },
+      { weight: 180, reward: { ammo: { x3: [45, 135] } } },
+      { weight: 140, reward: { ammo: { sab: [23, 113] } } },
+      { weight: 100, reward: { rockets: { plt2021: [9, 36] } } },
+      { weight: 30, reward: { ammo: { x4: [23, 68] } } },
+    ],
+  },
+
   // Box de Noël : drop de chaque NPC tué dans la GG d'hiver (100 %), points
   // givrés selon la vie max du NPC (winterFrostPoints, WINTER_CONVOY.js),
   // cumulés sur le compte (user.winter.frostPoints) pour le classement Winter.

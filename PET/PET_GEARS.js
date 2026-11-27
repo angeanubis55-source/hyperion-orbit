@@ -63,6 +63,7 @@ export const PET_GEAR_AUTOLOOT_TYPES = Object.freeze([
   "Bonus_Box",
   "Pumpkin_Box",
   "Winter_Gift_Box",
+  "Thanksgiving_Box",
   "Christmas_Box",
   "Cucurbitor_Box",
   "Boss_Cucurbitor_Box",
