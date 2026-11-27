@@ -39343,7 +39343,8 @@ function drawMinimap() {
         if (!isHitac && (!isHalloweenVariantType(enemy?.type) || halloweenRoleOf(enemy?.type) !== "boss")) return null;
         const sp = NPC_TYPES[enemy.type]?.sprite;
         const imgs = Array.isArray(sp?._imgs) && sp._imgs.length ? sp._imgs : null;
-        return { imgs, size: isHitac ? 16 : 12 };
+        // Hitac : 1re image seule (ses frames animent le cœur → scintillement).
+        return { imgs: isHitac && imgs ? [imgs[0]] : imgs, size: isHitac ? 16 : 12 };
       } catch { return null; }
     },
     // Spearhead Recon : radar minimap x2 pendant l'effet.

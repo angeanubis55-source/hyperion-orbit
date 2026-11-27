@@ -2907,7 +2907,7 @@ drainPlayerHits() {
         const diff = ((want - p.heading) % TAU + TAU * 1.5) % TAU - Math.PI;
         const maxTurn = (Number(p.turnRate) || 0.5) * dt;
         p.heading += clamp(diff, -maxTurn, maxTurn);
-        mx = Math.cos(p.heading); my = Math.sin(p.heading); spd = e.speed * 0.55;
+        mx = Math.cos(p.heading); my = Math.sin(p.heading); spd = Number(p.speed) > 0 ? Number(p.speed) : e.speed * 0.55;
         e.angle = p.heading;
       } else if (e.roamOnly) {
         if (e.tx == null || Math.hypot(e.tx - e.x, e.ty - e.y) < 100) {

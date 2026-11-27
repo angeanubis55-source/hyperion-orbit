@@ -109,6 +109,7 @@ export const HITAC_SNOW_ROUTES = Object.freeze({
 });
 export const HITAC_SNOW_TURN_DIST = 800; // distance au portail où il change de cap
 export const HITAC_SNOW_TURN_RATE = 0.5; // rad/s : virage en douceur
+export const HITAC_SNOW_PATROL_SPEED = 80; // px/s en patrouille (~2 min par traversée)
 
 // Camp sur un portail extérieur de la map (position aléatoire si la map n'a
 // pas de route) ; le Hitac patrouille sans jamais chasser ni fuir
@@ -123,7 +124,7 @@ export function buildHitacSnowCamp(world, random = Math.random, mapId = null) {
     // Spawn pile sur le portail de départ, puis cap sur le portail suivant.
     fixed: !!route,
     patrol: route ? { route, idx: (start + dir + route.length) % route.length, dir,
-      turnDist: HITAC_SNOW_TURN_DIST, turnRate: HITAC_SNOW_TURN_RATE } : null,
+      turnDist: HITAC_SNOW_TURN_DIST, turnRate: HITAC_SNOW_TURN_RATE, speed: HITAC_SNOW_PATROL_SPEED } : null,
     type: HITAC_SNOW_TYPE,
     event: HITAC_SNOW_EVENT,
     roaming: true,
