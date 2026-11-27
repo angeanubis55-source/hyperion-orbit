@@ -521,7 +521,7 @@ export const COLLECTABLE_TYPES = Object.freeze({
     ],
   },
 
-  // Thanksgiving Box (micro-event week-end 28-29/11, SRC/DATA/THANKSGIVING.js) :
+  // Thanksgiving Box (micro-event du 23 au 29/11, SRC/DATA/THANKSGIVING.js) :
   // mêmes maps / respawn / 25 par map que les Winter Gift Box (flag `event`).
   // Loot : celui de la Winter Gift Box x1,5, mêmes chances.
   Thanksgiving_Box: {

@@ -7,7 +7,7 @@
 //   (vérifie le webhook sans @everyone ; --test-ufonit poste la vraie annonce)
 import { HALLOWEEN_END, HALLOWEEN_START } from "../NPC/NPC_HALLOWEEN.js";
 import { HITAC_SNOW_END_AT, HITAC_SNOW_START_AT } from "../NPC/NPC_HITAC_SNOW.js";
-import { THANKSGIVING_END_AT, THANKSGIVING_START_AT } from "../SRC/DATA/THANKSGIVING.js";
+import { THANKSGIVING_END_AT } from "../SRC/DATA/THANKSGIVING.js";
 import { LEVIATHAN_GATE_ENABLED, LEVIATHAN_GATE_END_AT, LEVIATHAN_GATE_START_AT, leviathanGateWindowLabel } from "../SRC/CORE/LEVIATHAN_GATE.js";
 import { SUNDAY_END_MINUTES, SUNDAY_START_MINUTES, SUNDAY_WEEKDAY } from "../NPC/NPC_SUNDAY.js";
 import { GALAXY_EVENT_END_MINUTES, GALAXY_EVENT_START_MINUTES, GALAXY_EVENT_WEEKDAY, GALAXY_SATURDAY_WEEKDAY } from "../SRC/CORE/GALAXY_GATES.js";
@@ -112,15 +112,15 @@ Le Hitac Givré a quitté le secteur. Merci à tous d'avoir participé !
 
 export const THANKSGIVING_MESSAGE = `@everyone
 # :turkey: ÉVÉNEMENT THANKSGIVING :turkey:
-:clock3: **Du ${dayAt(THANKSGIVING_START_AT)} au ${dayAt(THANKSGIVING_END_AT)} (heure de Paris)**
-Les **Thanksgiving Box** envahissent l'espace tout le week-end !
+:clock3: **Dès maintenant et jusqu'au ${dayAt(THANKSGIVING_END_AT)} (heure de Paris)**
+Les **Thanksgiving Box** envahissent l'espace, en même temps que le Hitac Givré !
 
 :package: **Les Thanksgiving Box**
 > **25 box par map**, partout où il y a des Bonus Box
 > Plus généreuses que les Winter Gift Box : crédits, énergie Galaxy Gates, munitions X2 / X3 / X4 / SAB et roquettes PLT-2021
 > Ramassées, elles réapparaissent aussitôt ailleurs sur la map
 
-Bon week-end et bonne chasse à tous ! :rocket:`;
+Bonne chasse à tous ! :rocket:`;
 
 export const THANKSGIVING_END_MESSAGE = `@everyone
 # :turkey: FIN DE L'ÉVÉNEMENT THANKSGIVING :turkey:
@@ -234,8 +234,8 @@ const SCHEDULES = [
   // Hitac enneigée (une seule fois, année fixée) : début à l'ouverture, fin à la fermeture.
   // Début Hitac enneigée 2026 : annonce postée à la main le 22/11 à 23h15.
   { key: "hitac_snow_end", ...yearly(HITAC_SNOW_END_AT), message: () => HITAC_SNOW_END_MESSAGE, label: "fin Hitac enneigée" },
-  // Thanksgiving (une seule fois, année fixée) : veille à 22h00 (2 h 01 avant l'ouverture) + à la fermeture.
-  { key: "thanksgiving_start", ...yearly(THANKSGIVING_START_AT, -121), message: () => THANKSGIVING_MESSAGE, label: "Thanksgiving" },
+  // Thanksgiving (une seule fois, année fixée) : fin à la fermeture.
+  // Début Thanksgiving 2026 : annonce postée à la main le 27/11.
   { key: "thanksgiving_end", ...yearly(THANKSGIVING_END_AT), message: () => THANKSGIVING_END_MESSAGE, label: "fin Thanksgiving" },
   // Gate Of Olympus (une seule fois, année fixée) : 1 h avant l'ouverture +
   // à la fermeture. Seulement si l'événement est activé (LEVIATHAN_GATE_ENABLED).

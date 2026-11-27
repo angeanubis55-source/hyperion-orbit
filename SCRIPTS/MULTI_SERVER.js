@@ -4898,7 +4898,7 @@ setInterval(() => {
 
 // Box d'event : apparition / disparition en direct (toutes les 5 s), sans
 // restart — les rooms ne sont construites qu'une fois. Pumpkin Box pendant
-// Halloween, Winter Gift Box pendant l'hiver, Thanksgiving Box le week-end 28-29/11.
+// Halloween, Winter Gift Box pendant l'hiver, Thanksgiving Box du 23 au 29/11.
 setInterval(() => {
   for (const type of ["Pumpkin_Box", "Winter_Gift_Box", "Thanksgiving_Box"]) {
     try {
